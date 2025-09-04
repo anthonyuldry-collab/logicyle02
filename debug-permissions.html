@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Permissions - LogiCycle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .debug-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .permission-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .permission-granted {
+            background: #d4edda;
+            color: #155724;
+        }
+        .permission-denied {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Debug Permissions - LogiCycle</h1>
+    
+    <div class="debug-section">
+        <h2>📋 Informations Utilisateur</h2>
+        <p><strong>Email:</strong> <span id="userEmail">Non connecté</span></p>
+        <p><strong>Rôle Utilisateur:</strong> <span id="userRole">Non défini</span></p>
+        <p><strong>Rôle Permission:</strong> <span id="permissionRole">Non défini</span></p>
+        <p><strong>Nom:</strong> <span id="userName">Non défini</span></p>
+    </div>
+
+    <div class="debug-section">
+        <h2>🎯 Test des Permissions</h2>
+        <p>Cliquez sur le bouton ci-dessous pour tester vos permissions actuelles :</p>
+        <button class="btn" onclick="testPermissions()">Tester les Permissions</button>
+        <button class="btn btn-warning" onclick="forceManagerRole()">Forcer le Rôle Manager</button>
+    </div>
+
+    <div class="debug-section">
+        <h2>📊 Résultats des Permissions</h2>
+        <div id="permissionsResults">
+            <p>Aucun test effectué. Cliquez sur "Tester les Permissions" pour commencer.</p>
+        </div>
+    </div>
+
+    <div class="debug-section">
+        <h2>🔍 Logs de Débogage</h2>
+        <div id="debugLogs" style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+            <p>Les logs de débogage apparaîtront ici...</p>
+        </div>
+    </div>
+
+    <script>
+        // Simulation des types et constantes
+        const UserRole = {
+            COUREUR: 'COUREUR',
+            STAFF: 'STAFF',
+            MANAGER: 'MANAGER'
+        };
+
+        const TeamRole = {
+            VIEWER: 'VIEWER',
+            MEMBER: 'MEMBER',
+            EDITOR: 'EDITOR',
+            ADMIN: 'ADMIN'
+        };
+
+        const AppSection = {
+            DASHBOARD: 'dashboard',
+            EVENTS: 'events',
+            FINANCIAL: 'financial',
+            PERFORMANCE: 'performance',
+            STAFF: 'staff',
+            ROSTER: 'roster',
+            VEHICLES: 'vehicles',
+            EQUIPMENT: 'equipment',
+            SCOUTING: 'scouting',
+            USER_MANAGEMENT: 'userManagement',
+            PERMISSIONS: 'permissions'
+        };
+
+        // Fonction pour ajouter des logs
+        function addLog(message) {
+            const logsDiv = document.getElementById('debugLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            logsDiv.innerHTML += `<p>[${timestamp}] ${message}</p>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        // Fonction pour simuler la récupération des permissions
+        function getEffectivePermissions(user, basePermissions = {}, staff = []) {
+            addLog(`🔍 DEBUG - Utilisateur: ${JSON.stringify(user)}`);
+            
+            // Vérifier si l'utilisateur est admin (via permissionRole) OU manager (via userRole)
+            if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
+                addLog('🎯 DEBUG - Utilisateur identifié comme Admin/Manager');
+                
+                const allPermissions = {};
+                Object.values(AppSection).forEach(section => {
+                    // Exclure les sections "Mon Espace"
+                    const isMySpaceSection = [
+                        'career', 'nutrition', 'riderEquipment', 'adminDossier', 
+                        'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile'
+                    ].includes(section);
+                    
+                    if (!isMySpaceSection) {
+                        allPermissions[section] = ['view', 'edit'];
+                        addLog(`✅ DEBUG - Section ajoutée: ${section}`);
+                    }
+                });
+                
+                addLog(`🎯 DEBUG - Permissions finales Admin/Manager: ${JSON.stringify(allPermissions)}`);
+                return allPermissions;
+            }
+            
+            addLog('⚠️ DEBUG - Utilisateur NOT Admin/Manager, utilisation des permissions par défaut');
+            return {};
+        }
+
+        // Fonction pour tester les permissions
+        function testPermissions() {
+            addLog('🧪 Début du test des permissions...');
+            
+            // Simuler un utilisateur (vous devrez remplacer ces valeurs par les vôtres)
+            const testUser = {
+                email: document.getElementById('userEmail').textContent,
+                userRole: document.getElementById('userRole').textContent,
+                permissionRole: document.getElementById('permissionRole').textContent,
+                firstName: document.getElementById('userName').textContent.split(' ')[0] || 'Test',
+                lastName: document.getElementById('userName').textContent.split(' ')[1] || 'User'
+            };
+            
+            if (testUser.email === 'Non connecté') {
+                addLog('❌ ERREUR: Aucun utilisateur connecté. Connectez-vous d\'abord à l\'application.');
+                return;
+            }
+            
+            const permissions = getEffectivePermissions(testUser);
+            
+            // Afficher les résultats
+            const resultsDiv = document.getElementById('permissionsResults');
+            let html = '<h3>Résultats du Test :</h3>';
+            
+            if (Object.keys(permissions).length === 0) {
+                html += '<p class="permission-denied">❌ Aucune permission accordée</p>';
+            } else {
+                Object.entries(permissions).forEach(([section, levels]) => {
+                    const isGranted = levels.includes('view') || levels.includes('edit');
+                    const className = isGranted ? 'permission-granted' : 'permission-denied';
+                    const icon = isGranted ? '✅' : '❌';
+                    html += `<div class="permission-item ${className}">
+                        <span>${icon} ${section}</span>
+                        <span>${levels.join(', ')}</span>
+                    </div>`;
+                });
+            }
+            
+            resultsDiv.innerHTML = html;
+            addLog('✅ Test des permissions terminé');
+        }
+
+        // Fonction pour forcer le rôle Manager
+        function forceManagerRole() {
+            addLog('🔧 Tentative de forçage du rôle Manager...');
+            addLog('⚠️ ATTENTION: Cette fonction est en mode simulation uniquement');
+            addLog('💡 Pour vraiment changer votre rôle, vous devez :');
+            addLog('   1. Vous connecter à l\'application principale');
+            addLog('   2. Utiliser le bouton "Forcer le rôle Manager" dans l\'interface');
+            addLog('   3. Ou contacter un administrateur');
+            
+            // Simuler le changement
+            document.getElementById('userRole').textContent = 'MANAGER';
+            document.getElementById('permissionRole').textContent = 'ADMIN';
+            
+            addLog('✅ Rôle simulé changé en Manager/Admin');
+            addLog('🔄 Rechargez la page pour voir les changements');
+        }
+
+        // Initialisation
+        addLog('🚀 Page de débogage chargée');
+        addLog('💡 Utilisez cette page pour diagnostiquer vos problèmes de permissions');
+        addLog('🔧 Vous pouvez aussi utiliser le bouton "Forcer le Rôle Manager" pour tester');
+    </script>
+</body>
+</html>
