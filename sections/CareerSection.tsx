@@ -60,6 +60,17 @@ const CareerSection: React.FC<CareerSectionProps> = ({
   const [successMessage, setSuccessMessage] = useState('');
   const [currentSkill, setCurrentSkill] = useState('');
 
+  // Vérification de sécurité pour currentUser
+  if (!currentUser) {
+    return (
+      <SectionWrapper title="Ma Carrière">
+        <div className="text-center p-8 bg-gray-50 rounded-lg border">
+          <p>Chargement des informations utilisateur...</p>
+        </div>
+      </SectionWrapper>
+    );
+  }
+
   const isRider = currentUser.userRole === UserRole.COUREUR;
   const isIndependent = !currentTeamId;
   const riderProfile = useMemo(() => isRider ? riders.find(r => r.email === currentUser.email) : null, [riders, currentUser, isRider]);

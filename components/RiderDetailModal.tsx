@@ -222,6 +222,11 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    
+    // Log pour les changements PPR
+    if (name.includes('powerProfile') || name === 'weightKg') {
+      console.log('🔧 DEBUG - Changement PPR détecté:', { name, value, type });
+    }
 
     setFormData((prev: Rider | Omit<Rider, 'id'>) => {
         if (!prev) return prev;
@@ -278,6 +283,17 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             }
         }
 
+        // Log pour les changements PPR après mise à jour
+        if (name.includes('powerProfile') || name === 'weightKg') {
+          console.log('🔧 DEBUG - formData mis à jour avec PPR:', {
+            powerProfileFresh: newFormData.powerProfileFresh,
+            powerProfile15KJ: newFormData.powerProfile15KJ,
+            powerProfile30KJ: newFormData.powerProfile30KJ,
+            powerProfile45KJ: newFormData.powerProfile45KJ,
+            weightKg: newFormData.weightKg
+          });
+        }
+
         return newFormData;
     });
   };
@@ -308,9 +324,16 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   };
   
   const handleSave = async () => {
-    console.log('handleSave appelé dans RiderDetailModal');
-    console.log('formData:', formData);
-    console.log('onSaveRider existe:', !!onSaveRider);
+    console.log('🔧 DEBUG - handleSave appelé dans RiderDetailModal');
+    console.log('🔧 DEBUG - formData:', formData);
+    console.log('🔧 DEBUG - onSaveRider existe:', !!onSaveRider);
+    console.log('🔧 DEBUG - Données PPR dans formData:', {
+      powerProfileFresh: formData.powerProfileFresh,
+      powerProfile15KJ: formData.powerProfile15KJ,
+      powerProfile30KJ: formData.powerProfile30KJ,
+      powerProfile45KJ: formData.powerProfile45KJ,
+      weightKg: formData.weightKg
+    });
     
     if (!onSaveRider) {
       console.warn('⚠️ onSaveRider n\'est pas défini - sauvegarde impossible');

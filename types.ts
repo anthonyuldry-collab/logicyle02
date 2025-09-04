@@ -332,7 +332,7 @@ export type AppSection =
   | 'dashboard' | 'events' | 'roster' | 'staff' | 'vehicles' | 'equipment'
   | 'stocks'
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
-  | 'userManagement' | 'permissions' | 'checklist'
+  | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
   | 'missionSearch';
 

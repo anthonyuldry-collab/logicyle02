@@ -13,6 +13,7 @@ interface LogisticsSummaryTabProps {
   event: RaceEvent;
   appState: TeamState;
   updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
+  currentUser?: { userRole: string };
 }
 
 const SummaryCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
@@ -26,6 +27,15 @@ const SummaryCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ 
 const getStaffNames = (roleKey: StaffRoleKey, event: RaceEvent, appState: TeamState): string => {
     const ids = event[roleKey] || [];
     if (ids.length === 0) return 'N/A';
+    return ids.map(id => {
+        const staffMember = appState.staff.find(s => s.id === id);
+        return staffMember ? `${staffMember.firstName} ${staffMember.lastName}` : 'Inconnu';
+    }).join(', ');
+};
+
+const getStaffNamesForConvocation = (roleKey: StaffRoleKey, event: RaceEvent, appState: TeamState): string | null => {
+    const ids = event[roleKey] || [];
+    if (ids.length === 0) return null; // Retourne null au lieu de 'N/A' pour ne pas afficher la ligne
     return ids.map(id => {
         const staffMember = appState.staff.find(s => s.id === id);
         return staffMember ? `${staffMember.firstName} ${staffMember.lastName}` : 'Inconnu';
@@ -52,7 +62,11 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     text += `- Directeur(s) Sportif(s) : ${getStaffNames('directeurSportifId', event, appState)}\n`;
     text += `- Assistant(s) : ${getStaffNames('assistantId', event, appState)}\n`;
     text += `- Mécano(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
-    text += `- Kiné(s) : ${getStaffNames('kineId', event, appState)}\n\n`;
+    const kineNames = getStaffNamesForConvocation('kineId', event, appState);
+    if (kineNames) {
+        text += `- Kiné(s) : ${kineNames}\n`;
+    }
+    text += `\n`;
     
     const myTransportLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id && (leg.occupants || []).some(occ => occ.id === rider.id));
     if (myTransportLegs.length > 0) {
@@ -78,17 +92,6 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
         text += `- Adresse : ${accommodation.address}\n\n`;
     }
 
-    const logistics = [...(event.operationalLogistics || [])];
-    if (logistics.length > 0) {
-        text += `TIMING PRÉVISIONNEL\n--------------------\n`;
-        logistics.sort((a,b) => Object.values(a.dayName).indexOf(a.dayName) - Object.values(b.dayName).indexOf(b.dayName)).forEach(day => {
-            text += `  • ${day.dayName.toUpperCase()}\n`;
-            day.keyTimings.sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99")).forEach(timing => {
-                text += `    - ${timing.time} : ${timing.description}\n`;
-            });
-        });
-        text += `\n`;
-    }
 
     text += `Merci de confirmer la bonne réception de cette convocation.\n\nSportivement,\nLe Staff`;
     return text;
@@ -142,8 +145,6 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
     if (accommodation) { text += `HÉBERGEMENT\n--------------------\n- Hôtel : ${accommodation.hotelName}\n- Adresse : ${accommodation.address}\n\n`; }
 
-    const logistics = [...(event.operationalLogistics || [])];
-    if (logistics.length > 0) { text += `TIMING PRÉVISIONNEL\n--------------------\n`; logistics.forEach(day => { text += `  • ${day.dayName.toUpperCase()}\n`; day.keyTimings.sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99")).forEach(t => { text += `    - ${t.time} : ${t.description}\n`; }); }); text += `\n`; }
 
     text += `Merci de confirmer ta présence.\n\nLe Manager`;
     return text;
@@ -164,25 +165,59 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
     text += `- Directeur(s) Sportif(s) : ${getStaffNames('directeurSportifId', event, appState)}\n`;
     text += `- Assistant(s) : ${getStaffNames('assistantId', event, appState)}\n`;
     text += `- Mécano(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
-    text += `- Kiné(s) : ${getStaffNames('kineId', event, appState)}\n\n`;
+    const kineNames = getStaffNamesForConvocation('kineId', event, appState);
+    if (kineNames) {
+        text += `- Kiné(s) : ${kineNames}\n`;
+    }
+    text += `\n`;
     
-    const allTransportLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id);
+    // Filtrer les transports (exclure le jour J) et les grouper par direction
+    const allTransportLegs = appState.eventTransportLegs.filter(leg => 
+        leg.eventId === event.id && leg.direction !== 'Transport Jour J'
+    );
+    
     if (allTransportLegs.length > 0) {
         text += `PLAN DE TRANSPORT\n--------------------\n`;
-        allTransportLegs.forEach(leg => {
-            text += `  • [${leg.direction}] ${leg.personName} (${leg.mode})\n`;
-            const occupants = (leg.occupants || []).map(o => {
-                const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
-                return p ? `${p.firstName[0]}.${p.lastName}` : '';
-            }).join(', ');
-            if(occupants) text += `    - Passagers: ${occupants}\n`;
-            if (leg.assignedVehicleId && leg.driverId) {
-                const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
-                const driver = appState.staff.find(s => s.id === leg.driverId);
-                if (vehicle && driver) text += `    - Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
-            }
-        });
-        text += `\n`;
+        
+        // Grouper d'abord tous les allers
+        const allerLegs = allTransportLegs.filter(leg => leg.direction === 'Aller');
+        if (allerLegs.length > 0) {
+            text += `ALLER\n`;
+            allerLegs.forEach(leg => {
+                text += `  • ${leg.personName} (${leg.mode})\n`;
+                const occupants = (leg.occupants || []).map(o => {
+                    const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
+                    return p ? `${p.firstName[0]}.${p.lastName}` : '';
+                }).join(', ');
+                if(occupants) text += `    - Passagers: ${occupants}\n`;
+                if (leg.assignedVehicleId && leg.driverId) {
+                    const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                    const driver = appState.staff.find(s => s.id === leg.driverId);
+                    if (vehicle && driver) text += `    - Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                }
+            });
+            text += `\n`;
+        }
+        
+        // Puis tous les retours
+        const retourLegs = allTransportLegs.filter(leg => leg.direction === 'Retour');
+        if (retourLegs.length > 0) {
+            text += `RETOUR\n`;
+            retourLegs.forEach(leg => {
+                text += `  • ${leg.personName} (${leg.mode})\n`;
+                const occupants = (leg.occupants || []).map(o => {
+                    const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
+                    return p ? `${p.firstName[0]}.${p.lastName}` : '';
+                }).join(', ');
+                if(occupants) text += `    - Passagers: ${occupants}\n`;
+                if (leg.assignedVehicleId && leg.driverId) {
+                    const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                    const driver = appState.staff.find(s => s.id === leg.driverId);
+                    if (vehicle && driver) text += `    - Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                }
+            });
+            text += `\n`;
+        }
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
@@ -208,9 +243,10 @@ const ConvocationPreview: React.FC<{
     const allRiders = appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id));
     const myTransportLegs = participant ? appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.occupants.some(occ => occ.id === participant.id) && leg.driverId !== participant.id) : [];
     const drivingLegs = (mode === 'staff' && participant) ? appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.driverId === participant.id) : [];
-    const allTransportLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id);
+    const allTransportLegs = appState.eventTransportLegs.filter(leg => 
+        leg.eventId === event.id && leg.direction !== 'Transport Jour J'
+    );
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    const logistics = [...(event.operationalLogistics || [])].sort((a,b) => Object.values(a.dayName).indexOf(a.dayName) - Object.values(b.dayName).indexOf(b.dayName));
 
     const Section: React.FC<{ title: string; icon: React.ElementType; children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
         <div className="mb-4">
@@ -241,7 +277,9 @@ const ConvocationPreview: React.FC<{
                 <p><strong>Directeur(s) Sportif(s):</strong> {getStaffNames('directeurSportifId', event, appState)}</p>
                 <p><strong>Assistant(s):</strong> {getStaffNames('assistantId', event, appState)}</p>
                 <p><strong>Mécano(s):</strong> {getStaffNames('mecanoId', event, appState)}</p>
-                <p><strong>Kiné(s):</strong> {getStaffNames('kineId', event, appState)}</p>
+                {getStaffNamesForConvocation('kineId', event, appState) && (
+                    <p><strong>Kiné(s):</strong> {getStaffNamesForConvocation('kineId', event, appState)}</p>
+                )}
             </Section>
 
             {drivingLegs.length > 0 && (
@@ -258,17 +296,57 @@ const ConvocationPreview: React.FC<{
             <Section title={mode === 'staff' ? 'Mes Trajets Personnels' : 'Transport'} icon={TruckIcon}>
                 {(mode === 'general' ? allTransportLegs : myTransportLegs).length > 0 ? (
                     <div className="space-y-3">
-                        {(mode === 'general' ? allTransportLegs : myTransportLegs).map(leg => (
-                            <div key={leg.id} className="p-2 border rounded bg-white">
-                                <p className="font-semibold">{leg.direction} ({leg.mode}) {mode === 'general' && `- ${leg.personName}`}</p>
-                                <p><strong>Départ:</strong> {formatDate(leg.departureDate)} à {leg.departureTime} de {leg.departureLocation}</p>
-                                <p><strong>Arrivée:</strong> {formatDate(leg.arrivalDate)} à {leg.arrivalTime} à {leg.arrivalLocation}</p>
-                                {leg.assignedVehicleId && leg.driverId && (
-                                    <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                        {mode === 'general' ? (
+                            <>
+                                {/* Grouper d'abord tous les allers */}
+                                {allTransportLegs.filter(leg => leg.direction === 'Aller').length > 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="font-semibold text-gray-800 mb-2">ALLER</h4>
+                                        {allTransportLegs.filter(leg => leg.direction === 'Aller').map(leg => (
+                                            <div key={leg.id} className="p-2 border rounded bg-white mb-2">
+                                                <p className="font-semibold">{leg.personName} ({leg.mode})</p>
+                                                <p><strong>Départ:</strong> {leg.departureTime} de {leg.departureLocation}</p>
+                                                <p><strong>Arrivée:</strong> {leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                {leg.assignedVehicleId && leg.driverId && (
+                                                    <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                                                )}
+                                                <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
-                                {mode === 'general' && <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>}
-                            </div>
-                        ))}
+                                
+                                {/* Puis tous les retours */}
+                                {allTransportLegs.filter(leg => leg.direction === 'Retour').length > 0 && (
+                                    <div>
+                                        <h4 className="font-semibold text-gray-800 mb-2">RETOUR</h4>
+                                        {allTransportLegs.filter(leg => leg.direction === 'Retour').map(leg => (
+                                            <div key={leg.id} className="p-2 border rounded bg-white mb-2">
+                                                <p className="font-semibold">{leg.personName} ({leg.mode})</p>
+                                                <p><strong>Départ:</strong> {leg.departureTime} de {leg.departureLocation}</p>
+                                                <p><strong>Arrivée:</strong> {leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                {leg.assignedVehicleId && leg.driverId && (
+                                                    <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                                                )}
+                                                <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            /* Affichage normal pour les autres modes */
+                            myTransportLegs.map(leg => (
+                                <div key={leg.id} className="p-2 border rounded bg-white">
+                                    <p className="font-semibold">{leg.direction} ({leg.mode})</p>
+                                    <p><strong>Départ:</strong> {formatDate(leg.departureDate)} à {leg.departureTime} de {leg.departureLocation}</p>
+                                    <p><strong>Arrivée:</strong> {formatDate(leg.arrivalDate)} à {leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                    {leg.assignedVehicleId && leg.driverId && (
+                                        <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
                 ) : <p className="italic">Aucun transport planifié.</p>}
             </Section>
@@ -280,26 +358,12 @@ const ConvocationPreview: React.FC<{
                 </Section>
             )}
 
-            {logistics.length > 0 && (
-                <Section title="Timing Prévisionnel" icon={ClockIcon}>
-                    {logistics.map(day => (
-                        <div key={day.id} className="mb-2">
-                            <h5 className="font-semibold">{day.dayName}</h5>
-                            <ul className="list-disc list-inside pl-4">
-                                {day.keyTimings.sort((a,b) => (a.time||"99:99").localeCompare(b.time||"99:99")).map(timing => (
-                                    <li key={timing.id}>{timing.time}: {timing.description}</li>
-                                ))}
-                            </ul>
-                        </div>
-                    ))}
-                </Section>
-            )}
         </div>
     );
 };
 
 
-const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appState, updateEvent }) => {
+const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appState, updateEvent, currentUser }) => {
   const [notes, setNotes] = useState(event.logisticsSummaryNotes || '');
   const [isConvocationModalOpen, setIsConvocationModalOpen] = useState(false);
   
@@ -415,12 +479,15 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
     });
   };
 
+  // Vérifier si l'utilisateur est un coureur (ne doit pas voir les données financières)
+  const isRider = currentUser?.userRole === 'COUREUR';
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isRider ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
         <SummaryCard title="Hébergement">{accommodationSummary}</SummaryCard>
         <SummaryCard title="Transport">{transportSummary}</SummaryCard>
-        <SummaryCard title="Budget">{budgetSummary}</SummaryCard>
+        {!isRider && <SummaryCard title="Budget">{budgetSummary}</SummaryCard>}
         <SummaryCard title="Checklist">{checklistSummary}</SummaryCard>
       </div>
       <div>

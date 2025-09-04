@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Rider, StaffMember } from '../../types';
+import { Rider, StaffMember, Sex } from '../../types';
 import ActionButton from '../ActionButton';
 import TrashIcon from '../icons/TrashIcon';
 import { ALL_COUNTRIES } from '../../constants';
@@ -52,6 +52,33 @@ const AdminTab: React.FC<AdminTabProps> = ({
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <fieldset className="border border-slate-600 p-3 rounded-md space-y-2"><legend className="text-md font-medium text-slate-200 px-1">Informations Personnelles</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-sm font-medium">Prénom</label><input type="text" name="firstName" value={formData.firstName || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>
+                <div><label className="text-sm font-medium">Nom</label><input type="text" name="lastName" value={formData.lastName || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>
+              </div>
+              <div><label className="text-sm font-medium">Date de naissance</label>
+                <input 
+                  type="date" 
+                  name="birthDate" 
+                  value={formData.birthDate || ''} 
+                  onChange={handleInputChange} 
+                  className="input-field-sm w-full" 
+                  disabled={!formFieldsEnabled}
+                  max={new Date().toISOString().split('T')[0]} // Pas de date future
+                />
+              </div>
+              <div><label className="text-sm font-medium">Sexe</label>
+                <select name="sex" value={formData.sex || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}>
+                  <option value="">-- Sélectionner --</option>
+                  <option value="MALE">Homme</option>
+                  <option value="FEMALE">Femme</option>
+                </select>
+              </div>
+              {isRider && (
+                <div><label className="text-sm font-medium">Nom de l'Équipe</label><input type="text" name="teamName" value={(formData as Rider).teamName || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>
+              )}
+            </fieldset>
             <fieldset className="border border-slate-600 p-3 rounded-md space-y-2"><legend className="text-md font-medium text-slate-200 px-1">Coordonnées</legend>
               <div><label className="text-sm font-medium">Email</label><input type="email" name="email" value={formData.email || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>
               <div><label className="text-sm font-medium">Téléphone</label><input type="tel" name="phone" value={formData.phone || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>

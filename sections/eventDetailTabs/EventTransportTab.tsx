@@ -707,8 +707,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     });
   };
 
-  const formatDate = (dateString?: string, timeString?: string) => {
-    if (!dateString) return "N/A";
+  const formatDate = (dateString?: string, timeString?: string, departureLocation?: string) => {
+    if (!dateString) return departureLocation || "N/A";
     try {
       const date = new Date(`${dateString}T${timeString || "00:00:00"}`);
       if (isNaN(date.getTime())) return "Date invalide";
@@ -967,15 +967,15 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                             )}
                           </h4>
                           <p className="text-sm text-gray-600">
-                            {formatDate(leg.departureDate, leg.departureTime)} → {formatDate(leg.arrivalDate, leg.arrivalTime)}
+                            {formatDate(leg.departureDate, leg.departureTime, leg.departureLocation)} → {formatDate(leg.arrivalDate, leg.arrivalTime)} {leg.arrivalLocation}
                           </p>
                         </div>
                       </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <h5 className="font-medium text-gray-700 mb-3 flex items-center">
-                        <span className="mr-2">📍</span> Trajet
+                      <h5 className="font-medium text-gray-700 mb-3">
+                        Trajet
                       </h5>
                       <div className="bg-blue-50 p-3 rounded-lg">
                         <p className="text-sm text-gray-700">
@@ -986,8 +986,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                     </div>
                     
                     <div>
-                      <h5 className="font-medium text-gray-700 mb-3 flex items-center">
-                        <span className="mr-2">👥</span> Participants
+                      <h5 className="font-medium text-gray-700 mb-3">
+                        Participants
                       </h5>
                       <div className="bg-blue-50 p-3 rounded-lg">
                         {leg.occupants.length > 0 ? (
@@ -1266,15 +1266,15 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                             )}
                           </h4>
                           <p className="text-sm text-gray-600">
-                            {formatDate(leg.departureDate, leg.departureTime)} → {formatDate(leg.arrivalDate, leg.arrivalTime)}
+                            {formatDate(leg.departureDate, leg.departureTime, leg.departureLocation)} → {formatDate(leg.arrivalDate, leg.arrivalTime)} {leg.arrivalLocation}
                           </p>
                                       </div>
                       </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <h5 className="font-medium text-gray-700 mb-3 flex items-center">
-                        <span className="mr-2">📍</span> Trajet
+                      <h5 className="font-medium text-gray-700 mb-3">
+                        Trajet
                       </h5>
                       <div className="bg-orange-50 p-3 rounded-lg">
                         <p className="text-sm text-gray-700">

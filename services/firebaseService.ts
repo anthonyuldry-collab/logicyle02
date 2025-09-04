@@ -150,7 +150,7 @@ export const getUserProfile = async (userId: string): Promise<User | null> => {
 
 export const createUserProfile = async (uid: string, signupData: SignupData) => {
     try {
-        const { email, firstName, lastName, userRole } = signupData;
+        const { email, firstName, lastName, userRole, birthDate, sex } = signupData;
 
         const newUser: Omit<User, 'id'> = {
             email,
@@ -160,7 +160,10 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             userRole: userRole, // Utiliser le rôle sélectionné lors de l'inscription
             isSearchable: false,
             openToExternalMissions: false,
-            signupInfo: {},
+            signupInfo: {
+                birthDate: birthDate, // Inclure la date de naissance
+                sex: sex, // Inclure le genre si fourni
+            },
         };
         
         const cleanedNewUser = cleanDataForFirebase(newUser);
@@ -258,11 +261,20 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
 };
 
 export const getEffectivePermissions = (user: User, basePermissions: AppPermissions, staff: StaffMember[] = []): Partial<Record<AppSection, PermissionLevel[]>> => {
+    console.log('🔍 DEBUG - getEffectivePermissions appelé avec:', { 
+        userId: user.id, 
+        userRole: user.userRole, 
+        permissionRole: user.permissionRole,
+        teamId: user.teamId,
+        email: user.email
+    });
+    
     // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager pour tous les utilisateurs avec teamId
     // ou pour les utilisateurs qui ont créé une équipe
     
     // Vérifier si l'utilisateur est admin (via permissionRole) OU manager (via userRole)
     if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
+        console.log('✅ DEBUG - Utilisateur identifié comme Admin/Manager');
         const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
         SECTIONS.forEach(section => {
             // Exclure TOUJOURS les sections "Mon Espace" pour les managers/admins

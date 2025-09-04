@@ -13,21 +13,42 @@ import ActionButton from '../components/ActionButton';
 import { RiderDetailModal } from '../components/RiderDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { saveData, deleteData } from '../services/firebaseService';
-import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus } from '../types';
-import { getAgeCategory } from '../utils/ageUtils';
+import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, ScoutingProfile, TeamProduct, User, AppState } from '../types';
+import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 
 interface RosterSectionProps {
-  appState: any;
+  riders: Rider[];
   onSaveRider: (rider: Rider) => void;
+  onDeleteRider: (rider: Rider) => void;
+  raceEvents: RaceEvent[];
+  setRaceEvents: (updater: React.SetStateAction<RaceEvent[]>) => void;
+  riderEventSelections: RiderEventSelection[];
+  setRiderEventSelections: (updater: React.SetStateAction<RiderEventSelection[]>) => void;
+  performanceEntries: PerformanceEntry[];
+  scoutingProfiles: ScoutingProfile[];
+  teamProducts: TeamProduct[];
+  currentUser: User;
+  appState: AppState;
 }
 
-export default function RosterSection({ appState, onSaveRider }: RosterSectionProps) {
+export default function RosterSection({ 
+  riders, 
+  onSaveRider, 
+  onDeleteRider, 
+  raceEvents, 
+  setRaceEvents, 
+  riderEventSelections, 
+  setRiderEventSelections, 
+  performanceEntries, 
+  scoutingProfiles, 
+  teamProducts, 
+  currentUser, 
+  appState 
+}: RosterSectionProps) {
   if (!appState) {
     return <div>Chargement...</div>;
   }
-
-  const { riders, raceEvents, riderEventSelections } = appState;
   
   // Vérifications de sécurité pour éviter les erreurs undefined
   if (!riders || !Array.isArray(riders)) {
@@ -62,6 +83,1363 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
   const [includeScouts, setIncludeScouts] = useState(false);
   const [localRiderEventSelections, setLocalRiderEventSelections] = useState(appState.riderEventSelections || []);
 
+  // États pour la qualité
+  const [qualitySortField, setQualitySortField] = useState<'name' | 'age' | 'general' | 'sprint' | 'climbing' | 'puncher' | 'rouleur' | 'fatigue'>('general');
+  const [qualitySortDirection, setQualitySortDirection] = useState<'asc' | 'desc'>('desc');
+  
+  // États pour le planning de saison
+  const [planningSearchTerm, setPlanningSearchTerm] = useState('');
+  const [planningGenderFilter, setPlanningGenderFilter] = useState<'all' | 'male' | 'female'>('all');
+  const [planningStatusFilter, setPlanningStatusFilter] = useState<'all' | 'selected' | 'unselected'>('all');
+  const [activePlanningTab, setActivePlanningTab] = useState<'statistics' | 'selections'>('statistics');
+  const [riderSortField, setRiderSortField] = useState<'alphabetical' | 'raceDays' | 'potential'>('alphabetical');
+  const [riderSortDirection, setRiderSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [selectedYear, setSelectedYear] = useState<number>(2025);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  
+  // Fonctions de tri pour la qualité
+  const handleQualitySort = (field: 'name' | 'age' | 'general' | 'sprint' | 'climbing' | 'puncher' | 'rouleur' | 'fatigue') => {
+    if (qualitySortField === field) {
+      setQualitySortDirection(qualitySortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setQualitySortField(field);
+      setQualitySortDirection('desc');
+    }
+  };
+
+  // Fonctions de tri pour les athlètes
+  const handleRiderSort = (field: 'alphabetical' | 'raceDays' | 'potential') => {
+    if (riderSortField === field) {
+      setRiderSortDirection(riderSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setRiderSortField(field);
+      setRiderSortDirection('asc');
+    }
+  };
+
+  const getSortedRiders = (riders: Rider[], localRaceEvents: RaceEvent[], futureEvents: RaceEvent[], pastEvents: RaceEvent[], getRiderEventStatus: (eventId: string, riderId: string) => RiderEventStatus | null) => {
+    return [...riders].sort((a, b) => {
+      let comparison = 0;
+      
+      switch (riderSortField) {
+        case 'alphabetical':
+          // Tri alphabétique correct : d'abord par nom de famille, puis par prénom
+          const lastNameA = (a.lastName || '').toLowerCase();
+          const lastNameB = (b.lastName || '').toLowerCase();
+          const firstNameA = (a.firstName || '').toLowerCase();
+          const firstNameB = (b.firstName || '').toLowerCase();
+          
+          // Comparaison d'abord par nom de famille
+          const lastNameComparison = lastNameA.localeCompare(lastNameB);
+          if (lastNameComparison !== 0) {
+            comparison = lastNameComparison;
+          } else {
+            // Si les noms de famille sont identiques, comparer par prénom
+            comparison = firstNameA.localeCompare(firstNameB);
+          }
+          break;
+          
+        case 'raceDays':
+          const aRaceDays = pastEvents.filter(event => 
+            event.selectedRiderIds?.includes(a.id)
+          ).length;
+          const bRaceDays = pastEvents.filter(event => 
+            event.selectedRiderIds?.includes(b.id)
+          ).length;
+          comparison = aRaceDays - bRaceDays;
+          break;
+          
+        case 'potential':
+          const aUpcomingEvents = futureEvents.filter(event => {
+            const eventYear = new Date(event.date).getFullYear();
+            return eventYear === selectedYear && (
+              event.selectedRiderIds?.includes(a.id) || 
+              getRiderEventStatus(event.id, a.id) === RiderEventStatus.PRE_SELECTION
+            );
+          }).length;
+          const bUpcomingEvents = futureEvents.filter(event => {
+            const eventYear = new Date(event.date).getFullYear();
+            return eventYear === selectedYear && (
+              event.selectedRiderIds?.includes(b.id) || 
+              getRiderEventStatus(event.id, b.id) === RiderEventStatus.PRE_SELECTION
+            );
+          }).length;
+          comparison = aUpcomingEvents - bUpcomingEvents;
+          break;
+      }
+      
+      return riderSortDirection === 'asc' ? comparison : -comparison;
+    });
+  };
+  
+  // Fonction pour obtenir les riders triés pour la qualité
+  const getSortedRidersForQuality = () => {
+    const allRiders = includeScouts ? [...riders, ...(appState.scoutingProfiles || [])] : riders;
+    return allRiders.sort((a, b) => {
+      let valueA: any, valueB: any;
+      
+      switch (qualitySortField) {
+        case 'name':
+          // Tri alphabétique correct : d'abord par nom de famille, puis par prénom
+          const lastNameA = (a.lastName || '').toLowerCase();
+          const lastNameB = (b.lastName || '').toLowerCase();
+          const firstNameA = (a.firstName || '').toLowerCase();
+          const firstNameB = (b.firstName || '').toLowerCase();
+          
+          // Comparaison d'abord par nom de famille
+          const lastNameComparison = lastNameA.localeCompare(lastNameB);
+          if (lastNameComparison !== 0) {
+            return qualitySortDirection === 'asc' ? lastNameComparison : -lastNameComparison;
+          }
+          
+          // Si les noms de famille sont identiques, comparer par prénom
+          const firstNameComparison = firstNameA.localeCompare(firstNameB);
+          return qualitySortDirection === 'asc' ? firstNameComparison : -firstNameComparison;
+          
+        case 'age':
+          valueA = getAge(a.birthDate) || 0;
+          valueB = getAge(b.birthDate) || 0;
+          return qualitySortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+          
+        default:
+          // Pour les scores de qualité
+          const scoreA = calculateCogganProfileScore(a);
+          const scoreB = calculateCogganProfileScore(b);
+          
+          switch (qualitySortField) {
+            case 'general':
+              valueA = scoreA.generalScore || 0;
+              valueB = scoreB.generalScore || 0;
+              break;
+            case 'sprint':
+              valueA = scoreA.sprintScore || 0;
+              valueB = scoreB.sprintScore || 0;
+              break;
+            case 'climbing':
+              valueA = scoreA.montagneScore || 0;
+              valueB = scoreB.montagneScore || 0;
+              break;
+            case 'puncher':
+              valueA = scoreA.puncheurScore || 0;
+              valueB = scoreB.puncheurScore || 0;
+              break;
+            case 'rouleur':
+              valueA = scoreA.rouleurScore || 0;
+              valueB = scoreB.rouleurScore || 0;
+              break;
+            case 'fatigue':
+              valueA = scoreA.resistanceScore || 0;
+              valueB = scoreB.resistanceScore || 0;
+              break;
+            default:
+              valueA = 0;
+              valueB = 0;
+          }
+          
+          return qualitySortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+      }
+    });
+  };
+  
+  // Fonctions pour les modales
+  const openViewModal = (rider: Rider) => {
+    setSelectedRider(rider);
+    setIsViewModalOpen(true);
+  };
+  
+  const openEditModal = (rider: Rider) => {
+    setSelectedRider(rider);
+    setIsEditModalOpen(true);
+  };
+
+  // Composant pour l'onglet Statistiques
+  const StatisticsTab = ({ futureEvents, pastEvents, riders, localRaceEvents, getRiderEventStatus }: {
+    futureEvents: RaceEvent[];
+    pastEvents: RaceEvent[];
+    riders: Rider[];
+    localRaceEvents: RaceEvent[];
+    getRiderEventStatus: (eventId: string, riderId: string) => RiderEventStatus | null;
+  }) => {
+    const sortedRiders = getSortedRiders(riders, localRaceEvents, futureEvents, pastEvents, getRiderEventStatus);
+    
+    return (
+    <div className="space-y-8">
+      {/* Tableau de bord principal */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Statistiques globales */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="text-center">
+              <div className="text-3xl font-light text-blue-600 mb-1">{futureEvents.length}</div>
+              <div className="text-sm text-gray-600">Événements planifiés</div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="text-center">
+              <div className="text-3xl font-light text-green-600 mb-1">{riders.length}</div>
+              <div className="text-sm text-gray-600">Athlètes disponibles</div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="text-center">
+              <div className="text-3xl font-light text-purple-600 mb-1">
+                {localRaceEvents.filter(event => event.selectedRiderIds && event.selectedRiderIds.length > 0).length}
+              </div>
+              <div className="text-sm text-gray-600">Sélections actives</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vue calendrier saison cycliste */}
+        <div className="lg:col-span-3">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center space-x-4">
+                <h4 className="text-lg font-medium text-gray-900">Calendrier Saison {selectedYear}</h4>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value={2025}>2025</option>
+                  <option value={2026}>2026</option>
+                  <option value={2027}>2027</option>
+                  <option value={2028}>2028</option>
+                  <option value={2029}>2029</option>
+                  <option value={2030}>2030</option>
+                </select>
+              </div>
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span>Courses confirmées</span>
+                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <span>Pré-sélections</span>
+                <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                <span>Période de repos</span>
+              </div>
+            </div>
+            
+            {/* Vue mensuelle de la saison */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {(() => {
+                const currentYear = new Date().getFullYear();
+                const months = [
+                  { name: 'Janvier', events: futureEvents.filter(e => new Date(e.date).getMonth() === 0) },
+                  { name: 'Février', events: futureEvents.filter(e => new Date(e.date).getMonth() === 1) },
+                  { name: 'Mars', events: futureEvents.filter(e => new Date(e.date).getMonth() === 2) },
+                  { name: 'Avril', events: futureEvents.filter(e => new Date(e.date).getMonth() === 3) },
+                  { name: 'Mai', events: futureEvents.filter(e => new Date(e.date).getMonth() === 4) },
+                  { name: 'Juin', events: futureEvents.filter(e => new Date(e.date).getMonth() === 5) },
+                  { name: 'Juillet', events: futureEvents.filter(e => new Date(e.date).getMonth() === 6) },
+                  { name: 'Août', events: futureEvents.filter(e => new Date(e.date).getMonth() === 7) },
+                  { name: 'Septembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 8) },
+                  { name: 'Octobre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 9) },
+                  { name: 'Novembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 10) },
+                  { name: 'Décembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 11) }
+                ];
+                
+                return months.map((month, index) => {
+                  const isCurrentMonth = new Date().getMonth() === index;
+                  const isOffSeason = index === 0 || index === 11; // Janvier et Décembre
+                  
+                  return (
+                    <div key={month.name} className={`p-4 rounded-lg border-2 transition-all ${
+                      isCurrentMonth 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : isOffSeason 
+                          ? 'border-gray-200 bg-gray-50' 
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}>
+                      <div className="flex justify-between items-center mb-2">
+                        <h5 className={`font-medium text-sm ${
+                          isCurrentMonth ? 'text-blue-900' : 'text-gray-900'
+                        }`}>
+                          {month.name}
+                        </h5>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          isOffSeason 
+                            ? 'bg-gray-200 text-gray-600' 
+                            : month.events.length > 0 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {month.events.length}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {month.events.slice(0, 2).map(event => {
+                          const titulaires = riders.filter(rider => 
+                            event.selectedRiderIds?.includes(rider.id)
+                          );
+                          return (
+                            <div key={event.id} className="text-xs text-gray-600 truncate">
+                              {event.name} ({titulaires.length})
+                            </div>
+                          );
+                        })}
+                        {month.events.length > 2 && (
+                          <div className="text-xs text-gray-400">
+                            +{month.events.length - 2} autres
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            
+            {/* Charge de travail par athlète */}
+            <div className="border-t border-gray-200 pt-4">
+              <h5 className="text-sm font-medium text-gray-900 mb-3">Charge de Travail par Athlète</h5>
+              <div className="space-y-2">
+                {(() => {
+                  const riderWorkload = riders.map(rider => {
+                    const riderPastEvents = pastEvents.filter(event => 
+                      event.selectedRiderIds?.includes(rider.id)
+                    );
+                    const upcomingEvents = futureEvents.filter(event => {
+                      const eventYear = new Date(event.date).getFullYear();
+                      return eventYear === selectedYear && (
+                        event.selectedRiderIds?.includes(rider.id) || 
+                        getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+                      );
+                    });
+                    return {
+                      rider,
+                      pastEvents: riderPastEvents.length,
+                      upcomingEvents: upcomingEvents.length,
+                      totalEvents: riderPastEvents.length + upcomingEvents.length
+                    };
+                  }).sort((a, b) => b.totalEvents - a.totalEvents).slice(0, 6);
+                  
+                  const maxEvents = Math.max(...riderWorkload.map(r => r.totalEvents), 1);
+                  
+                  return riderWorkload.map((riderStat, index) => (
+                    <div key={riderStat.rider.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-medium text-gray-600">
+                            {riderStat.rider.firstName[0]}{riderStat.rider.lastName[0]}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {riderStat.rider.firstName} {riderStat.rider.lastName}
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs text-gray-500">
+                            <span className="bg-green-100 text-green-700 px-1 rounded">
+                              {riderStat.pastEvents} passées
+                            </span>
+                            <span className="bg-blue-100 text-blue-700 px-1 rounded">
+                              {riderStat.upcomingEvents} à venir
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-20 bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, (riderStat.totalEvents / maxEvents) * 100)}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 w-6 text-right">
+                          {riderStat.totalEvents}
+                        </span>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Statistiques des athlètes et équilibrage des calendriers */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <h4 className="text-lg font-medium text-gray-900">Statistiques des Athlètes - Équilibrage des Calendriers</h4>
+            
+            {/* Bouton de filtres */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                showFilters
+                  ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+              title="Afficher/masquer les filtres"
+            >
+              <div className="flex items-center space-x-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
+                </svg>
+                <span>Filtres</span>
+              </div>
+            </button>
+            
+            {/* Boutons de tri discrets */}
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={() => handleRiderSort('alphabetical')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  riderSortField === 'alphabetical'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par ordre alphabétique"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>A-Z</span>
+                  {riderSortField === 'alphabetical' && (
+                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleRiderSort('raceDays')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  riderSortField === 'raceDays'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par nombre de jours de course"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Jours</span>
+                  {riderSortField === 'raceDays' && (
+                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleRiderSort('potential')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  riderSortField === 'potential'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par potentiel"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Potentiel</span>
+                  {riderSortField === 'potential' && (
+                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        
+        {/* Tableau des statistiques */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Athlète</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">Jours de course</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">Charge actuelle</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">Prochaines courses</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRiders
+                .filter(rider => {
+                  // Filtre par recherche
+                  const searchMatch = !planningSearchTerm || 
+                    `${rider.firstName} ${rider.lastName}`.toLowerCase().includes(planningSearchTerm.toLowerCase());
+                  
+                  // Filtre par genre
+                  const genderMatch = planningGenderFilter === 'all' || 
+                    (planningGenderFilter === 'male' && rider.sex === Sex.MALE) ||
+                    (planningGenderFilter === 'female' && rider.sex === Sex.FEMALE);
+                  
+                  // Filtre par statut
+                  const riderEvents = localRaceEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const statusMatch = planningStatusFilter === 'all' ||
+                    (planningStatusFilter === 'selected' && riderEvents.length > 0) ||
+                    (planningStatusFilter === 'unselected' && riderEvents.length === 0);
+                  
+                  return searchMatch && genderMatch && statusMatch;
+                })
+                .map(rider => {
+                const riderEvents = localRaceEvents.filter(event => 
+                  event.selectedRiderIds?.includes(rider.id)
+                );
+                const riderPreselections = localRaceEvents.filter(event => 
+                  getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+                );
+                // Compter les jours uniques de course
+                const totalDays = new Set(riderEvents.map(event => event.date)).size;
+                const upcomingEvents = futureEvents.filter(event => 
+                  event.selectedRiderIds?.includes(rider.id) || 
+                  getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+                );
+                
+                // Calculer la charge (nombre de jours de course)
+                const chargeLevel = totalDays < 5 ? 'Faible' : totalDays < 10 ? 'Modérée' : 'Élevée';
+                const chargeColor = totalDays < 5 ? 'text-green-600' : totalDays < 10 ? 'text-yellow-600' : 'text-red-600';
+                
+                return (
+                  <tr key={rider.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-medium text-gray-600">
+                            {rider.firstName[0]}{rider.lastName[0]}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {rider.firstName} {rider.lastName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {rider.sex === Sex.MALE ? 'Homme' : 'Femme'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="text-lg font-semibold text-gray-900">{totalDays}</div>
+                      <div className="text-xs text-gray-500">jours</div>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className={`font-medium ${chargeColor}`}>{chargeLevel}</div>
+                      <div className="w-16 bg-gray-200 rounded-full h-1.5 mx-auto mt-1">
+                        <div 
+                          className={`h-1.5 rounded-full ${
+                            totalDays < 5 ? 'bg-green-500' : 
+                            totalDays < 10 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(100, (totalDays / 15) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="text-sm text-gray-900">{upcomingEvents.length}</div>
+                      <div className="text-xs text-gray-500">prochaines</div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Vue annuelle 2025 */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+        <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Vue Annuelle 2025
+        </h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Statistiques de l'année */}
+          <div className="bg-white rounded-lg p-4 border border-blue-200">
+            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
+              <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+              Statistiques {selectedYear}
+            </h5>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Total courses</span>
+                <span className="text-blue-600 font-medium">{pastEvents.length + futureEvents.length}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Courses passées</span>
+                <span className="text-green-600 font-medium">{pastEvents.length}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Courses à venir</span>
+                <span className="text-blue-600 font-medium">{futureEvents.length}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Athlètes sélectionnés</span>
+                <span className="text-blue-600 font-medium">
+                  {new Set([...pastEvents, ...futureEvents].flatMap(event => event.selectedRiderIds || [])).size}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Jours de course</span>
+                <span className="text-blue-600 font-medium">
+                  {riders.reduce((total, rider) => {
+                    const riderPastEvents = pastEvents.filter(event => 
+                      event.selectedRiderIds?.includes(rider.id)
+                    );
+                    const riderFutureEvents = futureEvents.filter(event => 
+                      event.selectedRiderIds?.includes(rider.id) || 
+                      getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+                    );
+                    return total + riderPastEvents.length + riderFutureEvents.length;
+                  }, 0)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Prochaines courses importantes */}
+          <div className="bg-white rounded-lg p-4 border border-green-200">
+            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
+              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+              Prochaines Courses
+            </h5>
+            <div className="space-y-2">
+              {futureEvents.slice(0, 4).map(event => {
+                const titulaires = riders.filter(rider => 
+                  event.selectedRiderIds?.includes(rider.id)
+                );
+                return (
+                  <div key={event.id} className="flex items-center justify-between text-sm">
+                    <div>
+                      <div className="font-medium text-gray-700">{event.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(event.date).toLocaleDateString('fr-FR', { 
+                          day: 'numeric', 
+                          month: 'short' 
+                        })}
+                      </div>
+                    </div>
+                    <span className="text-green-600 font-medium">{titulaires.length}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Répartition par athlète */}
+          <div className="bg-white rounded-lg p-4 border border-purple-200">
+            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
+              <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
+              Répartition par Athlète
+            </h5>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {(() => {
+                const riderStats = riders.map(rider => {
+                  const riderPastEvents = pastEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const upcomingEvents = futureEvents.filter(event => {
+                    const eventYear = new Date(event.date).getFullYear();
+                    return eventYear === selectedYear && (
+                      event.selectedRiderIds?.includes(rider.id) || 
+                      getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+                    );
+                  });
+                  return {
+                    rider,
+                    pastEvents: riderPastEvents.length,
+                    upcomingEvents: upcomingEvents.length,
+                    totalEvents: riderPastEvents.length + upcomingEvents.length
+                  };
+                }).sort((a, b) => b.totalEvents - a.totalEvents);
+                
+                const maxEvents = Math.max(...riderStats.map(r => r.totalEvents), 1);
+                
+                return riderStats.map((riderStat, index) => (
+                  <div key={riderStat.rider.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      <span className="text-gray-700 truncate">
+                        {riderStat.rider.firstName} {riderStat.rider.lastName}
+                      </span>
+                      <div className="flex items-center space-x-1 text-xs text-gray-500">
+                        <span className="bg-green-100 text-green-700 px-1 rounded">
+                          {riderStat.pastEvents}
+                        </span>
+                        <span className="bg-blue-100 text-blue-700 px-1 rounded">
+                          {riderStat.upcomingEvents}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                        <div 
+                          className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, (riderStat.totalEvents / maxEvents) * 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-purple-600 font-medium text-xs w-6 text-right">
+                        {riderStat.totalEvents}
+                      </span>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recommandations intelligentes */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+        <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Analyse de l'Équipe
+        </h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Athlètes sous-utilisés */}
+          <div className="bg-white rounded-lg p-4 border border-blue-200">
+            <h5 className="font-medium text-gray-900 mb-2">Athlètes sous-utilisés</h5>
+            <div className="space-y-2">
+              {riders
+                .filter(rider => {
+                  const riderEvents = localRaceEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                  return uniqueDays < 3;
+                })
+                .slice(0, 3)
+                .map(rider => {
+                  const riderEvents = localRaceEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                  return (
+                    <div key={rider.id} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">{rider.firstName} {rider.lastName}</span>
+                      <span className="text-blue-600 font-medium">{uniqueDays} jours</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Athlètes plus utilisés */}
+          <div className="bg-white rounded-lg p-4 border border-orange-200">
+            <h5 className="font-medium text-gray-900 mb-2">Athlètes plus utilisés</h5>
+            <div className="space-y-2">
+              {riders
+                .filter(rider => {
+                  const riderEvents = localRaceEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                  return uniqueDays > 8;
+                })
+                .slice(0, 3)
+                .map(rider => {
+                  const riderEvents = localRaceEvents.filter(event => 
+                    event.selectedRiderIds?.includes(rider.id)
+                  );
+                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                  return (
+                    <div key={rider.id} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">{rider.firstName} {rider.lastName}</span>
+                      <span className="text-orange-600 font-medium">{uniqueDays} jours</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Prochaines courses */}
+          <div className="bg-white rounded-lg p-4 border border-green-200">
+            <h5 className="font-medium text-gray-900 mb-2">Prochaines courses</h5>
+            <div className="space-y-2">
+              {futureEvents.slice(0, 3).map(event => {
+                const eventDate = new Date(event.date);
+                const formattedDate = eventDate.toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'short'
+                });
+                
+                return (
+                  <div key={event.id} className="text-sm">
+                    <div className="font-medium text-gray-700">{event.name}</div>
+                    <div className="text-gray-500">{formattedDate}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Équilibrage des calendriers */}
+          <div className="bg-white rounded-lg p-4 border border-purple-200">
+            <h5 className="font-medium text-gray-900 mb-2">Équilibrage des calendriers</h5>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Moyenne par athlète</span>
+                <span className="text-purple-600 font-medium">
+                  {riders.length > 0 ? Math.round(
+                    riders.reduce((total, rider) => {
+                      const riderEvents = localRaceEvents.filter(event => 
+                        event.selectedRiderIds?.includes(rider.id)
+                      );
+                      const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                      return total + uniqueDays;
+                    }, 0) / riders.length * 10
+                  ) / 10 : 0} jours
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Écart type</span>
+                <span className="text-purple-600 font-medium">
+                  {(() => {
+                    const eventsPerRider = riders.map(rider => {
+                      const riderEvents = localRaceEvents.filter(event => 
+                        event.selectedRiderIds?.includes(rider.id)
+                      );
+                      return new Set(riderEvents.map(event => event.date)).size;
+                    });
+                    const mean = eventsPerRider.reduce((a, b) => a + b, 0) / eventsPerRider.length;
+                    const variance = eventsPerRider.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / eventsPerRider.length;
+                    return Math.round(Math.sqrt(variance) * 10) / 10;
+                  })()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-700">Distribution</span>
+                <span className="text-purple-600 font-medium">
+                  {riders.filter(rider => {
+                    const riderEvents = localRaceEvents.filter(event => 
+                      event.selectedRiderIds?.includes(rider.id)
+                    );
+                    const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
+                    return uniqueDays >= 3 && uniqueDays <= 6;
+                  }).length}/{riders.length} équilibrés
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    );
+  };
+
+  // Composant pour l'onglet Sélections
+  const SelectionsTab = ({ 
+    futureEvents, 
+    riders, 
+    planningSearchTerm, 
+    setPlanningSearchTerm, 
+    planningGenderFilter, 
+    setPlanningGenderFilter, 
+    planningStatusFilter, 
+    setPlanningStatusFilter,
+    getRiderEventStatus,
+    addRiderToEvent,
+    removeRiderFromEvent,
+    syncSelectionsFromEvents,
+    syncSelectionsToEvents,
+    saveAllSelections
+  }: {
+    futureEvents: RaceEvent[];
+    riders: Rider[];
+    planningSearchTerm: string;
+    setPlanningSearchTerm: (term: string) => void;
+    planningGenderFilter: 'all' | 'male' | 'female';
+    setPlanningGenderFilter: (filter: 'all' | 'male' | 'female') => void;
+    planningStatusFilter: 'all' | 'selected' | 'unselected';
+    setPlanningStatusFilter: (filter: 'all' | 'selected' | 'unselected') => void;
+    getRiderEventStatus: (eventId: string, riderId: string) => RiderEventStatus | null;
+    addRiderToEvent: (eventId: string, riderId: string, status: RiderEventStatus) => void;
+    removeRiderFromEvent: (eventId: string, riderId: string) => void;
+    syncSelectionsFromEvents: () => void;
+    syncSelectionsToEvents: () => void;
+    saveAllSelections: () => void;
+  }) => {
+    const [selectedEvent, setSelectedEvent] = useState<RaceEvent | null>(null);
+
+    return (
+      <div className="space-y-6">
+        {/* Barre de contrôle des sélections */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+            <div className="flex items-center space-x-4">
+              <h4 className="text-lg font-medium text-gray-900">Gestion des Sélections</h4>
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>Titulaires</span>
+                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                <span>Remplaçants</span>
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span>Pré-sélections</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex-1 relative max-w-md">
+                <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={planningSearchTerm}
+                  onChange={(e) => setPlanningSearchTerm(e.target.value)}
+                  placeholder="Rechercher un athlète..."
+                  className="w-full pl-12 pr-4 py-3 border-0 bg-gray-50 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+              <select
+                value={planningGenderFilter}
+                onChange={(e) => setPlanningGenderFilter(e.target.value as 'all' | 'male' | 'female')}
+                className="px-4 py-3 border-0 bg-gray-50 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+              >
+                <option value="all">Tous</option>
+                <option value="male">Hommes</option>
+                <option value="female">Femmes</option>
+              </select>
+              <button
+                onClick={() => {
+                  setPlanningSearchTerm('');
+                  setPlanningGenderFilter('all');
+                  setPlanningStatusFilter('all');
+                }}
+                className="px-4 py-3 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Effacer
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Liste des événements cliquables */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {futureEvents.map(event => {
+            const titulaires = riders.filter(rider => 
+              event.selectedRiderIds?.includes(rider.id)
+            );
+            const remplacants = riders.filter(rider => 
+              getRiderEventStatus(event.id, rider.id) === RiderEventStatus.REMPLACANT
+            );
+            const preselections = riders.filter(rider => 
+              getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
+            );
+            
+            const isSelected = selectedEvent?.id === event.id;
+            
+            return (
+              <div 
+                key={event.id} 
+                className={`bg-white rounded-xl p-6 shadow-sm border-2 transition-all cursor-pointer hover:shadow-md ${
+                  isSelected 
+                    ? 'border-blue-500 bg-blue-50' 
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => setSelectedEvent(isSelected ? null : event)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h5 className="font-medium text-gray-900 text-lg">{event.name}</h5>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {new Date(event.date).toLocaleDateString('fr-FR', { 
+                        day: 'numeric', 
+                        month: 'long', 
+                        year: 'numeric' 
+                      })}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{event.location}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-light text-blue-600">
+                      {titulaires.length + remplacants.length + preselections.length}
+                    </div>
+                    <div className="text-xs text-gray-500">sélectionnés</div>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm text-gray-700">Titulaires</span>
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">{titulaires.length}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      <span className="text-sm text-gray-700">Remplaçants</span>
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">{remplacants.length}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span className="text-sm text-gray-700">Pré-sélections</span>
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">{preselections.length}</span>
+                  </div>
+                </div>
+                
+                {isSelected && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="text-center">
+                      <span className="text-sm text-blue-600 font-medium">
+                        Cliquez pour gérer les sélections
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Interface de sélection détaillée pour l'événement sélectionné */}
+        {selectedEvent && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h4 className="text-xl font-medium text-gray-900">{selectedEvent.name}</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  {new Date(selectedEvent.date).toLocaleDateString('fr-FR', { 
+                    day: 'numeric', 
+                    month: 'long', 
+                    year: 'numeric' 
+                  })} • {selectedEvent.location}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Filtrage des athlètes */}
+            {(() => {
+              const filteredRiders = riders.filter(rider => {
+                const matchesSearch = !planningSearchTerm || 
+                  rider.firstName.toLowerCase().includes(planningSearchTerm.toLowerCase()) ||
+                  rider.lastName.toLowerCase().includes(planningSearchTerm.toLowerCase());
+                
+                const matchesGender = planningGenderFilter === 'all' || 
+                  (planningGenderFilter === 'male' && rider.sex === Sex.MALE) ||
+                  (planningGenderFilter === 'female' && rider.sex === Sex.FEMALE);
+                
+                return matchesSearch && matchesGender;
+              });
+
+              return (
+                <div className="space-y-6">
+                  {/* Groupe des Titulaires */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <h5 className="font-medium text-gray-900">Titulaires</h5>
+                        <span className="text-sm text-gray-500">
+                          ({filteredRiders.filter(rider => selectedEvent.selectedRiderIds?.includes(rider.id)).length})
+                        </span>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (!selectedEvent.selectedRiderIds?.includes(rider.id)) {
+                                addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.TITULAIRE);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-green-50 text-green-700 rounded-full hover:bg-green-100 transition-colors"
+                        >
+                          Tout sélectionner
+                        </button>
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (selectedEvent.selectedRiderIds?.includes(rider.id)) {
+                                removeRiderFromEvent(selectedEvent.id, rider.id);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-red-50 text-red-700 rounded-full hover:bg-red-100 transition-colors"
+                        >
+                          Tout désélectionner
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filteredRiders.map(rider => {
+                        const isTitulaire = selectedEvent.selectedRiderIds?.includes(rider.id);
+                        const isRemplacant = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.REMPLACANT;
+                        const isPreselection = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.PRE_SELECTION;
+                    
+                        return (
+                          <div key={rider.id} className={`group relative p-4 rounded-lg border transition-all cursor-pointer ${
+                            isTitulaire 
+                              ? 'bg-green-50 border-green-200 shadow-sm' 
+                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isTitulaire}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.TITULAIRE);
+                                    } else {
+                                      if (isTitulaire || isRemplacant || isPreselection) {
+                                        removeRiderFromEvent(selectedEvent.id, rider.id);
+                                      }
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                                />
+                                <div>
+                                  <div className={`font-medium ${isTitulaire ? 'text-green-900' : 'text-gray-900'}`}>
+                                    {rider.firstName} {rider.lastName}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {rider.sex === Sex.MALE ? 'Homme' : 'Femme'}
+                                  </div>
+                                </div>
+                              </div>
+                              {isTitulaire && (
+                                <div className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
+                                  Titulaire
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Groupe des Remplaçants */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        <h5 className="font-medium text-gray-900">Remplaçants</h5>
+                        <span className="text-sm text-gray-500">
+                          ({filteredRiders.filter(rider => getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.REMPLACANT).length})
+                        </span>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (!selectedEvent.selectedRiderIds?.includes(rider.id) && 
+                                  getRiderEventStatus(selectedEvent.id, rider.id) !== RiderEventStatus.REMPLACANT) {
+                                addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.REMPLACANT);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full hover:bg-yellow-100 transition-colors"
+                        >
+                          Tout sélectionner
+                        </button>
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.REMPLACANT) {
+                                removeRiderFromEvent(selectedEvent.id, rider.id);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-red-50 text-red-700 rounded-full hover:bg-red-100 transition-colors"
+                        >
+                          Tout désélectionner
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filteredRiders.map(rider => {
+                        const isRemplacant = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.REMPLACANT;
+                        const isTitulaire = selectedEvent.selectedRiderIds?.includes(rider.id);
+                        const isPreselection = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.PRE_SELECTION;
+                        
+                        return (
+                          <div key={rider.id} className={`group relative p-4 rounded-lg border transition-all cursor-pointer ${
+                            isRemplacant 
+                              ? 'bg-yellow-50 border-yellow-200 shadow-sm' 
+                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isRemplacant}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.REMPLACANT);
+                                    } else {
+                                      if (isTitulaire || isRemplacant || isPreselection) {
+                                        removeRiderFromEvent(selectedEvent.id, rider.id);
+                                      }
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                                />
+                                <div>
+                                  <div className={`font-medium ${isRemplacant ? 'text-yellow-900' : 'text-gray-900'}`}>
+                                    {rider.firstName} {rider.lastName}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {rider.sex === Sex.MALE ? 'Homme' : 'Femme'}
+                                  </div>
+                                </div>
+                              </div>
+                              {isRemplacant && (
+                                <div className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">
+                                  Remplaçant
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Groupe des Pré-sélections */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <h5 className="font-medium text-gray-900">Pré-sélections</h5>
+                        <span className="text-sm text-gray-500">
+                          ({filteredRiders.filter(rider => getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.PRE_SELECTION).length})
+                        </span>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (!selectedEvent.selectedRiderIds?.includes(rider.id) && 
+                                  getRiderEventStatus(selectedEvent.id, rider.id) !== RiderEventStatus.REMPLACANT &&
+                                  getRiderEventStatus(selectedEvent.id, rider.id) !== RiderEventStatus.PRE_SELECTION) {
+                                addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.PRE_SELECTION);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition-colors"
+                        >
+                          Tout sélectionner
+                        </button>
+                        <button
+                          onClick={() => {
+                            filteredRiders.forEach(rider => {
+                              if (getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.PRE_SELECTION) {
+                                removeRiderFromEvent(selectedEvent.id, rider.id);
+                              }
+                            });
+                          }}
+                          className="text-xs px-3 py-1 bg-red-50 text-red-700 rounded-full hover:bg-red-100 transition-colors"
+                        >
+                          Tout désélectionner
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filteredRiders.map(rider => {
+                        const isPreselection = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.PRE_SELECTION;
+                        const isTitulaire = selectedEvent.selectedRiderIds?.includes(rider.id);
+                        const isRemplacant = getRiderEventStatus(selectedEvent.id, rider.id) === RiderEventStatus.REMPLACANT;
+                        
+                        return (
+                          <div key={rider.id} className={`group relative p-4 rounded-lg border transition-all cursor-pointer ${
+                            isPreselection 
+                              ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isPreselection}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      addRiderToEvent(selectedEvent.id, rider.id, RiderEventStatus.PRE_SELECTION);
+                                    } else {
+                                      if (isTitulaire || isRemplacant || isPreselection) {
+                                        removeRiderFromEvent(selectedEvent.id, rider.id);
+                                      }
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <div>
+                                  <div className={`font-medium ${isPreselection ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    {rider.firstName} {rider.lastName}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {rider.sex === Sex.MALE ? 'Homme' : 'Femme'}
+                                  </div>
+                                </div>
+                              </div>
+                              {isPreselection && (
+                                <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
+                                  Pré-sélection
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Actions globales */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+          <div className="flex justify-center space-x-4">
+            <button
+              onClick={syncSelectionsFromEvents}
+              className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Sync depuis événements</span>
+            </button>
+            <button
+              onClick={syncSelectionsToEvents}
+              className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Sync vers événements</span>
+            </button>
+            <button
+              onClick={saveAllSelections}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <span>Sauvegarder</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Synchroniser l'état local avec l'état global
   useEffect(() => {
     setLocalRaceEvents(appState.raceEvents || []);
@@ -84,17 +1462,6 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [riderToDelete, setRiderToDelete] = useState<Rider | null>(null);
 
-  // Fonction pour ouvrir la modale d'édition
-  const openEditModal = (rider: Rider) => {
-    setSelectedRider(rider);
-    setIsEditModalOpen(true);
-  };
-
-  // Fonction pour ouvrir la modale de visualisation
-  const openViewModal = (rider: Rider) => {
-    setSelectedRider(rider);
-    setIsViewModalOpen(true);
-  };
 
   // Fonction pour ajouter un nouveau coureur
   const openAddRiderModal = () => {
@@ -216,6 +1583,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
 
   // Fonction pour gérer la suppression
   const handleDeleteRider = (rider: Rider) => {
+    console.log('🗑️ Tentative de suppression du coureur:', rider.firstName, rider.lastName, 'ID:', rider.id);
     setRiderToDelete(rider);
     setIsDeleteModalOpen(true);
   };
@@ -256,10 +1624,13 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
              event.selectedRiderIds?.includes(riderId);
     });
     
-    console.log(`🏁 Jours de course pour ${riderId}:`, seasonEvents.length, 'événements');
+    // Compter les jours uniques de course (pas le nombre d'événements)
+    const uniqueDays = new Set(seasonEvents.map(event => event.date)).size;
+    
+    console.log(`🏁 Jours de course pour ${riderId}:`, uniqueDays, 'jours uniques sur', seasonEvents.length, 'événements');
     console.log('🏁 Événements trouvés:', seasonEvents.map(e => ({ name: e.name, date: e.date })));
     
-    return seasonEvents.length;
+    return uniqueDays;
   };
 
   // Calcul des coureurs triés et filtrés pour l'effectif
@@ -275,13 +1646,30 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
     })));
     console.log('Filtres actifs:', { searchTerm, genderFilter, ageCategoryFilter, minAgeFilter, maxAgeFilter });
     
+    // Recherche spécifique d'Anthony Uldry
+    const anthonyRider = riders.find(rider => 
+      rider.firstName?.toLowerCase().includes('anthony') && 
+      rider.lastName?.toLowerCase().includes('uldry')
+    );
+    
+    if (anthonyRider) {
+      console.log('🔍 ANTHONY ULDRY TROUVÉ:', anthonyRider);
+    } else {
+      console.log('❌ ANTHONY ULDRY NON TROUVÉ dans la liste des coureurs');
+      console.log('📋 Liste des coureurs disponibles:', riders.map(r => `${r.firstName} ${r.lastName} (${r.email})`));
+    }
+    
     riders.forEach((rider, index) => {
       const { age, category } = getAgeCategory(rider.birthDate);
-      console.log(`Coureur ${index + 1}:`, {
+      const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
+                       rider.lastName?.toLowerCase().includes('uldry');
+      
+      console.log(`Coureur ${index + 1}${isAnthony ? ' ⭐ ANTHONY' : ''}:`, {
         id: rider.id,
         nom: `${rider.firstName} ${rider.lastName}`,
         email: rider.email,
         sex: rider.sex,
+        birthDate: rider.birthDate,
         age,
         category,
         matchesSearch: rider.firstName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -299,10 +1687,33 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
       const matchesGender = genderFilter === 'all' || rider.sex === genderFilter;
       
       const { age } = getAgeCategory(rider.birthDate);
-      const matchesAge = age !== null && age >= minAgeFilter && age <= maxAgeFilter;
+      // CORRECTION: Si pas d'âge valide, on considère que ça passe le filtre d'âge
+      const matchesAge = age === null || (age >= minAgeFilter && age <= maxAgeFilter);
       
-      const matchesCategory = ageCategoryFilter === 'all' || 
-                             (age !== null && getAgeCategory(rider.birthDate).category === ageCategoryFilter);
+      const { category } = getAgeCategory(rider.birthDate);
+      // CORRECTION: Si pas de catégorie valide, on considère que ça passe le filtre de catégorie
+      const matchesCategory = ageCategoryFilter === 'all' || category !== 'N/A';
+      
+      const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
+                       rider.lastName?.toLowerCase().includes('uldry');
+      
+      if (isAnthony) {
+        console.log('🔍 ANTHONY ULDRY - Analyse du filtrage:', {
+          matchesSearch,
+          matchesGender,
+          matchesAge,
+          matchesCategory,
+          age,
+          birthDate: rider.birthDate,
+          sex: rider.sex,
+          searchTerm,
+          genderFilter,
+          ageCategoryFilter,
+          minAgeFilter,
+          maxAgeFilter,
+          'FINAL_RESULT': matchesSearch && matchesGender && matchesAge && matchesCategory
+        });
+      }
       
       return matchesSearch && matchesGender && matchesAge && matchesCategory;
     });
@@ -397,82 +1808,6 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
   }, [riders, raceDaysByRider, planningSortBy, planningSortDirection]);
 
   // État pour le tri de l'onglet Qualité
-  const [qualitySortField, setQualitySortField] = useState<string>('generalScore');
-  const [qualitySortDirection, setQualitySortDirection] = useState<'asc' | 'desc'>('desc');
-
-  // Fonction de tri pour l'onglet Qualité
-  const handleQualitySort = (field: string) => {
-    if (qualitySortField === field) {
-      setQualitySortDirection(qualitySortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setQualitySortField(field);
-      setQualitySortDirection('desc');
-    }
-  };
-
-  // Fonction pour obtenir les coureurs triés selon la qualité
-  const getSortedRidersForQuality = () => {
-    let allRiders = [...riders];
-    
-    // Inclure les scouts si la case est cochée
-    if (includeScouts && appState.scoutingProfiles) {
-      const scouts = appState.scoutingProfiles.map(scout => ({
-        id: scout.id,
-        firstName: scout.firstName,
-        lastName: scout.lastName,
-        birthDate: scout.birthDate,
-        sex: scout.sex,
-        email: scout.email,
-        photoUrl: scout.photoUrl,
-        isScout: true // Marquer comme scout
-      }));
-      allRiders = [...allRiders, ...scouts];
-    }
-    
-    return allRiders.sort((a, b) => {
-      const profileA = calculateCogganProfileScore(a);
-      const profileB = calculateCogganProfileScore(b);
-      
-      let valueA: number;
-      let valueB: number;
-      
-      switch (qualitySortField) {
-        case 'generalScore':
-          valueA = profileA.generalScore;
-          valueB = profileB.generalScore;
-          break;
-        case 'sprintScore':
-          valueA = profileA.sprintScore;
-          valueB = profileB.sprintScore;
-          break;
-        case 'montagneScore':
-          valueA = profileA.montagneScore;
-          valueB = profileB.montagneScore;
-          break;
-        case 'puncheurScore':
-          valueA = profileA.puncheurScore;
-          valueB = profileB.puncheurScore;
-          break;
-        case 'rouleurScore':
-          valueA = profileA.rouleurScore;
-          valueB = profileB.rouleurScore;
-          break;
-        case 'resistanceScore':
-          valueA = profileA.resistanceScore;
-          valueB = profileB.resistanceScore;
-          break;
-        default:
-          valueA = profileA.generalScore;
-          valueB = profileB.generalScore;
-      }
-      
-      if (qualitySortDirection === 'asc') {
-        return valueA - valueB;
-      } else {
-        return valueB - valueA;
-      }
-    });
-  };
 
   // Rendu de l'onglet Effectif
   const renderRosterTab = () => (
@@ -510,10 +1845,12 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">Toutes catégories</option>
+            <option value="U15">U15</option>
             <option value="U17">U17</option>
             <option value="U19">U19</option>
             <option value="U23">U23</option>
-            <option value="Elite">Elite</option>
+            <option value="Senior">Senior</option>
+            <option value="Master">Master</option>
           </select>
           
           {/* Filtre âge */}
@@ -535,42 +1872,6 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
           </div>
         </div>
         
-        {/* Contrôles de tri */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="text-sm font-medium text-gray-700 mr-2">Trier par:</span>
-          <button
-            onClick={() => handleRosterSort('name')}
-            className={`px-3 py-1 text-sm rounded-md transition-colors ${
-              rosterSortBy === 'name' 
-                ? 'bg-blue-100 text-blue-700 border border-blue-300' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Nom {rosterSortBy === 'name' && (rosterSortDirection === 'asc' ? '↑' : '↓')}
-          </button>
-          
-
-          <button
-            onClick={() => handleRosterSort('age')}
-            className={`px-3 py-1 text-sm rounded-md transition-colors ${
-              rosterSortBy === 'age' 
-                ? 'bg-blue-100 text-blue-700 border border-blue-300' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Âge {rosterSortBy === 'age' && (rosterSortDirection === 'asc' ? '↑' : '↓')}
-          </button>
-          <button
-            onClick={() => handleRosterSort('category')}
-            className={`px-3 py-1 text-sm rounded-md transition-colors ${
-              rosterSortBy === 'category' 
-                ? 'bg-blue-100 text-blue-700 border border-blue-300' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Catégorie {rosterSortBy === 'category' && (rosterSortDirection === 'asc' ? '↑' : '↓')}
-          </button>
-        </div>
       </div>
 
       {/* Liste des coureurs */}
@@ -580,7 +1881,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coureur</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie / Niveau</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Jours de course</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -588,6 +1889,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedRidersForAdmin.map((rider) => {
                 const { category, age } = getAgeCategory(rider.birthDate);
+                const levelCategory = getLevelCategory(rider);
                 
                 return (
                   <tr key={rider.id} className="hover:bg-gray-50">
@@ -605,9 +1907,12 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="space-y-1">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {category}
                       </span>
+                        <div className="text-xs text-gray-500">{levelCategory}</div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center">
@@ -624,7 +1929,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
                       <div className="flex space-x-2">
                         <ActionButton 
                           onClick={() => openViewModal(rider)} 
-                          variant="info" 
+                          variant="secondary" 
                           size="sm" 
                           icon={<EyeIcon className="w-4 h-4"/>} 
                           title="Voir"
@@ -705,12 +2010,25 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
     console.log('🎯 Riders disponibles:', riders.length);
     console.log('🎯 TeamId actif:', appState.activeTeamId);
     
-    // Filtrer les événements futurs uniquement
+    // Filtrer les événements passés de l'année sélectionnée
+    const pastEvents = localRaceEvents.filter(event => {
+      const eventDate = new Date(event.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const eventYear = eventDate.getFullYear();
+      return eventDate < today && eventYear === selectedYear;
+    });
+
+    // Filtrer les événements futurs de l'année sélectionnée (pas de saison prochaine)
     const futureEvents = localRaceEvents.filter(event => {
       const eventDate = new Date(event.date);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return eventDate >= today;
+      const eventYear = eventDate.getFullYear();
+      const currentYear = today.getFullYear();
+      
+      // Ne prendre que les événements de l'année sélectionnée ET de l'année courante
+      return eventDate >= today && eventYear === selectedYear && eventYear === currentYear;
     });
 
     // Fonction pour ajouter automatiquement un athlète à un événement avec un statut
@@ -764,19 +2082,9 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
         setLocalRiderEventSelections(updatedSelections);
         console.log('✅ État local des sélections mis à jour:', updatedSelections.length);
         
-        // Mettre à jour l'état global des sélections si disponible
-        if (appState.setRiderEventSelections) {
-          appState.setRiderEventSelections(updatedSelections);
-          console.log('✅ État global des sélections mis à jour:', updatedSelections.length);
-        } else {
-          console.warn('⚠️ setRiderEventSelections non disponible dans appState');
-          // Forcer la mise à jour en modifiant directement l'objet appState
-          if (appState.riderEventSelections) {
-            appState.riderEventSelections.length = 0;
-            appState.riderEventSelections.push(...updatedSelections);
-            console.log('✅ État global forcé mis à jour:', appState.riderEventSelections.length);
-          }
-        }
+        // Mettre à jour l'état global des sélections
+        setRiderEventSelections(updatedSelections);
+        console.log('✅ État global des sélections mis à jour:', updatedSelections.length);
         // Mettre à jour l'événement seulement si c'est un titulaire
         if (status === RiderEventStatus.TITULAIRE) {
           const event = localRaceEvents.find(e => e.id === eventId);
@@ -791,9 +2099,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             setLocalRaceEvents(updatedEvents);
             
             // Synchroniser avec l'état global des événements
-            if (appState.setRaceEvents) {
-              appState.setRaceEvents(updatedEvents);
-            }
+            setRaceEvents(updatedEvents);
             
             console.log('🏁 Événement mis à jour avec titulaire:', {
               eventName: event.name,
@@ -848,8 +2154,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
           console.log('✅ État local des sélections mis à jour après modification:', updatedSelections.length);
           
           // Mettre à jour l'état global des sélections si disponible
-          if (appState.setRiderEventSelections) {
-            appState.setRiderEventSelections(updatedSelections);
+          if (true) {
+            setRiderEventSelections(updatedSelections);
           } else {
             // Forcer la mise à jour en modifiant directement l'objet appState
             if (appState.riderEventSelections) {
@@ -875,8 +2181,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
               setLocalRaceEvents(updatedEvents);
               
               // Synchroniser avec l'état global des événements
-              if (appState.setRaceEvents) {
-                appState.setRaceEvents(updatedEvents);
+              if (true) {
+                setRaceEvents(updatedEvents);
               }
               
               console.log('🏁 Événement mis à jour après ajout (statut):', {
@@ -894,8 +2200,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
               setLocalRaceEvents(updatedEvents);
               
               // Synchroniser avec l'état global des événements
-              if (appState.setRaceEvents) {
-                appState.setRaceEvents(updatedEvents);
+              if (true) {
+                setRaceEvents(updatedEvents);
               }
               
               console.log('🏁 Événement mis à jour après retrait (statut):', {
@@ -951,8 +2257,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
         setLocalRiderEventSelections(updatedSelections);
         
         // Mettre à jour l'état global
-        if (appState.setRiderEventSelections) {
-          appState.setRiderEventSelections(updatedSelections);
+        if (true) {
+          setRiderEventSelections(updatedSelections);
         } else if (appState.riderEventSelections) {
           appState.riderEventSelections.length = 0;
           appState.riderEventSelections.push(...updatedSelections);
@@ -1059,8 +2365,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
           console.log('✅ État local des sélections mis à jour après suppression:', updatedSelections.length);
           
           // Mettre à jour l'état global des sélections si disponible
-          if (appState.setRiderEventSelections) {
-            appState.setRiderEventSelections(updatedSelections);
+          if (true) {
+            setRiderEventSelections(updatedSelections);
           } else {
             // Forcer la mise à jour en modifiant directement l'objet appState
             if (appState.riderEventSelections) {
@@ -1084,8 +2390,8 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
               setLocalRaceEvents(updatedEvents);
               
               // Synchroniser avec l'état global des événements
-              if (appState.setRaceEvents) {
-                appState.setRaceEvents(updatedEvents);
+              if (true) {
+                setRaceEvents(updatedEvents);
               }
               
               console.log('🏁 Événement mis à jour après retrait:', {
@@ -1115,266 +2421,81 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
     };
 
     return (
-      <div className="space-y-6">
-        {/* En-tête avec contrôles */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-semibold text-gray-800">Planning Saison - Gestion des Athlètes</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={syncSelectionsFromEvents}
-                className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
-                title="Synchroniser depuis les événements"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync ←
-              </button>
-              <button
-                onClick={syncSelectionsToEvents}
-                className="px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors flex items-center gap-2"
-                title="Synchroniser vers les événements"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync →
-              </button>
-              <button
-                onClick={saveAllSelections}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Sauvegarder
-              </button>
-        <button
-          onClick={() => handlePlanningSort('name')}
-                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
-            planningSortBy === 'name' 
-                    ? 'bg-blue-500 text-white shadow-md' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Nom {planningSortBy === 'name' && (planningSortDirection === 'asc' ? '↑' : '↓')}
-        </button>
-        <button
-          onClick={() => handlePlanningSort('raceDays')}
-                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
-            planningSortBy === 'raceDays' 
-                    ? 'bg-blue-500 text-white shadow-md' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-                Charge {planningSortBy === 'raceDays' && (planningSortDirection === 'asc' ? '↑' : '↓')}
-        </button>
-            </div>
-      </div>
-
-          {/* Nombre total d'événements */}
-          <div className="flex justify-center mb-6">
-            <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border border-purple-200">
-              <div className="text-4xl font-bold text-purple-600 text-center">{futureEvents.length}</div>
-              <p className="text-lg text-purple-700 font-medium text-center">Événements planifiés</p>
-            </div>
-          </div>
+      <div className="space-y-8">
+        {/* En-tête du centre de pilotage */}
+        <div className="text-center">
+          <h3 className="text-3xl font-light text-gray-800 mb-2">Centre de Pilotage Saison</h3>
+          <p className="text-gray-600">Gestion stratégique des sélections et calendriers</p>
         </div>
 
-        {/* Planning de saison simplifié */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="text-lg font-semibold text-gray-800">Planning de Saison - Sélections d'Athlètes</h4>
-            <button
-              onClick={() => setPlanningExpanded(!planningExpanded)}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-            >
-              {planningExpanded ? 'Réduire' : 'Développer'}
-            </button>
-          </div>
-          {planningExpanded ? (
-            <div className="max-h-[70vh] overflow-y-auto space-y-3 pr-2">
-            {futureEvents.length > 0 ? (
-              futureEvents.map(event => {
-                // Les titulaires sont ceux qui sont dans l'événement
-                const titulaires = riders.filter(rider => 
-                  event.selectedRiderIds?.includes(rider.id)
-                );
-                // Les remplaçants sont ceux qui ont le statut remplaçant mais ne sont pas dans l'événement
-                const remplacants = riders.filter(rider => 
-                  getRiderEventStatus(event.id, rider.id) === RiderEventStatus.REMPLACANT
-                );
-                const totalSelections = titulaires.length + remplacants.length;
-              
-              return (
-                  <div key={event.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h5 className="font-bold text-gray-900">{event.name}</h5>
-                        <p className="text-sm text-gray-500">
-                          {new Date(event.date).toLocaleDateString('fr-FR', { 
-                            day: 'numeric', 
-                            month: 'long', 
-                            year: 'numeric' 
-                          })} - {event.location}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-semibold text-gray-700">
-                          {totalSelections} sélectionné{totalSelections > 1 ? 's' : ''}
-                    </div>
-                        <div className="text-xs text-gray-500">
-                          {titulaires.length} titulaire{titulaires.length > 1 ? 's' : ''} • {remplacants.length} remplaçant{remplacants.length > 1 ? 's' : ''}
-                        </div>
-                    </div>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {/* Titulaires */}
-                      <div>
-                        <h6 className="text-sm font-medium text-green-700 mb-2 flex items-center gap-2">
-                          <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                          Titulaires ({titulaires.length})
-                        </h6>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                          {riders.map(rider => {
-                            const isTitulaire = event.selectedRiderIds?.includes(rider.id);
-                            const isRemplacant = getRiderEventStatus(event.id, rider.id) === RiderEventStatus.REMPLACANT;
-                            
-                            return (
-                              <label key={rider.id} className={`flex items-center space-x-2 text-sm cursor-pointer p-2 rounded-lg transition-colors ${
-                                isTitulaire ? 'bg-green-50 border border-green-200' : 'hover:bg-gray-50'
-                              }`}>
-                                <input
-                                  type="checkbox"
-                                  checked={isTitulaire}
-                                  onChange={(e) => {
-                                    console.log('🔄 Clic sur case titulaire:', rider.firstName, rider.lastName, 'checked:', e.target.checked);
-                                    if (e.target.checked) {
-                                      // Ajouter comme titulaire (la fonction gère les doublons)
-                                      addRiderToEvent(event.id, rider.id, RiderEventStatus.TITULAIRE);
-                                    } else {
-                                      // Si on décoche, on retire l'athlète
-                                      if (isTitulaire || isRemplacant) {
-                                        removeRiderFromEvent(event.id, rider.id);
-                                      }
-                                    }
-                                  }}
-                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                />
-                                <span className={`${isTitulaire ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
-                                  {rider.firstName} {rider.lastName}
-                    </span>
-                                {isTitulaire && (
-                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                                    TITULAIRE
-                                  </span>
-                                )}
-                              </label>
-              );
-            })}
-                    </div>
-      </div>
-
-                                            {/* Remplaçants */}
-                      <div>
-                        <h6 className="text-sm font-medium text-yellow-700 mb-2 flex items-center gap-2">
-                          <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                          Remplaçants ({remplacants.length})
-                        </h6>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                          {riders.map(rider => {
-                            const isTitulaire = event.selectedRiderIds?.includes(rider.id);
-                            const isRemplacant = getRiderEventStatus(event.id, rider.id) === RiderEventStatus.REMPLACANT;
-                            
-                            return (
-                              <label key={rider.id} className={`flex items-center space-x-2 text-sm cursor-pointer p-2 rounded-lg transition-colors ${
-                                isRemplacant ? 'bg-yellow-50 border border-yellow-200' : 'hover:bg-gray-50'
-                              }`}>
-                                <input
-                                  type="checkbox"
-                                  checked={isRemplacant}
-                                  onChange={(e) => {
-                                    console.log('🔄 Clic sur case remplaçant:', rider.firstName, rider.lastName, 'checked:', e.target.checked, 'isRemplacant:', isRemplacant, 'isTitulaire:', isTitulaire);
-                                    if (e.target.checked) {
-                                      // Ajouter comme remplaçant (la fonction gère les doublons)
-                                      addRiderToEvent(event.id, rider.id, RiderEventStatus.REMPLACANT);
-                                    } else {
-                                      // Si on décoche, on retire l'athlète
-                                      console.log('🗑️ Tentative de décochage remplaçant:', rider.firstName, rider.lastName);
-                                      if (isTitulaire || isRemplacant) {
-                                        removeRiderFromEvent(event.id, rider.id);
-                                      }
-                                    }
-                                  }}
-                                  className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                                />
-                                <span className={`${isRemplacant ? 'text-yellow-700 font-medium' : 'text-gray-600'}`}>
-                                  {rider.firstName} {rider.lastName}
-                    </span>
-                                {isRemplacant && (
-                                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                                    REMPLAÇANT
-                                  </span>
-                                )}
-                              </label>
-              );
-            })}
-      </div>
-            </div>
-            </div>
-            </div>
-                );
-              })
-            ) : (
-              <p className="text-center text-gray-500 italic py-8">Aucun événement à venir.</p>
-            )}
-          </div>
-          ) : (
-            // Vue réduite - seulement nom et date
-            <div className="space-y-2">
-              {futureEvents.length > 0 ? (
-                futureEvents.map(event => {
-                  // Les titulaires sont ceux qui sont dans l'événement
-                  const titulaires = riders.filter(rider => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  // Les remplaçants sont ceux qui ont le statut remplaçant mais ne sont pas dans l'événement
-                  const remplacants = riders.filter(rider => 
-                    getRiderEventStatus(event.id, rider.id) === RiderEventStatus.REMPLACANT
-                  );
-                  const totalSelections = titulaires.length + remplacants.length;
-
-                  return (
-                    <div key={event.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div>
-                        <h5 className="font-semibold text-gray-900">{event.name}</h5>
-                        <p className="text-sm text-gray-500">
-                          {new Date(event.date).toLocaleDateString('fr-FR', { 
-                            day: 'numeric', 
-                            month: 'short', 
-                            year: 'numeric' 
-                          })}
-                        </p>
+        {/* Onglets de navigation */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-8 px-6" aria-label="Tabs">
+              <button
+                onClick={() => setActivePlanningTab('statistics')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activePlanningTab === 'statistics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                  <span>Monitoring du Groupe</span>
                 </div>
-                      <div className="text-right">
-                        <div className="text-sm font-semibold text-gray-700">
-                          {totalSelections} sélectionné{totalSelections > 1 ? 's' : ''}
-          </div>
-                        <div className="text-xs text-gray-500">
-                          {titulaires.length}T • {remplacants.length}R
-        </div>
-          </div>
-        </div>
-                  );
-                })
-              ) : (
-                <p className="text-center text-gray-500 italic py-4">Aucun événement à venir.</p>
-              )}
+              </button>
+              <button
+                onClick={() => setActivePlanningTab('selections')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activePlanningTab === 'selections'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                  <span>Gestion des Sélections</span>
             </div>
-          )}
+            </button>
+            </nav>
+          </div>
+
+          {/* Contenu des onglets */}
+          <div className="p-6">
+            {activePlanningTab === 'statistics' ? (
+              <StatisticsTab 
+                futureEvents={futureEvents}
+                pastEvents={pastEvents}
+                riders={riders}
+                localRaceEvents={localRaceEvents}
+                getRiderEventStatus={getRiderEventStatus}
+              />
+            ) : (
+              <SelectionsTab 
+                futureEvents={futureEvents}
+                riders={riders}
+                planningSearchTerm={planningSearchTerm}
+                setPlanningSearchTerm={setPlanningSearchTerm}
+                planningGenderFilter={planningGenderFilter}
+                setPlanningGenderFilter={setPlanningGenderFilter}
+                planningStatusFilter={planningStatusFilter}
+                setPlanningStatusFilter={setPlanningStatusFilter}
+                getRiderEventStatus={getRiderEventStatus}
+                addRiderToEvent={addRiderToEvent}
+                removeRiderFromEvent={removeRiderFromEvent}
+                syncSelectionsFromEvents={syncSelectionsFromEvents}
+                syncSelectionsToEvents={syncSelectionsToEvents}
+                saveAllSelections={saveAllSelections}
+              />
+            )}
       </div>
+            </div>
+
     </div>
   );
   };
@@ -1668,85 +2789,117 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Coureur</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Âge</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('generalScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      MOY
-                      {qualitySortField === 'generalScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('name')}
+                    title="Trier par nom"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Coureur</span>
+                      {qualitySortField === 'name' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('sprintScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      SPR
-                      {qualitySortField === 'sprintScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('age')}
+                    title="Trier par âge"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Âge</span>
+                      {qualitySortField === 'age' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('montagneScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      MON
-                      {qualitySortField === 'montagneScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('general')}
+                    title="Trier par score général"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>MOY</span>
+                      {qualitySortField === 'general' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('puncheurScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      PUN
-                      {qualitySortField === 'puncheurScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('sprint')}
+                    title="Trier par score sprint"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>SPR</span>
+                      {qualitySortField === 'sprint' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('rouleurScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      ROU
-                      {qualitySortField === 'rouleurScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('climbing')}
+                    title="Trier par score montagne"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>MON</span>
+                      {qualitySortField === 'climbing' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    <button 
-                      onClick={() => handleQualitySort('resistanceScore')}
-                      className="flex items-center justify-center w-full hover:text-white transition-colors"
-                    >
-                      RES
-                      {qualitySortField === 'resistanceScore' && (
-                        <span className="ml-1 text-blue-400">
-                          {qualitySortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('puncher')}
+                    title="Trier par score puncher"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>PUN</span>
+                      {qualitySortField === 'puncher' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
                       )}
-                    </button>
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('rouleur')}
+                    title="Trier par score rouleur"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>ROU</span>
+                      {qualitySortField === 'rouleur' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleQualitySort('fatigue')}
+                    title="Trier par score résistance"
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>RES</span>
+                      {qualitySortField === 'fatigue' && (
+                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -1754,6 +2907,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
               <tbody className="bg-gray-900 divide-y divide-gray-700">
                 {getSortedRidersForQuality().map((rider) => {
                   const { category, age } = getAgeCategory(rider.birthDate);
+                  const levelCategory = getLevelCategory(rider);
                   const cogganProfile = calculateCogganProfileScore(rider);
                   
                   return (
@@ -1774,7 +2928,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-400">{category}</div>
+                            <div className="text-sm text-gray-400">{category} / {levelCategory}</div>
                           </div>
                         </div>
                       </td>
@@ -1869,7 +3023,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
                         <div className="flex space-x-2">
                           <ActionButton 
                             onClick={() => openViewModal(rider)} 
-                            variant="info" 
+                            variant="secondary" 
                             size="sm" 
                             icon={<EyeIcon className="w-4 h-4"/>} 
                             title="Voir"
@@ -2010,17 +3164,7 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
             setIsViewModalOpen(false);
             setIsEditModalOpen(false);
           }}
-          onEdit={() => {
-            setIsViewModalOpen(false);
-            setIsEditModalOpen(true);
-          }}
-          onDelete={() => {
-            setIsViewModalOpen(false);
-            setIsEditModalOpen(false);
-            handleDeleteRider(selectedRider);
-          }}
           onSaveRider={handleSaveRider}
-          isAdmin={true}
           raceEvents={raceEvents}
           riderEventSelections={riderEventSelections}
           performanceEntries={[]}
@@ -2046,7 +3190,23 @@ export default function RosterSection({ appState, onSaveRider }: RosterSectionPr
       <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
+          if (riderToDelete) {
+            try {
+              // Supprimer de Firebase
+              if (appState.activeTeamId) {
+                await deleteData(appState.activeTeamId, "riders", riderToDelete.id);
+              }
+              
+              // Supprimer de l'état local
+              onDeleteRider(riderToDelete);
+              
+              console.log('✅ Coureur supprimé avec succès:', riderToDelete.firstName, riderToDelete.lastName);
+            } catch (error) {
+              console.error('❌ Erreur lors de la suppression:', error);
+              alert('Erreur lors de la suppression du coureur. Vérifiez la console pour plus de détails.');
+            }
+          }
           setIsDeleteModalOpen(false);
           setRiderToDelete(null);
         }}

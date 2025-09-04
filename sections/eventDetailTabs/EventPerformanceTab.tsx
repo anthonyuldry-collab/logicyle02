@@ -10,13 +10,15 @@ interface EventPerformanceTabProps {
   eventId: string;
   appState: AppState;
   setPerformanceEntry: (itemOrUpdater: AppPerformanceEntry | ((prevItem: AppPerformanceEntry | undefined) => AppPerformanceEntry)) => Promise<void>;
+  currentUser?: { userRole: string; id: string };
 }
 
 export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({ 
     event, 
     eventId, 
     appState, 
-    setPerformanceEntry 
+    setPerformanceEntry,
+    currentUser
 }) => {
     const [performanceData, setPerformanceData] = useState<AppPerformanceEntry>(
         appState.performanceEntries.find(p => p.eventId === eventId) || 
@@ -145,6 +147,20 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
 
     const vacataires = appState.staff.filter(s => event.selectedStaffIds.includes(s.id) && s.status === StaffStatus.VACATAIRE);
 
+    // Vérifier si l'utilisateur est un coureur
+    const isRider = currentUser?.userRole === 'COUREUR';
+    
+    // Filtrer les évaluations individuelles selon les permissions
+    const getFilteredRiderRatings = () => {
+        if (!isRider) {
+            // Les managers/staff voient toutes les évaluations
+            return performanceData.riderRatings || [];
+        } else {
+            // Les coureurs ne voient que leur propre évaluation
+            return (performanceData.riderRatings || []).filter(rating => rating.riderId === currentUser?.id);
+        }
+    };
+
     if (isEditing) {
         return (
             <div className="space-y-6">
@@ -157,7 +173,7 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
                 
                 <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-gray-700">Évaluations Individuelles Coureurs</h4>
-                     {(performanceData.riderRatings || []).map(rating => (
+                     {getFilteredRiderRatings().map(rating => (
                         <div key={rating.riderId} className="bg-gray-50 p-3 rounded-md border">
                             <h5 className="font-semibold text-gray-800">{getParticipantName(rating.riderId, 'rider')}</h5>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -185,7 +201,7 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
                      ))}
                 </div>
 
-                {vacataires.length > 0 && (
+                {vacataires.length > 0 && !isRider && (
                     <div className="space-y-4">
                         <h4 className="text-lg font-semibold text-gray-700">Évaluation Staff (Vacataires)</h4>
                         {vacataires.map(staffMember => {
@@ -226,7 +242,7 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                  <h3 className="text-xl font-semibold text-gray-700">Rapport de Performance</h3>
-                 <ActionButton onClick={() => setIsEditing(true)}>Modifier</ActionButton>
+                 {!isRider && <ActionButton onClick={() => setIsEditing(true)}>Modifier</ActionButton>}
             </div>
              <div className="bg-gray-50 p-4 rounded-md border">
                 <h4 className="font-semibold text-gray-800">Débriefing Général</h4>
@@ -237,8 +253,8 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
             
              <div className="space-y-2">
                 <h4 className="font-semibold text-gray-800">Évaluations Individuelles</h4>
-                {(performanceData.riderRatings || []).length > 0 ? (
-                    (performanceData.riderRatings || []).map(rating => (
+                {getFilteredRiderRatings().length > 0 ? (
+                    getFilteredRiderRatings().map(rating => (
                         <div key={rating.riderId} className="p-2 border rounded">
                              <p><strong>{getParticipantName(rating.riderId, 'rider')}:</strong> Class. {rating.classification || 'N/A'}. Feedback: {rating.dsFeedback || "N/A"}</p>
                         </div>
@@ -246,7 +262,7 @@ export const EventPerformanceTab: React.FC<EventPerformanceTabProps> = ({
                 ) : <p className="italic text-gray-500">Aucune évaluation individuelle enregistrée.</p>}
             </div>
 
-            {vacataires.length > 0 && (
+            {vacataires.length > 0 && !isRider && (
                 <div className="space-y-2">
                     <h4 className="font-semibold text-gray-800">Évaluations Staff</h4>
                     {(performanceData.staffRatings || []).filter(r => r.rating > 0).length > 0 ? (

@@ -11,6 +11,8 @@ export interface SignupData {
   lastName: string;
   password: string;
   userRole: UserRole;
+  birthDate: string; // Date de naissance obligatoire
+  sex?: 'male' | 'female'; // Genre optionnel mais recommandé
 }
 
 interface SignupViewProps {
@@ -26,6 +28,8 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
       lastName: '',
       password: '',
       userRole: UserRole.COUREUR, // Rôle par défaut : Coureur
+      birthDate: '', // Date de naissance obligatoire
+      sex: undefined, // Genre optionnel
   });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -51,6 +55,27 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
     if (formData.password.length < 6) {
         setError(t('signupPasswordTooShort'));
         return;
+    }
+
+    // Validation de la date de naissance
+    if (!formData.birthDate) {
+      setError('La date de naissance est obligatoire pour l\'inscription.');
+      return;
+    }
+
+    // Vérifier que la date de naissance est valide
+    const birthDate = new Date(formData.birthDate);
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    
+    if (isNaN(birthDate.getTime())) {
+      setError('La date de naissance n\'est pas valide.');
+      return;
+    }
+    
+    if (age < 10 || age > 100) {
+      setError('L\'âge doit être compris entre 10 et 100 ans.');
+      return;
     }
 
     // Vérifier l'acceptation des conditions générales
@@ -111,6 +136,32 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
           
           <div>
             <input type="email" name="email" placeholder={t('loginEmailPlaceholder')} required value={formData.email} onChange={handleInputChange} className="input-field-sm w-full" />
+          </div>
+          
+          <div>
+            <input 
+              type="date" 
+              name="birthDate" 
+              placeholder="Date de naissance" 
+              required 
+              value={formData.birthDate} 
+              onChange={handleInputChange} 
+              className="input-field-sm w-full" 
+              max={new Date().toISOString().split('T')[0]} // Pas de date future
+            />
+          </div>
+          
+          <div>
+            <select 
+              name="sex" 
+              value={formData.sex || ''} 
+              onChange={handleInputChange}
+              className="input-field-sm w-full"
+            >
+              <option value="">Genre (optionnel)</option>
+              <option value="male">Homme</option>
+              <option value="female">Femme</option>
+            </select>
           </div>
           
           <div>

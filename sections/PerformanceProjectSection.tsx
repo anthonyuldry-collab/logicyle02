@@ -20,9 +20,10 @@ const iconComponents: Record<string, React.ElementType> = {
 interface PerformanceProjectSectionProps {
   rider: Rider | undefined;
   setRiders: (updater: React.SetStateAction<Rider[]>) => void;
+  onSaveRider: (rider: Rider) => void;
 }
 
-export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps> = ({ rider, setRiders }) => {
+export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps> = ({ rider, setRiders, onSaveRider }) => {
   const [formData, setFormData] = useState<Rider | null>(rider || null);
 
   useEffect(() => {
@@ -48,10 +49,20 @@ export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps>
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (formData) {
-      setRiders(prevRiders => prevRiders.map(r => r.id === formData.id ? formData : r));
-      alert('Projet de performance sauvegardé !');
+      try {
+        // Sauvegarder dans Firebase
+        await onSaveRider(formData);
+        
+        // Mettre à jour l'état local
+        setRiders(prevRiders => prevRiders.map(r => r.id === formData.id ? formData : r));
+        
+        alert('Projet de performance sauvegardé !');
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde:', error);
+        alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
+      }
     }
   };
 

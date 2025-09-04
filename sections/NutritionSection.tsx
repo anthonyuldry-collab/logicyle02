@@ -11,23 +11,35 @@ import { useTranslations } from '../hooks/useTranslations';
 interface NutritionSectionProps {
   rider: Rider | undefined;
   setRiders: (updater: React.SetStateAction<Rider[]>) => void;
+  onSaveRider: (rider: Rider) => void;
   teamProducts: TeamProduct[];
   setTeamProducts: (updater: React.SetStateAction<TeamProduct[]>) => void;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
-const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, teamProducts, setTeamProducts }) => {
+const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, onSaveRider, teamProducts, setTeamProducts }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'gel' | 'bar' | 'drink'>('gel');
   const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>({ name: '', type: 'gel' });
   const { t } = useTranslations();
   
-  const updateRiderProperty = (updateFn: (riderToUpdate: Rider) => Rider) => {
+  const updateRiderProperty = async (updateFn: (riderToUpdate: Rider) => Rider) => {
       if (!rider) return;
-      setRiders(prevRiders =>
-          prevRiders.map(r => (r.id === rider.id ? updateFn(r) : r))
-      );
+      const updatedRider = updateFn(rider);
+      
+      try {
+        // Sauvegarder dans Firebase
+        await onSaveRider(updatedRider);
+        
+        // Mettre à jour l'état local
+        setRiders(prevRiders =>
+            prevRiders.map(r => (r.id === rider.id ? updatedRider : r))
+        );
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde:', error);
+        alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
+      }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

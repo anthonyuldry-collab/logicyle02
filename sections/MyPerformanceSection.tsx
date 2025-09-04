@@ -9,11 +9,13 @@ import { calculateRiderCharacteristics } from '../utils/performanceCalculations'
 interface MyPerformanceSectionProps {
   rider: Rider | undefined;
   setRiders: (updater: React.SetStateAction<Rider[]>) => void;
+  onSaveRider: (rider: Rider) => void;
 }
 
 export const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({ 
   rider, 
-  setRiders 
+  setRiders,
+  onSaveRider
 }: MyPerformanceSectionProps) => {
   const [formData, setFormData] = useState<Rider | undefined>(rider);
 
@@ -68,12 +70,23 @@ export const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData) return;
     const updatedCharacteristics = calculateRiderCharacteristics(formData);
     const finalDataToSave = { ...formData, ...updatedCharacteristics } as Rider;
-    setRiders((prevRiders: Rider[]) => prevRiders.map((r: Rider) => (r.id === finalDataToSave.id ? finalDataToSave : r)));
-    alert('Performances sauvegardées !');
+    
+    try {
+      // Sauvegarder dans Firebase
+      await onSaveRider(finalDataToSave);
+      
+      // Mettre à jour l'état local
+      setRiders((prevRiders: Rider[]) => prevRiders.map((r: Rider) => (r.id === finalDataToSave.id ? finalDataToSave : r)));
+      
+      alert('Performances sauvegardées !');
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+      alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
+    }
   };
 
   return (

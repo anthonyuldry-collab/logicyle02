@@ -101,7 +101,7 @@ export const calculateRiderCharacteristics = (riderData: Partial<Rider>): {
         }
     }
     
-    const profileWeights = PROFILE_WEIGHTS[qualitativeProfile || RiderQualitativeProfile.AUTRE];
+    const profileWeights = PROFILE_WEIGHTS[qualitativeProfile || RiderQualitativeProfile.AUTRE] || PROFILE_WEIGHTS[RiderQualitativeProfile.AUTRE];
     let generalPerformanceScore = 0;
     const charKeys: (keyof typeof baseChars)[] = ['charSprint', 'charAnaerobic', 'charPuncher', 'charClimbing', 'charRouleur'];
     charKeys.forEach(charKey => {

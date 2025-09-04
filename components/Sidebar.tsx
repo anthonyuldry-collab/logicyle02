@@ -212,10 +212,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center">
                 <div>
                     <p className="text-sm font-semibold" style={{ color: 'var(--theme-primary-text)' }}>
-                        {currentUser.firstName} {currentUser.lastName}
+                        {currentUser.firstName && currentUser.lastName 
+                            ? `${currentUser.firstName} ${currentUser.lastName}`
+                            : currentUser.firstName 
+                            ? currentUser.firstName
+                            : currentUser.email || 'Utilisateur'
+                        }
                     </p>
                     <p className="text-xs" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
                         {t('sidebarRole')}: {displayRole}
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
+                        Équipe: {currentTeamId ? userTeams.find(team => team.id === currentTeamId)?.name || 'NA' : 'NA'}
                     </p>
                 </div>
             </div>

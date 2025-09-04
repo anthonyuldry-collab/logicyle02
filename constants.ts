@@ -321,6 +321,7 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     { id: 'userManagement', labels: { fr: 'Gestion Utilisateurs', en: 'User Management' }, icon: 'UserPlusIcon', group: { fr: 'Application', en: 'Application' } },
     { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Application', en: 'Application' } },
     { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Application', en: 'Application' } },
+    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Application', en: 'Application' } },
     { id: 'settings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Application', en: 'Application' } },
 ];
 

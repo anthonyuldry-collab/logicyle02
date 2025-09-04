@@ -1,3 +1,34 @@
+// Fonction pour calculer l'âge exact d'un coureur
+export const getAge = (birthDate?: string): number | null => {
+    if (!birthDate || typeof birthDate !== 'string') {
+        return null;
+    }
+    
+    // Robust date parsing to avoid timezone issues.
+    const parts = birthDate.split('-').map(p => parseInt(p, 10));
+    if (parts.length !== 3 || parts.some(isNaN)) {
+        return null;
+    }
+    const [year, month, day] = parts;
+    const birth = new Date(Date.UTC(year, month - 1, day));
+    
+    const today = new Date();
+    const utcToday = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    
+    // Calcul de l'âge exact
+    let age = utcToday.getUTCFullYear() - birth.getUTCFullYear();
+    const m = utcToday.getUTCMonth() - birth.getUTCMonth();
+    if (m < 0 || (m === 0 && utcToday.getUTCDate() < birth.getUTCDate())) {
+        age--;
+    }
+    
+    if (age < 0 || age > 120) { // Sanity check
+        return null;
+    }
+    
+    return age;
+};
+
 export const getAgeCategory = (birthDate?: string): { category: string; age: number | null } => {
     if (!birthDate || typeof birthDate !== 'string') {
         return { category: 'N/A', age: null };
@@ -31,9 +62,47 @@ export const getAgeCategory = (birthDate?: string): { category: string; age: num
 
     // Catégories cyclistes basées sur l'âge au 1er janvier
     let category = 'Senior';
-    if (ageOnJanuary1st <= 18) category = 'U19';  // Jusqu'à 18 ans au 1er janvier
+    if (ageOnJanuary1st <= 14) category = 'U15';  // Jusqu'à 14 ans au 1er janvier
+    else if (ageOnJanuary1st <= 16) category = 'U17';  // 15-16 ans au 1er janvier
+    else if (ageOnJanuary1st <= 18) category = 'U19';  // 17-18 ans au 1er janvier
     else if (ageOnJanuary1st <= 22) category = 'U23';  // 19-22 ans au 1er janvier
-    // 23 ans et plus = Senior
+    else if (ageOnJanuary1st <= 29) category = 'Senior';  // 23-29 ans au 1er janvier
+    else category = 'Master';  // 30 ans et plus au 1er janvier
     
     return { category, age: exactAge };
+};
+
+// Fonction pour déterminer la catégorie de niveau basée sur les performances
+export const getLevelCategory = (rider: any): string => {
+    if (!rider) return 'N/A';
+    
+    // Si le coureur a un statut spécifique défini
+    if (rider.levelCategory) {
+        return rider.levelCategory;
+    }
+    
+    // Calcul basé sur les caractéristiques de performance si disponibles
+    if (rider.powerProfileFresh && rider.weightKg) {
+        const wkg = (power: number) => power / rider.weightKg;
+        const ftp = rider.powerProfileFresh.criticalPower;
+        const ftpWkg = ftp ? wkg(ftp) : 0;
+        
+        // Seuils approximatifs pour les catégories de niveau (W/kg)
+        if (ftpWkg >= 6.0) return 'Pro';
+        if (ftpWkg >= 5.5) return 'Elite';
+        if (ftpWkg >= 4.8) return 'Open 1';
+        if (ftpWkg >= 4.0) return 'Open 2';
+        if (ftpWkg >= 3.0) return 'Open 3';
+        return 'Open 3';
+    }
+    
+    // Par défaut, basé sur l'âge si pas de données de performance
+    const { age } = getAgeCategory(rider.birthDate);
+    if (age === null) return 'N/A';
+    
+    if (age <= 16) return 'Open 3';
+    if (age <= 18) return 'Open 2';
+    if (age <= 22) return 'Open 1';
+    if (age <= 29) return 'Elite';
+    return 'Open 1';
 };

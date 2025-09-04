@@ -61,6 +61,7 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import EventDetailView from "./EventDetailView";
 import { useTranslations } from "./hooks/useTranslations";
 import AdminDossierSection from "./sections/AdminDossierSection";
+import SuperAdminSection from "./sections/SuperAdminSection";
 import { AutomatedPerformanceProfileSection } from "./sections/AutomatedPerformanceProfileSection";
 import CareerSection from "./sections/CareerSection";
 import ChecklistSection from "./sections/ChecklistSection";
@@ -303,14 +304,17 @@ const App: React.FC = () => {
             } else {
               // Fallback pour les utilisateurs existants sans données d'inscription
               const { email } = firebaseUser;
-              const firstName = email?.split("@")[0] || "Nouveau";
-              const lastName = "Utilisateur";
+              const emailPrefix = email?.split("@")[0] || "utilisateur";
+              const firstName = emailPrefix;
+              const lastName = "";
               const newProfileData: SignupData = {
                 email: email || "",
                 firstName,
                 lastName,
                 password: "",
                 userRole: UserRole.COUREUR, // Rôle par défaut pour les utilisateurs existants
+                birthDate: "1990-01-01", // Date par défaut pour les utilisateurs existants
+                sex: undefined, // Genre non défini par défaut
               };
               await firebaseService.createUserProfile(
                 firebaseUser.uid,
@@ -378,7 +382,14 @@ const App: React.FC = () => {
 
   // --- DATA HANDLERS ---
   const onSaveRider = useCallback(async (item: Rider) => {
-    console.log('onSaveRider appelé avec:', item);
+    console.log('🔧 DEBUG - onSaveRider appelé avec:', item);
+    console.log('🔧 DEBUG - Données PPR dans onSaveRider:', {
+      powerProfileFresh: item.powerProfileFresh,
+      powerProfile15KJ: item.powerProfile15KJ,
+      powerProfile30KJ: item.powerProfile30KJ,
+      powerProfile45KJ: item.powerProfile45KJ,
+      weightKg: item.weightKg
+    });
     
     if (!appState.activeTeamId) {
       console.warn('⚠️ Pas de activeTeamId - opération impossible');
@@ -386,15 +397,32 @@ const App: React.FC = () => {
     }
     
     try {
+      // Enrichir automatiquement les données du coureur avec les informations du profil utilisateur
+      const enrichedItem: Rider = {
+        ...item,
+        // S'assurer que la date de naissance est présente
+        birthDate: item.birthDate || currentUser?.signupInfo?.birthDate || "1990-01-01",
+        // S'assurer que le genre est présent
+        sex: item.sex || currentUser?.signupInfo?.sex || undefined,
+        // S'assurer que l'email est présent
+        email: item.email || currentUser?.email || "",
+      };
+      
+      console.log('🔧 DEBUG - Données enrichies:', {
+        birthDate: enrichedItem.birthDate,
+        sex: enrichedItem.sex,
+        email: enrichedItem.email
+      });
+      
       console.log('Sauvegarde dans Firebase...');
       const savedId = await firebaseService.saveData(
         appState.activeTeamId,
         "riders",
-        item
+        enrichedItem
       );
       console.log('Rider sauvegardé avec ID:', savedId);
       
-      const finalItem = { ...item, id: item.id || savedId };
+      const finalItem = { ...enrichedItem, id: enrichedItem.id || savedId };
       console.log('Item final:', finalItem);
 
       setAppState((prev: AppState) => {
@@ -410,23 +438,38 @@ const App: React.FC = () => {
     } catch (error) {
       console.warn('⚠️ Erreur lors de la sauvegarde du rider:', error);
     }
-  }, [appState.activeTeamId]);
+  }, [appState.activeTeamId, currentUser]);
 
   const onDeleteRider = useCallback(async (item: Rider) => {
-    if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "riders",
-      item.id
-    );
+    console.log('🗑️ onDeleteRider appelé avec:', item.firstName, item.lastName, 'ID:', item.id);
+    if (!appState.activeTeamId || !item.id) {
+      console.warn('⚠️ Pas de activeTeamId ou ID manquant:', { activeTeamId: appState.activeTeamId, itemId: item.id });
+      return;
+    }
+    
+    try {
+      console.log('🗑️ Suppression de Firebase...');
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "riders",
+        item.id
+      );
+      console.log('✅ Suppression Firebase réussie');
 
-    setAppState((prev: AppState) => {
-      const collection = prev.riders;
-      return {
-        ...prev,
-        riders: collection.filter((i: Rider) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.riders;
+        const newRiders = collection.filter((i: Rider) => i.id !== item.id);
+        console.log('🔄 Mise à jour de l\'état local:', { avant: collection.length, après: newRiders.length });
+        return {
+          ...prev,
+          riders: newRiders,
+        };
+      });
+      console.log('✅ Suppression terminée avec succès');
+    } catch (error) {
+      console.error('❌ Erreur lors de la suppression:', error);
+      throw error;
+    }
   }, [appState.activeTeamId]);
 
   const onSaveStaff = useCallback(async (item: StaffMember) => {
@@ -812,6 +855,7 @@ const App: React.FC = () => {
     collectionName: keyof TeamState
   ): React.Dispatch<React.SetStateAction<T[]>> =>
     (updater: React.SetStateAction<T[]>) => {
+      console.log(`🔧 DEBUG - createBatchSetHandler appelé pour ${String(collectionName)}`, { updater });
       setAppState((prev: AppState) => {
         const currentItems = prev[collectionName] as T[];
         const newItems =
@@ -819,6 +863,11 @@ const App: React.FC = () => {
             ? (updater as (prevState: T[]) => T[])(currentItems)
             : updater;
 
+        console.log(`🔧 DEBUG - Mise à jour ${String(collectionName)}`, { 
+          ancien: currentItems.length, 
+          nouveau: newItems.length,
+          items: newItems 
+        });
         return { ...prev, [collectionName]: newItems };
       });
     };
@@ -1643,6 +1692,18 @@ const App: React.FC = () => {
                           });
                           console.log('✅ DEBUG: Rôle utilisateur mis à jour en Firebase');
 
+                          // CORRECTION: Mettre à jour aussi le userRole dans teamMemberships
+                          console.log('🔍 DEBUG: Mise à jour du userRole dans teamMemberships...');
+                          const membership = appState.teamMemberships.find(m => m.userId === userId && m.teamId === teamId);
+                          if (membership && membership.id) {
+                            const membershipRef = doc(db, 'teamMemberships', membership.id);
+                            await updateDoc(membershipRef, {
+                              userRole: newUserRole,
+                              updatedAt: new Date().toISOString()
+                            });
+                            console.log('✅ DEBUG: userRole mis à jour dans teamMemberships');
+                          }
+
                           console.log('🔍 DEBUG: Mise à jour de l\'état local des utilisateurs...');
                           // Mettre à jour l'état local des utilisateurs
                           setAppState((prev: AppState) => ({
@@ -1651,9 +1712,15 @@ const App: React.FC = () => {
                               u.id === userId 
                                 ? { ...u, userRole: newUserRole }
                                 : u
+                            ),
+                            // CORRECTION: Mettre à jour aussi teamMemberships
+                            teamMemberships: prev.teamMemberships.map(m => 
+                              m.userId === userId && m.teamId === teamId
+                                ? { ...m, userRole: newUserRole }
+                                : m
                             )
                           }));
-                          console.log('✅ DEBUG: État local des utilisateurs mis à jour');
+                          console.log('✅ DEBUG: État local des utilisateurs et teamMemberships mis à jour');
 
                           // Ajouter l'utilisateur aux bonnes collections selon son nouveau rôle
                           console.log('🔍 DEBUG: Création du profil coureur pour:', user.email);
@@ -1884,16 +1951,35 @@ const App: React.FC = () => {
                       effectivePermissions={effectivePermissions}
                     />
                   )}
-                  {currentSection === "career" && (
+                  {currentSection === "career" && currentUser && (
                     <CareerSection
                       riders={appState.riders}
-                      effectivePermissions={effectivePermissions}
+                      staff={appState.staff}
+                      currentUser={currentUser}
+                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      teams={appState.teams}
+                      currentTeamId={appState.activeTeamId}
+                      onRequestTransfer={async (destinationTeamId: string) => {
+                        // TODO: Implémenter la logique de demande de transfert
+                        console.log("Demande de transfert vers:", destinationTeamId);
+                      }}
+                      scoutingRequests={appState.scoutingRequests || []}
+                      onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected') => {
+                        // TODO: Implémenter la logique de réponse aux demandes de suivi
+                        console.log("Réponse à la demande de suivi:", requestId, response);
+                      }}
+                      onUpdateVisibility={async (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => {
+                        // TODO: Implémenter la logique de mise à jour de la visibilité
+                        console.log("Mise à jour de la visibilité:", updates);
+                      }}
                     />
                   )}
                   {currentSection === "nutrition" && (
                     <NutritionSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                       setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
                       teamProducts={appState.teamProducts}
                       setTeamProducts={createBatchSetHandler<TeamProduct>("teamProducts")}
                     />
@@ -1906,10 +1992,25 @@ const App: React.FC = () => {
                       setRiders={createBatchSetHandler<Rider>("riders")}
                     />
                   )}
-                  {currentSection === "adminDossier" && (
+                  {currentSection === "adminDossier" && currentUser && (
                     <AdminDossierSection
                       riders={appState.riders}
-                      effectivePermissions={effectivePermissions}
+                      staff={appState.staff}
+                      currentUser={currentUser}
+                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
+                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      onUpdateUser={(updatedUser) => setCurrentUser(updatedUser)}
+                    />
+                  )}
+                  {currentSection === "superAdmin" && currentUser && (
+                    <SuperAdminSection
+                      riders={appState.riders}
+                      staff={appState.staff}
+                      currentUser={currentUser}
+                      onDeleteRider={onDeleteRider}
+                      onDeleteStaff={onDeleteStaff}
+                      appState={appState}
                     />
                   )}
                   {currentSection === "myTrips" && (
@@ -1941,6 +2042,7 @@ const App: React.FC = () => {
                     <MyPerformanceSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                       setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
                     />
                   )}
                   {currentSection === "missionSearch" && (
@@ -1958,6 +2060,7 @@ const App: React.FC = () => {
                     <PerformanceProjectSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                       setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
                     />
                   )}
                     </>

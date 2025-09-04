@@ -153,7 +153,10 @@ function EventDetailView({
     );
   }
 
-  const tabs: { id: EventDetailTab; label: string; Icon?: React.ElementType }[] = [
+  // Filtrer les onglets selon les permissions de l'utilisateur
+  const isRider = currentUser.userRole === 'COUREUR';
+  
+  const allTabs: { id: EventDetailTab; label: string; Icon?: React.ElementType }[] = [
     { id: 'logisticsSummary', label: t('eventTabLogisticsSummary') },
     { id: 'info', label: t('eventTabInfo') }, 
     { id: 'participants', label: t('eventTabParticipants') },
@@ -166,6 +169,9 @@ function EventDetailView({
     { id: 'peerReview', label: t('eventTabPeerReview') },
     { id: 'performance', label: t('eventTabPerformance') },
   ];
+  
+  // Les coureurs ne peuvent pas voir l'onglet budget (données financières)
+  const tabs = allTabs.filter(tab => !(isRider && tab.id === 'budget'));
   
   const eventDetailProps = {
     event: currentEvent,
@@ -209,7 +215,7 @@ function EventDetailView({
 
       <div className="bg-white p-4 rounded-b-md shadow">
         <div style={{ display: activeTab === 'logisticsSummary' ? 'block' : 'none' }}>
-            <LogisticsSummaryTab {...eventDetailProps} />
+            <LogisticsSummaryTab {...eventDetailProps} currentUser={currentUser} />
         </div>
          <div style={{ display: activeTab === 'info' ? 'block' : 'none' }}>
             <EventInfoTab 
@@ -246,12 +252,14 @@ function EventDetailView({
                 setEventDocuments={setEventDocuments}
             />
         </div>
-        <div style={{ display: activeTab === 'budget' ? 'block' : 'none' }}>
-            <EventBudgetTab 
-                {...eventDetailProps}
-                setEventBudgetItems={setEventBudgetItems}
-            />
-        </div>
+        {!isRider && (
+          <div style={{ display: activeTab === 'budget' ? 'block' : 'none' }}>
+              <EventBudgetTab 
+                  {...eventDetailProps}
+                  setEventBudgetItems={setEventBudgetItems}
+              />
+          </div>
+        )}
         <div style={{ display: activeTab === 'checklist' ? 'block' : 'none' }}>
             <EventChecklistTab 
                 {...eventDetailProps}
@@ -270,6 +278,7 @@ function EventDetailView({
             <EventPerformanceTab 
                 {...eventDetailProps}
                 setPerformanceEntry={updatePerformanceEntry}
+                currentUser={currentUser}
             />
         </div>
       </div>
