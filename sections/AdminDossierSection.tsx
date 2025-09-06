@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Rider, User, UserRole, StaffMember } from '../types';
+import { Rider, User, UserRole, StaffMember, Team, RaceEvent, RiderEventSelection, AppState, RiderEventPreference } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
-import AdminTab from '../components/riderDetailTabs/AdminTab';
+import { RiderDetailModal } from '../components/RiderDetailModal';
 import XCircleIcon from '../components/icons/XCircleIcon';
 import { useTranslations } from '../hooks/useTranslations';
 import { updateUserProfile } from '../services/firebaseService';
@@ -15,11 +15,30 @@ interface AdminDossierSectionProps {
   onSaveRider: (rider: Rider) => void;
   setStaff: (updater: React.SetStateAction<StaffMember[]>) => void;
   onUpdateUser?: (user: User) => void;
+  currentTeam?: Team; // Ajout de l'équipe actuelle pour synchroniser le teamName
+  raceEvents: RaceEvent[];
+  riderEventSelections: RiderEventSelection[];
+  setRiderEventSelections: (updater: React.SetStateAction<RiderEventSelection[]>) => void;
+  appState: AppState;
 }
 
-const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ riders, staff, currentUser, setRiders, onSaveRider, setStaff, onUpdateUser }) => {
+const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ 
+  riders, 
+  staff, 
+  currentUser, 
+  setRiders, 
+  onSaveRider, 
+  setStaff, 
+  onUpdateUser, 
+  currentTeam,
+  raceEvents,
+  riderEventSelections,
+  setRiderEventSelections,
+  appState
+}) => {
   const [profileData, setProfileData] = useState<Rider | StaffMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const { t } = useTranslations();
 
   useEffect(() => {
@@ -47,7 +66,7 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ riders, staff
             profileWithUserInfo.lastName = currentUser.lastName;
         }
         
-        // Pour les coureurs, synchroniser aussi la date de naissance et le genre depuis le profil utilisateur
+        // Pour les coureurs, synchroniser aussi la date de naissance, le genre et le nom de l'équipe
         if (currentUser.userRole === UserRole.COUREUR) {
             const riderProfile = profileWithUserInfo as Rider;
             if (currentUser.signupInfo?.birthDate && !riderProfile.birthDate) {
@@ -56,13 +75,17 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ riders, staff
             if (currentUser.signupInfo?.sex && !riderProfile.sex) {
                 riderProfile.sex = currentUser.signupInfo.sex;
             }
+            // Synchroniser le nom de l'équipe depuis l'équipe actuelle
+            if (currentTeam?.name && !riderProfile.teamName) {
+                riderProfile.teamName = currentTeam.name;
+            }
         }
         
         setProfileData(profileWithUserInfo);
     }
 
     setIsLoading(false);
-  }, [riders, staff, currentUser]);
+  }, [riders, staff, currentUser, currentTeam]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -99,6 +122,32 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ riders, staff
         }
         return updated;
     });
+  };
+
+  // Fonction pour gérer la mise à jour des préférences de course
+  const handleUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
+    const existingSelection = riderEventSelections.find(sel => sel.eventId === eventId && sel.riderId === riderId);
+    
+    if (existingSelection) {
+      // Mettre à jour la sélection existante
+      setRiderEventSelections(prev => prev.map(sel => 
+        sel.eventId === eventId && sel.riderId === riderId
+          ? { ...sel, riderPreference: preference, riderObjectives: objectives || sel.riderObjectives }
+          : sel
+      ));
+    } else {
+      // Créer une nouvelle sélection
+      const newSelection = {
+        id: `selection_${Date.now()}`,
+        eventId,
+        riderId,
+        status: 'EN_ATTENTE' as any,
+        riderPreference: preference,
+        riderObjectives: objectives || '',
+        notes: ''
+      };
+      setRiderEventSelections(prev => [...prev, newSelection]);
+    }
   };
 
   const handleSave = async () => {
@@ -222,16 +271,116 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({ riders, staff
   }
   
   return (
-    <SectionWrapper title={t('titleMyAdminFile')} actionButton={<ActionButton onClick={handleSave}>Sauvegarder</ActionButton>}>
-      <div className="bg-slate-800 text-white p-4 rounded-lg shadow-md">
-        <AdminTab
-          formData={profileData}
-          handleInputChange={handleInputChange}
-          formFieldsEnabled={true}
-          handleLicenseUpdate={handleLicenseUpdate}
-          isContractEditable={false}
-        />
+    <SectionWrapper title={t('titleMyAdminFile')}>
+      <div className="space-y-6">
+        {/* Section principale */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 rounded-lg text-white">
+          <div className="text-center">
+            <h3 className="text-2xl font-bold mb-4">Mon Dossier Personnel</h3>
+            <p className="text-blue-100 mb-6 text-lg">
+              Accédez à votre profil complet avec le nouveau tableau de bord optimisé
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <ActionButton 
+                onClick={() => setIsModalOpen(true)}
+                className="bg-white text-blue-600 hover:bg-blue-50 px-6 py-3 text-lg font-semibold"
+              >
+                🚀 Ouvrir Mon Profil Complet
+              </ActionButton>
+            </div>
+          </div>
+        </div>
+
+        {/* Nouvelles fonctionnalités */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">📊</span>
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Tableau de Bord</h4>
+              <p className="text-gray-600 text-sm">
+                Vue d'ensemble complète avec statistiques de performance et prochains événements
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">📅</span>
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Calendrier Prévisionnel</h4>
+              <p className="text-gray-600 text-sm">
+                Consultez tous les événements de l'équipe et exprimez vos préférences
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">🎯</span>
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Objectifs de Saison</h4>
+              <p className="text-gray-600 text-sm">
+                Définissez vos souhaits et objectifs pour la saison en cours
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">💡</span>
+            </div>
+            <div className="ml-3">
+              <h4 className="text-lg font-semibold text-yellow-800 mb-2">Comment accéder aux nouvelles fonctionnalités</h4>
+              <ol className="text-yellow-700 space-y-1">
+                <li>1. Cliquez sur "Ouvrir Mon Profil Complet" ci-dessus</li>
+                <li>2. Vous verrez le nouvel onglet "Tableau de Bord" en premier</li>
+                <li>3. Naviguez entre les sections : Vue d'ensemble, Calendrier, Performance, etc.</li>
+                <li>4. Tous les onglets existants sont toujours disponibles</li>
+              </ol>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Modal avec tous les onglets */}
+      {currentUser.userRole === UserRole.COUREUR && (
+        <RiderDetailModal
+          rider={profileData as Rider}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSaveRider={onSaveRider}
+          onUpdateRiderPreference={handleUpdateRiderPreference}
+          raceEvents={raceEvents}
+          riderEventSelections={riderEventSelections}
+          performanceEntries={[]}
+          powerDurationsConfig={[
+            { key: 'power1s', label: '1s', unit: 'W', sortable: true },
+            { key: 'power5s', label: '5s', unit: 'W', sortable: true },
+            { key: 'power30s', label: '30s', unit: 'W', sortable: true },
+            { key: 'power1min', label: '1min', unit: 'W', sortable: true },
+            { key: 'power3min', label: '3min', unit: 'W', sortable: true },
+            { key: 'power5min', label: '5min', unit: 'W', sortable: true },
+            { key: 'power12min', label: '12min', unit: 'W', sortable: true },
+            { key: 'power20min', label: '20min', unit: 'W', sortable: true },
+            { key: 'criticalPower', label: 'CP', unit: 'W', sortable: true }
+          ]}
+          calculateWkg={(power?: number, weight?: number) => {
+            if (!power || !weight) return '-';
+            return (power / weight).toFixed(1);
+          }}
+          appState={appState}
+          currentUser={currentUser}
+          effectivePermissions={appState.effectivePermissions}
+          isEditMode={true}
+        />
+      )}
     </SectionWrapper>
   );
 };

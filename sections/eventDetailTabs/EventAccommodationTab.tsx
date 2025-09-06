@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { RaceEvent, AppState, EventAccommodation, AccommodationStatus, EventBudgetItem, BudgetItemCategory } from '../../types';
+import { RaceEvent, AppState, EventAccommodation, AccommodationStatus, EventBudgetItem, BudgetItemCategory, User, AppSection, PermissionLevel } from '../../types';
 import { emptyEventAccommodation } from '../../constants';
 import { saveData, deleteData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
@@ -15,14 +15,19 @@ interface EventAccommodationTabProps {
   setEventAccommodations: React.Dispatch<React.SetStateAction<EventAccommodation[]>>;
   setEventBudgetItems: React.Dispatch<React.SetStateAction<EventBudgetItem[]>>;
   appState: AppState;
+  currentUser?: User | null;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
-const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, eventId, appState, setEventAccommodations, setEventBudgetItems }) => {
+const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, eventId, appState, setEventAccommodations, setEventBudgetItems, currentUser, effectivePermissions }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<EventAccommodation, 'id'> | EventAccommodation>(emptyEventAccommodation(eventId, ''));
+  
+  // Vérification des permissions pour l'accès aux informations financières
+  const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
   
   const accommodationsForEvent = useMemo(() => {
     return appState.eventAccommodations.filter(acc => acc.eventId === eventId);
@@ -184,7 +189,9 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, ev
                         <p><strong>Personnes:</strong> {item.numberOfPeople ?? 'N/A'}</p>
                         <p><strong>Nuits:</strong> {item.numberOfNights}</p>
                         <p><strong>Statut:</strong> {item.status}</p>
-                        <p><strong>Coût Estimé:</strong> {item.estimatedCost !== undefined ? `${item.estimatedCost.toLocaleString('fr-FR')} €` : 'N/A'}</p>
+                        {canViewFinancialInfo && (
+                          <p><strong>Coût Estimé:</strong> {item.estimatedCost !== undefined ? `${item.estimatedCost.toLocaleString('fr-FR')} €` : 'N/A'}</p>
+                        )}
                         <p><strong>Confirmé:</strong> {item.reservationConfirmed ? 'Oui' : 'Non'}</p>
                         <p><strong>Distance Départ:</strong> {item.distanceFromStartKm !== undefined ? `${item.distanceFromStartKm} km` : 'N/A'}</p>
                         {!item.isStopover && <p><strong>Temps Trajet Départ:</strong> {item.travelTimeToStart || 'N/A'}</p>}
@@ -233,10 +240,12 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, ev
               <input type="text" name="travelTimeToStart" id="travelTimeToStart" value={(currentItem as EventAccommodation).travelTimeToStart || ''} onChange={handleInputChange} className={lightInputClass} placeholder="Ex: 25min, 1h15"/>
             </div>
           )}
-           <div>
-              <label htmlFor="estimatedCost" className="block text-sm font-medium text-gray-700">Coût Estimé (€)</label>
-              <input type="number" name="estimatedCost" id="estimatedCost" value={(currentItem as EventAccommodation).estimatedCost ?? ''} onChange={handleInputChange} min="0" step="0.01" className={lightInputClass}/>
-          </div>
+           {canViewFinancialInfo && (
+             <div>
+                <label htmlFor="estimatedCost" className="block text-sm font-medium text-gray-700">Coût Estimé (€)</label>
+                <input type="number" name="estimatedCost" id="estimatedCost" value={(currentItem as EventAccommodation).estimatedCost ?? ''} onChange={handleInputChange} min="0" step="0.01" className={lightInputClass}/>
+            </div>
+           )}
           <div>
             <label htmlFor="confirmationDetails" className="block text-sm font-medium text-gray-700">Détails confirmation (N°, lien...)</label>
             <input type="text" name="confirmationDetails" id="confirmationDetails" value={(currentItem as EventAccommodation).confirmationDetails} onChange={handleInputChange} className={lightInputClass} />

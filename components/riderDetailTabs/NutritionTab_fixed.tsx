@@ -27,17 +27,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
     const [modalMode, setModalMode] = useState<'gel' | 'bar' | 'drink'>('gel');
 
     // State for custom product form
-    const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>({ 
-        name: '', 
-        type: 'gel',
-        brand: '',
-        carbs: 0,
-        glucose: 0,
-        fructose: 0,
-        caffeine: 0,
-        sodium: 0,
-        notes: ''
-    });
+    const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>({ name: '', type: 'gel' });
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -172,17 +162,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
         // Add to team products (this would normally be handled by a parent component)
         // For now, we'll just select it
         handleSelectProduct(newProduct);
-        setCustomProduct({ 
-            name: '', 
-            type: 'gel',
-            brand: '',
-            carbs: 0,
-            glucose: 0,
-            fructose: 0,
-            caffeine: 0,
-            sodium: 0,
-            notes: ''
-        });
+        setCustomProduct({ name: '', type: 'gel' });
     };
 
     // Check product compatibility with allergies
@@ -537,25 +517,16 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                                         <button 
                                             key={p.id} 
                                             onClick={() => handleSelectProduct(p)} 
-                                            className={`w-full text-left p-3 rounded hover:bg-gray-100 ${
+                                            className={`w-full text-left p-2 rounded hover:bg-gray-100 ${
                                                 !isCompatible ? 'bg-red-100 border border-red-300 text-red-700' : ''
                                             }`}
                                             disabled={!isCompatible}
                                         >
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <div className="font-medium">{p.name} ({p.brand})</div>
-                                                    {(p.carbs || p.caffeine || p.sodium) && (
-                                                        <div className="text-xs text-gray-600 mt-1">
-                                                            {p.carbs && `Glucides: ${p.carbs}g`}
-                                                            {p.caffeine && ` • Caféine: ${p.caffeine}mg`}
-                                                            {p.sodium && ` • Sodium: ${p.sodium}mg`}
-                                                        </div>
-                                                    )}
-                                                    {p.notes && <div className="text-xs text-gray-500 mt-1">{p.notes}</div>}
-                                                </div>
-                                                {!isCompatible && <span className="text-xs font-bold ml-2">⚠️ INCOMPATIBLE</span>}
+                                            <div className="flex justify-between items-center">
+                                                <span>{p.name} ({p.brand})</span>
+                                                {!isCompatible && <span className="text-xs font-bold">⚠️ INCOMPATIBLE</span>}
                                             </div>
+                                            {p.notes && <div className="text-xs text-gray-500 mt-1">{p.notes}</div>}
                                         </button>
                                     );
                                 })}
@@ -564,108 +535,10 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                         <div className="text-center text-sm text-gray-500">ou</div>
                         <div>
                             <h4 className="font-semibold">Ajouter un produit personnel</h4>
-                            <div className="p-3 bg-gray-50 rounded-md border mt-1 space-y-3">
-                                {/* Informations de base */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <input 
-                                        type="text" 
-                                        value={customProduct.name} 
-                                        onChange={e => setCustomProduct(p => ({...p, name: e.target.value, type: modalMode}))} 
-                                        placeholder="Nom du produit" 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        value={customProduct.brand || ''} 
-                                        onChange={e => setCustomProduct(p => ({...p, brand: e.target.value}))} 
-                                        placeholder="Marque" 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                </div>
-
-                                {/* Informations nutritionnelles */}
-                                <div className="border-t pt-3">
-                                    <h5 className="text-sm font-semibold text-gray-700 mb-3">📊 Informations Nutritionnelles</h5>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Glucides totaux (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.carbs || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, carbs: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Glucose (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.glucose || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, glucose: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Fructose (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.fructose || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, fructose: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Caféine (mg)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.caffeine || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, caffeine: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="mt-3">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 mb-1">Sodium (mg)</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={customProduct.sodium || ''} 
-                                                    onChange={e => setCustomProduct(p => ({...p, sodium: parseFloat(e.target.value) || 0}))} 
-                                                    placeholder="0" 
-                                                    min="0"
-                                                    step="0.1"
-                                                    className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Notes */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes (allergènes, composition...)</label>
-                                    <textarea 
-                                        value={customProduct.notes || ''} 
-                                        onChange={e => setCustomProduct(p => ({...p, notes: e.target.value}))} 
-                                        placeholder="Ex: Contient du gluten, sans lactose, goût vanille..." 
-                                        rows={2} 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                </div>
-
+                            <div className="p-3 bg-gray-50 rounded-md border mt-1 space-y-2">
+                                <input type="text" value={customProduct.name} onChange={e => setCustomProduct(p => ({...p, name: e.target.value, type: modalMode}))} placeholder="Nom du produit" className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"/>
+                                <input type="text" value={customProduct.brand || ''} onChange={e => setCustomProduct(p => ({...p, brand: e.target.value}))} placeholder="Marque" className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"/>
+                                <textarea value={customProduct.notes || ''} onChange={e => setCustomProduct(p => ({...p, notes: e.target.value}))} placeholder="Notes (allergènes, composition...)" rows={2} className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"/>
                                 <ActionButton onClick={handleAddCustomProduct}>Ajouter et Sélectionner</ActionButton>
                             </div>
                         </div>

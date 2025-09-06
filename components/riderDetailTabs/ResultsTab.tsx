@@ -211,9 +211,10 @@ export interface ResultFormModalProps {
     onClose: () => void;
     onSave: (result: ResultItem) => void;
     initialData: ResultItem | null;
+    currentTeamName?: string;
 }
 
-export const ResultFormModal: React.FC<ResultFormModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+export const ResultFormModal: React.FC<ResultFormModalProps> = ({ isOpen, onClose, onSave, initialData, currentTeamName }) => {
     const [resultData, setResultData] = useState<Omit<ResultItem, 'id'>>({
         date: new Date().toISOString().split('T')[0],
         eventName: '',
@@ -233,11 +234,11 @@ export const ResultFormModal: React.FC<ResultFormModalProps> = ({ isOpen, onClos
                 eventName: '',
                 category: '',
                 rank: '',
-                team: '',
+                team: currentTeamName || '',
                 discipline: DisciplinePracticed.ROUTE
             });
         }
-    }, [initialData, isOpen]);
+    }, [initialData, isOpen, currentTeamName]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -272,7 +273,19 @@ export const ResultFormModal: React.FC<ResultFormModalProps> = ({ isOpen, onClos
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="text-sm font-medium text-slate-300">Équipe</label>
-                            <input type="text" name="team" value={resultData.team || ''} onChange={handleChange} placeholder="Équipe au moment du résultat" className="input-field-sm" />
+                            <input 
+                                type="text" 
+                                name="team" 
+                                value={resultData.team || ''} 
+                                onChange={handleChange} 
+                                placeholder={currentTeamName ? `Équipe actuelle: ${currentTeamName}` : "Équipe au moment du résultat"} 
+                                className="input-field-sm" 
+                            />
+                            {currentTeamName && !initialData && (
+                                <p className="text-xs text-blue-400 mt-1">
+                                    ✓ Pré-rempli avec votre équipe actuelle
+                                </p>
+                            )}
                         </div>
                         <div>
                             <label className="text-sm font-medium text-slate-300">Discipline</label>

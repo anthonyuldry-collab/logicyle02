@@ -76,12 +76,22 @@ export const getAgeCategory = (birthDate?: string): { category: string; age: num
 export const getLevelCategory = (rider: any): string => {
     if (!rider) return 'N/A';
     
-    // Si le coureur a un statut spécifique défini
+    // 1. Priorité : Si le coureur a des catégories de niveau sélectionnées manuellement
+    if (rider.categories && Array.isArray(rider.categories) && rider.categories.length > 0) {
+        // Retourner la première catégorie sélectionnée (ou la plus élevée)
+        const sortedCategories = ['Pro', 'Elite', 'Open 1', 'Open 2', 'Open 3', 'Handisport'];
+        const selectedCategory = rider.categories.find(cat => sortedCategories.includes(cat));
+        if (selectedCategory) {
+            return selectedCategory;
+        }
+    }
+    
+    // 2. Si le coureur a un statut spécifique défini
     if (rider.levelCategory) {
         return rider.levelCategory;
     }
     
-    // Calcul basé sur les caractéristiques de performance si disponibles
+    // 3. Calcul basé sur les caractéristiques de performance si disponibles
     if (rider.powerProfileFresh && rider.weightKg) {
         const wkg = (power: number) => power / rider.weightKg;
         const ftp = rider.powerProfileFresh.criticalPower;
@@ -96,13 +106,6 @@ export const getLevelCategory = (rider: any): string => {
         return 'Open 3';
     }
     
-    // Par défaut, basé sur l'âge si pas de données de performance
-    const { age } = getAgeCategory(rider.birthDate);
-    if (age === null) return 'N/A';
-    
-    if (age <= 16) return 'Open 3';
-    if (age <= 18) return 'Open 2';
-    if (age <= 22) return 'Open 1';
-    if (age <= 29) return 'Elite';
-    return 'Open 1';
+    // 4. Par défaut, si aucune donnée disponible
+    return 'N/A';
 };

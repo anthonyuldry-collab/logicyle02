@@ -154,7 +154,7 @@ function EventDetailView({
   }
 
   // Filtrer les onglets selon les permissions de l'utilisateur
-  const isRider = currentUser.userRole === 'COUREUR';
+  const isRider = currentUser.userRole === 'Coureur';
   
   const allTabs: { id: EventDetailTab; label: string; Icon?: React.ElementType }[] = [
     { id: 'logisticsSummary', label: t('eventTabLogisticsSummary') },
@@ -215,7 +215,7 @@ function EventDetailView({
 
       <div className="bg-white p-4 rounded-b-md shadow">
         <div style={{ display: activeTab === 'logisticsSummary' ? 'block' : 'none' }}>
-            <LogisticsSummaryTab {...eventDetailProps} currentUser={currentUser} />
+            <LogisticsSummaryTab {...eventDetailProps} currentUser={currentUser} effectivePermissions={appState.effectivePermissions} />
         </div>
          <div style={{ display: activeTab === 'info' ? 'block' : 'none' }}>
             <EventInfoTab 
@@ -237,6 +237,8 @@ function EventDetailView({
                 {...eventDetailProps}
                 setEventTransportLegs={setEventTransportLegs}
                 setEventBudgetItems={setEventBudgetItems}
+                currentUser={currentUser}
+                effectivePermissions={appState.effectivePermissions}
             />
         </div>
         <div style={{ display: activeTab === 'accommodation' ? 'block' : 'none' }}>
@@ -244,6 +246,8 @@ function EventDetailView({
                 {...eventDetailProps}
                 setEventAccommodations={setEventAccommodations}
                 setEventBudgetItems={setEventBudgetItems}
+                currentUser={currentUser}
+                effectivePermissions={appState.effectivePermissions}
             />
         </div>
         <div style={{ display: activeTab === 'documents' ? 'block' : 'none' }}>
@@ -257,6 +261,8 @@ function EventDetailView({
               <EventBudgetTab 
                   {...eventDetailProps}
                   setEventBudgetItems={setEventBudgetItems}
+                  currentUser={currentUser}
+                  effectivePermissions={appState.effectivePermissions}
               />
           </div>
         )}

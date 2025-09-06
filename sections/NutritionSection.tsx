@@ -5,6 +5,7 @@ import ActionButton from '../components/ActionButton';
 import PlusCircleIcon from '../components/icons/PlusCircleIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import Modal from '../components/Modal';
+import NutritionSummaryForAssistants from '../components/NutritionSummaryForAssistants';
 import { PREDEFINED_ALLERGEN_INFO } from '../constants';
 import { useTranslations } from '../hooks/useTranslations';
 
@@ -174,48 +175,229 @@ const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, o
 
   return (
     <SectionWrapper title="Mes Préférences Nutritionnelles">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Colonne 1: Préférences et Collations */}
         <div className="space-y-4">
             <div className="bg-white p-4 rounded-lg shadow-md border">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Préférences et Régimes</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">🍽️ Préférences et Régimes</h3>
+                <div className="space-y-4">
                 <div>
-                    <label htmlFor="dietaryRegimen" className="block text-sm font-medium text-gray-700">Régime Spécifique (hors allergies)</label>
+                        <label htmlFor="dietaryRegimen" className="block text-sm font-medium text-gray-700 mb-2">Régime Spécifique (hors allergies)</label>
                     <textarea id="dietaryRegimen" name="dietaryRegimen" value={rider.dietaryRegimen || ''} onChange={handleInputChange} rows={3} className={inputClass} placeholder="Ex: Végétarien, sans porc..."/>
-                </div>
-                <div className="mt-4">
-                    <label htmlFor="foodPreferences" className="block text-sm font-medium text-gray-700">Préférences Alimentaires / Aversions</label>
-                    <textarea id="foodPreferences" name="foodPreferences" value={rider.foodPreferences || ''} onChange={handleInputChange} rows={3} className={inputClass} placeholder="Ex: J'adore les pâtes, je n'aime pas les betteraves..."/>
+                    </div>
+                    <div>
+                        <label htmlFor="foodPreferences" className="block text-sm font-medium text-gray-700 mb-2">Préférences Alimentaires / Aversions</label>
+                        <textarea id="foodPreferences" name="foodPreferences" value={rider.foodPreferences || ''} onChange={handleInputChange} rows={3} className={inputClass} placeholder="Ex: J'adore les pâtes, je n'aime pas les betteraves..."/>
+                    </div>
                 </div>
             </div>
-             <div className="bg-white p-4 rounded-lg shadow-md border">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Plan Nutritionnel Course</h3>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Objectif Glucides/Heure (g)</label>
-                    <input type="number" name="performanceNutrition.carbsPerHourTarget" value={rider.performanceNutrition?.carbsPerHourTarget ?? ''} onChange={handleInputChange} placeholder="Ex: 90" className={inputClass} />
+
+            {/* Section Collations */}
+            <div className="bg-white p-4 rounded-lg shadow-md border">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">🍎 Collations Préférées</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Collation 1 (préférée)</label>
+                        <input 
+                            type="text"
+                            name="snack1" 
+                            value={rider.snack1 || ''} 
+                            onChange={handleInputChange} 
+                            className={inputClass} 
+                            placeholder="Ex: Salade de riz" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Collation 2 (alternative)</label>
+                        <input 
+                            type="text"
+                            name="snack2" 
+                            value={rider.snack2 || ''} 
+                            onChange={handleInputChange} 
+                            className={inputClass} 
+                            placeholder="Ex: Wrap" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Collation 3 (alternative)</label>
+                        <input 
+                            type="text"
+                            name="snack3" 
+                            value={rider.snack3 || ''} 
+                            onChange={handleInputChange} 
+                            className={inputClass} 
+                            placeholder="Ex: Casse-croûte jambon-fromage" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Horaires de Collations</label>
+                        <textarea 
+                            name="snackSchedule" 
+                            value={rider.snackSchedule || ''} 
+                            onChange={handleInputChange} 
+                            rows={2} 
+                            className={inputClass} 
+                            placeholder="Ex: Collation 1h avant départ, gel toutes les 45min, barre à mi-parcours..." 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Instructions pour Assistants</label>
+                        <textarea 
+                            name="assistantInstructions" 
+                            value={rider.assistantInstructions || ''} 
+                            onChange={handleInputChange} 
+                            rows={2} 
+                            className={inputClass} 
+                            placeholder="Ex: Toujours vérifier les étiquettes, éviter les contaminations croisées..." 
+                        />
+                    </div>
                 </div>
-                 <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700">Notes Hydratation</label>
+            </div>
+        </div>
+
+        {/* Colonne 2: Allergies et Plan Nutritionnel */}
+        <div className="space-y-4">
+            {/* Section Allergies */}
+            <div className="bg-white p-4 rounded-lg shadow-md border">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">🚨 Allergies & Régimes d'Éviction</h3>
+
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                    {(rider.allergies || []).map((allergy, index) => {
+                        const allergenInfo = allergy.allergenKey !== 'CUSTOM' ? PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum] : null;
+                        const isCritical = allergenInfo?.severity === 'CRITIQUE' || allergy.isCeliacDisease;
+                        const isHigh = allergenInfo?.severity === 'ELEVEE';
+                        
+                        return (
+                            <div key={allergy.id} className={`p-3 rounded-lg border-2 ${
+                                isCritical ? 'bg-red-50 border-red-500' : 
+                                isHigh ? 'bg-orange-50 border-orange-500' : 
+                                'bg-gray-50 border-gray-300'
+                            }`}>
+                                {/* En-tête avec sélection d'allergène et sévérité */}
+                                <div className="grid grid-cols-2 gap-2 mb-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Allergène</label>
+                                        <select name={`allergies.${index}.allergenKey`} value={allergy.allergenKey} onChange={handleInputChange} className={selectClass}>
+                                            <option value="CUSTOM">Personnalisé</option>
+                                            {Object.keys(PREDEFINED_ALLERGEN_INFO).map(key => <option key={key} value={key}>{PREDEFINED_ALLERGEN_INFO[key as PredefinedAllergenEnum].displayName}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Sévérité</label>
+                                        <select name={`allergies.${index}.severity`} value={allergy.severity} onChange={handleInputChange} className={`${selectClass} ${
+                                            allergy.severity === 'SÉVÈRE' ? 'bg-red-50 border-red-400' : 
+                                            allergy.severity === 'MODÉRÉE' ? 'bg-orange-50 border-orange-400' : 
+                                            'bg-green-50 border-green-400'
+                                        }`}>
+                                            {Object.values(AllergySeverityEnum).map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Nom d'allergène personnalisé */}
+                                {allergy.allergenKey === 'CUSTOM' && (
+                                    <div className="mb-3">
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Nom de l'allergène</label>
+                                        <input type="text" name={`allergies.${index}.customAllergenName`} value={allergy.customAllergenName || ''} onChange={handleInputChange} placeholder="Nom de l'allergène" className={inputClass} />
+                                    </div>
+                                )}
+
+                                {/* Régime d'éviction détaillé */}
+                                <div className="mb-3">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Régime d'éviction</label>
+                                    <textarea 
+                                        name={`allergies.${index}.regimeDetails`} 
+                                        value={allergy.regimeDetails} 
+                                        onChange={handleInputChange} 
+                                        placeholder="Décrivez le régime d'éviction..." 
+                                        rows={3} 
+                                        className={`${inputClass} resize-none`} 
+                                    />
+                                </div>
+
+                                {/* Notes sur la réaction */}
+                                <div className="mb-3">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Notes réaction</label>
+                                    <textarea 
+                                        name={`allergies.${index}.notes`} 
+                                        value={allergy.notes || ''} 
+                                        onChange={handleInputChange} 
+                                        placeholder="Symptômes observés..." 
+                                        rows={2} 
+                                        className={`${inputClass} resize-none`} 
+                                    />
+                                </div>
+                                
+                                {/* Checkbox maladie cœliaque et bouton supprimer */}
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                    <div className="flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            id={`isCeliac-${index}`} 
+                                            name={`allergies.${index}.isCeliacDisease`} 
+                                            checked={allergy.isCeliacDisease || false} 
+                                            onChange={handleInputChange} 
+                                            className={`${checkboxClass} ${allergy.isCeliacDisease ? 'ring-red-500' : ''}`} 
+                                        />
+                                        <label htmlFor={`isCeliac-${index}`} className={`ml-2 text-sm font-medium ${allergy.isCeliacDisease ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
+                                            {allergy.isCeliacDisease ? '🚨 MALADIE CŒLIAQUE' : 'Maladie Cœliaque ?'}
+                                        </label>
+                                    </div>
+                                    <ActionButton 
+                                        type="button" 
+                                        onClick={() => handleRemoveAllergy(allergy.id)} 
+                                        variant="danger" 
+                                        size="sm" 
+                                        icon={<TrashIcon className="w-4 h-4"/>}
+                                        className="hover:bg-red-600"
+                                    >
+                                        <span className="sr-only">Supprimer</span>
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <ActionButton type="button" onClick={handleAddAllergy} variant="secondary" size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>} className="mt-4">
+                    Ajouter une allergie
+                </ActionButton>
+            </div>
+
+            {/* Plan Nutritionnel Course */}
+            <div className="bg-white p-4 rounded-lg shadow-md border">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">🚴 Plan Nutritionnel Course</h3>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Objectif Glucides/Heure (g)</label>
+                            <input type="number" name="performanceNutrition.carbsPerHourTarget" value={rider.performanceNutrition?.carbsPerHourTarget ?? ''} onChange={handleInputChange} placeholder="Ex: 90" className={inputClass} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Notes Hydratation</label>
                     <textarea name="performanceNutrition.hydrationNotes" value={rider.performanceNutrition?.hydrationNotes || ''} onChange={handleInputChange} rows={2} className={inputClass} placeholder="Ex: 1 bidon par heure, électrolytes si chaleur..."/>
                 </div>
-                 <div className="mt-4">
-                    <h4 className="text-md font-medium text-gray-700">Produits en Course</h4>
+                    </div>
+                    
+                    <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">Produits en Course</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(['selectedGels', 'selectedBars', 'selectedDrinks'] as const).map(typeKey => {
                         const title = typeKey === 'selectedGels' ? 'Gels' : typeKey === 'selectedBars' ? 'Barres' : 'Boissons';
                         const modalType = typeKey === 'selectedGels' ? 'gel' : typeKey === 'selectedBars' ? 'bar' : 'drink';
                         return (
-                        <div key={typeKey} className="mt-2">
-                            <div className="flex justify-between items-center">
-                                <h5 className="font-semibold">{title}</h5>
-                                <ActionButton size="sm" variant="secondary" onClick={() => { setModalMode(modalType); setIsProductModalOpen(true); }}><PlusCircleIcon className="w-4 h-4 mr-1"/>Ajouter</ActionButton>
+                                <div key={typeKey} className="bg-gray-50 p-3 rounded-lg border">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h5 className="font-semibold text-sm text-gray-700">{title}</h5>
+                                        <ActionButton size="sm" variant="secondary" onClick={() => { setModalMode(modalType); setIsProductModalOpen(true); }}><PlusCircleIcon className="w-3 h-3 mr-1"/>Ajouter</ActionButton>
                             </div>
-                            <div className="mt-1 space-y-1">
+                                    <div className="space-y-2 text-xs">
                                 {(rider.performanceNutrition?.[typeKey] || []).map(item => {
                                     const product = allProducts.find(p => p.id === item.productId);
                                     if (!product) return null;
                                     return (
-                                        <div key={item.productId} className="flex items-center justify-between bg-gray-50 p-1 rounded">
-                                            <span className="text-xs">{product.name} ({product.brand})</span>
-                                            <input type="number" value={item.quantity} min="0" onChange={e => handleQuantityChange(typeKey, item.productId, parseInt(e.target.value))} className={`${inputClass} !mt-0 !text-xs w-16 py-0.5`}/>
+                                                <div key={item.productId} className="flex items-center justify-between bg-white p-2 rounded border">
+                                                    <span className="text-gray-700">{product.name}</span>
+                                                    <input type="number" value={item.quantity} min="0" onChange={e => handleQuantityChange(typeKey, item.productId, parseInt(e.target.value))} className={`${inputClass} !mt-0 !text-xs w-16 py-1`}/>
                                         </div>
                                     );
                                 })}
@@ -225,40 +407,7 @@ const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, o
                 </div>
             </div>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-md border">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Allergies & Régimes d'Éviction</h3>
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                {(rider.allergies || []).map((allergy, index) => (
-                    <div key={allergy.id} className="bg-gray-50 p-3 rounded border border-gray-200">
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                            <select name={`allergies.${index}.allergenKey`} value={allergy.allergenKey} onChange={handleInputChange} className={selectClass}>
-                                <option value="CUSTOM">Personnalisé</option>
-                                {Object.keys(PREDEFINED_ALLERGEN_INFO).map(key => <option key={key} value={key}>{PREDEFINED_ALLERGEN_INFO[key as PredefinedAllergenEnum].displayName}</option>)}
-                            </select>
-                            <select name={`allergies.${index}.severity`} value={allergy.severity} onChange={handleInputChange} className={selectClass}>
-                                {Object.values(AllergySeverityEnum).map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </div>
-                        {allergy.allergenKey === 'CUSTOM' && (
-                            <input type="text" name={`allergies.${index}.customAllergenName`} value={allergy.customAllergenName || ''} onChange={handleInputChange} placeholder="Nom de l'allergène" className={`${inputClass} mt-2`} />
-                        )}
-                        <textarea name={`allergies.${index}.regimeDetails`} value={allergy.regimeDetails} onChange={handleInputChange} placeholder="Régime d'éviction détaillé" rows={2} className={`${inputClass} mt-2`} />
-                        <textarea name={`allergies.${index}.notes`} value={allergy.notes || ''} onChange={handleInputChange} placeholder="Notes sur la réaction..." rows={1} className={`${inputClass} mt-2`} />
-                        <div className="mt-2 flex justify-between items-center">
-                            <div className="flex items-center">
-                                <input type="checkbox" id={`isCeliac-${index}`} name={`allergies.${index}.isCeliacDisease`} checked={allergy.isCeliacDisease || false} onChange={handleInputChange} className={checkboxClass} />
-                                <label htmlFor={`isCeliac-${index}`} className="ml-2 text-sm text-gray-700">Maladie Cœliaque ?</label>
-                            </div>
-                            <ActionButton type="button" onClick={() => handleRemoveAllergy(allergy.id)} variant="danger" size="sm" icon={<TrashIcon className="w-3 h-3"/>}>
-                                <span className="sr-only">Supprimer</span>
-                            </ActionButton>
-                        </div>
-                    </div>
-                ))}
             </div>
-            <ActionButton type="button" onClick={handleAddAllergy} variant="secondary" size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>} className="mt-3 text-xs">
-                Ajouter une allergie
-            </ActionButton>
         </div>
       </div>
       

@@ -135,6 +135,20 @@ export enum RiderEventPreference {
   EN_ATTENTE = "En attente de décision",
 }
 
+export enum SeasonYear {
+  SEASON_2024 = "Saison 2024",
+  SEASON_2025 = "Saison 2025",
+  SEASON_2026 = "Saison 2026",
+  SEASON_2027 = "Saison 2027",
+  SEASON_2028 = "Saison 2028",
+}
+
+export enum TalentAvailability {
+  DISPONIBLE = "Disponible",
+  PAS_DISPONIBLE = "Pas disponible",
+  OBJECTIFS = "Objectifs",
+}
+
 export enum FormeStatus {
   EXCELLENT = "Excellent",
   BON = "Bon",
@@ -334,7 +348,7 @@ export type AppSection =
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
-  | 'missionSearch';
+  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability';
 
 export type PermissionLevel = 'view' | 'edit';
 export type StaffRoleKey =
@@ -791,6 +805,7 @@ export interface RiderEventSelection {
   riderId: string;
   status: RiderEventStatus;
   riderPreference?: RiderEventPreference;
+  talentAvailability?: TalentAvailability;
   riderObjectives?: string;
   notes?: string;
 }
@@ -842,6 +857,19 @@ export interface ResultItem {
   rank: string | number;
   team?: string;
   discipline?: DisciplinePracticed;
+  raceName?: string;
+  position?: number;
+  season?: string;
+  notes?: string;
+}
+
+export interface TeamHistory {
+  teamName: string;
+  startDate: string;
+  endDate?: string;
+  role?: string;
+  status?: 'Actif' | 'Inactif' | 'Ancien';
+  achievements?: string[];
 }
 
 export interface FavoriteRace {
@@ -945,6 +973,7 @@ export interface Rider {
     // Career
     favoriteRaces: FavoriteRace[];
     resultsHistory: ResultItem[];
+    teamsHistory?: TeamHistory[];
     agency?: { name?: string; agentName?: string; agentPhone?: string; agentEmail?: string; };
 
     // Performance Project
@@ -954,12 +983,24 @@ export interface Rider {
     mentalPerformanceProject: PerformanceFactorDetail;
     environnementPerformanceProject: PerformanceFactorDetail;
     tactiquePerformanceProject: PerformanceFactorDetail;
+    
+    // Global Preferences
+    globalWishes?: string; // Souhaits généraux pour la saison
+    seasonObjectives?: string; // Objectifs de saison
 
     // Nutrition
     dietaryRegimen?: string; // e.g., vegetarian
     foodPreferences?: string; // likes/dislikes
     allergies: AllergyItem[];
     performanceNutrition: PerformanceNutrition;
+    
+    // Nutrition pour assistants
+    snackPreferences?: string; // collations préférées (legacy)
+    snack1?: string; // collation 1 préférée
+    snack2?: string; // collation 2 alternative
+    snack3?: string; // collation 3 alternative
+    assistantInstructions?: string; // instructions spéciales pour assistants
+    snackSchedule?: string; // horaires de collations
 
     // Bike & Equipment
     roadBikeSetup: BikeSetup;

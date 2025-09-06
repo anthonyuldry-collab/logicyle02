@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AppState, RaceEvent, TransportDirection, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, StaffRole } from '../../types';
+import { AppState, RaceEvent, TransportDirection, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, StaffRole, AppSection, PermissionLevel } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
 import UsersIcon from '../../components/icons/UsersIcon';
@@ -14,6 +14,7 @@ interface LogisticsSummaryTabProps {
   appState: TeamState;
   updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
   currentUser?: { userRole: string };
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
 
 const SummaryCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
@@ -363,7 +364,7 @@ const ConvocationPreview: React.FC<{
 };
 
 
-const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appState, updateEvent, currentUser }) => {
+const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appState, updateEvent, currentUser, effectivePermissions }) => {
   const [notes, setNotes] = useState(event.logisticsSummaryNotes || '');
   const [isConvocationModalOpen, setIsConvocationModalOpen] = useState(false);
   
@@ -372,6 +373,10 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   const [copySuccess, setCopySuccess] = useState('');
+
+  // Vérification des permissions pour l'accès aux informations financières
+  const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
+  const isRider = currentUser?.userRole === 'Coureur';
 
   const selectedRidersForEvent = useMemo(() => {
     return appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id));
@@ -479,15 +484,13 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
     });
   };
 
-  // Vérifier si l'utilisateur est un coureur (ne doit pas voir les données financières)
-  const isRider = currentUser?.userRole === 'COUREUR';
 
   return (
     <div className="space-y-6">
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isRider ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${canViewFinancialInfo ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
         <SummaryCard title="Hébergement">{accommodationSummary}</SummaryCard>
         <SummaryCard title="Transport">{transportSummary}</SummaryCard>
-        {!isRider && <SummaryCard title="Budget">{budgetSummary}</SummaryCard>}
+        {canViewFinancialInfo && <SummaryCard title="Budget">{budgetSummary}</SummaryCard>}
         <SummaryCard title="Checklist">{checklistSummary}</SummaryCard>
       </div>
       <div>

@@ -76,7 +76,12 @@ const AdminTab: React.FC<AdminTabProps> = ({
                 </select>
               </div>
               {isRider && (
-                <div><label className="text-sm font-medium">Nom de l'Équipe</label><input type="text" name="teamName" value={(formData as Rider).teamName || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled}/></div>
+                <div>
+                  <label className="text-sm font-medium">Nom de l'Équipe</label>
+                  {/* Le nom de l'équipe est non modifiable pour les coureurs car il fait partie des données administratives 
+                      figées jusqu'au transfert ou arrêt du coureur dans l'équipe */}
+                  <input type="text" name="teamName" value={(formData as Rider).teamName || ''} onChange={handleInputChange} className="input-field-sm w-full" disabled={!formFieldsEnabled || isRider}/>
+                </div>
               )}
             </fieldset>
             <fieldset className="border border-slate-600 p-3 rounded-md space-y-2"><legend className="text-md font-medium text-slate-200 px-1">Coordonnées</legend>

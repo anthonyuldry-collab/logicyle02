@@ -21,6 +21,9 @@ import {
   TransportStopType,
   Vehicle,
   VehicleType,
+  User,
+  AppSection,
+  PermissionLevel,
 } from "../../types";
 
 interface EventTransportTabProps {
@@ -31,6 +34,8 @@ interface EventTransportTabProps {
     React.SetStateAction<EventTransportLeg[]>
   >;
   setEventBudgetItems: React.Dispatch<React.SetStateAction<EventBudgetItem[]>>;
+  currentUser?: User | null;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
 
 const generateId = () =>
@@ -130,6 +135,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   appState,
   setEventTransportLegs,
   setEventBudgetItems,
+  currentUser,
+  effectivePermissions,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentTransportLeg, setCurrentTransportLeg] = useState<
@@ -138,6 +145,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [activeSubTab, setActiveSubTab] = useState<'aller' | 'jourj' | 'retour'>('aller');
+
+  // Vérification des permissions pour l'accès aux informations financières
+  const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
 
   const transportLegsForEvent = useMemo(() => {
     return appState.eventTransportLegs.filter((leg) => leg.eventId === eventId);
@@ -1877,7 +1887,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             {/* Détails */}
             <div>
               <label htmlFor="details" className="block text-sm font-medium text-gray-700">
-                Détails (N° vol, répartition, prix, etc.)
+                Détails {canViewFinancialInfo ? "(N° vol, répartition, prix, etc.)" : "(N° vol, répartition, etc.)"}
               </label>
               <textarea
                 name="details"
@@ -1886,6 +1896,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                 onChange={handleInputChange}
                 rows={3}
                 className={lightInputClasses}
+                placeholder={canViewFinancialInfo ? "N° vol, répartition, prix, etc." : "N° vol, répartition, etc."}
               />
             </div>
 
@@ -1901,7 +1912,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
                 <label htmlFor="isAuroreFlight" className="ml-2 block text-sm text-gray-900">
-                  Ceci est le vol spécial d'Aurore (nécessite infos retour/prix)
+                  Ceci est le vol spécial d'Aurore {canViewFinancialInfo ? "(nécessite infos retour/prix)" : "(nécessite infos retour)"}
                 </label>
               </div>
             )}

@@ -28,7 +28,9 @@ import {
     BikeFitMeasurements,
     BikeSpecificMeasurements,
     PowerZoneKey,
-    TransportStopType
+    TransportStopType,
+    SeasonYear,
+    TalentAvailability
 } from './types';
 
 
@@ -294,16 +296,18 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Pilotage', en: 'Management' } },
     { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', group: { fr: 'Pilotage', en: 'Management' } },
     
-    // Mon Espace
-    { id: 'career', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'BriefcaseIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    // Mon Espace - Back-office coureur avec tous les onglets
+    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'myResults', labels: { fr: 'Mon Palmarès', en: 'My Results' }, icon: 'TrophyIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'talentAvailability', labels: { fr: 'Disponibilités Talents', en: 'Talent Availability' }, icon: 'UserGroupIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
     { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
     { id: 'riderEquipment', labels: { fr: 'Mon Matériel', en: 'My Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'adminDossier', labels: { fr: 'Mon Dossier Admin', en: 'My Admin File' }, icon: 'IdentificationIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'bikeSetup', labels: { fr: 'Cotes Vélo', en: 'Bike Setup' }, icon: 'Cog6ToothIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'adminDossier', labels: { fr: 'Admin', en: 'Admin' }, icon: 'ShieldCheckIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
     { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'myPerformance', labels: { fr: 'Mes Performances (PPR)', en: 'My Performance (PPR)' }, icon: 'PencilIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'performanceProject', labels: { fr: 'Mon Projet Performance', en: 'My Performance Project' }, icon: 'LungsIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'automatedPerformanceProfile', labels: { fr: 'Profil de Performance Auto', en: 'Auto Performance Profile' }, icon: 'CyclingIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'missionSearch', labels: { fr: 'Recherche de Missions', en: 'Mission Search' }, icon: 'SearchIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
     
     // Données Générales
     { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', group: { fr: 'Données Générales', en: 'General Data' } },
@@ -322,7 +326,6 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Application', en: 'Application' } },
     { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Application', en: 'Application' } },
     { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Application', en: 'Application' } },
-    { id: 'settings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Application', en: 'Application' } },
 ];
 
 export const TEAM_STATE_COLLECTIONS = [
@@ -485,6 +488,20 @@ export const RIDER_EVENT_PREFERENCE_COLORS: Record<RiderEventPreference, string>
   [RiderEventPreference.ABSENT]: 'bg-red-100 text-red-800',
   [RiderEventPreference.NE_VEUT_PAS]: 'bg-gray-100 text-gray-800',
   [RiderEventPreference.EN_ATTENTE]: 'bg-yellow-100 text-yellow-800'
+};
+
+export const SEASON_YEAR_COLORS: Record<SeasonYear, string> = {
+  [SeasonYear.SEASON_2024]: 'bg-blue-100 text-blue-800',
+  [SeasonYear.SEASON_2025]: 'bg-green-100 text-green-800',
+  [SeasonYear.SEASON_2026]: 'bg-purple-100 text-purple-800',
+  [SeasonYear.SEASON_2027]: 'bg-orange-100 text-orange-800',
+  [SeasonYear.SEASON_2028]: 'bg-pink-100 text-pink-800',
+};
+
+export const TALENT_AVAILABILITY_COLORS: Record<TalentAvailability, string> = {
+  [TalentAvailability.DISPONIBLE]: 'bg-green-100 text-green-800',
+  [TalentAvailability.PAS_DISPONIBLE]: 'bg-red-100 text-red-800',
+  [TalentAvailability.OBJECTIFS]: 'bg-blue-100 text-blue-800',
 };
 
 export const TRANSPORT_STOP_TYPE_COLORS: Record<TransportStopType, string> = {
@@ -769,7 +786,151 @@ export const riderProfileKeyToRefTableKeyMap: Record<keyof PowerProfile, string>
   power45min: 'power45min',
 };
 
-export const PREDEFINED_ALLERGEN_INFO: any = {};
+export const PREDEFINED_ALLERGEN_INFO: Record<PredefinedAllergen, {
+  displayName: string;
+  defaultRegimeDetails: string;
+  isCeliac: boolean;
+  severity: 'CRITIQUE' | 'ELEVEE' | 'MODEREE';
+  commonSources: string[];
+  crossContaminationRisks: string[];
+  emergencyActions: string;
+}> = {
+  [PredefinedAllergen.LAIT]: {
+    displayName: "Lait & Produits Laitiers",
+    defaultRegimeDetails: "Éviter tous les produits laitiers : lait, fromage, yaourt, beurre, crème, glaces. Vérifier les étiquettes pour les traces de lait dans les produits transformés.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Lait de vache", "Fromage", "Yaourt", "Beurre", "Crème", "Glaces", "Chocolat au lait"],
+    crossContaminationRisks: ["Charcuterie", "Biscuits", "Pains", "Sauces", "Soupes industrielles"],
+    emergencyActions: "En cas d'ingestion accidentelle, surveiller les symptômes digestifs et respiratoires. Consulter un médecin si réaction sévère."
+  },
+  [PredefinedAllergen.OEUFS]: {
+    displayName: "Œufs",
+    defaultRegimeDetails: "Éviter les œufs sous toutes leurs formes : entiers, blancs, jaunes, poudre d'œuf. Attention aux produits de boulangerie, pâtes, mayonnaises.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Œufs entiers", "Blancs d'œufs", "Jaunes d'œufs", "Poudre d'œuf", "Mayonnaise", "Pâtes fraîches"],
+    crossContaminationRisks: ["Pâtisseries", "Pâtes", "Sauces", "Glaces", "Meringues"],
+    emergencyActions: "Surveiller les réactions cutanées et digestives. En cas de réaction sévère, administrer un antihistaminique et consulter un médecin."
+  },
+  [PredefinedAllergen.ARACHIDE]: {
+    displayName: "Arachides",
+    defaultRegimeDetails: "Éviter strictement les arachides et tous les produits contenant des traces d'arachides. Vérifier systématiquement les étiquettes.",
+    isCeliac: false,
+    severity: 'CRITIQUE',
+    commonSources: ["Cacahuètes", "Beurre de cacahuète", "Huile d'arachide", "Snacks", "Confiseries"],
+    crossContaminationRisks: ["Chocolat", "Glaces", "Biscuits", "Céréales", "Sauces", "Plats préparés"],
+    emergencyActions: "RÉACTION CRITIQUE POSSIBLE. En cas d'ingestion, administrer immédiatement l'auto-injecteur d'adrénaline si disponible et appeler les secours (15)."
+  },
+  [PredefinedAllergen.FRUITS_A_COQUE]: {
+    displayName: "Fruits à Coque",
+    defaultRegimeDetails: "Éviter tous les fruits à coque : noix, amandes, noisettes, pistaches, noix de cajou, noix du Brésil, noix de macadamia, noix de pécan.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Noix", "Amandes", "Noisettes", "Pistaches", "Noix de cajou", "Noix du Brésil", "Noix de macadamia"],
+    crossContaminationRisks: ["Chocolat", "Pâtisseries", "Céréales", "Granola", "Huiles", "Lait végétal"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter immédiatement un médecin."
+  },
+  [PredefinedAllergen.SOJA]: {
+    displayName: "Soja",
+    defaultRegimeDetails: "Éviter le soja et ses dérivés : tofu, tempeh, sauce soja, huile de soja, lécithine de soja. Attention aux produits transformés.",
+    isCeliac: false,
+    severity: 'MODEREE',
+    commonSources: ["Tofu", "Tempeh", "Sauce soja", "Huile de soja", "Lécithine de soja", "Miso", "Edamame"],
+    crossContaminationRisks: ["Charcuterie", "Sauces", "Plats préparés", "Biscuits", "Chocolat"],
+    emergencyActions: "Surveiller les symptômes digestifs. Consulter un médecin si réaction importante."
+  },
+  [PredefinedAllergen.BLE_ALLERGIE]: {
+    displayName: "Blé (Allergie)",
+    defaultRegimeDetails: "Éviter le blé et tous ses dérivés : farine de blé, semoule, boulgour, épeautre, kamut. Attention aux produits de boulangerie et pâtes.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Pain", "Pâtes", "Biscuits", "Gâteaux", "Semoule", "Boulgour", "Épeautre"],
+    crossContaminationRisks: ["Sauces", "Soupes", "Charcuterie", "Plats préparés", "Bières"],
+    emergencyActions: "Surveiller les réactions allergiques. Différencier de l'intolérance au gluten (maladie cœliaque)."
+  },
+  [PredefinedAllergen.POISSON]: {
+    displayName: "Poisson",
+    defaultRegimeDetails: "Éviter tous les poissons : saumon, thon, cabillaud, sole, etc. Attention aux sauces et plats préparés contenant du poisson.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Saumon", "Thon", "Cabillaud", "Sole", "Truite", "Sardines", "Anchois"],
+    crossContaminationRisks: ["Sauces", "Plats préparés", "Soupes", "Pizzas", "Sushis"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter un médecin."
+  },
+  [PredefinedAllergen.CRUSTACES]: {
+    displayName: "Crustacés",
+    defaultRegimeDetails: "Éviter tous les crustacés : crevettes, langoustes, crabes, homards, écrevisses. Attention aux sauces et plats préparés.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Crevettes", "Langoustes", "Crabes", "Homards", "Écrevisses", "Langoustines"],
+    crossContaminationRisks: ["Sauces", "Plats préparés", "Soupes", "Pizzas", "Sushis"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter un médecin."
+  },
+  [PredefinedAllergen.GLUTEN_CELIAC]: {
+    displayName: "Gluten (Maladie Cœliaque)",
+    defaultRegimeDetails: "RÉGIME SANS GLUTEN STRICT OBLIGATOIRE. Éviter blé, orge, seigle, avoine (sauf certifiée sans gluten). Attention aux traces et contaminations croisées. Vérifier systématiquement les étiquettes et les certifications.",
+    isCeliac: true,
+    severity: 'CRITIQUE',
+    commonSources: ["Blé", "Orge", "Seigle", "Avoine (non certifiée)", "Épeautre", "Kamut", "Triticale"],
+    crossContaminationRisks: ["Usines de transformation", "Restaurants", "Épiceries", "Produits transformés", "Médicaments", "Cosmétiques"],
+    emergencyActions: "MALADIE CŒLIAQUE - RÉGIME STRICT OBLIGATOIRE. En cas d'ingestion accidentelle, surveiller les symptômes digestifs et consulter un gastro-entérologue. Éviter toute contamination croisée."
+  },
+  [PredefinedAllergen.SESAME]: {
+    displayName: "Sésame",
+    defaultRegimeDetails: "Éviter le sésame sous toutes ses formes : graines, huile, tahini, halva. Attention aux produits de boulangerie et cosmétiques.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Graines de sésame", "Huile de sésame", "Tahini", "Halva", "Pain aux graines"],
+    crossContaminationRisks: ["Boulangeries", "Restaurants", "Cosmétiques", "Produits transformés"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter un médecin."
+  },
+  [PredefinedAllergen.CELERI]: {
+    displayName: "Céleri",
+    defaultRegimeDetails: "Éviter le céleri sous toutes ses formes : racine, feuilles, graines. Attention aux épices et assaisonnements.",
+    isCeliac: false,
+    severity: 'MODEREE',
+    commonSources: ["Céleri-rave", "Feuilles de céleri", "Graines de céleri", "Sel de céleri"],
+    crossContaminationRisks: ["Épices", "Assaisonnements", "Soupes", "Plats préparés"],
+    emergencyActions: "Surveiller les symptômes allergiques. Consulter un médecin si réaction importante."
+  },
+  [PredefinedAllergen.MOUTARDE]: {
+    displayName: "Moutarde",
+    defaultRegimeDetails: "Éviter la moutarde sous toutes ses formes : graines, poudre, condiments. Attention aux sauces et plats préparés.",
+    isCeliac: false,
+    severity: 'MODEREE',
+    commonSources: ["Moutarde", "Graines de moutarde", "Poudre de moutarde", "Condiments"],
+    crossContaminationRisks: ["Sauces", "Plats préparés", "Charcuterie", "Épiceries"],
+    emergencyActions: "Surveiller les symptômes allergiques. Consulter un médecin si réaction importante."
+  },
+  [PredefinedAllergen.LUPIN]: {
+    displayName: "Lupin",
+    defaultRegimeDetails: "Éviter le lupin et ses dérivés : farine de lupin, graines de lupin. Attention aux produits sans gluten et pâtisseries.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Farine de lupin", "Graines de lupin", "Produits sans gluten"],
+    crossContaminationRisks: ["Pâtisseries", "Produits sans gluten", "Snacks"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter un médecin."
+  },
+  [PredefinedAllergen.MOLLUSQUES]: {
+    displayName: "Mollusques",
+    defaultRegimeDetails: "Éviter tous les mollusques : moules, huîtres, coquilles Saint-Jacques, escargots, calamars, poulpes.",
+    isCeliac: false,
+    severity: 'ELEVEE',
+    commonSources: ["Moules", "Huîtres", "Coquilles Saint-Jacques", "Escargots", "Calamars", "Poulpes"],
+    crossContaminationRisks: ["Restaurants", "Plats préparés", "Sauces", "Soupes"],
+    emergencyActions: "Surveiller les réactions allergiques. En cas de réaction sévère, consulter un médecin."
+  },
+  [PredefinedAllergen.SULFITES]: {
+    displayName: "Sulfites",
+    defaultRegimeDetails: "Éviter les sulfites (E220-E228) : vins, fruits secs, charcuterie, produits transformés. Vérifier les étiquettes.",
+    isCeliac: false,
+    severity: 'MODEREE',
+    commonSources: ["Vins", "Fruits secs", "Charcuterie", "Produits transformés", "Conserves"],
+    crossContaminationRisks: ["Restaurants", "Produits industriels", "Boissons"],
+    emergencyActions: "Surveiller les symptômes respiratoires et digestifs. Consulter un médecin si réaction importante."
+  }
+};
 export const PERFORMANCE_SCORE_WEIGHTS = { COLLECTIVE: 0.25, TECHNICAL: 0.25, PHYSICAL: 0.25, RESULT: 0.25 };
 export const COLLECTIVE_SCORE_PENALTY_THRESHOLD = 2;
 export const COLLECTIVE_SCORE_PENALTY_MULTIPLIER = 0.8;

@@ -167,15 +167,29 @@ const Sidebar: React.FC<SidebarProps> = ({
             
             // Si l'utilisateur est Manager/Admin, exclure les sections "Mon Espace"
             if (currentUser && (currentUser.userRole === 'Manager' || currentUser.permissionRole === 'Administrateur')) {
-                visibleSections = sectionsInGroup.filter(section => 
-                    section.group[language] !== t('sidebarGroupMySpace') && 
-                    (effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view'))
-                );
+                visibleSections = sectionsInGroup.filter(section => {
+                    // Exclure toutes les sections "Mon Espace" pour les administrateurs
+                    if (section.group[language] === t('sidebarGroupMySpace')) return false;
+                    
+                    // Vérifier les permissions pour les autres sections
+                    return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
+                });
             } else {
                 // Pour les coureurs et autres rôles, filtrer selon les permissions
-                visibleSections = sectionsInGroup.filter(section => 
-                    (effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view'))
-                );
+                visibleSections = sectionsInGroup.filter(section => {
+                    // Toujours afficher les paramètres utilisateur
+                    if (section.id === 'userSettings') return true;
+                    
+                    // Toujours afficher les sections "Mon Espace" pour les coureurs
+                    if (section.group[language] === t('sidebarGroupMySpace')) {
+                        // Vérifier si c'est un coureur ou si les permissions existent
+                        if (currentUser?.userRole === 'COUREUR') return true;
+                        return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
+                    }
+                    
+                    // Vérifier les permissions pour les autres sections
+                    return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
+                });
             }
             
             if (visibleSections.length === 0) return null;

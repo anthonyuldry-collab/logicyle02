@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { RaceEvent, AppState, EventBudgetItem, EventRaceDocument, BudgetItemCategory, EventTransportLeg, EventAccommodation, StaffMember, StaffStatus } from '../../types';
+import { RaceEvent, AppState, EventBudgetItem, EventRaceDocument, BudgetItemCategory, EventTransportLeg, EventAccommodation, StaffMember, StaffStatus, User, AppSection, PermissionLevel } from '../../types';
 import { saveData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
@@ -13,6 +13,8 @@ interface EventBudgetTabProps {
   eventId: string;
   appState: AppState;
   setEventBudgetItems: React.Dispatch<React.SetStateAction<EventBudgetItem[]>>;
+  currentUser?: User | null;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
 
 const initialBudgetFormStateFactory = (eventId: string): Omit<EventBudgetItem, 'id'> => ({
@@ -29,11 +31,16 @@ export default function EventBudgetTab({
   event, 
   eventId, 
   appState, 
-  setEventBudgetItems 
+  setEventBudgetItems,
+  currentUser,
+  effectivePermissions
 }: EventBudgetTabProps): JSX.Element {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<EventBudgetItem, 'id'> | EventBudgetItem>(initialBudgetFormStateFactory(eventId));
   const [isEditing, setIsEditing] = useState(false);
+
+  // Vérification des permissions pour l'accès aux informations financières
+  const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
 
   // Fonction pour calculer automatiquement les budgets des hébergements
   const calculateAccommodationBudgetItems = (): EventBudgetItem[] => {
@@ -349,6 +356,19 @@ export default function EventBudgetTab({
       variancePercentage: totalEstimated > 0 ? ((totalActual - totalEstimated) / totalEstimated) * 100 : 0
     };
   }, [budgetItemsForEvent, totalEstimated, totalActual]);
+
+  // Si l'utilisateur n'a pas accès aux informations financières, afficher un message
+  if (!canViewFinancialInfo) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">🔒</div>
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">Accès restreint</h3>
+        <p className="text-gray-500">
+          Vous n'avez pas accès aux informations budgétaires de cet événement.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>

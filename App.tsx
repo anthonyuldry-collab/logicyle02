@@ -71,7 +71,7 @@ import { EventsSection } from "./sections/EventsSection";
 import { FinancialSection } from "./sections/FinancialSection";
 import LoginView from "./sections/LoginView";
 import MissionSearchSection from "./sections/MissionSearchSection";
-import { MyPerformanceSection } from "./sections/MyPerformanceSection";
+import MyPerformanceSectionNew from "./sections/MyPerformanceSection_new";
 import MyTripsSection from "./sections/MyTripsSection";
 import NoTeamView from "./sections/NoTeamView";
 import NutritionSection from "./sections/NutritionSection";
@@ -88,7 +88,17 @@ import SignupView, { SignupData } from "./sections/SignupView";
 import StaffSection from "./sections/StaffSection";
 import StocksSection from "./sections/StocksSection";
 import UserManagementSection from "./sections/UserManagementSection";
+import UserSettingsSection from "./sections/UserSettingsSection";
 import VehiclesSection from "./sections/VehiclesSection";
+
+// Nouvelles sections pour le back-office coureur
+import MyProfileSection from "./sections/MyProfileSection";
+import MyCalendarSection from "./sections/MyCalendarSection";
+import MyResultsSection from "./sections/MyResultsSection";
+import BikeSetupSection from "./sections/BikeSetupSection";
+import MyCareerSection from "./sections/MyCareerSection";
+import MyAdminSection from "./sections/MyAdminSection";
+import TalentAvailabilitySection from "./sections/TalentAvailabilitySection";
 
 // Helper functions for dynamic theming
 function getContrastYIQ(hexcolor: string): string {
@@ -1202,6 +1212,7 @@ const App: React.FC = () => {
                       incomeItems={appState.incomeItems}
                       riderEventSelections={appState.riderEventSelections}
                       performanceEntries={appState.performanceEntries}
+                      effectivePermissions={effectivePermissions}
                     />
                   )}
                   {currentSection === "events" && (
@@ -1322,6 +1333,8 @@ const App: React.FC = () => {
                       onSaveScoutingProfile={onSaveScoutingProfile}
                       onDeleteScoutingProfile={onDeleteScoutingProfile}
                       effectivePermissions={effectivePermissions}
+                      appState={appState}
+                      currentTeamId={appState.activeTeamId}
                     />
                   )}
                   {currentSection === "userManagement" && appState.users && appState.teamMemberships && (
@@ -1960,6 +1973,7 @@ const App: React.FC = () => {
                       setStaff={createBatchSetHandler<StaffMember>("staff")}
                       teams={appState.teams}
                       currentTeamId={appState.activeTeamId}
+                      teamMemberships={appState.teamMemberships || []}
                       onRequestTransfer={async (destinationTeamId: string) => {
                         // TODO: Implémenter la logique de demande de transfert
                         console.log("Demande de transfert vers:", destinationTeamId);
@@ -1970,8 +1984,77 @@ const App: React.FC = () => {
                         console.log("Réponse à la demande de suivi:", requestId, response);
                       }}
                       onUpdateVisibility={async (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => {
-                        // TODO: Implémenter la logique de mise à jour de la visibilité
-                        console.log("Mise à jour de la visibilité:", updates);
+                        try {
+                          if (!currentUser) return;
+                          
+                          // Mettre à jour l'utilisateur dans la collection globale
+                          if (updates.isSearchable !== undefined) {
+                            const userRef = doc(db, 'users', currentUser.id);
+                            await updateDoc(userRef, {
+                              isSearchable: updates.isSearchable,
+                              updatedAt: new Date().toISOString()
+                            });
+                            
+                            // Mettre à jour l'état local des utilisateurs
+                            setAppState((prev: AppState) => ({
+                              ...prev,
+                              users: prev.users.map(u => 
+                                u.id === currentUser.id 
+                                  ? { ...u, isSearchable: updates.isSearchable }
+                                  : u
+                              )
+                            }));
+                          }
+                          
+                          // Mettre à jour le profil coureur si c'est un coureur
+                          if (currentUser.userRole === UserRole.COUREUR && updates.isSearchable !== undefined) {
+                            const riderProfile = appState.riders.find(r => r.email === currentUser.email);
+                            if (riderProfile) {
+                              const riderRef = doc(db, 'teams', appState.activeTeamId!, 'riders', riderProfile.id);
+                              await updateDoc(riderRef, {
+                                isSearchable: updates.isSearchable,
+                                updatedAt: new Date().toISOString()
+                              });
+                              
+                              // Mettre à jour l'état local des coureurs
+                              setAppState((prev: AppState) => ({
+                                ...prev,
+                                riders: prev.riders.map(r => 
+                                  r.id === riderProfile.id 
+                                    ? { ...r, isSearchable: updates.isSearchable }
+                                    : r
+                                )
+                              }));
+                            }
+                          }
+                          
+                          // Mettre à jour le profil staff si c'est un membre du staff
+                          if (currentUser.userRole !== UserRole.COUREUR && updates.openToMissions !== undefined) {
+                            const staffProfile = appState.staff.find(s => s.email === currentUser.email);
+                            if (staffProfile) {
+                              const staffRef = doc(db, 'teams', appState.activeTeamId!, 'staff', staffProfile.id);
+                              await updateDoc(staffRef, {
+                                openToExternalMissions: updates.openToMissions,
+                                updatedAt: new Date().toISOString()
+                              });
+                              
+                              // Mettre à jour l'état local du staff
+                              setAppState((prev: AppState) => ({
+                                ...prev,
+                                staff: prev.staff.map(s => 
+                                  s.id === staffProfile.id 
+                                    ? { ...s, openToExternalMissions: updates.openToMissions }
+                                    : s
+                                )
+                              }));
+                            }
+                          }
+                          
+                          console.log("✅ Visibilité mise à jour avec succès:", updates);
+                        } catch (error) {
+                          console.error("❌ Erreur lors de la mise à jour de la visibilité:", error);
+                          alert("Erreur lors de la mise à jour de la visibilité. Veuillez réessayer.");
+                        }
                       }}
                     />
                   )}
@@ -1984,6 +2067,13 @@ const App: React.FC = () => {
                       setTeamProducts={createBatchSetHandler<TeamProduct>("teamProducts")}
                     />
                   )}
+                  {currentSection === "userSettings" && currentUser && (
+                    <UserSettingsSection
+                      currentUser={currentUser}
+                      riderProfile={appState.riders.find((r) => r.email === currentUser.email)}
+                      staffProfile={appState.staff.find((s) => s.email === currentUser.email)}
+                    />
+                  )}
                   {currentSection === "riderEquipment" && (
                     <RiderEquipmentSection
                       riders={appState.riders}
@@ -1992,8 +2082,10 @@ const App: React.FC = () => {
                       setRiders={createBatchSetHandler<Rider>("riders")}
                     />
                   )}
-                  {currentSection === "adminDossier" && currentUser && (
-                    <AdminDossierSection
+                  
+                  {/* Nouvelles sections pour le back-office coureur */}
+                  {currentSection === "myProfile" && currentUser && (
+                    <MyProfileSection
                       riders={appState.riders}
                       staff={appState.staff}
                       currentUser={currentUser}
@@ -2001,6 +2093,65 @@ const App: React.FC = () => {
                       onSaveRider={onSaveRider}
                       setStaff={createBatchSetHandler<StaffMember>("staff")}
                       onUpdateUser={(updatedUser) => setCurrentUser(updatedUser)}
+                      currentTeam={appState.teams.find(team => team.id === appState.activeTeamId)}
+                      raceEvents={appState.raceEvents}
+                      riderEventSelections={appState.riderEventSelections}
+                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      appState={appState}
+                    />
+                  )}
+                  {currentSection === "myCalendar" && currentUser && (
+                    <MyCalendarSection
+                      riders={appState.riders}
+                      currentUser={currentUser}
+                      raceEvents={appState.raceEvents}
+                      riderEventSelections={appState.riderEventSelections}
+                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      effectivePermissions={appState.effectivePermissions}
+                    />
+                  )}
+                  {currentSection === "talentAvailability" && currentUser && (
+                    <TalentAvailabilitySection
+                      riders={appState.riders}
+                      raceEvents={appState.raceEvents}
+                      riderEventSelections={appState.riderEventSelections}
+                      currentUser={currentUser}
+                      effectivePermissions={appState.effectivePermissions}
+                    />
+                  )}
+                  {currentSection === "myResults" && currentUser && (
+                    <MyResultsSection
+                      riders={appState.riders}
+                      currentUser={currentUser}
+                    />
+                  )}
+                  {currentSection === "bikeSetup" && currentUser && (
+                    <BikeSetupSection
+                      riders={appState.riders}
+                      currentUser={currentUser}
+                    />
+                  )}
+                  {currentSection === "myCareer" && currentUser && (
+                    <MyCareerSection
+                      riders={appState.riders}
+                      currentUser={currentUser}
+                      onSaveRider={createBatchSetHandler<Rider>("riders")}
+                      teams={appState.teams}
+                      raceEvents={appState.raceEvents}
+                      scoutingProfiles={appState.scoutingProfiles}
+                      onUpdateScoutingProfile={createBatchSetHandler<ScoutingProfile>("scoutingProfiles")}
+                    />
+                  )}
+                  {currentSection === "adminDossier" && currentUser && (
+                    <MyAdminSection
+                      riders={appState.riders}
+                      currentUser={currentUser}
+                      raceEvents={appState.raceEvents}
+                      riderEventSelections={appState.riderEventSelections}
+                      onSaveRider={createBatchSetHandler<Rider>("riders")}
+                      onUpdateRiderPreference={handleUpdateRiderPreference}
+                      appState={appState}
+                      effectivePermissions={appState.effectivePermissions}
                     />
                   )}
                   {currentSection === "superAdmin" && currentUser && (
@@ -2036,13 +2187,6 @@ const App: React.FC = () => {
                       onSaveChecklistTemplate={onSaveChecklistTemplate}
                       onDeleteChecklistTemplate={onDeleteChecklistTemplate}
                       effectivePermissions={effectivePermissions}
-                    />
-                  )}
-                  {currentSection === "myPerformance" && (
-                    <MyPerformanceSection
-                      rider={appState.riders.find((r) => r.email === currentUser.email)}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
-                      onSaveRider={onSaveRider}
                     />
                   )}
                   {currentSection === "missionSearch" && (

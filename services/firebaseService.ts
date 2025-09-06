@@ -1,4 +1,4 @@
-import { db, storage } from '../firebaseConfig';
+import { db, storage, auth } from '../firebaseConfig';
 import { 
   collection,
   doc,
@@ -11,6 +11,13 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { 
+  updatePassword, 
+  deleteUser, 
+  reauthenticateWithCredential, 
+  EmailAuthProvider,
+  signOut
+} from 'firebase/auth';
 import { 
   TeamState, 
   GlobalState, 
@@ -50,14 +57,8 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
         dashboard: ['view'],
         events: ['view'],
         
-        // Sections logistiques de base
-        vehicles: ['view'],
-        equipment: ['view'],
-        stocks: ['view'],
-        
-        // Section Scouting accessible à tous (lecture seule)
-        scouting: ['view'],
-        
+        // Note: Sections logistiques (véhicules, matériel, stocks) exclues des athlètes
+        // Note: Section Scouting exclue des athlètes (TeamRole.VIEWER)
         // Note: Sections "Mon Espace" ajoutées dynamiquement pour les coureurs uniquement
     },
     [TeamRole.MEMBER]: {
@@ -268,6 +269,7 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         teamId: user.teamId,
         email: user.email
     });
+    console.log('🔍 DEBUG - UserRole.COUREUR:', UserRole.COUREUR, 'Comparaison:', user.userRole === UserRole.COUREUR);
     
     // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager pour tous les utilisateurs avec teamId
     // ou pour les utilisateurs qui ont créé une équipe
@@ -280,7 +282,8 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
             // Exclure TOUJOURS les sections "Mon Espace" pour les managers/admins
             const isMySpaceSection = [
                 'career', 'nutrition', 'riderEquipment', 'adminDossier', 
-                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile'
+                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile',
+                'myProfile', 'myCalendar', 'myCareer', 'myResults', 'bikeSetup'
             ].includes(section.id);
             
             // Seules les sections NON "Mon Espace" sont accessibles aux managers/admins
@@ -302,7 +305,8 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
             // Exclure les sections "Mon Espace"
             const isMySpaceSection = [
                 'career', 'nutrition', 'riderEquipment', 'adminDossier', 
-                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile'
+                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile',
+                'myProfile', 'myCalendar', 'myCareer', 'myResults', 'bikeSetup'
             ].includes(section.id);
             
             if (!isMySpaceSection) {
@@ -335,10 +339,20 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         delete effectivePerms.myPerformance;
         delete effectivePerms.performanceProject;
         delete effectivePerms.automatedPerformanceProfile;
+        delete effectivePerms.myProfile;
+        delete effectivePerms.myCalendar;
+        delete effectivePerms.myResults;
+        delete effectivePerms.bikeSetup;
+        delete effectivePerms.myCareer;
     }
     
-    // Logique spéciale pour les coureurs (UserRole.COUREUR)
+    // Logique spéciale pour les coureurs (UserRole.COUREUR) - PRIORITAIRE sur les autres rôles
     if (user.userRole === UserRole.COUREUR) {
+        console.log('🏃‍♂️ DEBUG - Utilisateur identifié comme COUREUR, ajout des permissions "Mon Espace"');
+        
+        // Réinitialiser les permissions pour les coureurs
+        Object.keys(effectivePerms).forEach(key => delete effectivePerms[key as AppSection]);
+        
         // Coureurs ont accès exclusif aux sections "Mon Espace"
         effectivePerms.career = ['view', 'edit'];
         effectivePerms.nutrition = ['view', 'edit'];
@@ -349,12 +363,26 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         effectivePerms.performanceProject = ['view', 'edit'];
         effectivePerms.automatedPerformanceProfile = ['view', 'edit'];
         
-        // Coureurs n'ont PAS accès aux sections administratives
+        // Nouvelles sections pour le back-office coureur
+        effectivePerms.myProfile = ['view', 'edit'];
+        effectivePerms.myCalendar = ['view', 'edit'];
+        effectivePerms.myResults = ['view', 'edit'];
+        effectivePerms.bikeSetup = ['view', 'edit'];
+        effectivePerms.myCareer = ['view', 'edit'];
+        
+        console.log('✅ DEBUG - Permissions "Mon Espace" ajoutées:', effectivePerms);
+        
+        // Coureurs n'ont PAS accès aux sections administratives et générales
         delete effectivePerms.financial;
         delete effectivePerms.staff;
         delete effectivePerms.userManagement;
         delete effectivePerms.permissions;
         delete effectivePerms.missionSearch; // Missions pas pour les coureurs
+        delete effectivePerms.roster; // Pas d'accès à l'effectif (back-office coureurs)
+        delete effectivePerms.vehicles; // Pas d'accès aux véhicules
+        delete effectivePerms.equipment; // Pas d'accès au matériel
+        delete effectivePerms.stocks; // Pas d'accès aux stocks
+        delete effectivePerms.scouting; // Pas d'accès au scouting
     }
     
     // Logique pour les Staff (UserRole.STAFF) - pas d'accès aux finances ni aux sections "Mon Espace"
@@ -370,6 +398,11 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         delete effectivePerms.myPerformance;
         delete effectivePerms.performanceProject;
         delete effectivePerms.automatedPerformanceProfile;
+        delete effectivePerms.myProfile;
+        delete effectivePerms.myCalendar;
+        delete effectivePerms.myResults;
+        delete effectivePerms.bikeSetup;
+        delete effectivePerms.myCareer;
     }
     
     // Logique spéciale pour les missions : uniquement DS, Entraîneur, Assistant et Mécano
@@ -449,6 +482,74 @@ export const deleteData = async (teamId: string, collectionName: string, docId: 
 export const saveTeamSettings = async (teamId: string, settings: Partial<Team>) => {
     const teamDocRef = doc(db, 'teams', teamId);
     await setDoc(teamDocRef, settings, { merge: true });
+};
+
+// Fonctions pour la gestion des paramètres utilisateur
+export const updateUserPassword = async (currentPassword: string, newPassword: string) => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error('Aucun utilisateur connecté');
+    }
+
+    try {
+        // Réauthentifier l'utilisateur avec son mot de passe actuel
+        const credential = EmailAuthProvider.credential(user.email!, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        
+        // Mettre à jour le mot de passe
+        await updatePassword(user, newPassword);
+        
+        return { success: true, message: 'Mot de passe mis à jour avec succès' };
+    } catch (error: any) {
+        console.error('Erreur lors de la mise à jour du mot de passe:', error);
+        
+        let errorMessage = 'Erreur lors de la mise à jour du mot de passe';
+        if (error.code === 'auth/wrong-password') {
+            errorMessage = 'Mot de passe actuel incorrect';
+        } else if (error.code === 'auth/weak-password') {
+            errorMessage = 'Le nouveau mot de passe est trop faible';
+        } else if (error.code === 'auth/requires-recent-login') {
+            errorMessage = 'Veuillez vous reconnecter avant de changer votre mot de passe';
+        }
+        
+        throw new Error(errorMessage);
+    }
+};
+
+export const deleteUserAccount = async (currentPassword: string) => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error('Aucun utilisateur connecté');
+    }
+
+    try {
+        // Réauthentifier l'utilisateur avec son mot de passe actuel
+        const credential = EmailAuthProvider.credential(user.email!, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        
+        // Supprimer le document utilisateur de Firestore
+        const userDocRef = doc(db, 'users', user.uid);
+        await deleteDoc(userDocRef);
+        
+        // Supprimer le compte Firebase Authentication
+        await deleteUser(user);
+        
+        // Déconnecter l'utilisateur
+        await signOut(auth);
+        
+        return { success: true, message: 'Compte supprimé avec succès' };
+    } catch (error: any) {
+        console.error('Erreur lors de la suppression du compte:', error);
+        
+        let errorMessage = 'Erreur lors de la suppression du compte';
+        if (error.code === 'auth/wrong-password') {
+            errorMessage = 'Mot de passe incorrect';
+        } else if (error.code === 'auth/requires-recent-login') {
+            errorMessage = 'Veuillez vous reconnecter avant de supprimer votre compte';
+        }
+        
+        throw new Error(errorMessage);
+    }
 };
 
 export const updateUserProfile = async (userId: string, updatedData: Partial<User>): Promise<void> => {

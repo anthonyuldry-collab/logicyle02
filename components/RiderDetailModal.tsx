@@ -26,6 +26,8 @@ import PerformanceProjectTab from './riderDetailTabs/PerformanceProjectTab';
 import AdminTab from './riderDetailTabs/AdminTab';
 import { ResultsTab } from './riderDetailTabs/ResultsTab';
 import CalendarTab from './riderDetailTabs/CalendarTab';
+import SettingsTab from './riderDetailTabs/SettingsTab';
+import RiderDashboardTab from './riderDetailTabs/RiderDashboardTab';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 import { uploadFile } from '../services/firebaseService';
 import { getAgeCategory } from '../utils/ageUtils';
@@ -44,6 +46,8 @@ interface RiderDetailModalProps {
   onSaveRider?: (riderData: Rider) => void;
   initialFormData?: Omit<Rider, 'id'> | Rider; 
   appState: AppState;
+  currentUser?: User | null;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -162,18 +166,27 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   riderEventSelections,
   performanceEntries,
   powerDurationsConfig,
+  currentUser,
+  effectivePermissions,
 }: RiderDetailModalProps) => {
   const isNew = !rider;
   const [formData, setFormData] = useState<Rider | Omit<Rider, 'id'>>(() =>
     isNew ? createNewRiderState() : structuredClone(rider)
   );
-  const [activeTab, setActiveTab] = useState('info');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [newLicenseData, setNewLicenseData] = useState<{base64: string, mimeType: string} | null>(null);
   const [newPhotoData, setNewPhotoData] = useState<{base64: string, mimeType: string} | null>(null);
 
   const [isEditMode, setIsEditMode] = useState(isNew || initialIsEditMode);
   const [profileReliabilityLevel, setProfileReliabilityLevel] = useState(1);
+
+  // Fonction pour mettre à jour les préférences des coureurs
+  const onUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
+    // Cette fonction sera implémentée dans le composant parent (RosterSection)
+    // Pour l'instant, on ne fait rien car les permissions sont gérées côté parent
+    console.log('onUpdateRiderPreference appelé:', { eventId, riderId, preference, objectives });
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -187,6 +200,14 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
       setIsEditMode(isNew || initialIsEditMode);
     }
   }, [isOpen, rider, isNew, initialIsEditMode]);
+
+  // Réinitialiser l'onglet actif si on passe d'un profil utilisateur à un autre
+  useEffect(() => {
+    const isCurrentUserProfile = currentUser && formData && currentUser.id === (formData as Rider).id;
+    if (activeTab === 'settings' && !isCurrentUserProfile) {
+      setActiveTab('info');
+    }
+  }, [currentUser, formData, activeTab]);
 
   useEffect(() => {
     const { powerProfileFresh, powerProfile15KJ, powerProfile30KJ, powerProfile45KJ } = formData as Rider;
@@ -322,6 +343,14 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     setNewPhotoData(null);
     setPhotoPreview(null);
   };
+
+  const handleGlobalPreferencesUpdate = (riderId: string, globalWishes: string, seasonObjectives: string) => {
+    setFormData(prev => ({
+      ...prev,
+      globalWishes,
+      seasonObjectives
+    }));
+  };
   
   const handleSave = async () => {
     console.log('🔧 DEBUG - handleSave appelé dans RiderDetailModal');
@@ -418,7 +447,24 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     }
   };
   
+  // Vérifier si c'est le profil de l'utilisateur connecté
+  const isCurrentUserProfile = currentUser && formData && currentUser.id === (formData as Rider).id;
+  
+  // Debug logs
+  console.log('🔍 DEBUG Settings Tab:', {
+    currentUserId: currentUser?.id,
+    riderId: (formData as Rider)?.id,
+    isCurrentUserProfile,
+    currentUserRole: currentUser?.userRole,
+    currentUserEmail: currentUser?.email,
+    riderEmail: (formData as Rider)?.email
+  });
+  
+  // TEMPORAIRE : Toujours afficher l'onglet paramètres pour debug
+  const shouldShowSettings = true; // isCurrentUserProfile;
+  
   const tabs = [
+    { id: 'dashboard', label: 'Tableau de Bord' },
     { id: 'info', label: 'Profil' },
     { id: 'ppr', label: 'PPR' },
     { id: 'project', label: 'Projet Perf.' },
@@ -428,10 +474,25 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     { id: 'equipment', label: 'Équipement' },
     { id: 'bikeSetup', label: 'Cotes Vélo' },
     { id: 'admin', label: 'Admin' },
+    // Afficher l'onglet paramètres (temporairement toujours visible pour debug)
+    ...(shouldShowSettings ? [{ id: 'settings', label: 'Paramètres' }] : []),
   ];
 
   const renderActiveTab = () => {
     switch (activeTab) {
+      case 'dashboard':
+        return (
+          <RiderDashboardTab
+            formData={formData}
+            raceEvents={raceEvents}
+            riderEventSelections={riderEventSelections}
+            onUpdateRiderPreference={onUpdateRiderPreference}
+            onUpdateGlobalPreferences={handleGlobalPreferencesUpdate}
+            currentUser={currentUser}
+            effectivePermissions={effectivePermissions}
+            teamProducts={appState.teamProducts || []}
+          />
+        );
       case 'info':
         return (
           <ProfileInfoTab
@@ -470,8 +531,12 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         return (
           <CalendarTab
             formData={formData}
-            handleInputChange={handleInputChange}
-            formFieldsEnabled={isEditMode}
+            raceEvents={raceEvents}
+            riderEventSelections={riderEventSelections}
+            onUpdateRiderPreference={onUpdateRiderPreference}
+            onUpdateGlobalPreferences={handleGlobalPreferencesUpdate}
+            currentUser={currentUser}
+            effectivePermissions={effectivePermissions}
           />
         );
       case 'nutrition':
@@ -507,6 +572,14 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formFieldsEnabled={isEditMode}
             handleLicenseUpdate={handleLicenseUpdate}
             isContractEditable={true}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsTab
+            formData={formData}
+            handleInputChange={handleInputChange}
+            formFieldsEnabled={isEditMode}
           />
         );
       default:

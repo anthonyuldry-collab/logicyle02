@@ -22,6 +22,8 @@ interface ScoutingSectionProps {
   onSaveScoutingProfile: (profile: ScoutingProfile) => void;
   onDeleteScoutingProfile: (profileId: string) => void;
   effectivePermissions?: any;
+  appState?: AppState;
+  currentTeamId?: string | null;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -136,7 +138,7 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onSaveScoutingProfile, onDeleteScoutingProfile, effectivePermissions }) => {
+const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onSaveScoutingProfile, onDeleteScoutingProfile, effectivePermissions, appState, currentTeamId }) => {
   // Protection minimale - seulement scoutingProfiles est requis
   if (!scoutingProfiles) {
     return (
@@ -413,13 +415,97 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
     </>
   );
 
-  const renderSearchTab = () => (
-    <TalentSearchTab 
-      appState={{ riders: [], teams: [] }} 
-      onProfileSelect={() => {}} 
-      currentTeamId={null}
-    />
-  );
+  const renderSearchTab = () => {
+    if (!appState || !currentTeamId) {
+      return (
+        <div className="text-center p-8 bg-slate-700 rounded-lg">
+          <h3 className="text-xl font-semibold text-slate-300">Données non disponibles</h3>
+          <p className="mt-2 text-slate-400">Les données nécessaires pour la recherche de talents ne sont pas disponibles.</p>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="space-y-4">
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+          <h4 className="text-blue-300 font-semibold mb-2">ℹ️ Comment voir des profils de coureurs ?</h4>
+          <p className="text-blue-200 text-sm mb-2">
+            Pour que des profils de coureurs apparaissent dans cette recherche, ils doivent :
+          </p>
+          <ul className="text-blue-200 text-sm list-disc list-inside space-y-1">
+            <li>Se connecter à l'application avec le rôle "Coureur"</li>
+            <li>Aller dans la section "Ma Carrière"</li>
+            <li>Activer l'option "Profil visible pour le recrutement"</li>
+            <li>Ne pas être déjà membre de votre équipe</li>
+          </ul>
+        </div>
+        
+        <TalentSearchTab 
+          appState={appState} 
+          onProfileSelect={(user) => {
+          // Créer un profil de scouting à partir de l'utilisateur sélectionné
+          const newScoutProfile: ScoutingProfile = {
+            id: `scout_${generateId()}`,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            birthDate: user.signupInfo?.birthDate,
+            sex: user.signupInfo?.sex,
+            nationality: user.signupInfo?.nationality,
+            heightCm: user.signupInfo?.heightCm,
+            weightKg: user.signupInfo?.weightKg,
+            qualitativeProfile: user.qualitativeProfile || 'N/A',
+            disciplines: user.disciplines || [],
+            categories: user.categories || [],
+            forme: user.forme || 'BONNE',
+            moral: user.moral || 'BON',
+            healthCondition: user.healthCondition || 'BONNE',
+            potentialRating: 3,
+            status: 'TO_WATCH',
+            discipline: user.disciplines?.[0] || 'ROUTE',
+            powerProfile: user.powerProfile || {},
+            characteristics: user.characteristics || {},
+            notes: '',
+            lastContactDate: new Date().toISOString().split('T')[0],
+            nextContactDate: '',
+            teamInterest: false,
+            riderInterest: false,
+            contractOffered: false,
+            contractSigned: false,
+            salaryOffered: 0,
+            contractStartDate: '',
+            scoutingSource: 'TALENT_SEARCH',
+            scoutingNotes: 'Profil trouvé via recherche de talents',
+            performanceData: user.performanceData || {},
+            resultsHistory: user.resultsHistory || [],
+            favoriteRaces: user.favoriteRaces || [],
+            teamsHistory: user.teamsHistory || [],
+            address: user.address,
+            phone: user.phone,
+            emergencyContactName: user.emergencyContactName,
+            emergencyContactPhone: user.emergencyContactPhone,
+            socialSecurityNumber: user.socialSecurityNumber,
+            licenseNumber: user.licenseNumber,
+            uciId: user.uciId,
+            photoUrl: user.photoUrl,
+            licenseImageUrl: user.licenseImageUrl,
+            licenseImageBase64: user.licenseImageBase64,
+            licenseImageMimeType: user.licenseImageMimeType,
+            teamName: user.teamName,
+            isSearchable: user.isSearchable,
+            salary: user.salary,
+            contractEndDate: user.contractEndDate,
+            nextSeasonTeam: user.nextSeasonTeam
+          };
+          
+          onSaveScoutingProfile(newScoutProfile);
+          setActiveTab('profiles'); // Basculer vers l'onglet profils
+        }} 
+        currentTeamId={currentTeamId}
+      />
+      </div>
+    );
+  };
   
   const renderAnalysisTab = () => {
     const selectedProfiles = allProfilesForAnalysis.filter(p => selectedProfileIdsForAnalysis.includes(p.id));

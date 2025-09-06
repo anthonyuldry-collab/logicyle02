@@ -13,7 +13,7 @@ import ActionButton from '../components/ActionButton';
 import { RiderDetailModal } from '../components/RiderDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { saveData, deleteData } from '../services/firebaseService';
-import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, ScoutingProfile, TeamProduct, User, AppState } from '../types';
+import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, RiderEventPreference, ScoutingProfile, TeamProduct, User, AppState } from '../types';
 import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 
@@ -70,11 +70,12 @@ export default function RosterSection({
   const [searchTerm, setSearchTerm] = useState('');
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [ageCategoryFilter, setAgeCategoryFilter] = useState<string>('all');
+  const [levelFilter, setLevelFilter] = useState<string>('all');
   const [minAgeFilter, setMinAgeFilter] = useState<number>(0);
   const [maxAgeFilter, setMaxAgeFilter] = useState<number>(100);
   
   // États pour le tri
-  const [rosterSortBy, setRosterSortBy] = useState<'name' | 'age' | 'category'>('name');
+  const [rosterSortBy, setRosterSortBy] = useState<'name' | 'firstName' | 'age' | 'ageCategory' | 'levelCategory' | 'raceDays'>('name');
   const [rosterSortDirection, setRosterSortDirection] = useState<'asc' | 'desc'>('asc');
   const [planningSortBy, setPlanningSortBy] = useState<'name' | 'raceDays'>('name');
   const [planningSortDirection, setPlanningSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -91,7 +92,7 @@ export default function RosterSection({
   const [planningSearchTerm, setPlanningSearchTerm] = useState('');
   const [planningGenderFilter, setPlanningGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [planningStatusFilter, setPlanningStatusFilter] = useState<'all' | 'selected' | 'unselected'>('all');
-  const [activePlanningTab, setActivePlanningTab] = useState<'statistics' | 'selections'>('statistics');
+  const [activePlanningTab, setActivePlanningTab] = useState<'statistics' | 'unified'>('statistics');
   const [riderSortField, setRiderSortField] = useState<'alphabetical' | 'raceDays' | 'potential'>('alphabetical');
   const [riderSortDirection, setRiderSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedYear, setSelectedYear] = useState<number>(2025);
@@ -108,12 +109,12 @@ export default function RosterSection({
   };
 
   // Fonctions de tri pour les athlètes
-  const handleRiderSort = (field: 'alphabetical' | 'raceDays' | 'potential') => {
-    if (riderSortField === field) {
-      setRiderSortDirection(riderSortDirection === 'asc' ? 'desc' : 'asc');
+  const handleRiderSort = (field: 'name' | 'firstName' | 'age' | 'ageCategory' | 'levelCategory' | 'raceDays' | 'potential') => {
+    if (rosterSortBy === field) {
+      setRosterSortDirection(rosterSortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      setRiderSortField(field);
-      setRiderSortDirection('asc');
+      setRosterSortBy(field);
+      setRosterSortDirection('asc');
     }
   };
 
@@ -482,20 +483,20 @@ export default function RosterSection({
             </button>
             
             {/* Boutons de tri discrets */}
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 flex-wrap">
               <button
-                onClick={() => handleRiderSort('alphabetical')}
+                onClick={() => handleRiderSort('name')}
                 className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  riderSortField === 'alphabetical'
+                  rosterSortBy === 'name'
                     ? 'bg-blue-50 text-blue-600 border border-blue-200'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
-                title="Trier par ordre alphabétique"
+                title="Trier par nom complet"
               >
-                <div className="flex items-center space-x-1">
-                  <span>A-Z</span>
-                  {riderSortField === 'alphabetical' && (
-                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center space-x-1">
+                  <span>Nom</span>
+                  {rosterSortBy === 'name' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                     </svg>
                   )}
@@ -503,9 +504,85 @@ export default function RosterSection({
               </button>
               
               <button
+                onClick={() => handleRiderSort('firstName')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  rosterSortBy === 'firstName'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par prénom"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Prénom</span>
+                  {rosterSortBy === 'firstName' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleRiderSort('age')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  rosterSortBy === 'age'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par âge"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Âge</span>
+                  {rosterSortBy === 'age' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleRiderSort('ageCategory')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  rosterSortBy === 'ageCategory'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par catégorie d'âge"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Cat. Âge</span>
+                  {rosterSortBy === 'ageCategory' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleRiderSort('levelCategory')}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  rosterSortBy === 'levelCategory'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Trier par niveau de performance"
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Niveau</span>
+                  {rosterSortBy === 'levelCategory' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  )}
+            </div>
+              </button>
+              
+              <button
                 onClick={() => handleRiderSort('raceDays')}
                 className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  riderSortField === 'raceDays'
+                  rosterSortBy === 'raceDays'
                     ? 'bg-blue-50 text-blue-600 border border-blue-200'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
@@ -513,27 +590,8 @@ export default function RosterSection({
               >
                 <div className="flex items-center space-x-1">
                   <span>Jours</span>
-                  {riderSortField === 'raceDays' && (
-                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('potential')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  riderSortField === 'potential'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par potentiel"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Potentiel</span>
-                  {riderSortField === 'potential' && (
-                    <svg className={`w-3 h-3 transition-transform ${riderSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {rosterSortBy === 'raceDays' && (
+                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                     </svg>
                   )}
@@ -1581,6 +1639,32 @@ export default function RosterSection({
     }
   };
 
+  // Fonction pour gérer la mise à jour des préférences de course
+  const handleUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
+    const existingSelection = riderEventSelections.find(sel => sel.eventId === eventId && sel.riderId === riderId);
+    
+    if (existingSelection) {
+      // Mettre à jour la sélection existante
+      setRiderEventSelections(prev => prev.map(sel => 
+        sel.eventId === eventId && sel.riderId === riderId
+          ? { ...sel, riderPreference: preference, riderObjectives: objectives || sel.riderObjectives }
+          : sel
+      ));
+    } else {
+      // Créer une nouvelle sélection
+      const newSelection = {
+        id: `selection_${Date.now()}`,
+        eventId,
+        riderId,
+        status: RiderEventStatus.EN_ATTENTE,
+        riderPreference: preference,
+        riderObjectives: objectives || '',
+        notes: ''
+      };
+      setRiderEventSelections(prev => [...prev, newSelection]);
+    }
+  };
+
   // Fonction pour gérer la suppression
   const handleDeleteRider = (rider: Rider) => {
     console.log('🗑️ Tentative de suppression du coureur:', rider.firstName, rider.lastName, 'ID:', rider.id);
@@ -1694,6 +1778,9 @@ export default function RosterSection({
       // CORRECTION: Si pas de catégorie valide, on considère que ça passe le filtre de catégorie
       const matchesCategory = ageCategoryFilter === 'all' || category !== 'N/A';
       
+      const levelCategory = getLevelCategory(rider);
+      const matchesLevel = levelFilter === 'all' || levelCategory === levelFilter;
+      
       const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
                        rider.lastName?.toLowerCase().includes('uldry');
       
@@ -1715,7 +1802,7 @@ export default function RosterSection({
         });
       }
       
-      return matchesSearch && matchesGender && matchesAge && matchesCategory;
+      return matchesSearch && matchesGender && matchesAge && matchesCategory && matchesLevel;
     });
     
     console.log('Coureurs filtrés:', filtered.length);
@@ -1727,16 +1814,47 @@ export default function RosterSection({
       
       switch (rosterSortBy) {
         case 'name':
-          aValue = `${a.firstName} ${a.lastName}`.toLowerCase();
-          bValue = `${b.firstName} ${b.lastName}`.toLowerCase();
+          // Tri alphabétique correct : d'abord par nom de famille, puis par prénom
+          const lastNameA = (a.lastName || '').toLowerCase();
+          const lastNameB = (b.lastName || '').toLowerCase();
+          const firstNameA = (a.firstName || '').toLowerCase();
+          const firstNameB = (b.firstName || '').toLowerCase();
+          
+          // Comparer d'abord les noms de famille
+          if (lastNameA !== lastNameB) {
+            aValue = lastNameA;
+            bValue = lastNameB;
+          } else {
+            // Si les noms de famille sont identiques, comparer par prénom
+            aValue = firstNameA;
+            bValue = firstNameB;
+          }
+          break;
+        case 'firstName':
+          aValue = (a.firstName || '').toLowerCase();
+          bValue = (b.firstName || '').toLowerCase();
           break;
         case 'age':
           aValue = getAgeCategory(a.birthDate).age || 0;
           bValue = getAgeCategory(b.birthDate).age || 0;
           break;
-        case 'category':
+        case 'ageCategory':
           aValue = getAgeCategory(a.birthDate).category;
           bValue = getAgeCategory(b.birthDate).category;
+          break;
+        case 'levelCategory':
+          aValue = getLevelCategory(a);
+          bValue = getLevelCategory(b);
+          break;
+        case 'raceDays':
+          const aRaceDays = localRaceEvents.filter(event => 
+            event.selectedRiderIds?.includes(a.id)
+          ).length;
+          const bRaceDays = localRaceEvents.filter(event => 
+            event.selectedRiderIds?.includes(b.id)
+          ).length;
+          aValue = aRaceDays;
+          bValue = bRaceDays;
           break;
         default:
           return 0;
@@ -1750,7 +1868,7 @@ export default function RosterSection({
     });
 
     return filtered;
-  }, [riders, searchTerm, genderFilter, ageCategoryFilter, minAgeFilter, maxAgeFilter, rosterSortBy, rosterSortDirection]);
+  }, [riders, searchTerm, genderFilter, ageCategoryFilter, levelFilter, minAgeFilter, maxAgeFilter, rosterSortBy, rosterSortDirection]);
 
   // Calcul des jours de course par coureur
   const raceDaysByRider = useMemo(() => {
@@ -1853,6 +1971,21 @@ export default function RosterSection({
             <option value="Master">Master</option>
           </select>
           
+          {/* Filtre niveau de performance */}
+          <select
+            value={levelFilter}
+            onChange={(e) => setLevelFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">Tous les niveaux</option>
+            <option value="Pro">Pro</option>
+            <option value="Elite">Elite</option>
+            <option value="Open 1">Open 1</option>
+            <option value="Open 2">Open 2</option>
+            <option value="Open 3">Open 3</option>
+            <option value="Handisport">Handisport</option>
+          </select>
+          
           {/* Filtre âge */}
           <div className="flex space-x-2">
             <input
@@ -1872,6 +2005,7 @@ export default function RosterSection({
           </div>
         </div>
         
+        
       </div>
 
       {/* Liste des coureurs */}
@@ -1880,9 +2014,76 @@ export default function RosterSection({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coureur</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie / Niveau</th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Jours de course</th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleRiderSort('name')}
+                  title="Trier par nom de famille"
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Nom</span>
+                    {rosterSortBy === 'name' && (
+                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleRiderSort('firstName')}
+                  title="Trier par prénom"
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Prénom</span>
+                    {rosterSortBy === 'firstName' && (
+                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleRiderSort('age')}
+                  title="Trier par âge"
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Âge</span>
+                    {rosterSortBy === 'age' && (
+                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleRiderSort('levelCategory')}
+                  title="Trier par niveau de performance"
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Niveau</span>
+                    {rosterSortBy === 'levelCategory' && (
+                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleRiderSort('raceDays')}
+                  title="Trier par nombre de jours de course"
+                >
+                  <div className="flex items-center justify-center space-x-1">
+                    <span>Jours de course</span>
+                    {rosterSortBy === 'raceDays' && (
+                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -1896,23 +2097,30 @@ export default function RosterSection({
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         {rider.photoUrl ? (
-                          <img src={rider.photoUrl} alt={rider.firstName} className="w-10 h-10 rounded-full mr-4"/>
+                          <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/>
                         ) : (
-                          <UserCircleIcon className="w-10 h-10 text-gray-400 mr-4"/>
+                          <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>
                         )}
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{rider.firstName} {rider.lastName}</div>
-                          <div className="text-sm text-gray-500">{age !== null ? `${age} ans` : 'Âge inconnu'}</div>
+                          <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="space-y-1">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {category}
-                      </span>
-                        <div className="text-xs text-gray-500">{levelCategory}</div>
+                      <div className="text-sm font-medium text-gray-900">{rider.firstName}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {age !== null ? `${age} ans` : 'Âge inconnu'}
+                        {age !== null && (
+                          <span className="text-xs text-gray-500 ml-1">({category})</span>
+                        )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        {levelCategory}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center">
@@ -1998,6 +2206,733 @@ export default function RosterSection({
     return { eventSelections, courseBlocks };
   }, [raceEvents, riders, appState.staff]);
 
+  // Composant unifié pour la gestion des sélections et disponibilités
+  const UnifiedSelectionTab = ({ 
+    futureEvents, 
+    riders, 
+    riderEventSelections,
+    planningSearchTerm, 
+    setPlanningSearchTerm, 
+    planningGenderFilter, 
+    setPlanningGenderFilter,
+    planningStatusFilter,
+    setPlanningStatusFilter,
+    getRiderEventStatus,
+    addRiderToEvent,
+    removeRiderFromEvent,
+    syncSelectionsFromEvents,
+    syncSelectionsToEvents,
+    saveAllSelections,
+    onUpdateRiderPreference
+  }: {
+    futureEvents: RaceEvent[];
+    riders: Rider[];
+    riderEventSelections: RiderEventSelection[];
+    planningSearchTerm: string;
+    setPlanningSearchTerm: (term: string) => void;
+    planningGenderFilter: 'all' | 'male' | 'female';
+    setPlanningGenderFilter: (filter: 'all' | 'male' | 'female') => void;
+    planningStatusFilter: 'all' | 'selected' | 'unselected';
+    setPlanningStatusFilter: (filter: 'all' | 'selected' | 'unselected') => void;
+    getRiderEventStatus: (eventId: string, riderId: string) => RiderEventStatus | null;
+    addRiderToEvent: (eventId: string, riderId: string, status: RiderEventStatus) => void;
+    removeRiderFromEvent: (eventId: string, riderId: string) => void;
+    syncSelectionsFromEvents: () => void;
+    syncSelectionsToEvents: () => void;
+    saveAllSelections: () => void;
+    onUpdateRiderPreference?: (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => void;
+  }) => {
+    const [viewMode, setViewMode] = useState<'calendar' | 'table'>('table');
+    const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+    const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+    const [editingCell, setEditingCell] = useState<{riderId: string, eventId: string} | null>(null);
+    const [tempPreference, setTempPreference] = useState<RiderEventPreference | null>(null);
+    const [tempObjectives, setTempObjectives] = useState<string>('');
+    const [statusDropdown, setStatusDropdown] = useState<{riderId: string, eventId: string} | null>(null);
+    const [sortField, setSortField] = useState<'lastName' | 'firstName' | null>(null);
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+    // Filtrer et trier les athlètes selon les critères de recherche
+    const filteredAndSortedRiders = React.useMemo(() => {
+      let filtered = riders.filter(rider => {
+        const matchesSearch = !planningSearchTerm || 
+          rider.firstName.toLowerCase().includes(planningSearchTerm.toLowerCase()) ||
+          rider.lastName.toLowerCase().includes(planningSearchTerm.toLowerCase());
+        
+        const matchesGender = planningGenderFilter === 'all' || 
+          (planningGenderFilter === 'male' && rider.sex === Sex.MALE) ||
+          (planningGenderFilter === 'female' && rider.sex === Sex.FEMALE);
+        
+        // Filtre par statut de sélection
+        const riderEvents = futureEvents.filter(event => 
+          event.selectedRiderIds?.includes(rider.id)
+        );
+        const matchesStatus = planningStatusFilter === 'all' ||
+          (planningStatusFilter === 'selected' && riderEvents.length > 0) ||
+          (planningStatusFilter === 'unselected' && riderEvents.length === 0);
+        
+        return matchesSearch && matchesGender && matchesStatus;
+      });
+
+      // Appliquer le tri si un champ de tri est sélectionné
+      if (sortField) {
+        filtered.sort((a, b) => {
+          let aValue = '';
+          let bValue = '';
+          
+          if (sortField === 'lastName') {
+            aValue = (a.lastName || '').toLowerCase();
+            bValue = (b.lastName || '').toLowerCase();
+          } else if (sortField === 'firstName') {
+            aValue = (a.firstName || '').toLowerCase();
+            bValue = (b.firstName || '').toLowerCase();
+          }
+          
+          const comparison = aValue.localeCompare(bValue);
+          return sortDirection === 'asc' ? comparison : -comparison;
+        });
+      }
+
+      return filtered;
+    }, [riders, planningSearchTerm, planningGenderFilter, planningStatusFilter, futureEvents, sortField, sortDirection]);
+
+    // Obtenir les préférences d'un athlète pour un événement
+    const getRiderPreference = (eventId: string, riderId: string): RiderEventPreference | null => {
+      const selection = riderEventSelections.find(sel => 
+        sel.eventId === eventId && sel.riderId === riderId
+      );
+      return selection?.riderPreference || null;
+    };
+
+    // Obtenir les objectifs d'un athlète pour un événement
+    const getRiderObjectives = (eventId: string, riderId: string): string | null => {
+      const selection = riderEventSelections.find(sel => 
+        sel.eventId === eventId && sel.riderId === riderId
+      );
+      return selection?.riderObjectives || null;
+    };
+
+    // Obtenir la couleur selon la préférence
+    const getPreferenceColor = (preference: RiderEventPreference | null) => {
+      switch (preference) {
+        case RiderEventPreference.VEUT_PARTICIPER:
+          return 'bg-green-100 text-green-800 border-green-200';
+        case RiderEventPreference.OBJECTIFS_SPECIFIQUES:
+          return 'bg-blue-100 text-blue-800 border-blue-200';
+        case RiderEventPreference.ABSENT:
+          return 'bg-red-100 text-red-800 border-red-200';
+        case RiderEventPreference.NE_VEUT_PAS:
+          return 'bg-gray-100 text-gray-800 border-gray-200';
+        case RiderEventPreference.EN_ATTENTE:
+          return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        default:
+          return 'bg-gray-50 text-gray-500 border-gray-200';
+      }
+    };
+
+    // Obtenir l'icône selon la préférence
+    const getPreferenceIcon = (preference: RiderEventPreference | null) => {
+      switch (preference) {
+        case RiderEventPreference.VEUT_PARTICIPER:
+          return '✓';
+        case RiderEventPreference.OBJECTIFS_SPECIFIQUES:
+          return '🎯';
+        case RiderEventPreference.ABSENT:
+          return '❌';
+        case RiderEventPreference.NE_VEUT_PAS:
+          return '🚫';
+        case RiderEventPreference.EN_ATTENTE:
+          return '⏳';
+        default:
+          return '?';
+      }
+    };
+
+    // Gérer le clic sur une cellule pour l'édition
+    const handleCellClick = (riderId: string, eventId: string) => {
+      const preference = getRiderPreference(eventId, riderId);
+      const objectives = getRiderObjectives(eventId, riderId);
+      
+      setEditingCell({ riderId, eventId });
+      setTempPreference(preference);
+      setTempObjectives(objectives || '');
+    };
+
+    // Sauvegarder les modifications d'une cellule
+    const handleSaveCell = async () => {
+      if (!editingCell || !tempPreference) return;
+
+      if (onUpdateRiderPreference) {
+        await onUpdateRiderPreference(
+          editingCell.eventId, 
+          editingCell.riderId, 
+          tempPreference, 
+          tempObjectives || undefined
+        );
+      }
+
+      setEditingCell(null);
+      setTempPreference(null);
+      setTempObjectives('');
+    };
+
+    // Annuler l'édition d'une cellule
+    const handleCancelEdit = () => {
+      setEditingCell(null);
+      setTempPreference(null);
+      setTempObjectives('');
+    };
+
+    // Gérer l'ajout/suppression d'un athlète à un événement
+    const handleStatusChange = async (riderId: string, eventId: string, newStatus: RiderEventStatus) => {
+      const currentStatus = getRiderEventStatus(eventId, riderId);
+      
+      if (currentStatus) {
+        if (newStatus === RiderEventStatus.NON_RETENU) {
+          await removeRiderFromEvent(eventId, riderId);
+        } else {
+          await addRiderToEvent(eventId, riderId, newStatus);
+        }
+      } else {
+        await addRiderToEvent(eventId, riderId, newStatus);
+      }
+      
+      // Fermer le dropdown après sélection
+      setStatusDropdown(null);
+    };
+
+    // Gérer l'ouverture/fermeture du dropdown de statut
+    const handleStatusDropdownToggle = (riderId: string, eventId: string) => {
+      if (statusDropdown?.riderId === riderId && statusDropdown?.eventId === eventId) {
+        setStatusDropdown(null);
+      } else {
+        setStatusDropdown({ riderId, eventId });
+      }
+    };
+
+    // Fermer tous les dropdowns
+    const closeAllDropdowns = () => {
+      setStatusDropdown(null);
+      setEditingCell(null);
+    };
+
+    // Gérer le tri des colonnes
+    const handleSort = (field: 'lastName' | 'firstName') => {
+      if (sortField === field) {
+        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      } else {
+        setSortField(field);
+        setSortDirection('asc');
+      }
+    };
+
+    // Vue calendrier compacte
+    const renderCalendarView = () => {
+      const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const firstDayOfMonth = new Date(selectedYear, selectedMonth, 1).getDay();
+      const daysOfWeek = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+      
+      // Événements du mois sélectionné
+      const monthEvents = futureEvents.filter(event => {
+        const eventDate = new Date(event.date);
+        return eventDate.getMonth() === selectedMonth && eventDate.getFullYear() === selectedYear;
+      });
+
+      return (
+        <div className="space-y-6">
+          {/* Contrôles du calendrier */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => {
+                  if (selectedMonth === 0) {
+                    setSelectedMonth(11);
+                    setSelectedYear(selectedYear - 1);
+                  } else {
+                    setSelectedMonth(selectedMonth - 1);
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h3 className="text-xl font-semibold text-gray-800">
+                {new Date(selectedYear, selectedMonth).toLocaleDateString('fr-FR', { 
+                  month: 'long', 
+                  year: 'numeric' 
+                })}
+              </h3>
+              <button
+                onClick={() => {
+                  if (selectedMonth === 11) {
+                    setSelectedMonth(0);
+                    setSelectedYear(selectedYear + 1);
+                  } else {
+                    setSelectedMonth(selectedMonth + 1);
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'table' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Vue Tableau
+              </button>
+            </div>
+          </div>
+
+          {/* Grille du calendrier */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* En-têtes des jours */}
+            <div className="grid grid-cols-7 bg-pink-50">
+              {daysOfWeek.map(day => (
+                <div key={day} className="p-3 text-center text-sm font-semibold text-gray-700 border-r border-gray-200 last:border-r-0 bg-pink-100">
+                  {day}
+                </div>
+              ))}
+            </div>
+            
+            {/* Jours du mois */}
+            <div className="grid grid-cols-7">
+              {/* Jours vides du début du mois */}
+              {Array.from({ length: firstDayOfMonth }).map((_, index) => (
+                <div key={`empty-${index}`} className="h-24 border-r border-b border-gray-200 last:border-r-0 bg-gray-50"></div>
+              ))}
+              
+              {/* Jours du mois */}
+              {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
+                const dayNumber = dayIndex + 1;
+                const currentDate = new Date(selectedYear, selectedMonth, dayNumber);
+                const dayEvents = monthEvents.filter(event => 
+                  new Date(event.date).getDate() === dayNumber
+                );
+                const isToday = currentDate.toDateString() === new Date().toDateString();
+                
+                return (
+                  <div key={dayNumber} className={`h-24 border-r border-b border-gray-200 last:border-r-0 p-2 ${
+                    isToday ? 'bg-blue-50' : 'bg-white'
+                  }`}>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-sm font-medium ${isToday ? 'text-blue-700' : 'text-gray-700'}`}>
+                        {dayNumber}
+                      </span>
+                    </div>
+                    
+                    {/* Événements du jour */}
+                    <div className="space-y-1">
+                      {dayEvents.map(event => (
+                        <div key={event.id} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded truncate font-medium">
+                          {event.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Résumé des événements du mois */}
+          {monthEvents.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Événements du mois</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {monthEvents.map(event => (
+                  <div key={event.id} className="bg-white rounded-lg p-3 border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-medium text-sm text-gray-900">{event.name}</h5>
+                      <span className="text-xs text-gray-500">
+                        {new Date(event.date).toLocaleDateString('fr-FR')}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {event.selectedRiderIds?.length || 0} athlète(s) sélectionné(s)
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // Vue tableau unifiée interactive
+    const renderTableView = () => {
+      return (
+        <div className="space-y-6">
+          {/* Contrôles de la vue tableau */}
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold text-gray-800">Gestion des Sélections & Disponibilités</h3>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'calendar' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Vue Calendrier
+              </button>
+            </div>
+          </div>
+
+
+          {/* Tableau interactif */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+                    <th 
+                      className="px-4 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-blue-100 transition-colors group"
+                      onClick={() => handleSort('lastName')}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span>Nom</span>
+                        {sortField === 'lastName' && (
+                          <svg className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        )}
+                        {sortField !== 'lastName' && (
+                          <svg className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
+                        )}
+                      </div>
+                    </th>
+                    <th 
+                      className="px-4 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-blue-100 transition-colors group"
+                      onClick={() => handleSort('firstName')}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span>Prénom</span>
+                        {sortField === 'firstName' && (
+                          <svg className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        )}
+                        {sortField !== 'firstName' && (
+                          <svg className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
+                        )}
+                      </div>
+                    </th>
+                    {futureEvents.map(event => (
+                      <th key={event.id} className="px-4 py-4 text-center text-sm font-semibold text-gray-700 min-w-[160px]">
+                        <div className="space-y-1">
+                          <div className="text-xs text-gray-500 font-medium">
+                            {new Date(event.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                          </div>
+                          <div className="text-sm font-semibold text-gray-800 truncate">
+                            {event.name}
+                          </div>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAndSortedRiders.map((rider, index) => (
+                    <tr key={rider.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/80 transition-colors border-b border-gray-100`}>
+                      <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                        {rider.lastName}
+                      </td>
+                      <td className="px-4 py-4 text-sm font-medium text-gray-700">
+                        {rider.firstName}
+                      </td>
+                      {futureEvents.map(event => {
+                        const preference = getRiderPreference(event.id, rider.id);
+                        const status = getRiderEventStatus(event.id, rider.id);
+                        const isEditing = editingCell?.riderId === rider.id && editingCell?.eventId === event.id;
+                        
+                        return (
+                          <td key={event.id} className="px-4 py-4 text-center align-top">
+                            {isEditing ? (
+                              // Mode édition
+                              <div className="space-y-2">
+                                <select
+                                  value={tempPreference || ''}
+                                  onChange={(e) => setTempPreference(e.target.value as RiderEventPreference)}
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                >
+                                  <option value="">Sélectionner préférence</option>
+                                  <option value={RiderEventPreference.VEUT_PARTICIPER}>Veut participer</option>
+                                  <option value={RiderEventPreference.OBJECTIFS_SPECIFIQUES}>Objectifs spécifiques</option>
+                                  <option value={RiderEventPreference.ABSENT}>Absent</option>
+                                  <option value={RiderEventPreference.NE_VEUT_PAS}>Ne veut pas</option>
+                                  <option value={RiderEventPreference.EN_ATTENTE}>En attente</option>
+                                </select>
+                                <input
+                                  type="text"
+                                  value={tempObjectives}
+                                  onChange={(e) => setTempObjectives(e.target.value)}
+                                  placeholder="Objectifs..."
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                />
+                                <div className="flex space-x-1">
+                                  <button
+                                    onClick={handleSaveCell}
+                                    className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              // Mode affichage
+                              <div className="space-y-2">
+                                {/* Bouton de statut avec dropdown */}
+                                <div className="relative dropdown-container">
+                                  <button
+                                    onClick={() => handleStatusDropdownToggle(rider.id, event.id)}
+                                    className={`w-full px-3 py-2 text-xs rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md ${
+                                      status === RiderEventStatus.TITULAIRE 
+                                        ? 'bg-green-100 text-green-800 border border-green-200 hover:bg-green-200' 
+                                        : status === RiderEventStatus.REMPLACANT
+                                        ? 'bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-200'
+                                        : status === RiderEventStatus.PRE_SELECTION
+                                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-200 hover:bg-yellow-200'
+                                        : status === RiderEventStatus.INDISPONIBLE
+                                        ? 'bg-red-100 text-red-800 border border-red-200 hover:bg-red-200'
+                                        : status === RiderEventStatus.NON_RETENU
+                                        ? 'bg-gray-100 text-gray-800 border border-gray-200 hover:bg-gray-200'
+                                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span>
+                                        {status || 'Définir le statut'}
+                                      </span>
+                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                    </div>
+                                  </button>
+                                  
+                                  {/* Dropdown menu */}
+                                  {statusDropdown?.riderId === rider.id && statusDropdown?.eventId === event.id && (
+                                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl">
+                                      <div className="py-1">
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.TITULAIRE)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-green-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                          <span>Titulaire</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.REMPLACANT)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-blue-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                          <span>Remplaçant</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.PRE_SELECTION)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-yellow-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                                          <span>Pré-sélectionné</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.INDISPONIBLE)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-red-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                                          <span>Indisponible</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.NON_RETENU)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                                          <span>Non retenu</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.ABSENT)}
+                                          className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 flex items-center space-x-2 transition-colors"
+                                        >
+                                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                          <span>Absent</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Préférence cliquable */}
+                                {preference && (
+                                  <div 
+                                    onClick={() => handleCellClick(rider.id, event.id)}
+                                    className="cursor-pointer hover:scale-105 transition-transform duration-200"
+                                  >
+                                    <span className={`px-2 py-1 rounded-lg text-xs font-medium border shadow-sm hover:shadow-md ${getPreferenceColor(preference)}`}>
+                                      {getPreferenceIcon(preference)} {preference}
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                {/* Objectifs */}
+                                {getRiderObjectives(event.id, rider.id) && (
+                                  <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-200 truncate">
+                                    {getRiderObjectives(event.id, rider.id)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Légende */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Légende des statuts</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs mb-4">
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                <span>Titulaire</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                <span>Remplaçant</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
+                <span>Pré-sélectionné</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                <span>Indisponible</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-gray-500 rounded-full"></span>
+                <span>Non retenu</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 bg-gray-400 rounded-full"></span>
+                <span>Absent</span>
+              </div>
+            </div>
+            
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Légende des préférences</h4>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+              <div className="flex items-center space-x-2">
+                <span>✓</span>
+                <span>Veut participer</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span>🎯</span>
+                <span>Objectifs spécifiques</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span>❌</span>
+                <span>Absent</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span>🚫</span>
+                <span>Ne veut pas</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span>⏳</span>
+                <span>En attente</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Effet pour fermer les dropdowns quand on clique ailleurs
+    React.useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (!(event.target as Element).closest('.dropdown-container')) {
+          closeAllDropdowns();
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }, []);
+
+    return (
+      <div className="space-y-6">
+        {/* Barre de recherche et filtres */}
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={planningSearchTerm}
+                onChange={(e) => setPlanningSearchTerm(e.target.value)}
+                placeholder="Rechercher un athlète..."
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <select
+              value={planningGenderFilter}
+              onChange={(e) => setPlanningGenderFilter(e.target.value as 'all' | 'male' | 'female')}
+              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">Tous les athlètes</option>
+              <option value="male">Hommes</option>
+              <option value="female">Femmes</option>
+            </select>
+            
+            <button
+              onClick={() => {
+                setPlanningSearchTerm('');
+                setPlanningGenderFilter('all');
+              }}
+              className="px-4 py-3 text-gray-600 hover:text-gray-800 transition-colors border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Réinitialiser
+            </button>
+          </div>
+        </div>
+
+        {/* Contenu principal */}
+        {viewMode === 'calendar' ? renderCalendarView() : renderTableView()}
+      </div>
+    );
+  };
+
   // Rendu de l'onglet Planning de Saison - Version avec monitoring de groupe
   const renderSeasonPlanningTab = () => {
     console.log('🎯 Rendu du planning - Sélections actuelles:', appState.riderEventSelections?.length || 0);
@@ -2030,6 +2965,66 @@ export default function RosterSection({
       // Ne prendre que les événements de l'année sélectionnée ET de l'année courante
       return eventDate >= today && eventYear === selectedYear && eventYear === currentYear;
     });
+
+    // Fonction pour mettre à jour les préférences d'un athlète pour un événement
+    const onUpdateRiderPreference = async (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
+      console.log(`🔄 Mise à jour des préférences: ${riderId} pour ${eventId} - ${preference}`);
+      
+      try {
+        // Trouver la sélection existante ou en créer une nouvelle
+        let existingSelection = localRiderEventSelections.find(
+          sel => sel.eventId === eventId && sel.riderId === riderId
+        );
+
+        if (existingSelection) {
+          // Mettre à jour la sélection existante
+          const updatedSelection = {
+            ...existingSelection,
+            riderPreference: preference,
+            riderObjectives: objectives || existingSelection.riderObjectives
+          };
+
+          // Sauvegarder dans Firebase
+          if (appState.activeTeamId) {
+            await updateData(appState.activeTeamId, "riderEventSelections", updatedSelection);
+          }
+
+          // Mettre à jour l'état local
+          const updatedSelections = localRiderEventSelections.map(sel => 
+            sel.id === existingSelection!.id ? updatedSelection : sel
+          );
+          setLocalRiderEventSelections(updatedSelections);
+          setRiderEventSelections(updatedSelections);
+        } else {
+          // Créer une nouvelle sélection
+          const newSelection: RiderEventSelection = {
+            id: `${eventId}_${riderId}_${Date.now()}`,
+            eventId: eventId,
+            riderId: riderId,
+            status: RiderEventStatus.EN_ATTENTE,
+            riderPreference: preference,
+            riderObjectives: objectives,
+            notes: undefined
+          };
+
+          // Sauvegarder dans Firebase
+          if (appState.activeTeamId) {
+            const savedId = await saveData(appState.activeTeamId, "riderEventSelections", newSelection);
+            newSelection.id = savedId;
+          }
+
+          // Mettre à jour l'état local
+          const updatedSelections = [...localRiderEventSelections, newSelection];
+          setLocalRiderEventSelections(updatedSelections);
+          setRiderEventSelections(updatedSelections);
+        }
+
+        console.log('✅ Préférences mises à jour avec succès');
+      } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour des préférences:', error);
+        alert('Erreur lors de la sauvegarde des préférences. Veuillez réessayer.');
+      }
+    };
 
     // Fonction pour ajouter automatiquement un athlète à un événement avec un statut
     const addRiderToEvent = async (eventId: string, riderId: string, status: RiderEventStatus = RiderEventStatus.TITULAIRE) => {
@@ -2448,9 +3443,9 @@ export default function RosterSection({
                 </div>
               </button>
               <button
-                onClick={() => setActivePlanningTab('selections')}
+                onClick={() => setActivePlanningTab('unified')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activePlanningTab === 'selections'
+                  activePlanningTab === 'unified'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -2459,9 +3454,9 @@ export default function RosterSection({
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                   </svg>
-                  <span>Gestion des Sélections</span>
-            </div>
-            </button>
+                  <span>Gestion des Sélections & Disponibilités</span>
+                </div>
+              </button>
             </nav>
           </div>
 
@@ -2476,9 +3471,10 @@ export default function RosterSection({
                 getRiderEventStatus={getRiderEventStatus}
               />
             ) : (
-              <SelectionsTab 
+              <UnifiedSelectionTab 
                 futureEvents={futureEvents}
                 riders={riders}
+                riderEventSelections={localRiderEventSelections}
                 planningSearchTerm={planningSearchTerm}
                 setPlanningSearchTerm={setPlanningSearchTerm}
                 planningGenderFilter={planningGenderFilter}
@@ -2491,6 +3487,7 @@ export default function RosterSection({
                 syncSelectionsFromEvents={syncSelectionsFromEvents}
                 syncSelectionsToEvents={syncSelectionsToEvents}
                 saveAllSelections={saveAllSelections}
+                onUpdateRiderPreference={onUpdateRiderPreference}
               />
             )}
       </div>
@@ -3165,6 +4162,7 @@ export default function RosterSection({
             setIsEditModalOpen(false);
           }}
           onSaveRider={handleSaveRider}
+          onUpdateRiderPreference={handleUpdateRiderPreference}
           raceEvents={raceEvents}
           riderEventSelections={riderEventSelections}
           performanceEntries={[]}
@@ -3184,6 +4182,8 @@ export default function RosterSection({
             return (power / weight).toFixed(1);
           }}
           appState={appState}
+          currentUser={currentUser}
+          effectivePermissions={appState.effectivePermissions}
         />
       )}
 
@@ -3216,3 +4216,4 @@ export default function RosterSection({
     </SectionWrapper>
   );
 }
+

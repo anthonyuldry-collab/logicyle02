@@ -66,14 +66,23 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
             if (user.userRole !== UserRole.COUREUR) return false;
             if (currentTeamUserIds.has(user.id)) return false; // Exclude my own team members
 
+            // Vérifier la visibilité dans les données utilisateur ET coureur
             const isPubliclySearchable = user.isSearchable;
+            
+            // Vérifier aussi dans les données du coureur si disponible
+            const riderProfile = appState.riders.find(r => r.email === user.email);
+            const isRiderSearchable = riderProfile?.isSearchable;
+            
+            // Le profil est visible si l'utilisateur OU le coureur est marqué comme visible
+            const isVisible = isPubliclySearchable || isRiderSearchable;
+            
             const hasSharedData = appState.scoutingRequests.some(
                 req => req.athleteId === user.id && 
                        req.requesterTeamId === currentTeamId && 
                        req.status === ScoutingRequestStatus.ACCEPTED
             );
 
-            if (!isPubliclySearchable && !hasSharedData) return false;
+            if (!isVisible && !hasSharedData) return false;
 
             // Apply UI filters
             const age = getAge(user.signupInfo?.birthDate);
@@ -153,7 +162,13 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
                 ))}
             </div>
             {filteredTalents.length === 0 && (
-                 <p className="text-center text-slate-400 py-8">Aucun talent ne correspond à vos critères de recherche.</p>
+                <div className="text-center py-8">
+                    <p className="text-slate-400 mb-4">Aucun talent ne correspond à vos critères de recherche.</p>
+                    <div className="text-sm text-slate-500">
+                        <p>Debug: {appState.users?.filter(u => u.userRole === UserRole.COUREUR).length || 0} coureurs trouvés dans la base</p>
+                        <p>Debug: {appState.users?.filter(u => u.userRole === UserRole.COUREUR && u.isSearchable).length || 0} coureurs avec profil visible</p>
+                    </div>
+                </div>
             )}
         </div>
     );
