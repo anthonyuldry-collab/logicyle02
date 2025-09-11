@@ -54,8 +54,8 @@ const hasAccessToMissions = (user: User, staff: StaffMember[]): boolean => {
 const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
     [TeamRole.VIEWER]: {
         // Sections de base accessibles à tous
-        dashboard: ['view'],
         events: ['view'],
+        myDashboard: ['view'],
         
         // Note: Sections logistiques (véhicules, matériel, stocks) exclues des athlètes
         // Note: Section Scouting exclue des athlètes (TeamRole.VIEWER)
@@ -63,8 +63,8 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
     },
     [TeamRole.MEMBER]: {
         // Sections de base
-        dashboard: ['view'],
         events: ['view'],
+        myDashboard: ['view'],
         
         // Sections logistiques étendues
         roster: ['view'],
@@ -78,8 +78,8 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
     },
     [TeamRole.EDITOR]: {
         // Sections de base
-        dashboard: ['view'],
         events: ['view', 'edit'],
+        myDashboard: ['view'],
         
         // Sections logistiques complètes
         roster: ['view', 'edit'],
@@ -97,34 +97,49 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
 };
 
 // Helper function to remove undefined properties from an object recursively
+// Optimisé pour de meilleures performances
 const cleanDataForFirebase = (data: any): any => {
-    if (typeof data !== 'object' || data === null) {
+    // Retour rapide pour les types primitifs
+    if (data === null || typeof data !== 'object') {
         return data;
     }
 
-    // Firestore handles Date objects automatically, so we should not convert them to empty objects.
+    // Firestore handles Date objects automatically
     if (data instanceof Date) {
         return data;
     }
 
-    // Only recurse into plain arrays. For objects, we check if they are plain objects.
+    // Gestion optimisée des tableaux
     if (Array.isArray(data)) {
-        // Firestore doesn't allow `undefined` in arrays, so we filter them out.
-        return data.filter(item => item !== undefined).map(item => cleanDataForFirebase(item));
+        // Filtrage rapide des undefined et récursion seulement si nécessaire
+        const filtered = data.filter(item => item !== undefined);
+        if (filtered.length === data.length) {
+            // Aucun undefined trouvé, pas besoin de récursion
+            return data;
+        }
+        return filtered.map(item => cleanDataForFirebase(item));
     }
     
-    // This check for plain objects avoids recursing into class instances (like Firebase internals)
-    // which may contain circular references or methods not suitable for Firestore.
+    // Vérification rapide pour les objets simples
     if (data.constructor !== Object) {
         return data;
     }
 
+    // Optimisation : vérifier d'abord s'il y a des undefined
+    const keys = Object.keys(data);
+    const hasUndefined = keys.some(key => data[key] === undefined);
+    
+    if (!hasUndefined) {
+        // Aucun undefined, retourner l'objet tel quel
+        return data;
+    }
+
+    // Nettoyage seulement si nécessaire
     const cleaned: { [key: string]: any } = {};
-    for (const key of Object.keys(data)) {
+    for (const key of keys) {
         const value = data[key];
         if (value !== undefined) {
-            const cleanedValue = cleanDataForFirebase(value);
-            cleaned[key] = cleanedValue;
+            cleaned[key] = cleanDataForFirebase(value);
         }
     }
     return cleaned;
@@ -330,6 +345,7 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
     
     // Vérification supplémentaire : supprimer TOUJOURS les sections "Mon Espace" pour les non-coureurs
     if (user.userRole !== UserRole.COUREUR) {
+        console.log('👤 DEBUG - Utilisateur non-coureur, suppression des sections "Mon Espace"');
         // Supprimer explicitement toutes les sections "Mon Espace" pour les non-coureurs
         delete effectivePerms.career;
         delete effectivePerms.nutrition;
@@ -344,6 +360,7 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         delete effectivePerms.myResults;
         delete effectivePerms.bikeSetup;
         delete effectivePerms.myCareer;
+        console.log('🎯 DEBUG - myDashboard conservé pour non-coureur:', effectivePerms.myDashboard);
     }
     
     // Logique spéciale pour les coureurs (UserRole.COUREUR) - PRIORITAIRE sur les autres rôles
@@ -352,6 +369,10 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         
         // Réinitialiser les permissions pour les coureurs
         Object.keys(effectivePerms).forEach(key => delete effectivePerms[key as AppSection]);
+        
+        // Sections de base accessibles à tous
+        effectivePerms.events = ['view'];
+        effectivePerms.myDashboard = ['view'];
         
         // Coureurs ont accès exclusif aux sections "Mon Espace"
         effectivePerms.career = ['view', 'edit'];
@@ -371,6 +392,7 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         effectivePerms.myCareer = ['view', 'edit'];
         
         console.log('✅ DEBUG - Permissions "Mon Espace" ajoutées:', effectivePerms);
+        console.log('🎯 DEBUG - myDashboard permissions:', effectivePerms.myDashboard);
         
         // Coureurs n'ont PAS accès aux sections administratives et générales
         delete effectivePerms.financial;
@@ -423,6 +445,10 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
     if (!effectivePerms || Object.keys(effectivePerms).length === 0) {
         return DEFAULT_ROLE_PERMISSIONS[TeamRole.VIEWER] || {};
     }
+    
+    console.log('🎯 DEBUG - Permissions finales:', effectivePerms);
+    console.log('🎯 DEBUG - myDashboard dans permissions finales:', effectivePerms.myDashboard);
+    
     return effectivePerms;
 };
 
@@ -455,6 +481,13 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
             .map(d => ({ id: d.id, ...d.data() }));
     }
     
+    // S'assurer que toutes les collections sont des tableaux (même si vides)
+    for (const coll of TEAM_STATE_COLLECTIONS) {
+        if (!(teamState as any)[coll]) {
+            (teamState as any)[coll] = [];
+        }
+    }
+    
     return teamState;
 };
 
@@ -472,6 +505,42 @@ export const saveData = async <T extends { id?: string }>(teamId: string, collec
         const docRef = await addDoc(subCollectionRef, cleanedData);
         return docRef.id;
     }
+};
+
+/**
+ * Sauvegarde multiple éléments en une seule opération par lot (batch)
+ * Beaucoup plus rapide que plusieurs appels individuels
+ */
+export const saveDataBatch = async <T extends { id?: string }>(
+    teamId: string, 
+    collectionName: string, 
+    items: T[]
+): Promise<string[]> => {
+    if (items.length === 0) return [];
+    
+    const batch = writeBatch(db);
+    const subCollectionRef = collection(db, 'teams', teamId, collectionName);
+    const savedIds: string[] = [];
+    
+    for (const item of items) {
+        const { id, ...dataToSave } = item;
+        const cleanedData = cleanDataForFirebase(dataToSave);
+        
+        if (id) {
+            // Mise à jour d'un document existant
+            const docRef = doc(subCollectionRef, id);
+            batch.set(docRef, cleanedData, { merge: true });
+            savedIds.push(id);
+        } else {
+            // Création d'un nouveau document
+            const docRef = doc(subCollectionRef);
+            batch.set(docRef, cleanedData);
+            savedIds.push(docRef.id);
+        }
+    }
+    
+    await batch.commit();
+    return savedIds;
 };
 
 export const deleteData = async (teamId: string, collectionName: string, docId: string) => {

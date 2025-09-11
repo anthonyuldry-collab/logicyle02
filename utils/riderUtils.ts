@@ -1,5 +1,22 @@
 import { Rider } from '../types';
 
+/**
+ * Vérifie si riders est un tableau valide
+ */
+export const isValidRidersArray = (riders: any): riders is Rider[] => {
+    return Array.isArray(riders) && riders.length >= 0;
+};
+
+/**
+ * Trouve un coureur par email de manière sécurisée
+ */
+export const findRiderByEmail = (riders: any, email: string): Rider | undefined => {
+    if (!isValidRidersArray(riders)) {
+        return undefined;
+    }
+    return riders.find(r => r.email === email);
+};
+
 export const getRiderCharacteristic = (rider: Rider, key: string): number => {
     if (!rider || !key) return 0;
     

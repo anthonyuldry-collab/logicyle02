@@ -343,12 +343,12 @@ export enum LanguageProficiency {
 
 // --- Type Aliases ---
 export type AppSection = 
-  | 'dashboard' | 'events' | 'roster' | 'staff' | 'vehicles' | 'equipment'
+  | 'events' | 'roster' | 'staff' | 'vehicles' | 'equipment'
   | 'stocks'
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
-  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability';
+  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability' | 'myDashboard' | 'myProfile' | 'adminDashboard';
 
 export type PermissionLevel = 'view' | 'edit';
 export type StaffRoleKey =
@@ -785,6 +785,84 @@ export interface PerformanceEntry {
   staffRatings?: StaffRating[];
 }
 
+export interface PerformanceArchive {
+  id: string;
+  season: number;
+  archiveDate: string;
+  groupAverages: GroupAverageArchive;
+  riderQualityNotes: RiderQualityArchive[];
+  staffQualityNotes: StaffQualityArchive[];
+  teamMetrics: TeamMetricsArchive;
+}
+
+export interface GroupAverageArchive {
+  season: number;
+  totalRiders: number;
+  averageAge: number;
+  ageDistribution: {
+    category: string;
+    count: number;
+    averageAge: number;
+    powerAverages: {
+      cp: number;
+      power20min: number;
+      power12min: number;
+      power5min: number;
+      power1min: number;
+      power30s: number;
+    };
+  }[];
+  overallPowerAverages: {
+    cp: number;
+    power20min: number;
+    power12min: number;
+    power5min: number;
+    power1min: number;
+    power30s: number;
+  };
+  powerCoverage: number; // Pourcentage de coureurs avec profil de puissance
+}
+
+export interface RiderQualityArchive {
+  riderId: string;
+  season: number;
+  averageCollectiveScore: number;
+  averageTechnicalScore: number;
+  averagePhysicalScore: number;
+  // Caractéristiques détaillées
+  charSprint: number;
+  charAnaerobic: number;
+  charPuncher: number;
+  charClimbing: number;
+  charRouleur: number;
+  generalPerformanceScore: number;
+  fatigueResistanceScore: number;
+  totalEvents: number;
+  eventsWithRatings: number;
+  qualityTrend: 'improving' | 'stable' | 'declining';
+  lastRatingDate: string;
+}
+
+export interface StaffQualityArchive {
+  staffId: string;
+  season: number;
+  averageRating: number;
+  totalEvents: number;
+  eventsWithRatings: number;
+  qualityTrend: 'improving' | 'stable' | 'declining';
+  lastRatingDate: string;
+}
+
+export interface TeamMetricsArchive {
+  season: number;
+  totalEvents: number;
+  averageRanking: number;
+  bestRanking: number;
+  worstRanking: number;
+  eventsWithDebriefings: number;
+  completionRate: number; // Pourcentage de débriefings complétés
+}
+
 export interface IncomeItem {
     id: string;
     description: string;
@@ -1207,6 +1285,7 @@ export interface TeamState {
     debriefings: any[];
     dietaryPlans: any[];
     missions: Mission[];
+    performanceArchives: PerformanceArchive[];
 }
 
 export interface AppState extends GlobalState, TeamState {

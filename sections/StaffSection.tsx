@@ -18,6 +18,8 @@ import Modal from '../components/Modal';
 import XCircleIcon from '../components/icons/XCircleIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
 import StaffSearchTab from '../components/StaffSearchTab';
+import { LoadingOverlay } from '../components/LoadingIndicator';
+import { useLoadingState } from '../hooks/useLoadingState';
 import MissionSearchSection from './MissionSearchSection';
 import StarIcon from '../components/icons/StarIcon';
 import CalendarDaysIcon from '../components/icons/CalendarDaysIcon';
@@ -176,6 +178,9 @@ export const StaffSection: React.FC<StaffSectionProps> = ({
   eventTransportLegs,
   onSaveRaceEvent,
 }: StaffSectionProps) => {
+  // Hook pour gérer les états de chargement
+  const { isLoading, loadingMessage, executeWithLoading } = useLoadingState();
+  
   // Debug: Log des props reçues
   console.log('🔍 DEBUG StaffSection - Props reçues:', {
     staff: staff,
@@ -434,7 +439,7 @@ export const StaffSection: React.FC<StaffSectionProps> = ({
   const handleSaveAssignments = async (eventId: string, assignments: Partial<Record<StaffRoleKey, string[]>>) => {
     console.log('Sauvegarde des assignations pour l\'événement:', eventId, assignments);
     
-    try {
+    await executeWithLoading(async () => {
       // 1. Mettre à jour l'événement localement avec TOUTES les assignations
       let updatedEvent: RaceEvent | null = null;
       
@@ -530,17 +535,20 @@ export const StaffSection: React.FC<StaffSectionProps> = ({
       if (vacataireBudgetItems.length > 0) {
         console.log(`💰 ${vacataireBudgetItems.length} éléments de budget vacataire calculés:`, vacataireBudgetItems);
         
-        // Sauvegarder les éléments de budget dans Firebase
+        // Sauvegarder les éléments de budget dans Firebase en une seule opération par lot
         if (team?.id) {
           try {
-            for (const budgetItem of vacataireBudgetItems) {
-              await firebaseService.saveData(
-                team.id,
-                "eventBudgetItems",
-                budgetItem
-              );
-            }
-            console.log('✅ Budget des vacataires sauvegardé dans Firebase');
+            console.log('🚀 Sauvegarde par lot en cours...');
+            const startTime = performance.now();
+            
+            await firebaseService.saveDataBatch(
+              team.id,
+              "eventBudgetItems",
+              vacataireBudgetItems
+            );
+            
+            const endTime = performance.now();
+            console.log(`✅ Budget des vacataires sauvegardé dans Firebase (${(endTime - startTime).toFixed(2)}ms)`);
           } catch (error) {
             console.error('❌ Erreur lors de la sauvegarde du budget des vacataires:', error);
           }
@@ -661,10 +669,7 @@ export const StaffSection: React.FC<StaffSectionProps> = ({
       setAssignmentModalEvent(null);
       setModalAssignments({});
       
-    } catch (error) {
-      console.error('Erreur lors de la sauvegarde des assignations:', error);
-      alert('Erreur lors de la sauvegarde des assignations. Veuillez réessayer.');
-    }
+    }, 'Sauvegarde des assignations en cours...');
   };
 
   const openEditModal = (member: StaffMember) => {
@@ -1142,8 +1147,9 @@ export const StaffSection: React.FC<StaffSectionProps> = ({
   };
 
   return (
-    <SectionWrapper title="Gestion du Staff">
-      <div className="space-y-6">
+    <LoadingOverlay isLoading={isLoading} message={loadingMessage}>
+      <SectionWrapper title="Gestion du Staff">
+        <div className="space-y-6">
         {/* Tabs Navigation */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
@@ -1598,7 +1604,8 @@ Expérience appréciée" value={Array.isArray(newMissionData.requirements) ? new
           message={confirmAction.message}
         />
       )}
-    </SectionWrapper>
+      </SectionWrapper>
+    </LoadingOverlay>
   );
 };
 

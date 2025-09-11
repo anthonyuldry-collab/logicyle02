@@ -3,6 +3,8 @@ import { Rider, User, PerformanceFactorDetail } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import LungsIcon from '../components/icons/LungsIcon';
 import { PencilIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
+import { LoadingOverlay } from '../components/LoadingIndicator';
+import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
 
 interface MyPerformanceProjectSectionProps {
   riders: Rider[];
@@ -17,9 +19,20 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Rider>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Vérification de sécurité pour riders
+  if (!isValidRidersArray(riders)) {
+    return (
+      <div className="text-center p-8 bg-gray-50 rounded-lg border">
+        <p className="mt-4 text-lg font-medium text-gray-700">Chargement des données...</p>
+        <p className="mt-2 text-gray-500">Veuillez patienter pendant le chargement de vos informations.</p>
+      </div>
+    );
+  }
 
   // Trouver le profil du coureur
-  const riderProfile = riders.find(r => r.email === currentUser.email);
+  const riderProfile = findRiderByEmail(riders, currentUser.email);
 
   if (!riderProfile) {
     return (
@@ -38,12 +51,15 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
 
   const handleSave = async () => {
     try {
+      setIsSaving(true);
       const updatedRider = { ...riderProfile, ...editedData } as Rider;
       await onSaveRider(updatedRider);
       setIsEditing(false);
       setEditedData({});
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -147,7 +163,8 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
   );
 
   return (
-    <div className="space-y-6">
+    <LoadingOverlay isLoading={isSaving} message="Sauvegarde en cours...">
+      <div className="space-y-6">
       {/* En-tête avec boutons d'édition */}
       <div className="flex justify-between items-center">
         <div>
@@ -286,7 +303,8 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
           </svg>
         )}
       </div>
-    </div>
+      </div>
+    </LoadingOverlay>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AppSection, User, Team, PermissionLevel, StaffMember, PermissionRole, UserRole } from '../types';
+import { AppSection, User, Team, PermissionLevel, StaffMember, PermissionRole, UserRole, TeamRole } from '../types';
 import { SECTIONS } from '../constants';
 import HomeIcon from './icons/HomeIcon';
 import UsersIcon from './icons/UsersIcon';
@@ -107,7 +107,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     }, {} as Record<string, typeof SECTIONS>);
   }, [language]);
 
-  const groupOrder = [t('sidebarGroupPilotage'), t('sidebarGroupMySpace'), t('sidebarGroupGeneralData'), t('sidebarGroupAnalysis'), t('sidebarGroupLogistics'), t('sidebarGroupApplication')];
+  const groupOrder = [
+    'Tableau de Bord',
+    'Navigation Principale',
+    'Performance & Santé', 
+    'Logistique & Équipement',
+    'Administration'
+  ];
   
   const displayRole = useMemo(() => {
     if (isIndependent) {
@@ -123,25 +129,30 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div 
-        className="w-64 h-screen p-4 flex flex-col fixed top-0 left-0 overflow-y-auto"
-        style={{ backgroundColor: 'var(--theme-primary-bg)' }}
+        className="w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto"
+        style={{ 
+          backgroundColor: 'var(--theme-primary-bg)',
+          borderRight: '1px solid rgba(255, 255, 255, 0.1)'
+        }}
     >
-      <nav className="flex-grow">
+      {/* Header avec logo et sélecteur d'équipe */}
+      <div className="p-6 border-b border-white/10">
+        {teamLogoUrl && (
+            <div className="flex justify-center mb-4">
+                <img src={teamLogoUrl} alt="Team Logo" className="h-12 w-auto" />
+            </div>
+        )}
+        
         {!isIndependent && userTeams.length > 1 && (
-            <div className="mb-4">
-                <label htmlFor="team-switcher" className="px-3 text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--theme-primary-text)', opacity: 0.75 }}>
+            <div>
+                <label htmlFor="team-switcher" className="block text-xs font-medium mb-2" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
                     {t('sidebarContext')}
                 </label>
                 <select
                     id="team-switcher"
                     value={currentTeamId || ''}
                     onChange={(e) => onTeamSwitch(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 text-sm rounded-md border"
-                    style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                      color: 'var(--theme-primary-text)',
-                      borderColor: 'rgba(255, 255, 255, 0.3)',
-                    }}
+                    className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white placeholder-white/70 focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
                 >
                     {userTeams.map(team => (
                         <option key={team.id} value={team.id} style={{backgroundColor: 'var(--theme-primary-bg)'}}>
@@ -151,25 +162,40 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </select>
             </div>
         )}
+      </div>
 
-        {teamLogoUrl && (
-            <div className="flex justify-center my-4">
-                <img src={teamLogoUrl} alt="Team Logo" className="max-h-20" />
-            </div>
-        )}
-
+      {/* Navigation principale */}
+      <nav className="flex-grow p-4 space-y-6">
         {groupOrder.map(group => {
             const sectionsInGroup = groupedSections[group];
             if (!sectionsInGroup) return null;
+
+            // Debug pour le tableau de bord
+            if (group === 'Tableau de Bord') {
+                console.log('🔍 DEBUG Sidebar - Groupe Tableau de Bord:', {
+                    group,
+                    sectionsInGroup: sectionsInGroup.map(s => ({ id: s.id, labels: s.labels })),
+                    currentUser: currentUser ? { userRole: currentUser.userRole, permissionRole: currentUser.permissionRole } : null
+                });
+            }
 
             // Filtrer les sections selon le rôle de l'utilisateur
             let visibleSections = sectionsInGroup;
             
             // Si l'utilisateur est Manager/Admin, exclure les sections "Mon Espace"
-            if (currentUser && (currentUser.userRole === 'Manager' || currentUser.permissionRole === 'Administrateur')) {
+            if (currentUser && (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN)) {
                 visibleSections = sectionsInGroup.filter(section => {
                     // Exclure toutes les sections "Mon Espace" pour les administrateurs
                     if (section.group[language] === t('sidebarGroupMySpace')) return false;
+                    
+                    // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
+                    if (section.group[language] === 'Tableau de Bord') {
+                        console.log('🔍 DEBUG Sidebar - Admin: Affichage tableau de bord:', section.id);
+                        return true;
+                    }
+                    
+                    // Pour les administrateurs, masquer adminDashboard car myDashboard affiche déjà l'admin
+                    if (section.id === 'adminDashboard') return false;
                     
                     // Vérifier les permissions pour les autres sections
                     return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
@@ -180,10 +206,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                     // Toujours afficher les paramètres utilisateur
                     if (section.id === 'userSettings') return true;
                     
+                    // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
+                    if (section.group[language] === 'Tableau de Bord') {
+                        console.log('🔍 DEBUG Sidebar - Autre: Affichage tableau de bord:', section.id);
+                        return true;
+                    }
+                    
                     // Toujours afficher les sections "Mon Espace" pour les coureurs
                     if (section.group[language] === t('sidebarGroupMySpace')) {
                         // Vérifier si c'est un coureur ou si les permissions existent
-                        if (currentUser?.userRole === 'COUREUR') return true;
+                        if (currentUser?.userRole === UserRole.COUREUR) return true;
                         return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
                     }
                     
@@ -195,20 +227,29 @@ const Sidebar: React.FC<SidebarProps> = ({
             if (visibleSections.length === 0) return null;
             
             return (
-                <div key={group} className="mt-4">
+                <div key={group} className="space-y-2">
                     <h3 
-                        className="px-3 text-xs font-semibold uppercase tracking-wider mb-1" 
-                        style={{ color: 'var(--theme-primary-text)', opacity: 0.75 }}
+                        className="px-3 text-xs font-semibold uppercase tracking-wider mb-3" 
+                        style={{ color: 'var(--theme-primary-text)', opacity: 0.6 }}
                     >
                         {group}
                     </h3>
                     <div className="space-y-1">
                         {visibleSections.map(section => {
-                            const Icon = iconMap[section.icon];
+                            let Icon = iconMap[section.icon];
+                            let displayLabel = section.labels[language] || section.labels['en'];
+                            
+                            // Afficher le bon libellé et icône pour le tableau de bord selon le rôle
+                            if (section.id === 'myDashboard' && currentUser && 
+                                (currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER)) {
+                                displayLabel = 'Tableau de Bord';
+                                Icon = ChartBarIcon; // Icône différente pour l'admin
+                            }
+                            
                             return (
                                 <SidebarButton
                                     key={section.id}
-                                    label={section.labels[language] || section.labels['en']}
+                                    label={displayLabel}
                                     icon={Icon}
                                     isActive={currentSection === section.id}
                                     onClick={() => onSelectSection(section.id as AppSection)}
@@ -221,11 +262,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      <div className="flex-shrink-0 mt-6">
-        <div className="p-3 bg-slate-900/40 rounded-lg">
-            <div className="flex items-center">
-                <div>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--theme-primary-text)' }}>
+      {/* Footer avec informations utilisateur */}
+      <div className="p-4 border-t border-white/10">
+        <div className="p-4 bg-white/5 rounded-xl">
+            <div className="flex items-center space-x-3 mb-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                    <span className="text-sm font-semibold" style={{ color: 'var(--theme-primary-text)' }}>
+                        {currentUser.firstName?.charAt(0) || currentUser.email?.charAt(0) || 'U'}
+                    </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--theme-primary-text)' }}>
                         {currentUser.firstName && currentUser.lastName 
                             ? `${currentUser.firstName} ${currentUser.lastName}`
                             : currentUser.firstName 
@@ -233,20 +280,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                             : currentUser.email || 'Utilisateur'
                         }
                     </p>
-                    <p className="text-xs" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
-                        {t('sidebarRole')}: {displayRole}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
-                        Équipe: {currentTeamId ? userTeams.find(team => team.id === currentTeamId)?.name || 'NA' : 'NA'}
+                    <p className="text-xs truncate" style={{ color: 'var(--theme-primary-text)', opacity: 0.7 }}>
+                        {displayRole}
                     </p>
                 </div>
             </div>
+            
             {isIndependent && (
-                <ActionButton onClick={onGoToLobby} className="w-full mt-3">
+                <ActionButton onClick={onGoToLobby} className="w-full mb-2 text-xs py-2">
                     {t('sidebarJoinCreateTeam')}
                 </ActionButton>
             )}
-            <ActionButton onClick={onLogout} variant="secondary" className="w-full mt-3">
+            <ActionButton onClick={onLogout} variant="secondary" className="w-full text-xs py-2">
                 {t('sidebarLogout')}
             </ActionButton>
         </div>

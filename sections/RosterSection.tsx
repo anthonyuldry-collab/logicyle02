@@ -6,7 +6,9 @@ import {
   EyeIcon,
   PlusCircleIcon,
   MagnifyingGlassIcon,
-  UserGroupIcon
+  UserGroupIcon,
+  CalendarDaysIcon,
+  TrophyIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -92,11 +94,16 @@ export default function RosterSection({
   const [planningSearchTerm, setPlanningSearchTerm] = useState('');
   const [planningGenderFilter, setPlanningGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [planningStatusFilter, setPlanningStatusFilter] = useState<'all' | 'selected' | 'unselected'>('all');
-  const [activePlanningTab, setActivePlanningTab] = useState<'statistics' | 'unified'>('statistics');
+  const [activePlanningTab, setActivePlanningTab] = useState<'unified' | 'monitoring'>('monitoring');
   const [riderSortField, setRiderSortField] = useState<'alphabetical' | 'raceDays' | 'potential'>('alphabetical');
   const [riderSortDirection, setRiderSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedYear, setSelectedYear] = useState<number>(2025);
   const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [activeMonitoringTab, setActiveMonitoringTab] = useState<'monitoring' | 'selections'>('monitoring');
+  
+  // États pour le tri des jours de course
+  const [workloadSortBy, setWorkloadSortBy] = useState<'alphabetical' | 'days'>('days');
+  const [workloadSortDirection, setWorkloadSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Fonctions de tri pour la qualité
   const handleQualitySort = (field: 'name' | 'age' | 'general' | 'sprint' | 'climbing' | 'puncher' | 'rouleur' | 'fatigue') => {
@@ -242,6 +249,16 @@ export default function RosterSection({
     });
   };
   
+  // Fonction de tri pour la charge de travail des athlètes
+  const handleWorkloadSort = (field: 'alphabetical' | 'days') => {
+    if (workloadSortBy === field) {
+      setWorkloadSortDirection(workloadSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setWorkloadSortBy(field);
+      setWorkloadSortDirection(field === 'days' ? 'desc' : 'asc');
+    }
+  };
+
   // Fonctions pour les modales
   const openViewModal = (rider: Rider) => {
     setSelectedRider(rider);
@@ -252,740 +269,6 @@ export default function RosterSection({
     setSelectedRider(rider);
     setIsEditModalOpen(true);
   };
-
-  // Composant pour l'onglet Statistiques
-  const StatisticsTab = ({ futureEvents, pastEvents, riders, localRaceEvents, getRiderEventStatus }: {
-    futureEvents: RaceEvent[];
-    pastEvents: RaceEvent[];
-    riders: Rider[];
-    localRaceEvents: RaceEvent[];
-    getRiderEventStatus: (eventId: string, riderId: string) => RiderEventStatus | null;
-  }) => {
-    const sortedRiders = getSortedRiders(riders, localRaceEvents, futureEvents, pastEvents, getRiderEventStatus);
-    
-    return (
-    <div className="space-y-8">
-      {/* Tableau de bord principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Statistiques globales */}
-        <div className="lg:col-span-1 space-y-4">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="text-center">
-              <div className="text-3xl font-light text-blue-600 mb-1">{futureEvents.length}</div>
-              <div className="text-sm text-gray-600">Événements planifiés</div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="text-center">
-              <div className="text-3xl font-light text-green-600 mb-1">{riders.length}</div>
-              <div className="text-sm text-gray-600">Athlètes disponibles</div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="text-center">
-              <div className="text-3xl font-light text-purple-600 mb-1">
-                {localRaceEvents.filter(event => event.selectedRiderIds && event.selectedRiderIds.length > 0).length}
-              </div>
-              <div className="text-sm text-gray-600">Sélections actives</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Vue calendrier saison cycliste */}
-        <div className="lg:col-span-3">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center space-x-4">
-                <h4 className="text-lg font-medium text-gray-900">Calendrier Saison {selectedYear}</h4>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                >
-                  <option value={2025}>2025</option>
-                  <option value={2026}>2026</option>
-                  <option value={2027}>2027</option>
-                  <option value={2028}>2028</option>
-                  <option value={2029}>2029</option>
-                  <option value={2030}>2030</option>
-                </select>
-              </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span>Courses confirmées</span>
-                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                <span>Pré-sélections</span>
-                <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
-                <span>Période de repos</span>
-              </div>
-            </div>
-            
-            {/* Vue mensuelle de la saison */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {(() => {
-                const currentYear = new Date().getFullYear();
-                const months = [
-                  { name: 'Janvier', events: futureEvents.filter(e => new Date(e.date).getMonth() === 0) },
-                  { name: 'Février', events: futureEvents.filter(e => new Date(e.date).getMonth() === 1) },
-                  { name: 'Mars', events: futureEvents.filter(e => new Date(e.date).getMonth() === 2) },
-                  { name: 'Avril', events: futureEvents.filter(e => new Date(e.date).getMonth() === 3) },
-                  { name: 'Mai', events: futureEvents.filter(e => new Date(e.date).getMonth() === 4) },
-                  { name: 'Juin', events: futureEvents.filter(e => new Date(e.date).getMonth() === 5) },
-                  { name: 'Juillet', events: futureEvents.filter(e => new Date(e.date).getMonth() === 6) },
-                  { name: 'Août', events: futureEvents.filter(e => new Date(e.date).getMonth() === 7) },
-                  { name: 'Septembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 8) },
-                  { name: 'Octobre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 9) },
-                  { name: 'Novembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 10) },
-                  { name: 'Décembre', events: futureEvents.filter(e => new Date(e.date).getMonth() === 11) }
-                ];
-                
-                return months.map((month, index) => {
-                  const isCurrentMonth = new Date().getMonth() === index;
-                  const isOffSeason = index === 0 || index === 11; // Janvier et Décembre
-                  
-                  return (
-                    <div key={month.name} className={`p-4 rounded-lg border-2 transition-all ${
-                      isCurrentMonth 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : isOffSeason 
-                          ? 'border-gray-200 bg-gray-50' 
-                          : 'border-gray-200 bg-white hover:border-gray-300'
-                    }`}>
-                      <div className="flex justify-between items-center mb-2">
-                        <h5 className={`font-medium text-sm ${
-                          isCurrentMonth ? 'text-blue-900' : 'text-gray-900'
-                        }`}>
-                          {month.name}
-                        </h5>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          isOffSeason 
-                            ? 'bg-gray-200 text-gray-600' 
-                            : month.events.length > 0 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {month.events.length}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {month.events.slice(0, 2).map(event => {
-                          const titulaires = riders.filter(rider => 
-                            event.selectedRiderIds?.includes(rider.id)
-                          );
-                          return (
-                            <div key={event.id} className="text-xs text-gray-600 truncate">
-                              {event.name} ({titulaires.length})
-                            </div>
-                          );
-                        })}
-                        {month.events.length > 2 && (
-                          <div className="text-xs text-gray-400">
-                            +{month.events.length - 2} autres
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-            
-            {/* Charge de travail par athlète */}
-            <div className="border-t border-gray-200 pt-4">
-              <h5 className="text-sm font-medium text-gray-900 mb-3">Charge de Travail par Athlète</h5>
-              <div className="space-y-2">
-                {(() => {
-                  const riderWorkload = riders.map(rider => {
-                    const riderPastEvents = pastEvents.filter(event => 
-                      event.selectedRiderIds?.includes(rider.id)
-                    );
-                    const upcomingEvents = futureEvents.filter(event => {
-                      const eventYear = new Date(event.date).getFullYear();
-                      return eventYear === selectedYear && (
-                        event.selectedRiderIds?.includes(rider.id) || 
-                        getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
-                      );
-                    });
-                    return {
-                      rider,
-                      pastEvents: riderPastEvents.length,
-                      upcomingEvents: upcomingEvents.length,
-                      totalEvents: riderPastEvents.length + upcomingEvents.length
-                    };
-                  }).sort((a, b) => b.totalEvents - a.totalEvents).slice(0, 6);
-                  
-                  const maxEvents = Math.max(...riderWorkload.map(r => r.totalEvents), 1);
-                  
-                  return riderWorkload.map((riderStat, index) => (
-                    <div key={riderStat.rider.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium text-gray-600">
-                            {riderStat.rider.firstName[0]}{riderStat.rider.lastName[0]}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {riderStat.rider.firstName} {riderStat.rider.lastName}
-                          </div>
-                          <div className="flex items-center space-x-2 text-xs text-gray-500">
-                            <span className="bg-green-100 text-green-700 px-1 rounded">
-                              {riderStat.pastEvents} passées
-                            </span>
-                            <span className="bg-blue-100 text-blue-700 px-1 rounded">
-                              {riderStat.upcomingEvents} à venir
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-20 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${Math.min(100, (riderStat.totalEvents / maxEvents) * 100)}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-sm font-medium text-gray-900 w-6 text-right">
-                          {riderStat.totalEvents}
-                        </span>
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Statistiques des athlètes et équilibrage des calendriers */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <h4 className="text-lg font-medium text-gray-900">Statistiques des Athlètes - Équilibrage des Calendriers</h4>
-            
-            {/* Bouton de filtres */}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                showFilters
-                  ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-              title="Afficher/masquer les filtres"
-            >
-              <div className="flex items-center space-x-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
-                </svg>
-                <span>Filtres</span>
-              </div>
-            </button>
-            
-            {/* Boutons de tri discrets */}
-            <div className="flex items-center space-x-1 flex-wrap">
-              <button
-                onClick={() => handleRiderSort('name')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'name'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par nom complet"
-              >
-            <div className="flex items-center space-x-1">
-                  <span>Nom</span>
-                  {rosterSortBy === 'name' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('firstName')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'firstName'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par prénom"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Prénom</span>
-                  {rosterSortBy === 'firstName' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('age')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'age'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par âge"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Âge</span>
-                  {rosterSortBy === 'age' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('ageCategory')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'ageCategory'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par catégorie d'âge"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Cat. Âge</span>
-                  {rosterSortBy === 'ageCategory' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('levelCategory')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'levelCategory'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par niveau de performance"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Niveau</span>
-                  {rosterSortBy === 'levelCategory' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-            </div>
-              </button>
-              
-              <button
-                onClick={() => handleRiderSort('raceDays')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  rosterSortBy === 'raceDays'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                title="Trier par nombre de jours de course"
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Jours</span>
-                  {rosterSortBy === 'raceDays' && (
-                    <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        
-        {/* Tableau des statistiques */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-700">Athlète</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Jours de course</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Charge actuelle</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Prochaines courses</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRiders
-                .filter(rider => {
-                  // Filtre par recherche
-                  const searchMatch = !planningSearchTerm || 
-                    `${rider.firstName} ${rider.lastName}`.toLowerCase().includes(planningSearchTerm.toLowerCase());
-                  
-                  // Filtre par genre
-                  const genderMatch = planningGenderFilter === 'all' || 
-                    (planningGenderFilter === 'male' && rider.sex === Sex.MALE) ||
-                    (planningGenderFilter === 'female' && rider.sex === Sex.FEMALE);
-                  
-                  // Filtre par statut
-                  const riderEvents = localRaceEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const statusMatch = planningStatusFilter === 'all' ||
-                    (planningStatusFilter === 'selected' && riderEvents.length > 0) ||
-                    (planningStatusFilter === 'unselected' && riderEvents.length === 0);
-                  
-                  return searchMatch && genderMatch && statusMatch;
-                })
-                .map(rider => {
-                const riderEvents = localRaceEvents.filter(event => 
-                  event.selectedRiderIds?.includes(rider.id)
-                );
-                const riderPreselections = localRaceEvents.filter(event => 
-                  getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
-                );
-                // Compter les jours uniques de course
-                const totalDays = new Set(riderEvents.map(event => event.date)).size;
-                const upcomingEvents = futureEvents.filter(event => 
-                  event.selectedRiderIds?.includes(rider.id) || 
-                  getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
-                );
-                
-                // Calculer la charge (nombre de jours de course)
-                const chargeLevel = totalDays < 5 ? 'Faible' : totalDays < 10 ? 'Modérée' : 'Élevée';
-                const chargeColor = totalDays < 5 ? 'text-green-600' : totalDays < 10 ? 'text-yellow-600' : 'text-red-600';
-                
-                return (
-                  <tr key={rider.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-600">
-                            {rider.firstName[0]}{rider.lastName[0]}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium text-gray-900">
-                            {rider.firstName} {rider.lastName}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {rider.sex === Sex.MALE ? 'Homme' : 'Femme'}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="text-lg font-semibold text-gray-900">{totalDays}</div>
-                      <div className="text-xs text-gray-500">jours</div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className={`font-medium ${chargeColor}`}>{chargeLevel}</div>
-                      <div className="w-16 bg-gray-200 rounded-full h-1.5 mx-auto mt-1">
-                        <div 
-                          className={`h-1.5 rounded-full ${
-                            totalDays < 5 ? 'bg-green-500' : 
-                            totalDays < 10 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`}
-                          style={{ width: `${Math.min(100, (totalDays / 15) * 100)}%` }}
-                        ></div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="text-sm text-gray-900">{upcomingEvents.length}</div>
-                      <div className="text-xs text-gray-500">prochaines</div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Vue annuelle 2025 */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-        <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Vue Annuelle 2025
-        </h4>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Statistiques de l'année */}
-          <div className="bg-white rounded-lg p-4 border border-blue-200">
-            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
-              <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-              Statistiques {selectedYear}
-            </h5>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Total courses</span>
-                <span className="text-blue-600 font-medium">{pastEvents.length + futureEvents.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Courses passées</span>
-                <span className="text-green-600 font-medium">{pastEvents.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Courses à venir</span>
-                <span className="text-blue-600 font-medium">{futureEvents.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Athlètes sélectionnés</span>
-                <span className="text-blue-600 font-medium">
-                  {new Set([...pastEvents, ...futureEvents].flatMap(event => event.selectedRiderIds || [])).size}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Jours de course</span>
-                <span className="text-blue-600 font-medium">
-                  {riders.reduce((total, rider) => {
-                    const riderPastEvents = pastEvents.filter(event => 
-                      event.selectedRiderIds?.includes(rider.id)
-                    );
-                    const riderFutureEvents = futureEvents.filter(event => 
-                      event.selectedRiderIds?.includes(rider.id) || 
-                      getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
-                    );
-                    return total + riderPastEvents.length + riderFutureEvents.length;
-                  }, 0)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Prochaines courses importantes */}
-          <div className="bg-white rounded-lg p-4 border border-green-200">
-            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-              Prochaines Courses
-            </h5>
-            <div className="space-y-2">
-              {futureEvents.slice(0, 4).map(event => {
-                const titulaires = riders.filter(rider => 
-                  event.selectedRiderIds?.includes(rider.id)
-                );
-                return (
-                  <div key={event.id} className="flex items-center justify-between text-sm">
-                    <div>
-                      <div className="font-medium text-gray-700">{event.name}</div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(event.date).toLocaleDateString('fr-FR', { 
-                          day: 'numeric', 
-                          month: 'short' 
-                        })}
-                      </div>
-                    </div>
-                    <span className="text-green-600 font-medium">{titulaires.length}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Répartition par athlète */}
-          <div className="bg-white rounded-lg p-4 border border-purple-200">
-            <h5 className="font-medium text-gray-900 mb-3 flex items-center">
-              <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
-              Répartition par Athlète
-            </h5>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {(() => {
-                const riderStats = riders.map(rider => {
-                  const riderPastEvents = pastEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const upcomingEvents = futureEvents.filter(event => {
-                    const eventYear = new Date(event.date).getFullYear();
-                    return eventYear === selectedYear && (
-                      event.selectedRiderIds?.includes(rider.id) || 
-                      getRiderEventStatus(event.id, rider.id) === RiderEventStatus.PRE_SELECTION
-                    );
-                  });
-                  return {
-                    rider,
-                    pastEvents: riderPastEvents.length,
-                    upcomingEvents: upcomingEvents.length,
-                    totalEvents: riderPastEvents.length + upcomingEvents.length
-                  };
-                }).sort((a, b) => b.totalEvents - a.totalEvents);
-                
-                const maxEvents = Math.max(...riderStats.map(r => r.totalEvents), 1);
-                
-                return riderStats.map((riderStat, index) => (
-                  <div key={riderStat.rider.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <span className="text-gray-700 truncate">
-                        {riderStat.rider.firstName} {riderStat.rider.lastName}
-                      </span>
-                      <div className="flex items-center space-x-1 text-xs text-gray-500">
-                        <span className="bg-green-100 text-green-700 px-1 rounded">
-                          {riderStat.pastEvents}
-                        </span>
-                        <span className="bg-blue-100 text-blue-700 px-1 rounded">
-                          {riderStat.upcomingEvents}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                        <div 
-                          className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, (riderStat.totalEvents / maxEvents) * 100)}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-purple-600 font-medium text-xs w-6 text-right">
-                        {riderStat.totalEvents}
-                      </span>
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recommandations intelligentes */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-        <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          Analyse de l'Équipe
-        </h4>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Athlètes sous-utilisés */}
-          <div className="bg-white rounded-lg p-4 border border-blue-200">
-            <h5 className="font-medium text-gray-900 mb-2">Athlètes sous-utilisés</h5>
-            <div className="space-y-2">
-              {riders
-                .filter(rider => {
-                  const riderEvents = localRaceEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                  return uniqueDays < 3;
-                })
-                .slice(0, 3)
-                .map(rider => {
-                  const riderEvents = localRaceEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                  return (
-                    <div key={rider.id} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{rider.firstName} {rider.lastName}</span>
-                      <span className="text-blue-600 font-medium">{uniqueDays} jours</span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* Athlètes plus utilisés */}
-          <div className="bg-white rounded-lg p-4 border border-orange-200">
-            <h5 className="font-medium text-gray-900 mb-2">Athlètes plus utilisés</h5>
-            <div className="space-y-2">
-              {riders
-                .filter(rider => {
-                  const riderEvents = localRaceEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                  return uniqueDays > 8;
-                })
-                .slice(0, 3)
-                .map(rider => {
-                  const riderEvents = localRaceEvents.filter(event => 
-                    event.selectedRiderIds?.includes(rider.id)
-                  );
-                  const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                  return (
-                    <div key={rider.id} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{rider.firstName} {rider.lastName}</span>
-                      <span className="text-orange-600 font-medium">{uniqueDays} jours</span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* Prochaines courses */}
-          <div className="bg-white rounded-lg p-4 border border-green-200">
-            <h5 className="font-medium text-gray-900 mb-2">Prochaines courses</h5>
-            <div className="space-y-2">
-              {futureEvents.slice(0, 3).map(event => {
-                const eventDate = new Date(event.date);
-                const formattedDate = eventDate.toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'short'
-                });
-                
-                return (
-                  <div key={event.id} className="text-sm">
-                    <div className="font-medium text-gray-700">{event.name}</div>
-                    <div className="text-gray-500">{formattedDate}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Équilibrage des calendriers */}
-          <div className="bg-white rounded-lg p-4 border border-purple-200">
-            <h5 className="font-medium text-gray-900 mb-2">Équilibrage des calendriers</h5>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Moyenne par athlète</span>
-                <span className="text-purple-600 font-medium">
-                  {riders.length > 0 ? Math.round(
-                    riders.reduce((total, rider) => {
-                      const riderEvents = localRaceEvents.filter(event => 
-                        event.selectedRiderIds?.includes(rider.id)
-                      );
-                      const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                      return total + uniqueDays;
-                    }, 0) / riders.length * 10
-                  ) / 10 : 0} jours
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Écart type</span>
-                <span className="text-purple-600 font-medium">
-                  {(() => {
-                    const eventsPerRider = riders.map(rider => {
-                      const riderEvents = localRaceEvents.filter(event => 
-                        event.selectedRiderIds?.includes(rider.id)
-                      );
-                      return new Set(riderEvents.map(event => event.date)).size;
-                    });
-                    const mean = eventsPerRider.reduce((a, b) => a + b, 0) / eventsPerRider.length;
-                    const variance = eventsPerRider.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / eventsPerRider.length;
-                    return Math.round(Math.sqrt(variance) * 10) / 10;
-                  })()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-700">Distribution</span>
-                <span className="text-purple-600 font-medium">
-                  {riders.filter(rider => {
-                    const riderEvents = localRaceEvents.filter(event => 
-                      event.selectedRiderIds?.includes(rider.id)
-                    );
-                    const uniqueDays = new Set(riderEvents.map(event => event.date)).size;
-                    return uniqueDays >= 3 && uniqueDays <= 6;
-                  }).length}/{riders.length} équilibrés
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    );
-  };
-
   // Composant pour l'onglet Sélections
   const SelectionsTab = ({ 
     futureEvents, 
@@ -2933,6 +2216,359 @@ export default function RosterSection({
     );
   };
 
+  // Composant MonitoringTab - Centre de Pilotage Saison intégré
+  const MonitoringTab = ({ 
+    riders, 
+    raceEvents, 
+    riderEventSelections, 
+    selectedYear, 
+    setSelectedYear 
+  }: {
+    riders: Rider[];
+    raceEvents: RaceEvent[];
+    riderEventSelections: RiderEventSelection[];
+    selectedYear: number;
+    setSelectedYear: (year: number) => void;
+  }) => {
+    // Calculs pour les métriques clés
+    const seasonMetrics = useMemo(() => {
+      const currentYear = selectedYear;
+      const currentDate = new Date();
+      
+      // Événements planifiés pour l'année sélectionnée
+      const plannedEvents = raceEvents.filter(event => {
+        try {
+          const eventDate = new Date(event.date);
+          const eventYear = eventDate.getFullYear();
+          return eventYear === currentYear && !isNaN(eventDate.getTime());
+        } catch (error) {
+          console.warn('Erreur de parsing de date pour événement:', event);
+          return false;
+        }
+      }).length;
+
+      // Athlètes disponibles (avec profil complet)
+      const availableAthletes = riders.filter(rider => 
+        rider.generalPerformanceScore > 0 || 
+        rider.powerProfileFresh?.criticalPower > 0
+      ).length;
+
+      // Sélections actives (coureurs sélectionnés pour des événements futurs)
+      const activeSelections = raceEvents.filter(event => {
+        try {
+          const eventDate = new Date(event.date);
+          const eventYear = eventDate.getFullYear();
+          return eventYear === currentYear && eventDate >= currentDate && !isNaN(eventDate.getTime()) && event.selectedRiderIds?.length > 0;
+        } catch (error) {
+          return false;
+        }
+      }).length;
+
+      // Charge de travail par athlète
+      const athleteWorkload = riders.map(rider => {
+        const pastEvents = raceEvents.filter(event => {
+          try {
+            const eventDate = new Date(event.date);
+            const eventYear = eventDate.getFullYear();
+            return eventYear === currentYear && 
+                   eventDate < currentDate && 
+                   !isNaN(eventDate.getTime()) &&
+                   event.selectedRiderIds?.includes(rider.id);
+          } catch (error) {
+            return false;
+          }
+        }).length;
+
+        const upcomingEvents = raceEvents.filter(event => {
+          try {
+            const eventDate = new Date(event.date);
+            const eventYear = eventDate.getFullYear();
+            return eventYear === currentYear && 
+                   eventDate >= currentDate && 
+                   !isNaN(eventDate.getTime()) &&
+                   (event.selectedRiderIds?.includes(rider.id) || 
+                    riderEventSelections.some(selection => 
+                      selection.eventId === event.id && 
+                      selection.riderId === rider.id && 
+                      selection.status === RiderEventStatus.PRE_SELECTION
+                    ));
+          } catch (error) {
+            return false;
+          }
+        }).length;
+
+        return {
+          rider,
+          pastEvents,
+          upcomingEvents,
+          totalEvents: pastEvents + upcomingEvents
+        };
+      }).sort((a, b) => b.totalEvents - a.totalEvents);
+
+      // Calendrier mensuel avec événements
+      const monthlyCalendar = Array.from({ length: 12 }, (_, monthIndex) => {
+        const monthName = new Date(2024, monthIndex).toLocaleDateString('fr-FR', { month: 'long' });
+        const monthEvents = raceEvents.filter(event => {
+          try {
+            const eventDate = new Date(event.date);
+            const eventYear = eventDate.getFullYear();
+            const eventMonth = eventDate.getMonth();
+            return eventYear === currentYear && eventMonth === monthIndex && !isNaN(eventDate.getTime());
+          } catch (error) {
+            console.warn('Erreur de parsing de date pour événement:', event);
+            return false;
+          }
+        });
+
+        const confirmedEvents = monthEvents.filter(event => 
+          event.selectedRiderIds && event.selectedRiderIds.length > 0
+        ).length;
+
+        const preSelectionEvents = monthEvents.filter(event => {
+          return riderEventSelections.some(selection => 
+            selection.eventId === event.id && 
+            selection.status === RiderEventStatus.PRE_SELECTION
+          );
+        }).length;
+
+        return {
+          month: monthName,
+          monthIndex,
+          totalEvents: monthEvents.length,
+          confirmedEvents,
+          preSelectionEvents,
+          restPeriod: monthEvents.length === 0
+        };
+      });
+
+      return {
+        plannedEvents,
+        availableAthletes,
+        activeSelections,
+        athleteWorkload,
+        monthlyCalendar
+      };
+    }, [riders, raceEvents, riderEventSelections, selectedYear]);
+
+    return (
+      <div className="space-y-8">
+        {/* Métriques clés */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 text-center">
+            <div className="text-4xl font-bold text-blue-600 mb-2">{seasonMetrics.plannedEvents}</div>
+            <div className="text-sm font-medium text-gray-600">Événements planifiés</div>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 text-center">
+            <div className="text-4xl font-bold text-green-600 mb-2">{seasonMetrics.availableAthletes}</div>
+            <div className="text-sm font-medium text-gray-600">Athlètes disponibles</div>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 text-center">
+            <div className="text-4xl font-bold text-purple-600 mb-2">{seasonMetrics.activeSelections}</div>
+            <div className="text-sm font-medium text-gray-600">Sélections actives</div>
+          </div>
+        </div>
+
+        {/* Contenu principal - Layout en deux colonnes */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Calendrier Saison */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Calendrier Saison {selectedYear}</h3>
+              <div className="flex items-center space-x-2">
+                <select 
+                  value={selectedYear} 
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={2024}>2024</option>
+                  <option value={2025}>2025</option>
+                  <option value={2026}>2026</option>
+                  <option value={2027}>2027</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              {/* Légende */}
+              <div className="flex items-center space-x-4 mb-4 text-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  <span className="text-gray-600">Courses confirmées</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                  <span className="text-gray-600">Pré-sélections</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+                  <span className="text-gray-600">Période de repos</span>
+                </div>
+              </div>
+
+              {/* Calendrier mensuel */}
+              <div className="grid grid-cols-4 gap-3">
+                {seasonMetrics.monthlyCalendar.map((month, index) => (
+                  <div 
+                    key={month.month}
+                    className={`p-3 rounded-lg border-2 text-center cursor-pointer transition-all ${
+                      index === 8 ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-gray-700 mb-1">{month.month}</div>
+                    <div className="text-lg font-bold text-gray-900">
+                      {month.totalEvents > 0 ? (
+                        <div className="flex items-center justify-center space-x-1">
+                          {month.confirmedEvents > 0 && (
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          )}
+                          {month.preSelectionEvents > 0 && (
+                            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                          )}
+                          <span>{month.totalEvents}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center space-x-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                          <span>0</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Message d'information si aucune course en 2026 */}
+              {selectedYear === 2026 && seasonMetrics.plannedEvents === 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <CalendarDaysIcon className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-800">Aucune course planifiée pour 2026</h4>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Créez des événements dans la section "Calendrier" pour les voir apparaître ici.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Jours de Course par Athlète */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Jours de Course par Athlète</h3>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleWorkloadSort('alphabetical')}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      workloadSortBy === 'alphabetical'
+                        ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                    title="Trier par ordre alphabétique"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>A-Z</span>
+                      {workloadSortBy === 'alphabetical' && (
+                        <svg className={`w-3 h-3 transition-transform ${workloadSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleWorkloadSort('days')}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      workloadSortBy === 'days'
+                        ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                    title="Trier par nombre de jours"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Jours</span>
+                      {workloadSortBy === 'days' && (
+                        <svg className={`w-3 h-3 transition-transform ${workloadSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {(() => {
+                  // Appliquer le tri aux données
+                  const sortedWorkload = [...seasonMetrics.athleteWorkload].sort((a, b) => {
+                    let comparison = 0;
+                    
+                    if (workloadSortBy === 'alphabetical') {
+                      // Tri alphabétique par nom de famille puis prénom
+                      const lastNameA = (a.rider.lastName || '').toLowerCase();
+                      const lastNameB = (b.rider.lastName || '').toLowerCase();
+                      const firstNameA = (a.rider.firstName || '').toLowerCase();
+                      const firstNameB = (b.rider.firstName || '').toLowerCase();
+                      
+                      const lastNameComparison = lastNameA.localeCompare(lastNameB);
+                      if (lastNameComparison !== 0) {
+                        comparison = lastNameComparison;
+                      } else {
+                        comparison = firstNameA.localeCompare(firstNameB);
+                      }
+                    } else {
+                      // Tri par nombre de jours
+                      comparison = a.totalEvents - b.totalEvents;
+                    }
+                    
+                    return workloadSortDirection === 'asc' ? comparison : -comparison;
+                  });
+                  
+                  return sortedWorkload.slice(0, 10).map((workload, index) => (
+                    <div key={workload.rider.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-semibold text-gray-600">
+                            {workload.rider.firstName?.[0]}{workload.rider.lastName?.[0]}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {workload.rider.firstName} {workload.rider.lastName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {workload.pastEvents} passées • {workload.upcomingEvents} à venir
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ 
+                              width: `${Math.min((workload.totalEvents / 10) * 100, 100)}%` 
+                            }}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-medium text-gray-600 w-6 text-center">
+                          {workload.totalEvents}
+                        </span>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Rendu de l'onglet Planning de Saison - Version avec monitoring de groupe
   const renderSeasonPlanningTab = () => {
     console.log('🎯 Rendu du planning - Sélections actuelles:', appState.riderEventSelections?.length || 0);
@@ -3428,17 +3064,15 @@ export default function RosterSection({
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6" aria-label="Tabs">
               <button
-                onClick={() => setActivePlanningTab('statistics')}
+                onClick={() => setActivePlanningTab('monitoring')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activePlanningTab === 'statistics'
+                  activePlanningTab === 'monitoring'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-center space-x-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
+                  <UserGroupIcon className="w-5 h-5" />
                   <span>Monitoring du Groupe</span>
                 </div>
               </button>
@@ -3462,13 +3096,13 @@ export default function RosterSection({
 
           {/* Contenu des onglets */}
           <div className="p-6">
-            {activePlanningTab === 'statistics' ? (
-              <StatisticsTab 
-                futureEvents={futureEvents}
-                pastEvents={pastEvents}
+            {activePlanningTab === 'monitoring' ? (
+              <MonitoringTab 
                 riders={riders}
-                localRaceEvents={localRaceEvents}
-                getRiderEventStatus={getRiderEventStatus}
+                raceEvents={localRaceEvents}
+                riderEventSelections={localRiderEventSelections}
+                selectedYear={selectedYear}
+                setSelectedYear={setSelectedYear}
               />
             ) : (
               <UnifiedSelectionTab 

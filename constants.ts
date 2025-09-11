@@ -290,42 +290,41 @@ export const DEFAULT_THEME_PRIMARY_COLOR = '#1e293b'; // slate-800
 export const DEFAULT_THEME_ACCENT_COLOR = '#4f46e5'; // indigo-600
 
 export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; icon: string; group: Record<'fr' | 'en', string> }> = [
-    // Pilotage
-    { id: 'dashboard', labels: { fr: 'Tableau de Bord', en: 'Dashboard' }, icon: 'HomeIcon', group: { fr: 'Pilotage', en: 'Management' } },
-    { id: 'events', labels: { fr: 'Calendrier', en: 'Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Pilotage', en: 'Management' } },
-    { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Pilotage', en: 'Management' } },
-    { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', group: { fr: 'Pilotage', en: 'Management' } },
+    // Tableau de Bord Principal - Toujours en premier
+    { id: 'myDashboard', labels: { fr: 'Tableau de Bord', en: 'Dashboard' }, icon: 'HomeIcon', group: { fr: 'Tableau de Bord', en: 'Dashboard' } },
+    { id: 'events', labels: { fr: 'Calendrier', en: 'Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Tableau de Bord', en: 'Dashboard' } },
     
-    // Mon Espace - Back-office coureur avec tous les onglets
-    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'myResults', labels: { fr: 'Mon Palmarès', en: 'My Results' }, icon: 'TrophyIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'talentAvailability', labels: { fr: 'Disponibilités Talents', en: 'Talent Availability' }, icon: 'UserGroupIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'riderEquipment', labels: { fr: 'Mon Matériel', en: 'My Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'bikeSetup', labels: { fr: 'Cotes Vélo', en: 'Bike Setup' }, icon: 'Cog6ToothIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'adminDossier', labels: { fr: 'Admin', en: 'Admin' }, icon: 'ShieldCheckIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
-    { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', group: { fr: 'Mon Espace', en: 'My Space' } },
+    // Navigation Principale - Actions quotidiennes du coureur
+    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
+    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
+    { id: 'myResults', labels: { fr: 'Mon Palmarès', en: 'My Results' }, icon: 'TrophyIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
+    { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
     
-    // Données Générales
-    { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', group: { fr: 'Données Générales', en: 'General Data' } },
-    { id: 'staff', labels: { fr: 'Staff', en: 'Staff' }, icon: 'UserGroupIcon', group: { fr: 'Données Générales', en: 'General Data' } },
+    // Performance & Santé - Regroupement logique (sections les plus utilisées)
+    { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'staff', labels: { fr: 'Staff', en: 'Staff' }, icon: 'UserGroupIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'scouting', labels: { fr: 'Scouting', en: 'Scouting' }, icon: 'EyeIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'talentAvailability', labels: { fr: 'Disponibilités Talents', en: 'Talent Availability' }, icon: 'UserGroupIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
     
-    // Logistique
-    { id: 'vehicles', labels: { fr: 'Véhicules', en: 'Vehicles' }, icon: 'TruckIcon', group: { fr: 'Logistique', en: 'Logistics' } },
-    { id: 'equipment', labels: { fr: 'Matériel', en: 'Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique', en: 'Logistics' } },
-    { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', group: { fr: 'Logistique', en: 'Logistics' } },
+    // Logistique & Équipement - Regroupement technique et logistique
+    { id: 'riderEquipment', labels: { fr: 'Mon Matériel', en: 'My Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'bikeSetup', labels: { fr: 'Cotes Vélo', en: 'Bike Setup' }, icon: 'Cog6ToothIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'equipment', labels: { fr: 'Matériel', en: 'Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'vehicles', labels: { fr: 'Véhicules', en: 'Vehicles' }, icon: 'TruckIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     
-    // Analyse & Suivi
-    { id: 'scouting', labels: { fr: 'Scouting', en: 'Scouting' }, icon: 'EyeIcon', group: { fr: 'Analyse & Suivi', en: 'Analysis & Tracking' } },
-    
-    // Application
-    { id: 'userManagement', labels: { fr: 'Gestion Utilisateurs', en: 'User Management' }, icon: 'UserPlusIcon', group: { fr: 'Application', en: 'Application' } },
-    { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Application', en: 'Application' } },
-    { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Application', en: 'Application' } },
-    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Application', en: 'Application' } },
+    // Administration - Fonctions administratives avancées
+    { id: 'adminDashboard', labels: { fr: 'Tableau de Bord Admin', en: 'Admin Dashboard' }, icon: 'ChartBarIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'adminDossier', labels: { fr: 'Admin', en: 'Admin' }, icon: 'ShieldCheckIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'userManagement', labels: { fr: 'Gestion Utilisateurs', en: 'User Management' }, icon: 'UserPlusIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Administration', en: 'Administration' } },
 ];
 
 export const TEAM_STATE_COLLECTIONS = [

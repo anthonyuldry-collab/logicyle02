@@ -4,6 +4,8 @@ import SectionWrapper from '../components/SectionWrapper';
 import PencilIcon from '../components/icons/PencilIcon';
 import CheckIcon from '../components/icons/CheckIcon';
 import XCircleIcon from '../components/icons/XCircleIcon';
+import { LoadingOverlay } from '../components/LoadingIndicator';
+import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
 
 interface MyPerformanceSectionProps {
   riders: Rider[];
@@ -18,9 +20,22 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Rider>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Vérification de sécurité pour riders
+  if (!isValidRidersArray(riders)) {
+    return (
+      <SectionWrapper title="Mes Performances (PPR)">
+        <div className="text-center p-8 bg-gray-50 rounded-lg border">
+          <p className="mt-4 text-lg font-medium text-gray-700">Chargement des données...</p>
+          <p className="mt-2 text-gray-500">Veuillez patienter pendant le chargement de vos informations.</p>
+        </div>
+      </SectionWrapper>
+    );
+  }
 
   // Trouver le profil du coureur
-  const riderProfile = riders.find(r => r.email === currentUser.email);
+  const riderProfile = findRiderByEmail(riders, currentUser.email);
 
   if (!riderProfile) {
     return (
@@ -42,6 +57,7 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
 
   const handleSave = async () => {
     try {
+      setIsSaving(true);
       const updatedRider = { ...riderProfile, ...editedData } as Rider;
       
       // S'assurer que les profils de pré-fatigue sont correctement fusionnés
@@ -60,6 +76,8 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
       setEditedData({});
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -110,7 +128,8 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
 
   return (
     <SectionWrapper title="Mes Performances (PPR)">
-      <div className="space-y-6">
+      <LoadingOverlay isLoading={isSaving} message="Sauvegarde en cours...">
+        <div className="space-y-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-semibold text-gray-900">Profils de Puissance Relatifs</h3>
@@ -292,7 +311,8 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </LoadingOverlay>
     </SectionWrapper>
   );
 };

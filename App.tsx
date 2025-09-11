@@ -61,11 +61,11 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import EventDetailView from "./EventDetailView";
 import { useTranslations } from "./hooks/useTranslations";
 import AdminDossierSection from "./sections/AdminDossierSection";
+import AdminDashboardSection from "./sections/AdminDashboardSection";
 import SuperAdminSection from "./sections/SuperAdminSection";
 import { AutomatedPerformanceProfileSection } from "./sections/AutomatedPerformanceProfileSection";
 import CareerSection from "./sections/CareerSection";
 import ChecklistSection from "./sections/ChecklistSection";
-import { DashboardSection } from "./sections/DashboardSection";
 import EquipmentSection from "./sections/EquipmentSection";
 import { EventsSection } from "./sections/EventsSection";
 import { FinancialSection } from "./sections/FinancialSection";
@@ -92,6 +92,7 @@ import UserSettingsSection from "./sections/UserSettingsSection";
 import VehiclesSection from "./sections/VehiclesSection";
 
 // Nouvelles sections pour le back-office coureur
+import MyDashboardSection from "./sections/MyDashboardSection";
 import MyProfileSection from "./sections/MyProfileSection";
 import MyCalendarSection from "./sections/MyCalendarSection";
 import MyResultsSection from "./sections/MyResultsSection";
@@ -242,7 +243,7 @@ const App: React.FC = () => {
     activeTeamId: null,
   });
 
-  const [currentSection, setCurrentSection] = useState<AppSection>("dashboard");
+  const [currentSection, setCurrentSection] = useState<AppSection>("myDashboard");
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
@@ -349,6 +350,11 @@ const App: React.FC = () => {
         if (userProfile) {
           setCurrentUser(userProfile);
           await loadDataForUser(userProfile); // This will set loading to false
+          
+          // Redirection automatique vers le tableau de bord administrateur pour les admins
+          if (userProfile.permissionRole === TeamRole.ADMIN || userProfile.userRole === UserRole.MANAGER) {
+            setCurrentSection("myDashboard"); // myDashboard affichera automatiquement AdminDashboardSection
+          }
         } else {
           // This case should ideally not be reached if profile creation is successful.
           console.error(
@@ -753,16 +759,20 @@ const App: React.FC = () => {
     });
   }, [appState.activeTeamId]);
 
-  const onDeleteScoutingProfile = useCallback(async (item: ScoutingProfile) => {
-    if (!appState.activeTeamId || !item.id) return;
+  const onDeleteScoutingProfile = useCallback(async (item: ScoutingProfile | string) => {
+    if (!appState.activeTeamId) return;
+    
+    const profileId = typeof item === 'string' ? item : item.id;
+    if (!profileId) return;
+    
     await firebaseService.deleteData(
       appState.activeTeamId,
       "scoutingProfiles",
-      item.id
+      profileId
     );
     setAppState((prev: AppState) => ({
       ...prev,
-      scoutingProfiles: prev.scoutingProfiles.filter((i: ScoutingProfile) => i.id !== item.id),
+      scoutingProfiles: prev.scoutingProfiles.filter((i: ScoutingProfile) => i.id !== profileId),
     }));
   }, [appState.activeTeamId]);
 
@@ -1084,7 +1094,6 @@ const App: React.FC = () => {
       if (currentUser.userRole === 'Manager' || currentUser.permissionRole === 'Administrateur') {
         console.log('🔧 FORÇAGE des permissions Manager');
         effectivePermissions = {
-          dashboard: ['view', 'edit'],
           events: ['view', 'edit'],
           financial: ['view', 'edit'],
           performance: ['view', 'edit'],
@@ -1140,7 +1149,7 @@ const App: React.FC = () => {
                 onGoToLobby={() => setView("no_team")}
               />
             )}
-            <main className="flex-grow ml-64 p-6 bg-gray-100 min-h-screen">
+            <main className="flex-grow ml-72 p-6 bg-gray-100 min-h-screen">
 
               
               {activeEvent ? (
@@ -1197,24 +1206,43 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <>
-                      {currentSection === "dashboard" && (
-                    <DashboardSection
-                      navigateTo={navigateTo}
-                      currentUser={currentUser}
-                      riders={appState.riders}
-                      staff={appState.staff}
-                      vehicles={appState.vehicles}
-                      scoutingProfiles={appState.scoutingProfiles}
-                      eventBudgetItems={appState.eventBudgetItems}
-                      raceEvents={appState.raceEvents}
-                      eventTransportLegs={appState.eventTransportLegs}
-                      eventChecklistItems={appState.eventChecklistItems}
-                      incomeItems={appState.incomeItems}
-                      riderEventSelections={appState.riderEventSelections}
-                      performanceEntries={appState.performanceEntries}
-                      effectivePermissions={effectivePermissions}
-                    />
-                  )}
+                      {currentSection === "myDashboard" && currentUser && (
+                        <>
+                          {/* Redirection automatique pour les administrateurs */}
+                          {currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER ? (
+                            <AdminDashboardSection
+                              riders={appState.riders}
+                              staff={appState.staff}
+                              currentUser={currentUser}
+                              raceEvents={appState.raceEvents}
+                              riderEventSelections={appState.riderEventSelections}
+                              appState={appState}
+                              navigateTo={navigateTo}
+                            />
+                          ) : (
+                            <MyDashboardSection
+                              riders={appState.riders}
+                              staff={appState.staff}
+                              currentUser={currentUser}
+                              raceEvents={appState.raceEvents}
+                              riderEventSelections={appState.riderEventSelections}
+                              appState={appState}
+                              navigateTo={navigateTo}
+                            />
+                          )}
+                        </>
+                      )}
+                      {currentSection === "adminDashboard" && currentUser && (
+                        <AdminDashboardSection
+                          riders={appState.riders}
+                          staff={appState.staff}
+                          currentUser={currentUser}
+                          raceEvents={appState.raceEvents}
+                          riderEventSelections={appState.riderEventSelections}
+                          appState={appState}
+                          navigateTo={navigateTo}
+                        />
+                      )}
                   {currentSection === "events" && (
                     <EventsSection
                       raceEvents={appState.raceEvents}
@@ -2135,7 +2163,7 @@ const App: React.FC = () => {
                     <MyCareerSection
                       riders={appState.riders}
                       currentUser={currentUser}
-                      onSaveRider={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
                       teams={appState.teams}
                       raceEvents={appState.raceEvents}
                       scoutingProfiles={appState.scoutingProfiles}
