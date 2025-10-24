@@ -160,8 +160,8 @@ export const ResultsTab: React.FC<ResultsTabProps> = ({
                     {resultsByYear.length > 0 ? resultsByYear.map(([year, results]) => (
                         <div key={year}>
                             <h6 className="font-bold text-slate-300 text-lg mb-1">{year}</h6>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full text-sm">
+                            <div className="overflow-x-auto max-w-full">
+                                <table className="min-w-full text-sm max-w-full">
                                     <thead className="bg-slate-600 text-slate-300">
                                         <tr>
                                             <th className="px-2 py-3 text-left">Date</th>

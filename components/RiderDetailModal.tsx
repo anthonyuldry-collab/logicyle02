@@ -9,7 +9,7 @@ import {
     ClothingType, ClothingType as ClothingTypeEnum,
     AllergySeverity as AllergySeverityEnum,
     PredefinedAllergen, PredefinedAllergen as PredefinedAllergenEnum,
-    ResultItem,
+    ResultItem, User, AppSection, PermissionLevel, RiderEventPreference,
     Sex
 } from '../types';
 import { PERFORMANCE_PROJECT_FACTORS_CONFIG, defaultRiderCharCap } from '../constants';
@@ -23,6 +23,7 @@ import NutritionTab from './riderDetailTabs/NutritionTab';
 import EquipmentTab from './riderDetailTabs/EquipmentTab';
 import BikeSetupTab from './riderDetailTabs/BikeSetupTab';
 import PerformanceProjectTab from './riderDetailTabs/PerformanceProjectTab';
+import InterviewTab from './riderDetailTabs/InterviewTab';
 import AdminTab from './riderDetailTabs/AdminTab';
 import { ResultsTab } from './riderDetailTabs/ResultsTab';
 import CalendarTab from './riderDetailTabs/CalendarTab';
@@ -48,6 +49,7 @@ interface RiderDetailModalProps {
   appState: AppState;
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  initialTab?: string;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -152,6 +154,20 @@ const createNewRiderState = (): Omit<Rider, 'id'> => {
     profile15KJ: 'Profil 15kJ généré automatiquement',
     profile30KJ: 'Profil 30kJ généré automatiquement',
     profile45KJ: 'Profil 45kJ généré automatiquement',
+    
+    // Global Preferences
+    globalWishes: '',
+    seasonObjectives: '',
+    
+    // Interview & Motivation
+    cyclingMotivation: '',
+    shortTermGoals: '',
+    mediumTermGoals: '',
+    longTermGoals: '',
+    careerAspirations: '',
+    personalValues: '',
+    challengesFaced: '',
+    supportNeeds: '',
 };
 };
 
@@ -168,12 +184,13 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   powerDurationsConfig,
   currentUser,
   effectivePermissions,
+  initialTab = 'info',
 }: RiderDetailModalProps) => {
   const isNew = !rider;
   const [formData, setFormData] = useState<Rider | Omit<Rider, 'id'>>(() =>
     isNew ? createNewRiderState() : structuredClone(rider)
   );
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [newLicenseData, setNewLicenseData] = useState<{base64: string, mimeType: string} | null>(null);
   const [newPhotoData, setNewPhotoData] = useState<{base64: string, mimeType: string} | null>(null);
@@ -196,7 +213,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
       setPhotoPreview((initialData as Rider).photoUrl || null);
       setNewLicenseData(null);
       setNewPhotoData(null);
-      setActiveTab('info');
+      setActiveTab(initialTab);
       setIsEditMode(isNew || initialIsEditMode);
     }
   }, [isOpen, rider, isNew, initialIsEditMode]);
@@ -468,6 +485,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     { id: 'info', label: 'Profil' },
     { id: 'ppr', label: 'PPR' },
     { id: 'project', label: 'Projet Perf.' },
+    { id: 'interview', label: 'Entretiens' },
     { id: 'results', label: 'Palmarès' },
     { id: 'calendar', label: 'Calendrier' },
     { id: 'nutrition', label: 'Nutrition' },
@@ -477,6 +495,9 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     // Afficher l'onglet paramètres (temporairement toujours visible pour debug)
     ...(shouldShowSettings ? [{ id: 'settings', label: 'Paramètres' }] : []),
   ];
+
+  // Debug: Afficher les onglets dans la console
+  console.log('🔍 DEBUG - Onglets disponibles:', tabs.map(t => t.label));
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -499,6 +520,10 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formData={formData}
             handleInputChange={handleInputChange}
             formFieldsEnabled={isEditMode}
+            photoPreview={photoPreview}
+            handlePhotoUpload={handlePhotoUpload}
+            handleRemovePhoto={handleRemovePhoto}
+            profileReliabilityLevel={profileReliabilityLevel}
           />
         );
       case 'ppr':
@@ -514,6 +539,14 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
       case 'project':
         return (
           <PerformanceProjectTab
+            formData={formData}
+            handleInputChange={handleInputChange}
+            formFieldsEnabled={isEditMode}
+          />
+        );
+      case 'interview':
+        return (
+          <InterviewTab
             formData={formData}
             handleInputChange={handleInputChange}
             formFieldsEnabled={isEditMode}
@@ -588,6 +621,10 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formData={formData}
             handleInputChange={handleInputChange}
             formFieldsEnabled={isEditMode}
+            photoPreview={photoPreview}
+            handlePhotoUpload={handlePhotoUpload}
+            handleRemovePhoto={handleRemovePhoto}
+            profileReliabilityLevel={profileReliabilityLevel}
           />
         );
     }

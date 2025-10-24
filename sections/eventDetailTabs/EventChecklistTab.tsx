@@ -305,9 +305,9 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
             {isRider ? "Aucune tâche pour vous dans cette checklist. Ajoutez vos tâches personnelles si besoin." : "Aucun élément dans la checklist. Chargez les tâches depuis un modèle ou ajoutez-les manuellement."}
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-w-full">
           {isRider ? (
-             <table className="min-w-full bg-white text-sm">
+             <table className="min-w-full bg-white text-sm max-w-full">
                 <thead className="bg-gray-100">
                     <tr>
                         <th className="py-2 px-3 w-12 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Fait</th>

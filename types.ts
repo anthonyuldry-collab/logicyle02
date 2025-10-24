@@ -343,7 +343,7 @@ export enum LanguageProficiency {
 
 // --- Type Aliases ---
 export type AppSection = 
-  | 'events' | 'roster' | 'staff' | 'vehicles' | 'equipment'
+  | 'events' | 'roster' | 'season-planning' | 'staff' | 'vehicles' | 'equipment'
   | 'stocks'
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
@@ -539,6 +539,10 @@ export interface RaceEvent {
     isLogisticsValidated?: boolean;
     logisticsValidationDate?: string;
     logisticsSummaryNotes?: string;
+    
+    // Limites de sélection des athlètes
+    minRiders?: number;
+    maxRiders?: number;
 
     // Staff roles
     managerId?: string[];
@@ -607,6 +611,10 @@ export interface StaffMember {
     availability?: AvailabilityPeriod[];
     workHistory?: WorkExperience[];
     education?: EducationOrCertification[];
+    
+    // Gestion des saisons
+    currentSeason?: number; // Saison active du membre du staff
+    isActive?: boolean; // Si le membre du staff est actif dans l'effectif actuel
     languages?: SpokenLanguage[];
     sportswear?: any[];
     notesGeneral?: string;
@@ -863,6 +871,84 @@ export interface TeamMetricsArchive {
   completionRate: number; // Pourcentage de débriefings complétés
 }
 
+// Types pour l'archivage des effectifs par saison
+export interface RosterArchive {
+  season: number;
+  riders: Rider[];
+  staff: StaffMember[];
+  archivedAt: string;
+  totalRiders: number;
+  totalStaff: number;
+  activeRiders: number; // Nombre de coureurs actifs
+  inactiveRiders: number; // Nombre de coureurs inactifs
+}
+
+export interface RosterTransition {
+  fromSeason: number;
+  toSeason: number;
+  transitionDate: string;
+  ridersAdded: string[]; // IDs des coureurs ajoutés
+  ridersRemoved: string[]; // IDs des coureurs retirés
+  ridersKept: string[]; // IDs des coureurs conservés
+  staffAdded: string[]; // IDs du staff ajouté
+  staffRemoved: string[]; // IDs du staff retiré
+  staffKept: string[]; // IDs du staff conservé
+}
+
+// Types pour l'archivage des effectifs du staff par saison
+export interface StaffArchive {
+  season: number;
+  staff: StaffMember[];
+  archivedAt: string;
+  totalStaff: number;
+  activeStaff: number; // Nombre de membres du staff actifs
+  inactiveStaff: number; // Nombre de membres du staff inactifs
+}
+
+export interface StaffTransition {
+  fromSeason: number;
+  toSeason: number;
+  transitionDate: string;
+  staffAdded: string[]; // IDs du staff ajouté
+  staffRemoved: string[]; // IDs du staff retiré
+  staffKept: string[]; // IDs du staff conservé
+}
+
+// Types pour le planning de saison du staff
+export interface StaffEventSelection {
+  id: string;
+  eventId: string;
+  staffId: string;
+  status: StaffEventStatus | null;
+  staffPreference: StaffEventPreference;
+  staffAvailability: StaffAvailability;
+  staffObjectives: string;
+  notes: string;
+}
+
+export enum StaffEventStatus {
+  PRE_SELECTION = 'PRE_SELECTION',
+  SELECTIONNE = 'SELECTIONNE',
+  EN_ATTENTE = 'EN_ATTENTE',
+  NON_SELECTIONNE = 'NON_SELECTIONNE',
+  REFUSE = 'REFUSE'
+}
+
+export enum StaffEventPreference {
+  VEUT_PARTICIPER = 'VEUT_PARTICIPER',
+  OBJECTIFS_SPECIFIQUES = 'OBJECTIFS_SPECIFIQUES',
+  EN_ATTENTE = 'EN_ATTENTE',
+  NE_VEUT_PAS = 'NE_VEUT_PAS',
+  ABSENT = 'ABSENT'
+}
+
+export enum StaffAvailability {
+  DISPONIBLE = 'DISPONIBLE',
+  PARTIELLEMENT_DISPONIBLE = 'PARTIELLEMENT_DISPONIBLE',
+  INDISPONIBLE = 'INDISPONIBLE',
+  A_CONFIRMER = 'A_CONFIRMER'
+}
+
 export interface IncomeItem {
     id: string;
     description: string;
@@ -1039,6 +1125,10 @@ export interface Rider {
     salary?: number;
     contractEndDate?: string;
     nextSeasonTeam?: string;
+    
+    // Gestion des saisons
+    currentSeason?: number; // Saison active du coureur
+    isActive?: boolean; // Si le coureur est actif dans l'effectif actuel
 
     // Performance Profile
     qualitativeProfile: RiderQualitativeProfile;
@@ -1065,6 +1155,16 @@ export interface Rider {
     // Global Preferences
     globalWishes?: string; // Souhaits généraux pour la saison
     seasonObjectives?: string; // Objectifs de saison
+    
+    // Interview & Motivation
+    cyclingMotivation?: string; // Pourquoi fait-il du vélo
+    shortTermGoals?: string; // Objectifs à court terme (saison suivante)
+    mediumTermGoals?: string; // Objectifs à moyen terme (2-3 ans)
+    longTermGoals?: string; // Objectifs à long terme (5+ ans)
+    careerAspirations?: string; // Aspirations de carrière
+    personalValues?: string; // Valeurs personnelles
+    challengesFaced?: string; // Défis rencontrés
+    supportNeeds?: string; // Besoins de soutien
 
     // Nutrition
     dietaryRegimen?: string; // e.g., vegetarian
@@ -1139,6 +1239,24 @@ export interface ScoutingProfile {
   charRouleur?: number;
   generalPerformanceScore?: number;
   fatigueResistanceScore?: number;
+  
+  // Performance Project
+  performanceGoals?: string;
+  physiquePerformanceProject?: PerformanceFactorDetail;
+  techniquePerformanceProject?: PerformanceFactorDetail;
+  mentalPerformanceProject?: PerformanceFactorDetail;
+  environnementPerformanceProject?: PerformanceFactorDetail;
+  tactiquePerformanceProject?: PerformanceFactorDetail;
+  
+  // Interview & Motivation
+  cyclingMotivation?: string;
+  shortTermGoals?: string;
+  mediumTermGoals?: string;
+  longTermGoals?: string;
+  careerAspirations?: string;
+  personalValues?: string;
+  challengesFaced?: string;
+  supportNeeds?: string;
 }
 export enum ScoutingRequestStatus {
     PENDING = "En attente",

@@ -79,6 +79,13 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 raceInfo: newRaceInfo
             };
         });
+    } else if (name === 'minRiders' || name === 'maxRiders') {
+        // Gestion spéciale pour les champs numériques des limites d'athlètes
+        const numValue = value === '' ? undefined : parseInt(value);
+        setFormData(prev => ({
+            ...prev,
+            [name]: numValue,
+        }));
     } else {
         setFormData(prev => ({
             ...prev,
@@ -313,6 +320,43 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 />
               </div>
             </div>
+            
+            {/* Section Limites de sélection des athlètes */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h4 className="text-md font-medium text-gray-700 mb-3">Limites de sélection des athlètes</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="minRiders" className="block text-sm font-medium text-gray-700">Nombre minimum d'athlètes</label>
+                  <input 
+                    type="number" 
+                    name="minRiders" 
+                    id="minRiders" 
+                    min="0"
+                    max="20"
+                    value={formData.minRiders || ''} 
+                    onChange={(e) => handleMainFormInputChange(e, 'minRiders')} 
+                    className={lightInputClass}
+                    placeholder="Ex: 4"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Nombre minimum de coureurs requis</p>
+                </div>
+                <div>
+                  <label htmlFor="maxRiders" className="block text-sm font-medium text-gray-700">Nombre maximum d'athlètes</label>
+                  <input 
+                    type="number" 
+                    name="maxRiders" 
+                    id="maxRiders" 
+                    min="1"
+                    max="20"
+                    value={formData.maxRiders || ''} 
+                    onChange={(e) => handleMainFormInputChange(e, 'maxRiders')} 
+                    className={lightInputClass}
+                    placeholder="Ex: 6"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Nombre maximum de coureurs autorisés</p>
+                </div>
+              </div>
+            </div>
           </fieldset>
           
           <fieldset className="border p-4 rounded-md">
@@ -422,6 +466,28 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 </div>
                  <div className="mt-2 pt-2 border-t text-sm">
                     <p><strong>Catégorie Épreuve:</strong> {getCategoryLabel(formData.eligibleCategory) || 'N/A'}</p>
+                 </div>
+                 
+                 {/* Affichage des limites de sélection des athlètes */}
+                 <div className="mt-3 pt-3 border-t border-gray-200">
+                   <h4 className="text-sm font-semibold text-gray-600 mb-2">Limites de sélection des athlètes</h4>
+                   <div className="text-sm text-gray-700">
+                     {formData.minRiders || formData.maxRiders ? (
+                       <div className="flex items-center space-x-4">
+                         <div>
+                           <span className="font-medium">Minimum:</span> {formData.minRiders || 0} coureurs
+                         </div>
+                         <div>
+                           <span className="font-medium">Maximum:</span> {formData.maxRiders || '∞'} coureurs
+                         </div>
+                         <div className="text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                           {formData.minRiders || 0}-{formData.maxRiders || '∞'} coureurs
+                         </div>
+                       </div>
+                     ) : (
+                       <p className="text-gray-500 italic">Aucune limite définie</p>
+                     )}
+                   </div>
                  </div>
             </fieldset>
             

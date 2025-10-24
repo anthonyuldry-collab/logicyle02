@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AppState, Rider, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive } from '../types';
+import { AppState, Rider, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel } from '../types';
 import { generatePerformanceArchive } from '../utils/performanceArchiveUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import UsersIcon from '../components/icons/UsersIcon';
@@ -12,11 +12,13 @@ import { PowerAnalysisTable } from '../components';
 
 interface PerformancePoleSectionProps {
   appState: AppState;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  currentUser?: User;
 }
 
-type PerformanceTab = 'overview' | 'powerAnalysis' | 'debriefings' | 'archives';
+type PerformanceTab = 'overview' | 'powerAnalysis' | 'debriefings' | 'archives' | 'performanceProjects';
 
-const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appState }) => {
+const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appState, effectivePermissions, currentUser }) => {
   const [activeTab, setActiveTab] = useState<PerformanceTab>('overview');
   const [selectedYear, setSelectedYear] = useState<number | null>(2025); // Par défaut 2025
   const [sortField, setSortField] = useState<string>('name');
@@ -27,6 +29,20 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       <SectionWrapper title="Vue d'Ensemble">
         <div className="p-6 text-center text-gray-500">
           Chargement des données...
+        </div>
+      </SectionWrapper>
+    );
+  }
+
+  // Vérification des permissions d'accès
+  const canViewPerformance = effectivePermissions?.performance?.includes('view') || false;
+  if (!canViewPerformance) {
+    return (
+      <SectionWrapper title="Centre Stratégique des Performances">
+        <div className="p-6 text-center text-gray-500">
+          <ChartBarIcon className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+          <p className="text-lg font-medium text-gray-700">Accès non autorisé</p>
+          <p className="mt-2 text-gray-500">Vous n'avez pas les permissions nécessaires pour accéder à cette section.</p>
         </div>
       </SectionWrapper>
     );
@@ -195,7 +211,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
 
   return (
     <>
-      <style jsx>{`
+      <style jsx={true}>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
           height: 20px;
@@ -240,6 +256,10 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           <button onClick={() => setActiveTab('powerAnalysis')} className={tabButtonStyle('powerAnalysis')}>
             <ChartBarIcon className="w-4 h-4 inline mr-2" />
             Analyse des Puissances
+          </button>
+          <button onClick={() => setActiveTab('performanceProjects')} className={tabButtonStyle('performanceProjects')}>
+            <StarIcon className="w-4 h-4 inline mr-2" />
+            Projets Performance
           </button>
           <button onClick={() => setActiveTab('debriefings')} className={tabButtonStyle('debriefings')}>
             <TrophyIcon className="w-4 h-4 inline mr-2" />
@@ -408,6 +428,143 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       {activeTab === 'powerAnalysis' && (
         <div className="space-y-6">
           <PowerAnalysisTable riders={riders} scoutingProfiles={scoutingProfiles} />
+        </div>
+      )}
+
+      {activeTab === 'performanceProjects' && (
+        <div className="space-y-4">
+          {/* En-tête simplifié */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Projets Performance</h3>
+                <p className="text-sm text-gray-600">Vue d'ensemble des objectifs athlètes</p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-gray-900">{riders.length}</div>
+                <div className="text-xs text-gray-500">athlètes</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Statistiques compactes */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white p-3 rounded border border-gray-200 text-center">
+              <div className="text-lg font-bold text-green-600">
+                {riders.filter(r => r.performanceGoals).length}
+              </div>
+              <div className="text-xs text-gray-600">Avec objectifs</div>
+            </div>
+            <div className="bg-white p-3 rounded border border-gray-200 text-center">
+              <div className="text-lg font-bold text-blue-600">
+                {riders.filter(r => r.physiquePerformanceProject || r.techniquePerformanceProject || r.mentalPerformanceProject || r.environnementPerformanceProject || r.tactiquePerformanceProject).length}
+              </div>
+              <div className="text-xs text-gray-600">Projets détaillés</div>
+            </div>
+            <div className="bg-white p-3 rounded border border-gray-200 text-center">
+              <div className="text-lg font-bold text-red-600">
+                {riders.filter(r => r.qualitativeProfile === 'Grimpeur').length}
+              </div>
+              <div className="text-xs text-gray-600">Grimpeurs</div>
+            </div>
+            <div className="bg-white p-3 rounded border border-gray-200 text-center">
+              <div className="text-lg font-bold text-green-600">
+                {riders.filter(r => r.qualitativeProfile === 'Sprinteur').length}
+              </div>
+              <div className="text-xs text-gray-600">Sprinters</div>
+            </div>
+          </div>
+          
+          {/* Liste simplifiée des athlètes */}
+          <div className="space-y-3">
+            {riders.map((rider) => {
+              const hasPerformanceData = rider.performanceGoals || rider.physiquePerformanceProject || rider.techniquePerformanceProject || rider.mentalPerformanceProject || rider.environnementPerformanceProject || rider.tactiquePerformanceProject;
+              const profileColor = rider.qualitativeProfile === 'Grimpeur' ? 'bg-red-100 text-red-800' :
+                                 rider.qualitativeProfile === 'Sprinteur' ? 'bg-green-100 text-green-800' :
+                                 rider.qualitativeProfile === 'Rouleur' ? 'bg-blue-100 text-blue-800' :
+                                 rider.qualitativeProfile === 'Puncheur' ? 'bg-yellow-100 text-yellow-800' :
+                                 rider.qualitativeProfile === 'Complet' ? 'bg-purple-100 text-purple-800' :
+                                 'bg-gray-100 text-gray-800';
+              
+              return (
+                <div key={rider.id} className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                  {/* En-tête compact */}
+                  <div className="p-4 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                          <span className="text-gray-600 font-medium text-sm">
+                            {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
+                          </span>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900">{rider.firstName} {rider.lastName}</h4>
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${profileColor}`}>
+                            {typeof rider.qualitativeProfile === 'string' 
+                              ? rider.qualitativeProfile 
+                              : typeof rider.qualitativeProfile === 'object' 
+                                ? JSON.stringify(rider.qualitativeProfile)
+                                : 'Non défini'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {hasPerformanceData && (
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {hasPerformanceData ? 'Complet' : 'En attente'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Contenu simplifié */}
+                  <div className="p-4">
+                    {rider.performanceGoals && (
+                      <div className="mb-3">
+                        <h5 className="text-sm font-medium text-gray-700 mb-1">Objectifs</h5>
+                        <p className="text-sm text-gray-600 line-clamp-2">{rider.performanceGoals}</p>
+                      </div>
+                    )}
+                    
+                    {(rider.physiquePerformanceProject || rider.techniquePerformanceProject || rider.mentalPerformanceProject || rider.environnementPerformanceProject || rider.tactiquePerformanceProject) && (
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Domaines de travail</h5>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: 'Physique', value: rider.physiquePerformanceProject },
+                            { key: 'Technique', value: rider.techniquePerformanceProject },
+                            { key: 'Mental', value: rider.mentalPerformanceProject },
+                            { key: 'Environnement', value: rider.environnementPerformanceProject },
+                            { key: 'Tactique', value: rider.tactiquePerformanceProject }
+                          ].filter(item => item.value).map(({ key, value }) => (
+                            <div key={key} className="bg-gray-50 px-2 py-1 rounded text-xs text-gray-600">
+                              {key}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!hasPerformanceData && (
+                      <div className="text-center py-4 text-gray-500">
+                        <p className="text-sm">Aucun projet performance défini</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {riders.length === 0 && (
+            <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+              <StarIcon className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+              <p className="text-gray-500">Aucun athlète trouvé</p>
+            </div>
+          )}
         </div>
       )}
 

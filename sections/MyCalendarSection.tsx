@@ -5,6 +5,7 @@ import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import { getAgeCategory } from '../../utils/ageUtils';
+import { isFutureEvent } from '../utils/dateUtils';
 
 interface MyCalendarSectionProps {
   riders: Rider[];
@@ -56,13 +57,8 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
       (currentUser.id === riderId) : 
       (effectivePermissions?.performance?.includes('view') || false);
 
-  // Filtrer les événements futurs
-  const futureEvents = raceEvents.filter(event => {
-      const eventDate = new Date(event.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return eventDate >= today;
-  });
+  // Filtrer les événements futurs (utilise la même logique que les autres composants)
+  const futureEvents = raceEvents.filter(event => isFutureEvent(event.date));
 
   // Événements pour le coureur
   const eventsForRider = useMemo(() => {
@@ -231,6 +227,42 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                                           })} - {event.location}
                                       </p>
                                       
+                                      {/* Informations de sélection pour l'événement */}
+                                      <div className="mb-3">
+                                          {(() => {
+                                              const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
+                                              const titulaires = eventSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
+                                              const preselections = eventSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
+                                              const remplacants = eventSelections.filter(sel => sel.status === RiderEventStatus.REMPLACANT);
+                                              
+                                              return (
+                                                  <div className="flex flex-wrap gap-2 text-xs">
+                                                      {titulaires.length > 0 && (
+                                                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                                              <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                                                              {titulaires.length} Titulaire{titulaires.length > 1 ? 's' : ''}
+                                                          </span>
+                                                      )}
+                                                      {preselections.length > 0 && (
+                                                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                              <span className="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>
+                                                              {preselections.length} Pré-sél.
+                                                          </span>
+                                                      )}
+                                                      {remplacants.length > 0 && (
+                                                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                                                              <span className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></span>
+                                                              {remplacants.length} Remplaçant{remplacants.length > 1 ? 's' : ''}
+                                                          </span>
+                                                      )}
+                                                      {eventSelections.length === 0 && (
+                                                          <span className="text-gray-500 italic">Aucune sélection</span>
+                                                      )}
+                                                  </div>
+                                              );
+                                          })()}
+                                      </div>
+                                      
                                       {/* Options de disponibilité pour les talents */}
                                       <div className="mt-3">
                                           <label className="block text-xs font-medium text-gray-700 mb-2">
@@ -273,6 +305,31 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                                                       </button>
                                                   ))}
                                               </div>
+                                              
+                                              {/* Section pour les objectifs spécifiques */}
+                                              {event.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES && (
+                                                  <div className="mt-3">
+                                                      <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                          Mes objectifs pour cet événement :
+                                                      </label>
+                                                      <textarea
+                                                          value={event.riderObjectives || ''}
+                                                          onChange={(e) => {
+                                                              const existingSelection = riderEventSelections.find(sel => sel.eventId === event.id && sel.riderId === riderId);
+                                                              if (existingSelection) {
+                                                                  setRiderEventSelections(prev => prev.map(sel => 
+                                                                      sel.eventId === event.id && sel.riderId === riderId
+                                                                          ? { ...sel, riderObjectives: e.target.value }
+                                                                          : sel
+                                                                  ));
+                                                              }
+                                                          }}
+                                                          placeholder="Décrivez vos objectifs spécifiques pour cet événement..."
+                                                          className="w-full p-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                                          rows={3}
+                                                      />
+                                                  </div>
+                                              )}
                                           </div>
                                       )}
                                   </div>
@@ -317,6 +374,42 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                                       year: 'numeric'
                                   })} - {event.location}
                               </p>
+                              
+                              {/* Informations de sélection pour l'événement */}
+                              <div className="mt-2">
+                                  {(() => {
+                                      const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
+                                      const titulaires = eventSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
+                                      const preselections = eventSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
+                                      const remplacants = eventSelections.filter(sel => sel.status === RiderEventStatus.REMPLACANT);
+                                      
+                                      return (
+                                          <div className="flex flex-wrap gap-2 text-sm">
+                                              {titulaires.length > 0 && (
+                                                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800">
+                                                      <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                                      {titulaires.length} Titulaire{titulaires.length > 1 ? 's' : ''}
+                                                  </span>
+                                              )}
+                                              {preselections.length > 0 && (
+                                                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                                      {preselections.length} Pré-sélectionné{preselections.length > 1 ? 's' : ''}
+                                                  </span>
+                                              )}
+                                              {remplacants.length > 0 && (
+                                                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                                                      <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                                                      {remplacants.length} Remplaçant{remplacants.length > 1 ? 's' : ''}
+                                                  </span>
+                                              )}
+                                              {eventSelections.length === 0 && (
+                                                  <span className="text-gray-500 italic">Aucune sélection</span>
+                                              )}
+                                          </div>
+                                      );
+                                  })()}
+                              </div>
                           </div>
                           <span className={`px-2 py-1 text-xs rounded-full ${
                               event.isSelected 
@@ -369,6 +462,31 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                                       </button>
                                   ))}
                               </div>
+                              
+                              {/* Section pour les objectifs spécifiques */}
+                              {event.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES && (
+                                  <div className="mt-3">
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                                          Mes objectifs pour cet événement :
+                                      </label>
+                                      <textarea
+                                          value={event.riderObjectives || ''}
+                                          onChange={(e) => {
+                                              const existingSelection = riderEventSelections.find(sel => sel.eventId === event.id && sel.riderId === riderId);
+                                              if (existingSelection) {
+                                                  setRiderEventSelections(prev => prev.map(sel => 
+                                                      sel.eventId === event.id && sel.riderId === riderId
+                                                          ? { ...sel, riderObjectives: e.target.value }
+                                                          : sel
+                                                  ));
+                                              }
+                                          }}
+                                          placeholder="Décrivez vos objectifs spécifiques pour cet événement..."
+                                          className="w-full p-3 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                          rows={3}
+                                      />
+                                  </div>
+                              )}
                           </div>
                       )}
                   </div>

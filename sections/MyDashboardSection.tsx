@@ -154,7 +154,10 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
   // Si c'est un coureur, afficher la vue d'ensemble simplifiée
   if (currentUser.userRole === UserRole.COUREUR && profileData) {
     const rider = profileData as Rider;
-    const upcomingEvents = raceEvents.filter(event => new Date(event.date) > new Date()).slice(0, 2);
+    const upcomingEvents = raceEvents
+      .filter(event => new Date(event.date) > new Date())
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 2);
     
     return (
       <SectionWrapper title="Tableau de Bord">

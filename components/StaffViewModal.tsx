@@ -296,7 +296,12 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
                           <div className="flex justify-between items-center">
                             <div>
                               <div className="font-medium text-slate-200">{event.name}</div>
-                              <div className="text-sm text-slate-400">{formatDate(event.date)}</div>
+                              <div className="text-sm text-slate-400">
+                                {event.endDate && event.endDate !== event.date 
+                                  ? `Du ${formatDate(event.date)} au ${formatDate(event.endDate)}`
+                                  : formatDate(event.date)
+                                }
+                              </div>
                             </div>
                             <div className={`px-2 py-1 rounded text-xs font-medium ${
                               event.type === EventType.COURSE ? 'bg-blue-100 text-blue-800' :

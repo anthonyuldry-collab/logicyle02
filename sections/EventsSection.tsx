@@ -13,6 +13,9 @@ import ChevronRightIcon from '../components/icons/ChevronRightIcon';
 import CakeIcon from '../components/icons/CakeIcon'; // Added for birthday indicators
 import { useTranslations } from '../hooks/useTranslations';
 import { jsPDF } from 'jspdf';
+import { getAvailableYears, filterEventsByYear, formatEventDate, formatEventDateRange, isPlanningYear } from '../utils/dateUtils';
+import { getCurrentSeasonYear, getPlanningYears, getSeasonLabel, getSeasonTransitionStatus } from '../utils/seasonUtils';
+import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
 
 interface EventsSectionProps {
   raceEvents: RaceEvent[];
@@ -38,6 +41,8 @@ const initialEventFormState: Omit<RaceEvent, 'id' | 'raceInfo' | 'operationalLog
   eventType: EventType.COMPETITION,
   eligibleCategory: '',
   discipline: Discipline.ROUTE,
+  minRiders: undefined,
+  maxRiders: undefined,
 };
 
 // Helper to check for transport legs
@@ -154,16 +159,116 @@ export const EventsSection = ({
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   const [displayDate, setDisplayDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+  const [viewMode, setViewMode] = useState<'monthly' | 'yearly' | 'table'>('monthly');
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'location' | 'eventType' | 'discipline' | 'eligibleCategory'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [yearFilter, setYearFilter] = useState<number | 'all'>('all');
 
   // NOTE: Filtering by team level has been removed as per last valid user request to simplify event creation
   const filteredRaceEvents = raceEvents;
 
+  // Obtenir toutes les années disponibles dans les événements
+  const getAvailableYearsList = () => {
+    const eventYears = getAvailableYears(filteredRaceEvents, event => event.date);
+    const planningYears = getPlanningYears();
+    
+    // Combiner les années d'événements et de planification, en supprimant les doublons
+    const allYears = [...new Set([...eventYears, ...planningYears])];
+    return allYears.sort((a, b) => b - a); // Tri décroissant
+  };
+
+  // Filtrer les événements par année
+  const getFilteredEvents = () => filterEventsByYear(filteredRaceEvents, yearFilter, event => event.date);
+
+  // Grouper les événements par année pour la vue annuelle
+  const eventsByYear = useMemo(() => {
+    const grouped: { [year: number]: { [month: number]: RaceEvent[] } } = {};
+    filteredRaceEvents.forEach(event => {
+      const eventDate = new Date(event.date);
+      const year = eventDate.getFullYear();
+      const month = eventDate.getMonth();
+      
+      if (!grouped[year]) {
+        grouped[year] = {};
+      }
+      if (!grouped[year][month]) {
+        grouped[year][month] = [];
+      }
+      grouped[year][month].push(event);
+    });
+    return grouped;
+  }, [filteredRaceEvents]);
+
+  // Fonction de tri pour les événements
+  const sortEvents = (events: RaceEvent[], column: string, direction: 'asc' | 'desc') => {
+    return [...events].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (column) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'date':
+          aValue = new Date(a.date).getTime();
+          bValue = new Date(b.date).getTime();
+          break;
+        case 'location':
+          aValue = a.location.toLowerCase();
+          bValue = b.location.toLowerCase();
+          break;
+        case 'eventType':
+          aValue = a.eventType.toLowerCase();
+          bValue = b.eventType.toLowerCase();
+          break;
+        case 'discipline':
+          aValue = a.discipline.toLowerCase();
+          bValue = b.discipline.toLowerCase();
+          break;
+        case 'eligibleCategory':
+          aValue = a.eligibleCategory.toLowerCase();
+          bValue = b.eligibleCategory.toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  // Événements triés pour la vue tableau
+  const sortedEvents = useMemo(() => {
+    const filteredEvents = getFilteredEvents();
+    return sortEvents(filteredEvents, sortColumn, sortDirection);
+  }, [filteredRaceEvents, sortColumn, sortDirection, yearFilter]);
+
+  // Gestionnaire de clic pour trier
+  const handleSort = (column: typeof sortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
 
   const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setCurrentEventForModal(prev => ({ ...prev, [name]: name === 'endDate' && value === '' ? undefined : value }));
+    
+    // Gestion spéciale pour les champs numériques
+    if (name === 'minRiders' || name === 'maxRiders') {
+      const numValue = value === '' ? undefined : parseInt(value);
+      setCurrentEventForModal(prev => ({ ...prev, [name]: numValue }));
+    } else {
+      setCurrentEventForModal(prev => ({ ...prev, [name]: name === 'endDate' && value === '' ? undefined : value }));
+    }
   };
 
   const handleEventSubmit = async (e: React.FormEvent) => {
@@ -179,6 +284,8 @@ export const EventsSection = ({
             eventType: currentEventForModal.eventType,
             eligibleCategory: currentEventForModal.eligibleCategory,
             discipline: currentEventForModal.discipline,
+            minRiders: currentEventForModal.minRiders,
+            maxRiders: currentEventForModal.maxRiders,
         };
         await setRaceEvents(updatedEvent);
         navigateToEventDetail(editingEventId);
@@ -191,6 +298,8 @@ export const EventsSection = ({
             eventType: currentEventForModal.eventType,
             eligibleCategory: currentEventForModal.eligibleCategory,
             discipline: currentEventForModal.discipline,
+            minRiders: currentEventForModal.minRiders,
+            maxRiders: currentEventForModal.maxRiders,
             id: generateId(),
             raceInfo: { ...emptyRaceInformation },
             operationalLogistics: [],
@@ -358,6 +467,8 @@ export const EventsSection = ({
         eventType: event.eventType,
         eligibleCategory: event.eligibleCategory,
         discipline: event.discipline,
+        minRiders: event.minRiders,
+        maxRiders: event.maxRiders,
     });
     setIsEditingModal(true);
     setEditingEventId(event.id);
@@ -410,26 +521,9 @@ export const EventsSection = ({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysOfWeek = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
-  return (
-    <SectionWrapper
-      title="Gestion des Événements"
-      actionButton={<ActionButton onClick={() => openAddModal()} icon={<PlusCircleIcon className="w-5 h-5"/>}>Ajouter Événement</ActionButton>}
-    >
-      {/* Calendrier des événements */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
-        <div className="flex items-center space-x-2">
-          <ActionButton onClick={() => setDisplayDate(new Date(year, month - 1, 1))} variant="secondary" size="sm" icon={<ChevronLeftIcon className="w-4 h-4"/>} />
-          <ActionButton onClick={() => setDisplayDate(new Date(year, month + 1, 1))} variant="secondary" size="sm" icon={<ChevronRightIcon className="w-4 h-4"/>} />
-          <h3 className="text-xl font-semibold text-gray-800 w-48 text-center">
-            {displayDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-          </h3>
-        </div>
-        <div className="flex items-center space-x-2 mt-2 sm:mt-0">
-          <input type="checkbox" id="show-all-events" checked={showAllEvents} onChange={(e) => setShowAllEvents(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-          <label htmlFor="show-all-events" className="text-sm text-gray-600">Afficher toutes les courses</label>
-        </div>
-      </div>
-
+  // Fonction pour rendre la vue mensuelle (existante)
+  const renderMonthlyView = () => (
+    <>
       <div className="grid grid-cols-7 gap-1 text-center font-semibold text-gray-600 border-b pb-2 mb-1">
         {daysOfWeek.map(day => <div key={day}>{day}</div>)}
       </div>
@@ -484,6 +578,335 @@ export const EventsSection = ({
         })}
         {Array.from({ length: (7 - (adjustedFirstDay + daysInMonth) % 7) % 7 }).map((_, i) => <div key={`empty-end-${i}`} className="h-32 bg-gray-100 rounded-md border"></div>)}
       </div>
+    </>
+  );
+
+  // Fonction pour rendre la vue annuelle
+  const renderYearlyView = () => {
+    const months = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    
+    const yearEvents = eventsByYear[currentYear] || {};
+    
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {months.map((monthName, monthIndex) => {
+          const monthEvents = yearEvents[monthIndex] || [];
+          return (
+            <div key={monthIndex} className="bg-white p-4 rounded-lg border shadow-sm">
+              <h4 className="text-lg font-semibold text-gray-800 mb-3">{monthName} {currentYear}</h4>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {monthEvents.length > 0 ? (
+                  monthEvents.map(event => (
+                    <div key={event.id} className="p-2 rounded border text-sm bg-gray-50 hover:bg-gray-100 cursor-pointer" onClick={() => navigateToEventDetail(event.id)}>
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-medium text-gray-800 text-xs truncate">{event.name}</span>
+                        <span className={`px-2 py-1 text-xs rounded-full ${EVENT_TYPE_COLORS[event.eventType]}`}>
+                          {event.eventType}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        {formatEventDateRange(event, { 
+                          day: 'numeric', 
+                          month: 'short'
+                        })} - {event.location}
+                      </p>
+                      <p className="text-xs text-gray-500">{event.discipline}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm italic">Aucun événement</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Fonction pour rendre la vue tableau
+  const renderTableView = () => {
+    const getSortIcon = (column: typeof sortColumn) => {
+      if (sortColumn !== column) {
+        return (
+          <svg className="w-4 h-4 ml-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+        );
+      }
+      return sortDirection === 'asc' ? (
+        <svg className="w-4 h-4 ml-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4 ml-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+        </svg>
+      );
+    };
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('name')}
+              >
+                <div className="flex items-center">
+                  Événement
+                  {getSortIcon('name')}
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('date')}
+              >
+                <div className="flex items-center">
+                  Date
+                  {getSortIcon('date')}
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('location')}
+              >
+                <div className="flex items-center">
+                  Lieu
+                  {getSortIcon('location')}
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('eventType')}
+              >
+                <div className="flex items-center">
+                  Type
+                  {getSortIcon('eventType')}
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('discipline')}
+              >
+                <div className="flex items-center">
+                  Discipline
+                  {getSortIcon('discipline')}
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('eligibleCategory')}
+              >
+                <div className="flex items-center">
+                  Catégorie
+                  {getSortIcon('eligibleCategory')}
+                </div>
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Limites Athlètes
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {sortedEvents.map(event => (
+              <tr key={event.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <div className="text-sm font-medium text-gray-900">{event.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {formatEventDateRange(event)}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-900">
+                  {formatEventDate(event.date, { 
+                    weekday: 'short',
+                    day: 'numeric', 
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-900">{event.location}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs rounded-full ${EVENT_TYPE_COLORS[event.eventType]}`}>
+                    {event.eventType}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-900">{event.discipline}</td>
+                <td className="px-4 py-3 text-sm text-gray-900">{event.eligibleCategory}</td>
+                <td className="px-4 py-3 text-sm text-gray-900">
+                  {event.minRiders || event.maxRiders ? (
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs text-gray-600">
+                        {event.minRiders || 0}-{event.maxRiders || '∞'}
+                      </span>
+                      <span className="text-xs text-gray-400">coureurs</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">Non défini</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => navigateToEventDetail(event.id)}
+                      className="text-blue-600 hover:text-blue-800 text-sm"
+                    >
+                      Voir
+                    </button>
+                    <button
+                      onClick={() => openEditModal(event)}
+                      className="text-gray-600 hover:text-gray-800 text-sm"
+                    >
+                      Modifier
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <SectionWrapper
+      title="Gestion des Événements"
+      actionButton={<ActionButton onClick={() => openAddModal()} icon={<PlusCircleIcon className="w-5 h-5"/>}>Ajouter Événement</ActionButton>}
+    >
+      {/* Calendrier des événements */}
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
+        <div className="flex items-center space-x-2">
+          {viewMode === 'monthly' && (
+            <>
+              <ActionButton onClick={() => setDisplayDate(new Date(year, month - 1, 1))} variant="secondary" size="sm" icon={<ChevronLeftIcon className="w-4 h-4"/>} />
+              <ActionButton onClick={() => setDisplayDate(new Date(year, month + 1, 1))} variant="secondary" size="sm" icon={<ChevronRightIcon className="w-4 h-4"/>} />
+              <div className="flex items-center space-x-2">
+                <h3 className="text-xl font-semibold text-gray-800 w-48 text-center">
+                  {displayDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                </h3>
+                <SeasonTransitionIndicator 
+                  seasonYear={getCurrentSeasonYear()} 
+                  showDetails={false}
+                />
+              </div>
+            </>
+          )}
+          {viewMode === 'yearly' && (
+            <div className="flex items-center space-x-2">
+              <ActionButton onClick={() => setCurrentYear(currentYear - 1)} variant="secondary" size="sm" icon={<ChevronLeftIcon className="w-4 h-4"/>} />
+              <h3 className="text-xl font-semibold text-gray-800 w-32 text-center">{currentYear}</h3>
+              <ActionButton onClick={() => setCurrentYear(currentYear + 1)} variant="secondary" size="sm" icon={<ChevronRightIcon className="w-4 h-4"/>} />
+            </div>
+          )}
+          {viewMode === 'table' && (
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800">Liste des Événements</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {sortedEvents.length} événement{sortedEvents.length > 1 ? 's' : ''}
+                {yearFilter !== 'all' && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                    📅 {yearFilter}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 mt-2 sm:mt-0">
+          <div className="flex items-center space-x-2">
+            <input type="checkbox" id="show-all-events" checked={showAllEvents} onChange={(e) => setShowAllEvents(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+            <label htmlFor="show-all-events" className="text-sm text-gray-600">Afficher toutes les courses</label>
+          </div>
+          {viewMode === 'table' && (
+            <div className="flex items-center space-x-2">
+              <label htmlFor="year-filter" className="text-sm text-gray-600">Année :</label>
+              <select
+                id="year-filter"
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">Toutes les années</option>
+                {getAvailableYearsList().map(year => {
+                  const seasonStatus = getSeasonTransitionStatus(year);
+                  const isPlanning = isPlanningYear(year);
+                  const isCurrentSeason = year === getCurrentSeasonYear();
+                  
+                  return (
+                    <option key={year} value={year}>
+                      {getSeasonLabel(year)} {isPlanning ? '📅' : ''} {isCurrentSeason ? '⭐' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                onClick={() => setYearFilter(2026)}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  yearFilter === 2026 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                📅 Planification 2026
+              </button>
+              <button
+                onClick={() => setYearFilter('all')}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  yearFilter === 'all' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Toutes les années
+              </button>
+            </div>
+          )}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={`px-3 py-1 text-sm rounded ${
+                viewMode === 'monthly'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Mensuel
+            </button>
+            <button
+              onClick={() => setViewMode('yearly')}
+              className={`px-3 py-1 text-sm rounded ${
+                viewMode === 'yearly'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Annuel
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1 text-sm rounded ${
+                viewMode === 'table'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Tableau
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {viewMode === 'monthly' && renderMonthlyView()}
+      {viewMode === 'yearly' && renderYearlyView()}
+      {viewMode === 'table' && renderTableView()}
       
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditingModal ? "Modifier Événement" : "Nouvel Événement"}>
         <form onSubmit={handleEventSubmit} className="space-y-4">
@@ -532,6 +955,51 @@ export const EventsSection = ({
               placeholder="Ex: Elite Nationale, UCI 1.1, etc."
             />
           </div>
+          
+          {/* Section Limites de sélection */}
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Limites de sélection des athlètes</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="minRiders" className="block text-sm font-medium text-gray-700">Nombre minimum d'athlètes</label>
+                <input 
+                  type="number" 
+                  name="minRiders" 
+                  id="minRiders" 
+                  min="0"
+                  max="20"
+                  value={currentEventForModal.minRiders || ''} 
+                  onChange={handleModalInputChange} 
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"
+                  placeholder="Ex: 4"
+                />
+                <p className="mt-1 text-xs text-gray-500">Nombre minimum de coureurs requis pour cet événement</p>
+              </div>
+              <div>
+                <label htmlFor="maxRiders" className="block text-sm font-medium text-gray-700">Nombre maximum d'athlètes</label>
+                <input 
+                  type="number" 
+                  name="maxRiders" 
+                  id="maxRiders" 
+                  min="1"
+                  max="20"
+                  value={currentEventForModal.maxRiders || ''} 
+                  onChange={handleModalInputChange} 
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"
+                  placeholder="Ex: 6"
+                />
+                <p className="mt-1 text-xs text-gray-500">Nombre maximum de coureurs autorisés pour cet événement</p>
+              </div>
+            </div>
+            <div className="mt-3 p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-800">
+                💡 <strong>Conseil :</strong> Ces limites seront utilisées dans le planning de saison pour contrôler les sélections d'athlètes.
+                <br />
+                <span className="text-xs">Exemples : Course classique (4-6), Championnat (6-8), Course locale (2-4)</span>
+              </p>
+            </div>
+          </div>
+          
           <div className="flex justify-end space-x-3 pt-4">
             <ActionButton type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Annuler</ActionButton>
             <ActionButton type="submit">{isEditingModal ? "Sauvegarder" : "Créer"}</ActionButton>

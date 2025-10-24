@@ -5,6 +5,8 @@ import MyPerformanceSection from './MyPerformanceSection';
 import MyPerformanceProjectSection from './MyPerformanceProjectSection';
 import { UsersIcon } from '../components/icons';
 import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
+import { getCurrentSeasonYear, getSeasonLabel, getPlanningYears, getSeasonTransitionStatus } from '../utils/seasonUtils';
+import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
 
 interface MyCareerSectionProps {
   riders: Rider[];
@@ -185,7 +187,7 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
     if (currentTeamName && !teamsHistory.some(team => team.teamName === currentTeamName)) {
       allTeams.unshift({
         teamName: currentTeamName,
-        startDate: `${new Date().getFullYear()}-01-01`,
+        startDate: `${getCurrentSeasonYear()}-01-01`,
         endDate: undefined,
         role: 'Coureur',
         status: 'Actif' as const,
@@ -267,6 +269,21 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
   return (
     <SectionWrapper title="Ma Carrière">
       <div className="space-y-6">
+        {/* Indicateur de transition de saison */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold text-gray-800">
+              {getSeasonLabel(getCurrentSeasonYear())}
+            </h2>
+            <SeasonTransitionIndicator 
+              seasonYear={getCurrentSeasonYear()} 
+              showDetails={true}
+            />
+          </div>
+          <div className="text-sm text-gray-600">
+            Années de planification disponibles : {getPlanningYears().join(', ')}
+          </div>
+        </div>
         {/* Navigation des onglets */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">

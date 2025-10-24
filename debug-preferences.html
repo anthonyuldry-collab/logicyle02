@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Préférences</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .debug-item { margin: 10px 0; }
+        .error { color: red; }
+        .success { color: green; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>Debug des Préférences des Athlètes</h1>
+    
+    <div class="debug-section">
+        <h2>Instructions</h2>
+        <p>1. Ouvrez la console du navigateur (F12)</p>
+        <p>2. Allez dans la section "Planning de Saison"</p>
+        <p>3. Cliquez sur l'onglet "Préférences"</p>
+        <p>4. Regardez les logs dans la console qui commencent par 🔍</p>
+        <p>5. Vérifiez que les données sont correctement chargées</p>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Points à vérifier</h2>
+        <ul>
+            <li>Le nombre d'événements futurs chargés</li>
+            <li>Le nombre de sélections disponibles</li>
+            <li>Les sélections par athlète</li>
+            <li>La correspondance entre événements et sélections</li>
+        </ul>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Problèmes possibles</h2>
+        <ul>
+            <li class="error">Aucun événement futur : Vérifiez les dates des événements</li>
+            <li class="error">Aucune sélection : Vérifiez que les athlètes ont bien exprimé leurs choix</li>
+            <li class="warning">Sélections mais pas d'affichage : Problème de logique de filtrage</li>
+        </ul>
+    </div>
+    
+    <script>
+        console.log('🔍 Debug Préférences - Page de test chargée');
+        console.log('🔍 Ouvrez la console et naviguez vers Planning de Saison > Préférences');
+    </script>
+</body>
+</html>

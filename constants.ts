@@ -30,7 +30,8 @@ import {
     PowerZoneKey,
     TransportStopType,
     SeasonYear,
-    TalentAvailability
+    TalentAvailability,
+    StaffEventSelection
 } from './types';
 
 
@@ -303,6 +304,7 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     // Performance & Santé - Regroupement logique (sections les plus utilisées)
     { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
     { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
+    { id: 'season-planning', labels: { fr: 'Planning de Saison', en: 'Season Planning' }, icon: 'CalendarDaysIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
     { id: 'staff', labels: { fr: 'Staff', en: 'Staff' }, icon: 'UserGroupIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
     { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
     { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
@@ -399,6 +401,7 @@ export const getInitialTeamState = (): TeamState => ({
     eventChecklistItems: [],
     performanceEntries: [],
     riderEventSelections: [],
+    staffEventSelections: [],
     eventStaffAvailabilities: [],
     incomeItems: [],
     checklistTemplates: {
@@ -467,6 +470,49 @@ export const initialScoutingProfileFormState: Omit<ScoutingProfile, 'id'> = {
     discipline: DisciplinePracticed.ROUTE,
     categories: [],
     allergies: [],
+    
+    // Performance Project
+    performanceGoals: '',
+    physiquePerformanceProject: {
+        forces: '',
+        aOptimiser: '',
+        aDevelopper: '',
+        besoinsActions: '',
+    },
+    techniquePerformanceProject: {
+        forces: '',
+        aOptimiser: '',
+        aDevelopper: '',
+        besoinsActions: '',
+    },
+    mentalPerformanceProject: {
+        forces: '',
+        aOptimiser: '',
+        aDevelopper: '',
+        besoinsActions: '',
+    },
+    environnementPerformanceProject: {
+        forces: '',
+        aOptimiser: '',
+        aDevelopper: '',
+        besoinsActions: '',
+    },
+    tactiquePerformanceProject: {
+        forces: '',
+        aOptimiser: '',
+        aDevelopper: '',
+        besoinsActions: '',
+    },
+    
+    // Interview & Motivation
+    cyclingMotivation: '',
+    shortTermGoals: '',
+    mediumTermGoals: '',
+    longTermGoals: '',
+    careerAspirations: '',
+    personalValues: '',
+    challengesFaced: '',
+    supportNeeds: '',
 };
 
 export const RIDER_EVENT_STATUS_COLORS: Record<RiderEventStatus, string> = {

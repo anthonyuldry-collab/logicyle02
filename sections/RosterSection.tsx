@@ -18,6 +18,17 @@ import { saveData, deleteData } from '../services/firebaseService';
 import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, RiderEventPreference, ScoutingProfile, TeamProduct, User, AppState } from '../types';
 import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
+import { getCurrentSeasonYear, getSeasonLabel, getAvailableSeasonYears, isSeasonActive, getSeasonTransitionStatus } from '../utils/seasonUtils';
+import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
+import RosterTransitionManager from '../components/RosterTransitionManager';
+import RosterArchiveViewer from '../components/RosterArchiveViewer';
+import SeasonPlanningSection from './SeasonPlanningSection';
+import { 
+  getActiveRidersForCurrentSeason, 
+  getActiveStaffForCurrentSeason,
+  getRosterStatsForSeason 
+} from '../utils/rosterArchiveUtils';
+import { RosterArchive, RosterTransition } from '../types';
 
 interface RosterSectionProps {
   riders: Rider[];
@@ -32,6 +43,8 @@ interface RosterSectionProps {
   teamProducts: TeamProduct[];
   currentUser: User;
   appState: AppState;
+  staff?: StaffMember[];
+  onRosterTransition?: (archive: RosterArchive, transition: RosterTransition) => void;
 }
 
 export default function RosterSection({ 
@@ -46,7 +59,9 @@ export default function RosterSection({
   scoutingProfiles, 
   teamProducts, 
   currentUser, 
-  appState 
+  appState,
+  staff = [],
+  onRosterTransition
 }: RosterSectionProps) {
   if (!appState) {
     return <div>Chargement...</div>;
@@ -66,7 +81,11 @@ export default function RosterSection({
   }
   
   // États pour la gestion des onglets
-  const [activeTab, setActiveTab] = useState<'roster' | 'seasonPlanning' | 'quality'>('roster');
+  const [activeTab, setActiveTab] = useState<'roster' | 'seasonPlanning' | 'quality' | 'archives'>('roster');
+  
+  // États pour l'archivage des effectifs
+  const [rosterArchives, setRosterArchives] = useState<RosterArchive[]>([]);
+  const [showArchiveViewer, setShowArchiveViewer] = useState(false);
   
   // États pour la recherche et les filtres
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,7 +116,7 @@ export default function RosterSection({
   const [activePlanningTab, setActivePlanningTab] = useState<'unified' | 'monitoring'>('monitoring');
   const [riderSortField, setRiderSortField] = useState<'alphabetical' | 'raceDays' | 'potential'>('alphabetical');
   const [riderSortDirection, setRiderSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [selectedYear, setSelectedYear] = useState<number>(2025);
+  const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
   const [showFilters, setShowFilters] = useState<boolean>(false);
   const [activeMonitoringTab, setActiveMonitoringTab] = useState<'monitoring' | 'selections'>('monitoring');
   
@@ -180,9 +199,10 @@ export default function RosterSection({
     });
   };
   
-  // Fonction pour obtenir les riders triés pour la qualité
+  // Fonction pour obtenir les riders triés pour la qualité (utilise les effectifs actifs)
   const getSortedRidersForQuality = () => {
-    const allRiders = includeScouts ? [...riders, ...(appState.scoutingProfiles || [])] : riders;
+    const ridersToUse = activeRiders.length > 0 ? activeRiders : riders;
+    const allRiders = includeScouts ? [...ridersToUse, ...(appState.scoutingProfiles || [])] : ridersToUse;
     return allRiders.sort((a, b) => {
       let valueA: any, valueB: any;
       
@@ -302,6 +322,88 @@ export default function RosterSection({
     saveAllSelections: () => void;
   }) => {
     const [selectedEvent, setSelectedEvent] = useState<RaceEvent | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setIsImporting(true);
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        if (!data.riders || !Array.isArray(data.riders)) {
+          alert('Format JSON invalide. Le fichier doit contenir un tableau "riders".');
+          return;
+        }
+
+        let importedCount = 0;
+        let skippedCount = 0;
+
+        // Traiter chaque coureur et ses sélections
+        for (const riderData of data.riders) {
+          // Trouver le coureur correspondant par nom (en nettoyant les espaces)
+          const riderName = riderData.nom.trim();
+          const rider = riders.find(r => 
+            `${r.firstName} ${r.lastName}`.trim().toLowerCase() === riderName.toLowerCase()
+          );
+
+          if (!rider) {
+            console.warn(`⚠️ Coureur non trouvé: ${riderName}`);
+            skippedCount++;
+            continue;
+          }
+
+          // Traiter chaque sélection
+          if (riderData.selections && Array.isArray(riderData.selections)) {
+            for (const selection of riderData.selections) {
+              // Trouver l'événement correspondant par nom (en nettoyant les espaces)
+              const eventName = selection.evenement.trim();
+              const raceEvent = futureEvents.find(e => 
+                e.name.trim().toLowerCase() === eventName.toLowerCase()
+              );
+
+              if (!raceEvent) {
+                console.warn(`⚠️ Événement non trouvé: ${eventName}`);
+                continue;
+              }
+
+              // Mapper le statut du JSON vers RiderEventStatus
+              let status: RiderEventStatus | null = null;
+              if (selection.statut === "Titulaire") {
+                status = RiderEventStatus.TITULAIRE;
+              } else if (selection.statut === "Remplaçant") {
+                status = RiderEventStatus.REMPLACANT;
+              } else if (selection.statut === "Pré-sélection" || selection.statut === "Pré-selection") {
+                status = RiderEventStatus.PRE_SELECTION;
+              } else if (selection.statut === "Non sélectionné") {
+                // Ne rien faire pour les non sélectionnés
+                continue;
+              }
+
+              if (status) {
+                await addRiderToEvent(raceEvent.id, rider.id, status);
+                importedCount++;
+              }
+            }
+          }
+        }
+
+        alert(`✅ Import terminé!\n${importedCount} sélection(s) importée(s)\n${skippedCount} coureur(s) ignoré(s)`);
+        
+        // Réinitialiser l'input file
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors de l\'import:', error);
+        alert('Erreur lors de l\'import du fichier JSON. Vérifiez le format du fichier.');
+      } finally {
+        setIsImporting(false);
+      }
+    };
 
     return (
       <div className="space-y-6">
@@ -317,6 +419,24 @@ export default function RosterSection({
                 <span>Remplaçants</span>
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span>Pré-sélections</span>
+              </div>
+              <div className="flex items-center">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportJSON}
+                  className="hidden"
+                  id="import-selections"
+                />
+                <label
+                  htmlFor="import-selections"
+                  className={`cursor-pointer px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium ${
+                    isImporting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isImporting ? '⏳ Import...' : '📥 Importer JSON'}
+                </label>
               </div>
             </div>
             
@@ -407,6 +527,15 @@ export default function RosterSection({
                     </div>
                     <span className="text-sm font-medium text-gray-900">{titulaires.length}</span>
                   </div>
+                  {titulaires.length > 0 && (
+                    <div className="ml-4 space-y-1">
+                      {titulaires.map(rider => (
+                        <div key={rider.id} className="text-xs text-gray-600">
+                          • {rider.firstName} {rider.lastName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -415,6 +544,15 @@ export default function RosterSection({
                     </div>
                     <span className="text-sm font-medium text-gray-900">{remplacants.length}</span>
                   </div>
+                  {remplacants.length > 0 && (
+                    <div className="ml-4 space-y-1">
+                      {remplacants.map(rider => (
+                        <div key={rider.id} className="text-xs text-gray-600">
+                          • {rider.firstName} {rider.lastName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -423,6 +561,15 @@ export default function RosterSection({
                     </div>
                     <span className="text-sm font-medium text-gray-900">{preselections.length}</span>
                   </div>
+                  {preselections.length > 0 && (
+                    <div className="ml-4 space-y-1">
+                      {preselections.map(rider => (
+                        <div key={rider.id} className="text-xs text-gray-600">
+                          • {rider.firstName} {rider.lastName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 
                 {isSelected && (
@@ -801,6 +948,7 @@ export default function RosterSection({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [initialModalTab, setInitialModalTab] = useState<string>('info');
   const [riderToDelete, setRiderToDelete] = useState<Rider | null>(null);
 
 
@@ -910,6 +1058,13 @@ export default function RosterSection({
     setIsEditModalOpen(true);
   };
 
+  // Fonction pour ouvrir le modal d'un coureur avec un onglet spécifique
+  const openRiderModal = (rider: Rider, initialTab: string = 'info') => {
+    setSelectedRider(rider);
+    setInitialModalTab(initialTab);
+    setIsViewModalOpen(true);
+  };
+
   // Fonction pour gérer la sauvegarde d'un coureur
   const handleSaveRider = (rider: Rider) => {
     try {
@@ -978,15 +1133,17 @@ export default function RosterSection({
   // Fonction pour calculer le nombre de jours de course d'un athlète depuis le début de saison
   const getRiderRaceDays = (riderId: string) => {
     const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
+    const currentSeason = getCurrentSeasonYear();
     
-    // Début de saison (1er janvier de l'année en cours)
-    const seasonStart = new Date(currentYear, 0, 1);
+    // Début de saison (1er janvier de l'année de saison courante)
+    const seasonStart = new Date(currentSeason, 0, 1);
     
     // Utiliser localRaceEvents pour avoir les données les plus récentes
     const seasonEvents = localRaceEvents.filter(event => {
       const eventDate = new Date(event.date);
-      return eventDate >= seasonStart && 
+      const eventYear = eventDate.getFullYear();
+      return eventYear === currentSeason && 
+             eventDate >= seasonStart && 
              eventDate <= currentDate && 
              event.selectedRiderIds?.includes(riderId);
     });
@@ -994,17 +1151,91 @@ export default function RosterSection({
     // Compter les jours uniques de course (pas le nombre d'événements)
     const uniqueDays = new Set(seasonEvents.map(event => event.date)).size;
     
-    console.log(`🏁 Jours de course pour ${riderId}:`, uniqueDays, 'jours uniques sur', seasonEvents.length, 'événements');
+    console.log(`🏁 Jours de course pour ${riderId} en ${currentSeason}:`, uniqueDays, 'jours uniques sur', seasonEvents.length, 'événements');
     console.log('🏁 Événements trouvés:', seasonEvents.map(e => ({ name: e.name, date: e.date })));
     
     return uniqueDays;
   };
 
-  // Calcul des coureurs triés et filtrés pour l'effectif
+  // Fonction pour calculer le nombre de jours de staff depuis le début de saison
+  const getStaffDays = (staffId: string) => {
+    const currentDate = new Date();
+    const currentSeason = getCurrentSeasonYear();
+    
+    // Début de saison (1er janvier de l'année de saison courante)
+    const seasonStart = new Date(currentSeason, 0, 1);
+    
+    // Utiliser localRaceEvents pour avoir les données les plus récentes
+    const seasonEvents = localRaceEvents.filter(event => {
+      const eventDate = new Date(event.date);
+      const eventYear = eventDate.getFullYear();
+      return eventYear === currentSeason && 
+             eventDate >= seasonStart && 
+             eventDate <= currentDate;
+    });
+    
+    // Calculer la durée totale des événements où le staff est assigné
+    const totalDays = seasonEvents.reduce((total, event) => {
+      // Vérifier si le membre du staff est assigné à cet événement
+      const isAssigned = event.selectedStaffIds?.includes(staffId) || 
+                        Object.values(event).some(value => 
+                          Array.isArray(value) && value.includes(staffId)
+                        );
+      
+      if (isAssigned) {
+        // Calculer la durée de l'événement
+        const startDate = new Date(event.date + 'T00:00:00Z');
+        const endDate = new Date((event.endDate || event.date) + 'T23:59:59Z');
+        const eventDurationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return total + eventDurationDays;
+      }
+      
+      return total;
+    }, 0);
+    
+    console.log(`👥 Jours de staff pour ${staffId} en ${currentSeason}:`, totalDays, 'jours sur', seasonEvents.length, 'événements');
+    
+    return totalDays;
+  };
+
+  // Fonctions pour la gestion de l'archivage des effectifs
+  const handleRosterTransition = (archive: RosterArchive, transition: RosterTransition) => {
+    console.log('🔄 Transition des effectifs:', { archive, transition });
+    
+    // Ajouter l'archive à la liste
+    setRosterArchives(prev => [...prev, archive]);
+    
+    // Notifier le composant parent si la fonction est fournie
+    if (onRosterTransition) {
+      onRosterTransition(archive, transition);
+    }
+    
+    // Afficher un message de confirmation
+    alert(`Effectifs de la saison ${archive.season} archivés avec succès !
+    
+Tous les coureurs et staff actifs ont été conservés pour 2026.
+Les compteurs de jours de course ont été remis à 0.`);
+  };
+
+  const handleViewArchive = (archive: RosterArchive) => {
+    console.log('👁️ Consultation de l\'archive:', archive);
+    setShowArchiveViewer(true);
+  };
+
+  // Obtenir les coureurs actifs pour la saison courante
+  const activeRiders = getActiveRidersForCurrentSeason(riders);
+  const activeStaff = getActiveStaffForCurrentSeason(staff);
+
+  // Calcul des coureurs triés et filtrés pour l'effectif (utilise les effectifs actifs)
   const sortedRidersForAdmin = useMemo(() => {
+    // Utiliser les coureurs actifs pour la saison courante
+    const ridersToUse = activeRiders.length > 0 ? activeRiders : riders;
+    
     // Debug: Afficher tous les coureurs et leurs données
     console.log('=== DEBUG EFFECTIF ===');
     console.log('Total coureurs:', riders.length);
+    console.log('Coureurs actifs:', activeRiders.length);
+    console.log('Coureurs utilisés:', ridersToUse.length);
     console.log('Événements locaux:', localRaceEvents.length);
     console.log('Détail des événements:', localRaceEvents.map(e => ({ 
       name: e.name, 
@@ -1014,7 +1245,7 @@ export default function RosterSection({
     console.log('Filtres actifs:', { searchTerm, genderFilter, ageCategoryFilter, minAgeFilter, maxAgeFilter });
     
     // Recherche spécifique d'Anthony Uldry
-    const anthonyRider = riders.find(rider => 
+    const anthonyRider = ridersToUse.find(rider => 
       rider.firstName?.toLowerCase().includes('anthony') && 
       rider.lastName?.toLowerCase().includes('uldry')
     );
@@ -1023,10 +1254,10 @@ export default function RosterSection({
       console.log('🔍 ANTHONY ULDRY TROUVÉ:', anthonyRider);
     } else {
       console.log('❌ ANTHONY ULDRY NON TROUVÉ dans la liste des coureurs');
-      console.log('📋 Liste des coureurs disponibles:', riders.map(r => `${r.firstName} ${r.lastName} (${r.email})`));
+      console.log('📋 Liste des coureurs disponibles:', ridersToUse.map(r => `${r.firstName} ${r.lastName} (${r.email})`));
     }
     
-    riders.forEach((rider, index) => {
+    ridersToUse.forEach((rider, index) => {
       const { age, category } = getAgeCategory(rider.birthDate);
       const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
                        rider.lastName?.toLowerCase().includes('uldry');
@@ -1047,7 +1278,7 @@ export default function RosterSection({
       });
     });
     
-    let filtered = riders.filter(rider => {
+    let filtered = ridersToUse.filter(rider => {
       const matchesSearch = rider.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            rider.lastName.toLowerCase().includes(searchTerm.toLowerCase());
       
@@ -1534,6 +1765,44 @@ export default function RosterSection({
     const [statusDropdown, setStatusDropdown] = useState<{riderId: string, eventId: string} | null>(null);
     const [sortField, setSortField] = useState<'lastName' | 'firstName' | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'uci' | 'championnat' | 'coupe-france' | 'federal'>('all');
+
+    // Déterminer le type de course à partir de l'eligibleCategory
+    const getRaceType = (eligibleCategory: string): string => {
+      if (!eligibleCategory) {
+        console.warn('⚠️ eligibleCategory vide ou undefined');
+        return 'autre';
+      }
+      
+      const category = eligibleCategory.toLowerCase().trim();
+      
+      // UCI
+      if (category.startsWith('uci.') || category.startsWith('uci ')) {
+        return 'uci';
+      }
+      
+      // Coupe de France (DOIT être vérifié AVANT cf. pour éviter confusion)
+      if (category.startsWith('cdf.') || category.startsWith('cdf ') || 
+          category.includes('coupe de france')) {
+        return 'coupe-france';
+      }
+      
+      // Championnat (Championnat de France, Monde, etc.)
+      if (category.startsWith('cf.') || category.startsWith('cf ') ||
+          category.startsWith('cm') || category.startsWith('cc') || 
+          category.startsWith('jo') || category.includes('championnat')) {
+        return 'championnat';
+      }
+      
+      // Fédéral
+      if (category.startsWith('fed.') || category.startsWith('fed ') || 
+          category.includes('fédéral') || category.includes('federal')) {
+        return 'federal';
+      }
+      
+      console.warn(`⚠️ Type de course non reconnu pour: "${eligibleCategory}"`);
+      return 'autre';
+    };
 
     // Filtrer et trier les athlètes selon les critères de recherche
     const filteredAndSortedRiders = React.useMemo(() => {
@@ -1715,8 +1984,16 @@ export default function RosterSection({
       const firstDayOfMonth = new Date(selectedYear, selectedMonth, 1).getDay();
       const daysOfWeek = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
       
+      // Filtrer les événements selon le type de course sélectionné
+      const filteredFutureEvents = raceTypeFilter === 'all' 
+        ? futureEvents 
+        : futureEvents.filter(event => {
+            const eventRaceType = getRaceType(event.eligibleCategory || '');
+            return eventRaceType === raceTypeFilter;
+          });
+      
       // Événements du mois sélectionné
-      const monthEvents = futureEvents.filter(event => {
+      const monthEvents = filteredFutureEvents.filter(event => {
         const eventDate = new Date(event.date);
         return eventDate.getMonth() === selectedMonth && eventDate.getFullYear() === selectedYear;
       });
@@ -1724,56 +2001,75 @@ export default function RosterSection({
       return (
         <div className="space-y-6">
           {/* Contrôles du calendrier */}
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => {
-                  if (selectedMonth === 0) {
-                    setSelectedMonth(11);
-                    setSelectedYear(selectedYear - 1);
-                  } else {
-                    setSelectedMonth(selectedMonth - 1);
-                  }
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <h3 className="text-xl font-semibold text-gray-800">
-                {new Date(selectedYear, selectedMonth).toLocaleDateString('fr-FR', { 
-                  month: 'long', 
-                  year: 'numeric' 
-                })}
-              </h3>
-              <button
-                onClick={() => {
-                  if (selectedMonth === 11) {
-                    setSelectedMonth(0);
-                    setSelectedYear(selectedYear + 1);
-                  } else {
-                    setSelectedMonth(selectedMonth + 1);
-                  }
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'table' 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Vue Tableau
-              </button>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => {
+                    if (selectedMonth === 0) {
+                      setSelectedMonth(11);
+                      setSelectedYear(selectedYear - 1);
+                    } else {
+                      setSelectedMonth(selectedMonth - 1);
+                    }
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h3 className="text-xl font-semibold text-gray-800">
+                  {new Date(selectedYear, selectedMonth).toLocaleDateString('fr-FR', { 
+                    month: 'long', 
+                    year: 'numeric' 
+                  })}
+                </h3>
+                <button
+                  onClick={() => {
+                    if (selectedMonth === 11) {
+                      setSelectedMonth(0);
+                      setSelectedYear(selectedYear + 1);
+                    } else {
+                      setSelectedMonth(selectedMonth + 1);
+                    }
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Filtre par type de course */}
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Type de course:</label>
+                  <select
+                    value={raceTypeFilter}
+                    onChange={(e) => setRaceTypeFilter(e.target.value as any)}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tous les types</option>
+                    <option value="uci">🌍 UCI</option>
+                    <option value="championnat">🏆 Championnat</option>
+                    <option value="coupe-france">🇫🇷 Coupe de France</option>
+                    <option value="federal">🚴 Fédéral</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'table' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  📊 Vue Tableau
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1853,300 +2149,455 @@ export default function RosterSection({
       );
     };
 
-    // Vue tableau unifiée interactive
+    // Vue tableau unifiée interactive - Version optimisée
     const renderTableView = () => {
+      const [groupBy, setGroupBy] = useState<'month' | 'week' | 'all'>('month');
+      const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+      const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+      const [compactView, setCompactView] = useState<boolean>(false);
+
+      // Filtrer les événements selon le type de course sélectionné
+      const filteredEvents = useMemo(() => {
+        if (raceTypeFilter === 'all') return futureEvents;
+        
+        return futureEvents.filter(event => {
+          const eventRaceType = getRaceType(event.eligibleCategory || '');
+          return eventRaceType === raceTypeFilter;
+        });
+      }, [futureEvents, raceTypeFilter]);
+
+      // Grouper les événements selon le mode sélectionné
+      const groupedEvents = useMemo(() => {
+        if (groupBy === 'all') {
+          return { 'Tous les événements': filteredEvents };
+        }
+        
+        if (groupBy === 'month') {
+          const groups: { [key: string]: RaceEvent[] } = {};
+          filteredEvents.forEach(event => {
+            const eventDate = new Date(event.date);
+            const monthKey = `${eventDate.getFullYear()}-${eventDate.getMonth()}`;
+            if (!groups[monthKey]) groups[monthKey] = [];
+            groups[monthKey].push(event);
+          });
+          return groups;
+        }
+        
+        if (groupBy === 'week') {
+          const groups: { [key: string]: RaceEvent[] } = {};
+          filteredEvents.forEach(event => {
+            const eventDate = new Date(event.date);
+            const weekStart = new Date(eventDate);
+            weekStart.setDate(eventDate.getDate() - eventDate.getDay());
+            const weekKey = weekStart.toISOString().split('T')[0];
+            if (!groups[weekKey]) groups[weekKey] = [];
+            groups[weekKey].push(event);
+          });
+          return groups;
+        }
+        
+        return { 'Tous les événements': filteredEvents };
+      }, [filteredEvents, groupBy]);
+
       return (
         <div className="space-y-6">
-          {/* Contrôles de la vue tableau */}
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold text-gray-800">Gestion des Sélections & Disponibilités</h3>
+          {/* Contrôles de la vue tableau optimisés */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-800">📊 Vue d'Ensemble des Souhaits et Sélections</h3>
+                <p className="text-sm text-gray-600 mt-1">Gérez les souhaits et sélections en un coup d'œil - Tableau interactif avec colonnes par événement</p>
+              </div>
+              
+              {/* Contrôles de vue */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Filtre par type de course */}
+                <div className="flex items-center space-x-2 border-r pr-3 border-gray-300">
+                  <label className="text-sm font-medium text-gray-700">Type de course:</label>
+                  <select
+                    value={raceTypeFilter}
+                    onChange={(e) => setRaceTypeFilter(e.target.value as any)}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tous les types</option>
+                    <option value="uci">🌍 UCI</option>
+                    <option value="championnat">🏆 Championnat</option>
+                    <option value="coupe-france">🇫🇷 Coupe de France</option>
+                    <option value="federal">🚴 Fédéral</option>
+                  </select>
+                </div>
+
+                {/* Tri des athlètes */}
+                <div className="flex items-center space-x-2 border-r pr-3 border-gray-300">
+                  <label className="text-sm font-medium text-gray-700">Trier par:</label>
+                  <button
+                    onClick={() => handleSort('lastName')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors flex items-center space-x-1 ${
+                      sortField === 'lastName'
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <span>Nom</span>
+                    {sortField === 'lastName' && (
+                      <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleSort('firstName')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors flex items-center space-x-1 ${
+                      sortField === 'firstName'
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <span>Prénom</span>
+                    {sortField === 'firstName' && (
+                      <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Grouper par */}
             <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Grouper par:</label>
+                  <select
+                    value={groupBy}
+                    onChange={(e) => setGroupBy(e.target.value as 'month' | 'week' | 'all')}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="month">📅 Mois</option>
+                    <option value="week">📆 Semaine</option>
+                    <option value="all">📋 Tous</option>
+                  </select>
+                </div>
+
+                {/* Vue compacte */}
               <button
-                onClick={() => setViewMode('calendar')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'calendar' 
+                  onClick={() => setCompactView(!compactView)}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    compactView 
                     ? 'bg-blue-100 text-blue-700' 
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                Vue Calendrier
+                  {compactView ? '🔍 Vue détaillée' : '📦 Vue compacte'}
+                </button>
+
+                {/* Vue calendrier */}
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
+                >
+                  📅 Vue Calendrier
               </button>
+              </div>
             </div>
           </div>
 
 
-          {/* Tableau interactif */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-                    <th 
-                      className="px-4 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-blue-100 transition-colors group"
-                      onClick={() => handleSort('lastName')}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <span>Nom</span>
-                        {sortField === 'lastName' && (
-                          <svg className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                        {sortField !== 'lastName' && (
-                          <svg className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                          </svg>
-                        )}
+          {/* Tableaux groupés optimisés */}
+          {Object.entries(groupedEvents).map(([groupKey, events]) => {
+            const groupLabel = groupBy === 'month' 
+              ? new Date(groupKey + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+              : groupBy === 'week'
+              ? `Semaine du ${new Date(groupKey).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+              : groupKey;
+
+            return (
+              <div key={groupKey} className="space-y-4">
+                {/* En-tête du groupe */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-gray-800">
+                      {groupLabel} ({events.length} événement{events.length > 1 ? 's' : ''})
+                    </h4>
+                    <div className="flex items-center space-x-4 text-sm text-gray-600">
+                      <span>👥 {filteredAndSortedRiders.length} athlètes</span>
+                      <span>📊 {events.reduce((acc, event) => acc + (event.selectedRiderIds?.length || 0), 0)} sélections totales</span>
                       </div>
-                    </th>
-                    <th 
-                      className="px-4 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-blue-100 transition-colors group"
-                      onClick={() => handleSort('firstName')}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <span>Prénom</span>
-                        {sortField === 'firstName' && (
-                          <svg className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                        {sortField !== 'firstName' && (
-                          <svg className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                          </svg>
-                        )}
                       </div>
-                    </th>
-                    {futureEvents.map(event => (
-                      <th key={event.id} className="px-4 py-4 text-center text-sm font-semibold text-gray-700 min-w-[160px]">
-                        <div className="space-y-1">
-                          <div className="text-xs text-gray-500 font-medium">
-                            {new Date(event.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
                           </div>
-                          <div className="text-sm font-semibold text-gray-800 truncate">
-                            {event.name}
+
+                {/* Vue organisée par colonnes de statuts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {/* Colonne : Veut participer */}
+                  <div className="bg-green-50 rounded-xl border border-green-200 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-green-800 flex items-center space-x-2">
+                        <span>✅</span>
+                        <span>Veut participer</span>
+                      </h5>
+                      <span className="bg-green-200 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference === RiderEventPreference.VEUT_PARTICIPER;
+                          })
+                        ).length}
+                      </span>
+                          </div>
+                    <div className="space-y-2">
+                      {filteredAndSortedRiders.filter(rider => 
+                        events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference === RiderEventPreference.VEUT_PARTICIPER;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-green-200 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
+                        </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedRiders.map((rider, index) => (
-                    <tr key={rider.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/80 transition-colors border-b border-gray-100`}>
-                      <td className="px-4 py-4 text-sm font-semibold text-gray-900">
-                        {rider.lastName}
-                      </td>
-                      <td className="px-4 py-4 text-sm font-medium text-gray-700">
-                        {rider.firstName}
-                      </td>
-                      {futureEvents.map(event => {
-                        const preference = getRiderPreference(event.id, rider.id);
-                        const status = getRiderEventStatus(event.id, rider.id);
-                        const isEditing = editingCell?.riderId === rider.id && editingCell?.eventId === event.id;
-                        
-                        return (
-                          <td key={event.id} className="px-4 py-4 text-center align-top">
-                            {isEditing ? (
-                              // Mode édition
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Colonne : Objectifs spécifiques */}
+                  <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-blue-800 flex items-center space-x-2">
+                        <span>🎯</span>
+                        <span>Objectifs spécifiques</span>
+                      </h5>
+                      <span className="bg-blue-200 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference === RiderEventPreference.OBJECTIFS_SPECIFIQUES;
+                          })
+                        ).length}
+                      </span>
+                    </div>
                               <div className="space-y-2">
-                                <select
-                                  value={tempPreference || ''}
-                                  onChange={(e) => setTempPreference(e.target.value as RiderEventPreference)}
-                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1"
-                                >
-                                  <option value="">Sélectionner préférence</option>
-                                  <option value={RiderEventPreference.VEUT_PARTICIPER}>Veut participer</option>
-                                  <option value={RiderEventPreference.OBJECTIFS_SPECIFIQUES}>Objectifs spécifiques</option>
-                                  <option value={RiderEventPreference.ABSENT}>Absent</option>
-                                  <option value={RiderEventPreference.NE_VEUT_PAS}>Ne veut pas</option>
-                                  <option value={RiderEventPreference.EN_ATTENTE}>En attente</option>
-                                </select>
-                                <input
-                                  type="text"
-                                  value={tempObjectives}
-                                  onChange={(e) => setTempObjectives(e.target.value)}
-                                  placeholder="Objectifs..."
-                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1"
-                                />
-                                <div className="flex space-x-1">
-                                  <button
-                                    onClick={handleSaveCell}
-                                    className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    onClick={handleCancelEdit}
-                                    className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
-                                  >
-                                    ✕
-                                  </button>
+                      {filteredAndSortedRiders.filter(rider => 
+                        events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference === RiderEventPreference.OBJECTIFS_SPECIFIQUES;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-blue-200 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
                                 </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
                               </div>
-                            ) : (
-                              // Mode affichage
-                              <div className="space-y-2">
-                                {/* Bouton de statut avec dropdown */}
-                                <div className="relative dropdown-container">
-                                  <button
-                                    onClick={() => handleStatusDropdownToggle(rider.id, event.id)}
-                                    className={`w-full px-3 py-2 text-xs rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md ${
-                                      status === RiderEventStatus.TITULAIRE 
-                                        ? 'bg-green-100 text-green-800 border border-green-200 hover:bg-green-200' 
-                                        : status === RiderEventStatus.REMPLACANT
-                                        ? 'bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-200'
-                                        : status === RiderEventStatus.PRE_SELECTION
-                                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-200 hover:bg-yellow-200'
-                                        : status === RiderEventStatus.INDISPONIBLE
-                                        ? 'bg-red-100 text-red-800 border border-red-200 hover:bg-red-200'
-                                        : status === RiderEventStatus.NON_RETENU
-                                        ? 'bg-gray-100 text-gray-800 border border-gray-200 hover:bg-gray-200'
-                                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-700'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <span>
-                                        {status || 'Définir le statut'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Colonne : En attente */}
+                  <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-yellow-800 flex items-center space-x-2">
+                        <span>⏳</span>
+                        <span>En attente</span>
+                      </h5>
+                      <span className="bg-yellow-200 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference === RiderEventPreference.EN_ATTENTE;
+                          })
+                        ).length}
                                       </span>
-                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                      </svg>
                                     </div>
-                                  </button>
-                                  
-                                  {/* Dropdown menu */}
-                                  {statusDropdown?.riderId === rider.id && statusDropdown?.eventId === event.id && (
-                                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl">
-                                      <div className="py-1">
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.TITULAIRE)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-green-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                          <span>Titulaire</span>
-                                        </button>
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.REMPLACANT)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-blue-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                          <span>Remplaçant</span>
-                                        </button>
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.PRE_SELECTION)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-yellow-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                                          <span>Pré-sélectionné</span>
-                                        </button>
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.INDISPONIBLE)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-red-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                                          <span>Indisponible</span>
-                                        </button>
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.NON_RETENU)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
-                                          <span>Non retenu</span>
-                                        </button>
-                                        <button
-                                          onClick={() => handleStatusChange(rider.id, event.id, RiderEventStatus.ABSENT)}
-                                          className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 flex items-center space-x-2 transition-colors"
-                                        >
-                                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                    <div className="space-y-2">
+                      {filteredAndSortedRiders.filter(rider => 
+                        events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference === RiderEventPreference.EN_ATTENTE;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-yellow-200 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Colonne : Absent */}
+                  <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-red-800 flex items-center space-x-2">
+                        <span>❌</span>
                                           <span>Absent</span>
-                                        </button>
+                      </h5>
+                      <span className="bg-red-200 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference === RiderEventPreference.ABSENT;
+                          })
+                        ).length}
+                      </span>
                                       </div>
+                    <div className="space-y-2">
+                      {filteredAndSortedRiders.filter(rider => 
+                        events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference === RiderEventPreference.ABSENT;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-red-200 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
                                     </div>
-                                  )}
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                                 </div>
                                 
-                                {/* Préférence cliquable */}
-                                {preference && (
-                                  <div 
-                                    onClick={() => handleCellClick(rider.id, event.id)}
-                                    className="cursor-pointer hover:scale-105 transition-transform duration-200"
-                                  >
-                                    <span className={`px-2 py-1 rounded-lg text-xs font-medium border shadow-sm hover:shadow-md ${getPreferenceColor(preference)}`}>
-                                      {getPreferenceIcon(preference)} {preference}
+                  {/* Colonne : Ne veut pas */}
+                  <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-gray-800 flex items-center space-x-2">
+                        <span>🚫</span>
+                        <span>Ne veut pas</span>
+                      </h5>
+                      <span className="bg-gray-200 text-gray-800 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference === RiderEventPreference.NE_VEUT_PAS;
+                          })
+                        ).length}
                                     </span>
                                   </div>
-                                )}
-                                
-                                {/* Objectifs */}
-                                {getRiderObjectives(event.id, rider.id) && (
-                                  <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-200 truncate">
-                                    {getRiderObjectives(event.id, rider.id)}
-                                  </div>
-                                )}
+                    <div className="space-y-2">
+                      {filteredAndSortedRiders.filter(rider => 
+                        events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference === RiderEventPreference.NE_VEUT_PAS;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-gray-200 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
                               </div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Colonne : Pas de choix */}
+                  <div className="bg-gray-100 rounded-xl border border-gray-300 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-gray-700 flex items-center space-x-2">
+                        <span>⚪</span>
+                        <span>Pas de choix</span>
+                      </h5>
+                      <span className="bg-gray-300 text-gray-700 text-xs font-medium px-2 py-1 rounded-full">
+                        {filteredAndSortedRiders.filter(rider => 
+                          !events.some(event => {
+                            const preference = getRiderPreference(event.id, rider.id);
+                            return preference && preference !== RiderEventPreference.EN_ATTENTE;
+                          })
+                        ).length}
+                      </span>
+                                  </div>
+                    <div className="space-y-2">
+                      {filteredAndSortedRiders.filter(rider => 
+                        !events.some(event => {
+                          const preference = getRiderPreference(event.id, rider.id);
+                          return preference && preference !== RiderEventPreference.EN_ATTENTE;
+                        })
+                      ).map(rider => (
+                        <div key={rider.id} className="bg-white rounded-lg p-3 border border-gray-300 hover:shadow-md transition-shadow">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              {rider.firstName?.[0]}{rider.lastName?.[0]}
+                              </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900">{rider.firstName} {rider.lastName}</div>
+                              <div className="text-xs text-gray-500">
+                                {rider.birthDate ? new Date().getFullYear() - new Date(rider.birthDate).getFullYear() : 'N/A'} ans
+                                {rider.qualitativeProfile && ` • ${rider.qualitativeProfile}`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
             </div>
           </div>
+                </div>
+              </div>
+            );
+          })}
 
-          {/* Légende */}
+          {/* Légende simplifiée */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Légende des statuts</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs mb-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">💡 Cliquez sur une cellule pour modifier le statut</h4>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-xs">
               <div className="flex items-center space-x-2">
                 <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                <span>Titulaire</span>
+                <span>✓ Titulaire</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                <span>Remplaçant</span>
+                <span>🔄 Remplaçant</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                <span>Pré-sélectionné</span>
+                <span>⏳ Pré-sélectionné</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                <span>Indisponible</span>
+                <span>❌ Indisponible</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="w-3 h-3 bg-gray-500 rounded-full"></span>
-                <span>Non retenu</span>
+                <span>🚫 Non retenu</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-gray-400 rounded-full"></span>
-                <span>Absent</span>
-              </div>
-            </div>
-            
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Légende des préférences</h4>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
-              <div className="flex items-center space-x-2">
-                <span>✓</span>
-                <span>Veut participer</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span>🎯</span>
-                <span>Objectifs spécifiques</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span>❌</span>
-                <span>Absent</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span>🚫</span>
-                <span>Ne veut pas</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span>⏳</span>
-                <span>En attente</span>
+                <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
+                <span>💭 Préférence</span>
               </div>
             </div>
           </div>
@@ -2373,17 +2824,21 @@ export default function RosterSection({
           {/* Calendrier Saison */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Calendrier Saison {selectedYear}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {getSeasonLabel(selectedYear)}
+                <SeasonTransitionIndicator seasonYear={selectedYear} showDetails={true} className="ml-2" />
+              </h3>
               <div className="flex items-center space-x-2">
                 <select 
                   value={selectedYear} 
                   onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                   className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value={2024}>2024</option>
-                  <option value={2025}>2025</option>
-                  <option value={2026}>2026</option>
-                  <option value={2027}>2027</option>
+                  {getAvailableSeasonYears().map(year => (
+                    <option key={year} value={year}>
+                      {getSeasonLabel(year, false)}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -2439,12 +2894,13 @@ export default function RosterSection({
 
               {/* Message d'information si aucune course en 2026 */}
               {selectedYear === 2026 && seasonMetrics.plannedEvents === 0 && (
-                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center space-x-2">
                     <CalendarDaysIcon className="w-5 h-5 text-blue-600" />
                     <div>
-                      <h4 className="text-sm font-medium text-blue-800">Aucune course planifiée pour 2026</h4>
+                      <h4 className="text-sm font-medium text-blue-800">Saison 2026 - Transition Active</h4>
                       <p className="text-sm text-blue-600 mt-1">
+                        La saison 2026 est officiellement lancée ! La transition fluide permet de commencer la planification dès octobre 2025. 
                         Créez des événements dans la section "Calendrier" pour les voir apparaître ici.
                       </p>
                     </div>
@@ -3131,6 +3587,7 @@ export default function RosterSection({
   );
   };
 
+
   // Algorithme de profilage Coggan Expert - Note générale = moyenne simple de toutes les données
     const calculateCogganProfileScore = (rider: any) => {
     // Vérifier si c'est un scout
@@ -3380,8 +3837,8 @@ export default function RosterSection({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 rounded-lg shadow-lg text-white">
             <div className="text-center">
-              <h4 className="text-sm font-medium opacity-90">Total Effectif</h4>
-              <p className="text-3xl font-bold">{riders.length}</p>
+              <h4 className="text-sm font-medium opacity-90">Total Effectif Actif</h4>
+              <p className="text-3xl font-bold">{activeRiders.length}</p>
             </div>
           </div>
           
@@ -3389,10 +3846,10 @@ export default function RosterSection({
             <div className="text-center">
               <h4 className="text-sm font-medium opacity-90">Moyenne Score</h4>
               <p className="text-3xl font-bold">
-                {Math.round(riders.reduce((sum, r) => {
+                {activeRiders.length > 0 ? Math.round(activeRiders.reduce((sum, r) => {
                   const profile = calculateCogganProfileScore(r);
                   return sum + profile.generalScore;
-                }, 0) / riders.length)}
+                }, 0) / activeRiders.length) : 0}
               </p>
             </div>
           </div>
@@ -3685,6 +4142,26 @@ export default function RosterSection({
     );
   };
 
+  // Rendu de l'onglet Archives
+  const renderArchivesTab = () => (
+    <div className="space-y-6">
+      {/* Gestionnaire de transition des effectifs */}
+      <RosterTransitionManager
+        riders={riders}
+        staff={staff}
+        onRosterTransition={handleRosterTransition}
+      />
+      
+      {/* Visualiseur d'archives */}
+      <RosterArchiveViewer
+        riders={riders}
+        staff={staff}
+        archives={rosterArchives}
+        onViewArchive={handleViewArchive}
+      />
+    </div>
+  );
+
   // Fonction de fusion des profils par email
   const mergeDuplicateProfiles = () => {
     const emailGroups = new Map<string, Rider[]>();
@@ -3746,6 +4223,12 @@ export default function RosterSection({
         </div>
       }
     >
+      {/* Gestionnaire de transition des effectifs */}
+      <RosterTransitionManager
+        riders={riders}
+        staff={staff}
+        onRosterTransition={handleRosterTransition}
+      />
       <div className="mb-2 border-b border-gray-200">
         <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">
           <button 
@@ -3778,12 +4261,39 @@ export default function RosterSection({
           >
             Qualite d'Effectif
           </button>
+          <button 
+            onClick={() => setActiveTab('archives')} 
+            className={
+              activeTab === 'archives' 
+                ? 'border-blue-500 text-blue-600 border-b-2 py-2 px-3 text-sm font-medium' 
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-2 px-3 text-sm font-medium'
+            }
+          >
+            Archives
+          </button>
         </nav>
       </div>
       
       {activeTab === 'roster' ? renderRosterTab() : 
-       activeTab === 'seasonPlanning' ? renderSeasonPlanningTab() : 
+       activeTab === 'seasonPlanning' ? (
+         <SeasonPlanningSection
+           riders={riders}
+           onSaveRider={onSaveRider}
+           onDeleteRider={onDeleteRider}
+           raceEvents={raceEvents}
+           setRaceEvents={setRaceEvents}
+           riderEventSelections={riderEventSelections}
+           setRiderEventSelections={setRiderEventSelections}
+           performanceEntries={performanceEntries}
+           scoutingProfiles={scoutingProfiles}
+           teamProducts={teamProducts}
+           currentUser={currentUser}
+           appState={appState}
+           onOpenRiderModal={openRiderModal}
+         />
+       ) : 
        activeTab === 'quality' ? renderQualityTab() : 
+       activeTab === 'archives' ? renderArchivesTab() :
        renderRosterTab()}
 
       {/* Modal unique pour vue et édition */}
@@ -3818,6 +4328,7 @@ export default function RosterSection({
           appState={appState}
           currentUser={currentUser}
           effectivePermissions={appState.effectivePermissions}
+          initialTab={initialModalTab}
         />
       )}
 

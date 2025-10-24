@@ -27,6 +27,7 @@ import {
   StaffMember,
   StaffRole,
   StaffStatus,
+  StaffEventSelection,
   StockItem,
   TeamProduct,
   TeamLevel,
@@ -82,6 +83,7 @@ import PerformancePoleSection from "./sections/PerformancePoleSection";
 import PermissionsSection from "./sections/PermissionsSection";
 import RiderEquipmentSection from "./sections/RiderEquipmentSection";
 import RosterSection from "./sections/RosterSection";
+import SeasonPlanningSection from "./sections/SeasonPlanningSection";
 import ScoutingSection from "./sections/ScoutingSection";
 import SettingsSection from "./sections/SettingsSection";
 import SignupView, { SignupData } from "./sections/SignupView";
@@ -100,6 +102,7 @@ import BikeSetupSection from "./sections/BikeSetupSection";
 import MyCareerSection from "./sections/MyCareerSection";
 import MyAdminSection from "./sections/MyAdminSection";
 import TalentAvailabilitySection from "./sections/TalentAvailabilitySection";
+import SeasonTransitionManager from "./components/SeasonTransitionManager";
 
 // Helper functions for dynamic theming
 function getContrastYIQ(hexcolor: string): string {
@@ -679,6 +682,7 @@ const App: React.FC = () => {
     }));
   }, [appState.activeTeamId]);
 
+
   const onSaveIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId) return;
     const savedId = await firebaseService.saveData(
@@ -1129,7 +1133,7 @@ const App: React.FC = () => {
             if (lang) setLanguageState(lang);
           }}
         >
-          <div className="flex">
+          <div className="flex min-h-screen">
             {appState && (
               <Sidebar
                 currentSection={currentSection}
@@ -1149,7 +1153,7 @@ const App: React.FC = () => {
                 onGoToLobby={() => setView("no_team")}
               />
             )}
-            <main className="flex-grow ml-72 p-6 bg-gray-100 min-h-screen">
+            <main className="main-content p-6 bg-gray-100 min-h-screen ml-72">
 
               
               {activeEvent ? (
@@ -1208,6 +1212,14 @@ const App: React.FC = () => {
                     <>
                       {currentSection === "myDashboard" && currentUser && (
                         <>
+                          {/* Gestionnaire de basculement sur 2026 */}
+                          <SeasonTransitionManager
+                            riders={appState.riders}
+                            staff={appState.staff}
+                            raceEvents={appState.raceEvents}
+                            performanceEntries={appState.performanceEntries}
+                          />
+                          
                           {/* Redirection automatique pour les administrateurs */}
                           {currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER ? (
                             <AdminDashboardSection
@@ -1280,11 +1292,33 @@ const App: React.FC = () => {
                       appState={appState}
                     />
                   )}
+                  {currentSection === "season-planning" && appState.riders && (
+                    <SeasonPlanningSection
+                      riders={appState.riders}
+                      onSaveRider={onSaveRider}
+                      onDeleteRider={onDeleteRider}
+                      raceEvents={appState.raceEvents}
+                      setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
+                      riderEventSelections={appState.riderEventSelections}
+                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      performanceEntries={appState.performanceEntries}
+                      scoutingProfiles={appState.scoutingProfiles}
+                      teamProducts={appState.teamProducts}
+                      currentUser={currentUser}
+                      appState={appState}
+                    />
+                  )}
                   {currentSection === "staff" && appState.staff && currentUser && (
                     <StaffSection
                       staff={appState.staff}
                       onSave={onSaveStaff}
                       onDelete={onDeleteStaff}
+                      onStaffTransition={(archive, transition) => {
+                        console.log('🔄 Transition des effectifs du staff:', { archive, transition });
+                        // TODO: Implémenter la sauvegarde des archives et transitions
+                      }}
+                      staffEventSelections={appState.staffEventSelections || []}
+                      setStaffEventSelections={createBatchSetHandler<StaffEventSelection>("staffEventSelections")}
                       effectivePermissions={effectivePermissions}
                       raceEvents={appState.raceEvents}
                       eventStaffAvailabilities={appState.eventStaffAvailabilities}
@@ -1327,6 +1361,8 @@ const App: React.FC = () => {
                   {currentSection === "performance" && appState.riders && currentUser && (
                     <PerformancePoleSection
                       appState={appState}
+                      effectivePermissions={effectivePermissions}
+                      currentUser={currentUser}
                     />
                   )}
                   {currentSection === "settings" && (

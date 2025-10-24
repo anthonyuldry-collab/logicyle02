@@ -26,10 +26,16 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   const { t } = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
 
+  // Debug: Vérifier les données reçues
+  console.log('🔍 AdminDashboardSection - appState:', appState);
+  console.log('🔍 AdminDashboardSection - performanceEntries:', appState.performanceEntries?.length);
+  console.log('🔍 AdminDashboardSection - eventTransportLegs:', appState.eventTransportLegs?.length);
+  console.log('🔍 AdminDashboardSection - raceEvents:', appState.raceEvents?.length);
+
   // Calculs des métriques d'équipe
   const teamMetrics = useMemo(() => {
     const activeRiders = riders.filter(r => r.healthCondition === HealthCondition.PRET_A_COURIR);
-    const activeStaff = staff.filter(s => s.status === StaffStatus.VACATAIRE || s.status === StaffStatus.CONTRAT);
+    const activeStaff = staff.filter(s => s.status === StaffStatus.VACATAIRE || s.status === StaffStatus.SALARIE);
     
     // Statistiques de forme des coureurs
     const formeStats = {
@@ -47,13 +53,19 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       mauvais: riders.filter(r => r.moral === MoralStatus.MAUVAIS).length
     };
 
-    // Événements à venir (30 prochains jours)
+    // Événements à venir (tous les événements futurs)
     const now = new Date();
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const upcomingEvents = raceEvents.filter(event => {
-      const eventDate = new Date(event.date);
-      return eventDate >= now && eventDate <= thirtyDaysFromNow;
-    });
+    now.setHours(0, 0, 0, 0); // Début de la journée pour éviter les problèmes d'heure
+    const upcomingEvents = raceEvents
+      .filter(event => {
+        const eventDate = new Date(event.date);
+        eventDate.setHours(0, 0, 0, 0); // Début de la journée pour éviter les problèmes d'heure
+        const isUpcoming = eventDate >= now;
+        
+        
+        return isUpcoming;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Coureurs avec des performances récentes
     const ridersWithRecentPerformance = riders.filter(r => r.generalPerformanceScore > 0);
@@ -67,7 +79,7 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       autre: staff.filter(s => s.role === StaffRole.AUTRE).length
     };
 
-    return {
+    const metrics = {
       totalRiders: riders.length,
       activeRiders: activeRiders.length,
       totalStaff: staff.length,
@@ -79,6 +91,9 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       staffByRole,
       upcomingEventsList: upcomingEvents
     };
+    
+    console.log('🔍 AdminDashboardSection - teamMetrics:', metrics);
+    return metrics;
   }, [riders, staff, raceEvents]);
 
   // Alertes et actions requises
@@ -172,56 +187,41 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
           </div>
         </div>
 
-        {/* Métriques essentielles - Layout visuel moderne */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg p-4 shadow-lg">
+        {/* Métriques essentielles - Version simplifiée */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg p-6 shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-3xl font-bold">{teamMetrics.activeRiders}</div>
-                <div className="text-blue-100 text-sm">Coureurs actifs</div>
-                <div className="text-blue-200 text-xs">{teamMetrics.totalRiders} total</div>
+                <div className="text-4xl font-bold">{teamMetrics.totalRiders}</div>
+                <div className="text-blue-100 text-lg font-medium">Coureurs</div>
               </div>
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                <span className="text-2xl">🚴</span>
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                <span className="text-3xl">🚴</span>
               </div>
             </div>
           </div>
           
-          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg p-4 shadow-lg">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg p-6 shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-3xl font-bold">{teamMetrics.activeStaff}</div>
-                <div className="text-green-100 text-sm">Staff actif</div>
-                <div className="text-green-200 text-xs">{teamMetrics.totalStaff} total</div>
+                <div className="text-4xl font-bold">{teamMetrics.totalStaff}</div>
+                <div className="text-green-100 text-lg font-medium">Staff</div>
               </div>
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                <span className="text-2xl">👨‍💼</span>
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                <span className="text-3xl">👨‍💼</span>
               </div>
             </div>
           </div>
           
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg p-4 shadow-lg">
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg p-6 shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-3xl font-bold">{teamMetrics.upcomingEvents}</div>
-                <div className="text-purple-100 text-sm">Événements</div>
-                <div className="text-purple-200 text-xs">30 prochains jours</div>
+                <div className="text-4xl font-bold">{teamMetrics.upcomingEvents}</div>
+                <div className="text-purple-100 text-lg font-medium">Événements</div>
+                <div className="text-purple-200 text-sm">À venir</div>
               </div>
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                <span className="text-2xl">📅</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg p-4 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{teamMetrics.ridersWithPerformance}</div>
-                <div className="text-orange-100 text-sm">Performances</div>
-                <div className="text-orange-200 text-xs">Avec scores</div>
-              </div>
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                <span className="text-2xl">📊</span>
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                <span className="text-3xl">📅</span>
               </div>
             </div>
           </div>
@@ -265,106 +265,255 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
           </div>
         )}
 
-        {/* Indicateurs visuels - Layout moderne */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Prochaines courses - Card visuelle */}
+        {/* Prochaines courses et Dernier débriefing */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Prochaines courses */}
           {teamMetrics.upcomingEventsList.length > 0 && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-blue-900">Prochaine Course</h3>
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">📅</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="font-medium text-gray-900">{teamMetrics.upcomingEventsList[0].name}</div>
-                <div className="text-sm text-gray-600">{teamMetrics.upcomingEventsList[0].location}</div>
-                <div className="text-xs text-blue-700 font-medium">
-                  {new Date(teamMetrics.upcomingEventsList[0].date).toLocaleDateString('fr-FR', { 
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <span className="text-2xl mr-3">📅</span>
+                Prochaines Courses
+              </h3>
+              <div className="space-y-3">
+                {teamMetrics.upcomingEventsList.slice(0, 3).map((event, index) => (
+                  <div key={event.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-800">{event.name}</p>
+                        <p className="text-sm text-gray-500">{event.location}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(event.date).toLocaleDateString('fr-FR', { 
                     weekday: 'long', 
                     day: 'numeric', 
                     month: 'long' 
                   })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => navigateTo?.('eventDetail', event.id)}
+                        className="px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                      >
+                        Voir
+                      </button>
+                    </div>
                 </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Performance moyenne - Card visuelle */}
-          <div className="bg-gradient-to-br from-green-50 to-emerald-100 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-green-900">Performance Moyenne</h3>
-              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">📊</span>
+          {/* Dernier débriefing */}
+          {appState.performanceEntries && appState.performanceEntries.length > 0 ? (
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <span className="text-2xl mr-3">📝</span>
+                Dernier Débriefing
+              </h3>
+              {(() => {
+                const lastDebriefing = appState.performanceEntries
+                  .filter(entry => entry.generalObjectives || entry.resultsSummary || entry.keyLearnings)
+                  .sort((a, b) => {
+                    const dateA = new Date(a.id.split('_')[1] || 0);
+                    const dateB = new Date(b.id.split('_')[1] || 0);
+                    return dateB.getTime() - dateA.getTime();
+                  })[0];
+
+                if (!lastDebriefing) {
+                  return (
+                    <div className="text-center py-4">
+                      <p className="text-gray-500 text-sm">Aucun débriefing disponible</p>
               </div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-2xl font-bold text-green-700">
-                {teamMetrics.ridersWithPerformance > 0 
-                  ? Math.round(riders.reduce((sum, r) => sum + (r.generalPerformanceScore || 0), 0) / teamMetrics.ridersWithPerformance)
-                  : 0
+                  );
                 }
-              </div>
-              <div className="text-sm text-green-600">
-                {teamMetrics.ridersWithPerformance} coureurs évalués
-              </div>
-            </div>
-          </div>
 
-          {/* Équipe active - Card visuelle */}
-          <div className="bg-gradient-to-br from-purple-50 to-violet-100 border border-purple-200 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-purple-900">Équipe Active</h3>
-              <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">👥</span>
+                const event = appState.raceEvents.find(e => e.id === lastDebriefing.eventId);
+                return (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="font-semibold text-blue-800 mb-2">
+                        {event?.name || 'Événement'}
+                      </h4>
+                      <p className="text-sm text-blue-600">
+                        {event?.location && `${event.location} - `}
+                        {new Date(event?.date || lastDebriefing.id.split('_')[1]).toLocaleDateString('fr-FR', { 
+                          weekday: 'long', 
+                          day: 'numeric', 
+                          month: 'long' 
+                        })}
+                      </p>
               </div>
+                    
+                    {lastDebriefing.generalObjectives && (
+                      <div>
+                        <h5 className="font-medium text-gray-700 mb-1 text-sm">Objectifs</h5>
+                        <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded text-xs">
+                          {lastDebriefing.generalObjectives}
+                        </p>
+              </div>
+                    )}
+                    
+                    {lastDebriefing.resultsSummary && (
+                      <div>
+                        <h5 className="font-medium text-gray-700 mb-1 text-sm">Résultats</h5>
+                        <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded text-xs">
+                          {lastDebriefing.resultsSummary}
+                        </p>
             </div>
-            <div className="space-y-2">
-              <div className="text-2xl font-bold text-purple-700">
-                {teamMetrics.activeRiders + teamMetrics.activeStaff}
-              </div>
-              <div className="text-sm text-purple-600">
-                {teamMetrics.activeRiders} coureurs • {teamMetrics.activeStaff} staff
-              </div>
-            </div>
+                    )}
+                    
+                    {lastDebriefing.keyLearnings && (
+                      <div>
+                        <h5 className="font-medium text-gray-700 mb-1 text-sm">Enseignements</h5>
+                        <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded text-xs">
+                          {lastDebriefing.keyLearnings}
+                        </p>
           </div>
+                    )}
+              </div>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <span className="text-2xl mr-3">📝</span>
+                Dernier Débriefing
+              </h3>
+              <div className="text-center py-4">
+                <p className="text-gray-500 text-sm">Aucun débriefing disponible</p>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* Prochain déplacement */}
+        {teamMetrics.upcomingEventsList.length > 0 ? (
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <span className="text-2xl mr-3">🚗</span>
+              Prochain Déplacement
+            </h3>
+            {(() => {
+              // Prendre le prochain événement (même s'il est loin dans le temps)
+              const nextEvent = teamMetrics.upcomingEventsList[0];
+              
+              // Chercher les transports associés à cet événement
+              const eventTransports = appState.eventTransportLegs?.filter(leg => leg.eventId === nextEvent.id) || [];
+              
+              // Prendre le transport principal (aller vers l'événement)
+              const mainTransport = eventTransports.find(leg => leg.direction === 'ALLER') || eventTransports[0];
 
-        {/* Navigation rapide - Layout fonctionnel */}
-        <div className="bg-white border border-gray-200 rounded-lg">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">Navigation</h2>
+              return (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 className="font-semibold text-green-800 mb-2">
+                      {nextEvent.name}
+                    </h4>
+                    <p className="text-sm text-green-600">
+                      {nextEvent.location} - {new Date(nextEvent.date).toLocaleDateString('fr-FR', { 
+                        weekday: 'long', 
+                        day: 'numeric', 
+                        month: 'long',
+                        year: 'numeric'
+                      })}
+                    </p>
+                    <p className="text-xs text-green-500 mt-1">
+                      {nextEvent.selectedRiderIds.length} coureur{nextEvent.selectedRiderIds.length > 1 ? 's' : ''} sélectionné{nextEvent.selectedRiderIds.length > 1 ? 's' : ''}
+                    </p>
+                  </div>
+
+                  {mainTransport ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h5 className="font-medium text-gray-700 mb-2 text-sm">Transport</h5>
+                        <div className="space-y-1">
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Mode:</span> {mainTransport.mode}
+                          </p>
+                          {mainTransport.departureLocation && (
+                            <p className="text-sm text-gray-600">
+                              <span className="font-medium">Départ:</span> {mainTransport.departureLocation}
+                            </p>
+                          )}
+                          {mainTransport.arrivalLocation && (
+                            <p className="text-sm text-gray-600">
+                              <span className="font-medium">Arrivée:</span> {mainTransport.arrivalLocation}
+                            </p>
+                          )}
+                          {mainTransport.departureTime && (
+                            <p className="text-sm text-gray-600">
+                              <span className="font-medium">Heure:</span> {mainTransport.departureTime}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h5 className="font-medium text-gray-700 mb-2 text-sm">Logistique</h5>
+                        <div className="space-y-1">
+                          {mainTransport.assignedVehicleId && (() => {
+                            const vehicle = appState.vehicles.find(v => v.id === mainTransport.assignedVehicleId);
+                            return vehicle ? (
+                              <p className="text-sm text-gray-600">
+                                <span className="font-medium">Véhicule:</span> {vehicle.name}
+                              </p>
+                            ) : null;
+                          })()}
+                          {mainTransport.driverId && (() => {
+                            const driver = [...appState.riders, ...appState.staff].find(p => p.id === mainTransport.driverId);
+                            return driver ? (
+                              <p className="text-sm text-gray-600">
+                                <span className="font-medium">Conducteur:</span> {driver.firstName} {driver.lastName}
+                              </p>
+                            ) : null;
+                          })()}
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Passagers:</span> {mainTransport.occupants.length} personne{mainTransport.occupants.length > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-sm text-yellow-700">
+                        <span className="font-medium">Transport non planifié</span> - Les détails de transport ne sont pas encore définis pour cet événement.
+                      </p>
+                    </div>
+                  )}
+
+                  {mainTransport?.details && (
+                    <div>
+                      <h5 className="font-medium text-gray-700 mb-1 text-sm">Détails</h5>
+                      <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded text-xs">
+                        {mainTransport.details}
+                      </p>
           </div>
-          <div className="p-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  )}
+
+                  <div className="flex justify-end">
               <button 
-                onClick={() => navigateTo?.('roster')}
-                className="flex items-center justify-center p-3 border border-gray-200 rounded hover:bg-gray-50"
+                      onClick={() => navigateTo?.('eventDetail', nextEvent.id)}
+                      className="px-4 py-2 text-sm bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
               >
-                <span className="text-sm font-medium text-gray-700">Effectif</span>
+                      Voir l'événement
               </button>
-              <button 
-                onClick={() => navigateTo?.('staff')}
-                className="flex items-center justify-center p-3 border border-gray-200 rounded hover:bg-gray-50"
-              >
-                <span className="text-sm font-medium text-gray-700">Staff</span>
-              </button>
-              <button 
-                onClick={() => navigateTo?.('events')}
-                className="flex items-center justify-center p-3 border border-gray-200 rounded hover:bg-gray-50"
-              >
-                <span className="text-sm font-medium text-gray-700">Calendrier</span>
-              </button>
-              <button 
-                onClick={() => navigateTo?.('userManagement')}
-                className="flex items-center justify-center p-3 border border-gray-200 rounded hover:bg-gray-50"
-              >
-                <span className="text-sm font-medium text-gray-700">Gestion</span>
-              </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <span className="text-2xl mr-3">🚗</span>
+              Prochain Déplacement
+            </h3>
+            <div className="text-center py-4">
+              <p className="text-gray-500 text-sm">Aucun événement à venir</p>
             </div>
           </div>
-        </div>
+        )}
+
       </div>
     </SectionWrapper>
   );

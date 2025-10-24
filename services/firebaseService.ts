@@ -405,6 +405,7 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         delete effectivePerms.equipment; // Pas d'accès au matériel
         delete effectivePerms.stocks; // Pas d'accès aux stocks
         delete effectivePerms.scouting; // Pas d'accès au scouting
+        delete effectivePerms.performance; // Pas d'accès au Pôle Performance global
     }
     
     // Logique pour les Staff (UserRole.STAFF) - pas d'accès aux finances ni aux sections "Mon Espace"

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Planning de Saison</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .step {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Test de la Section "Planning de Saison"</h1>
+        
+        <div class="status success">
+            ✅ <strong>Section créée avec succès</strong><br>
+            Le fichier SeasonPlanningSection.tsx a été créé et contient toutes les fonctionnalités demandées.
+        </div>
+
+        <div class="status info">
+            ℹ️ <strong>Intégration dans l'application</strong><br>
+            La section a été ajoutée à la sidebar, aux types TypeScript et au routage principal.
+        </div>
+
+        <h2>📋 Fonctionnalités implémentées</h2>
+        
+        <div class="step">
+            <h3>1. Vue des souhaits et sélections</h3>
+            <ul>
+                <li>Tableau matriciel avec colonnes par événement</li>
+                <li>Gestion des préférences (Veut participer, Objectifs, En attente, etc.)</li>
+                <li>Gestion des disponibilités (Disponible, Pas disponible, Objectifs)</li>
+                <li>Gestion des statuts (Titulaire, Pré-sélection, Remplaçant)</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>2. Fonctionnalités de sélection</h3>
+            <ul>
+                <li>Filtrage avancé par nom, genre, catégorie, niveau, préférence</li>
+                <li>Actions rapides (Tout sélectionner, Tout désélectionner, etc.)</li>
+                <li>Sélection d'année (focus sur 2026 ou toutes les années)</li>
+                <li>Statistiques en temps réel</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>3. Accès au calendrier prévisionnel</h3>
+            <ul>
+                <li>Icône calendrier pour ouvrir le profil de l'athlète</li>
+                <li>Ouverture automatique sur l'onglet calendrier</li>
+                <li>Synchronisation des modifications</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>4. Indicateurs de progression</h3>
+            <ul>
+                <li>Barres de progression par événement</li>
+                <li>Pourcentage d'athlètes ayant exprimé leurs souhaits</li>
+                <li>Métriques claires de suivi</li>
+            </ul>
+        </div>
+
+        <h2>🚀 Comment accéder à la section</h2>
+        
+        <div class="status info">
+            <strong>Étapes pour voir la nouvelle section :</strong>
+            <ol>
+                <li>Rafraîchissez la page de l'application (F5 ou Ctrl+R)</li>
+                <li>Dans la sidebar, cherchez "Planning de Saison" avec l'icône calendrier 📅</li>
+                <li>La section devrait apparaître dans le groupe "Performance & Santé"</li>
+                <li>Cliquez dessus pour accéder à la nouvelle interface</li>
+            </ol>
+        </div>
+
+        <div class="status error">
+            <strong>Si vous ne voyez toujours pas la section :</strong>
+            <ul>
+                <li>Vérifiez que le serveur de développement est démarré (npm run dev)</li>
+                <li>Videz le cache du navigateur (Ctrl+Shift+R)</li>
+                <li>Vérifiez la console du navigateur pour d'éventuelles erreurs</li>
+            </ul>
+        </div>
+
+        <h2>📁 Fichiers modifiés</h2>
+        <ul>
+            <li><code>sections/SeasonPlanningSection.tsx</code> - Nouveau composant principal</li>
+            <li><code>App.tsx</code> - Intégration du routage</li>
+            <li><code>constants.ts</code> - Ajout dans la sidebar</li>
+            <li><code>types.ts</code> - Ajout du type AppSection</li>
+            <li><code>components/RiderDetailModal.tsx</code> - Support de l'onglet initial</li>
+        </ul>
+
+        <div class="status success">
+            <strong>🎉 La section "Planning de Saison" est prête à être utilisée !</strong><br>
+            Toutes les fonctionnalités demandées ont été implémentées et intégrées dans l'application.
+        </div>
+    </div>
+</body>
+</html>

@@ -155,7 +155,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<ScoutingProfile, 'id'> | ScoutingProfile>(initialScoutingProfileFormState);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeModalTab, setActiveModalTab] = useState<'info' | 'power'>('info');
+  const [activeModalTab, setActiveModalTab] = useState<'info' | 'power' | 'project' | 'interview'>('info');
   const [confirmAction, setConfirmAction] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
   
   const [addProspectModal, setAddProspectModal] = useState<{isOpen: boolean; mode: 'choice' | 'manual' | 'scout'; initialData?: ScoutingProfile | null }>({isOpen: false, mode: 'choice' });
@@ -376,8 +376,8 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
         <select name="nationality" value={filters.nationality} onChange={handleFilterChange} className="input-field-sm"><option value="all">Toutes Nationalités</option>{ALL_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+      <div className="overflow-x-auto max-w-full">
+        <table className="min-w-full text-sm max-w-full">
           <thead className="bg-slate-700 text-slate-300">
             <tr>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('firstName')}>Nom {getSortIndicator('firstName')}</th>
@@ -684,9 +684,11 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
       
        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditing ? "Modifier Prospect" : "Nouveau Prospect"}>
         <div className="bg-slate-800 p-4 -m-6 rounded-lg">
-            <nav className="flex space-x-1 border-b border-slate-600 mb-4">
-                <button onClick={() => setActiveModalTab('info')} className={`px-3 py-2 text-sm font-medium rounded-t-md ${activeModalTab === 'info' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Infos</button>
-                <button onClick={() => setActiveModalTab('power')} className={`px-3 py-2 text-sm font-medium rounded-t-md ${activeModalTab === 'power' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Puissance</button>
+            <nav className="flex space-x-1 border-b border-slate-600 mb-4 overflow-x-auto">
+                <button onClick={() => setActiveModalTab('info')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'info' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Infos</button>
+                <button onClick={() => setActiveModalTab('power')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'power' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Puissance</button>
+                <button onClick={() => setActiveModalTab('project')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'project' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Projet Perf.</button>
+                <button onClick={() => setActiveModalTab('interview')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'interview' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Entretiens</button>
             </nav>
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                 {activeModalTab === 'info' && (
@@ -750,6 +752,442 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
                           </tbody>
                       </table>
                   </div>
+                )}
+                
+                {/* Onglet Projet Performance */}
+                {activeModalTab === 'project' && (
+                    <div className="space-y-4">
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Objectifs de Performance</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Objectifs généraux de performance
+                                    </label>
+                                    <textarea
+                                        name="performanceGoals"
+                                        value={currentItem.performanceGoals || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Décrivez les objectifs de performance du prospect..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Facteurs de Performance */}
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-semibold text-white">Facteurs de Performance</h3>
+                            
+                            {/* Physique */}
+                            <div className="bg-slate-700 p-4 rounded-lg">
+                                <h4 className="text-md font-medium text-blue-400 mb-3">Physique</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Forces</label>
+                                        <textarea
+                                            name="physiquePerformanceProject.forces"
+                                            value={currentItem.physiquePerformanceProject?.forces || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Points forts physiques..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À optimiser</label>
+                                        <textarea
+                                            name="physiquePerformanceProject.aOptimiser"
+                                            value={currentItem.physiquePerformanceProject?.aOptimiser || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Aspects à optimiser..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À développer</label>
+                                        <textarea
+                                            name="physiquePerformanceProject.aDevelopper"
+                                            value={currentItem.physiquePerformanceProject?.aDevelopper || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Compétences à développer..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Besoins d'actions</label>
+                                        <textarea
+                                            name="physiquePerformanceProject.besoinsActions"
+                                            value={currentItem.physiquePerformanceProject?.besoinsActions || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Actions nécessaires..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Technique */}
+                            <div className="bg-slate-700 p-4 rounded-lg">
+                                <h4 className="text-md font-medium text-green-400 mb-3">Technique</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Forces</label>
+                                        <textarea
+                                            name="techniquePerformanceProject.forces"
+                                            value={currentItem.techniquePerformanceProject?.forces || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Points forts techniques..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À optimiser</label>
+                                        <textarea
+                                            name="techniquePerformanceProject.aOptimiser"
+                                            value={currentItem.techniquePerformanceProject?.aOptimiser || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Aspects techniques à optimiser..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À développer</label>
+                                        <textarea
+                                            name="techniquePerformanceProject.aDevelopper"
+                                            value={currentItem.techniquePerformanceProject?.aDevelopper || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Compétences techniques à développer..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Besoins d'actions</label>
+                                        <textarea
+                                            name="techniquePerformanceProject.besoinsActions"
+                                            value={currentItem.techniquePerformanceProject?.besoinsActions || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Actions techniques nécessaires..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Mental */}
+                            <div className="bg-slate-700 p-4 rounded-lg">
+                                <h4 className="text-md font-medium text-yellow-400 mb-3">Mental</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Forces</label>
+                                        <textarea
+                                            name="mentalPerformanceProject.forces"
+                                            value={currentItem.mentalPerformanceProject?.forces || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Points forts mentaux..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À optimiser</label>
+                                        <textarea
+                                            name="mentalPerformanceProject.aOptimiser"
+                                            value={currentItem.mentalPerformanceProject?.aOptimiser || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Aspects mentaux à optimiser..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À développer</label>
+                                        <textarea
+                                            name="mentalPerformanceProject.aDevelopper"
+                                            value={currentItem.mentalPerformanceProject?.aDevelopper || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Compétences mentales à développer..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Besoins d'actions</label>
+                                        <textarea
+                                            name="mentalPerformanceProject.besoinsActions"
+                                            value={currentItem.mentalPerformanceProject?.besoinsActions || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Actions mentales nécessaires..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Environnement */}
+                            <div className="bg-slate-700 p-4 rounded-lg">
+                                <h4 className="text-md font-medium text-purple-400 mb-3">Environnement</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Forces</label>
+                                        <textarea
+                                            name="environnementPerformanceProject.forces"
+                                            value={currentItem.environnementPerformanceProject?.forces || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Points forts environnementaux..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À optimiser</label>
+                                        <textarea
+                                            name="environnementPerformanceProject.aOptimiser"
+                                            value={currentItem.environnementPerformanceProject?.aOptimiser || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Aspects environnementaux à optimiser..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À développer</label>
+                                        <textarea
+                                            name="environnementPerformanceProject.aDevelopper"
+                                            value={currentItem.environnementPerformanceProject?.aDevelopper || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Compétences environnementales à développer..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Besoins d'actions</label>
+                                        <textarea
+                                            name="environnementPerformanceProject.besoinsActions"
+                                            value={currentItem.environnementPerformanceProject?.besoinsActions || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Actions environnementales nécessaires..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Tactique */}
+                            <div className="bg-slate-700 p-4 rounded-lg">
+                                <h4 className="text-md font-medium text-red-400 mb-3">Tactique</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Forces</label>
+                                        <textarea
+                                            name="tactiquePerformanceProject.forces"
+                                            value={currentItem.tactiquePerformanceProject?.forces || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Points forts tactiques..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À optimiser</label>
+                                        <textarea
+                                            name="tactiquePerformanceProject.aOptimiser"
+                                            value={currentItem.tactiquePerformanceProject?.aOptimiser || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Aspects tactiques à optimiser..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">À développer</label>
+                                        <textarea
+                                            name="tactiquePerformanceProject.aDevelopper"
+                                            value={currentItem.tactiquePerformanceProject?.aDevelopper || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Compétences tactiques à développer..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">Besoins d'actions</label>
+                                        <textarea
+                                            name="tactiquePerformanceProject.besoinsActions"
+                                            value={currentItem.tactiquePerformanceProject?.besoinsActions || ''}
+                                            onChange={handleInputChange}
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Actions tactiques nécessaires..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Onglet Entretiens */}
+                {activeModalTab === 'interview' && (
+                    <div className="space-y-6">
+                        {/* Motivation et Objectifs */}
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Motivation et Objectifs</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Pourquoi fait-il du vélo ?
+                                    </label>
+                                    <textarea
+                                        name="cyclingMotivation"
+                                        value={currentItem.cyclingMotivation || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Décrivez la motivation du prospect pour le cyclisme..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Objectifs Temporels */}
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Objectifs par Période</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Objectifs à court terme (saison suivante)
+                                    </label>
+                                    <textarea
+                                        name="shortTermGoals"
+                                        value={currentItem.shortTermGoals || ''}
+                                        onChange={handleInputChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Objectifs pour la saison suivante..."
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Objectifs à moyen terme (2-3 ans)
+                                    </label>
+                                    <textarea
+                                        name="mediumTermGoals"
+                                        value={currentItem.mediumTermGoals || ''}
+                                        onChange={handleInputChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Objectifs pour les 2-3 prochaines années..."
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Objectifs à long terme (5+ ans)
+                                    </label>
+                                    <textarea
+                                        name="longTermGoals"
+                                        value={currentItem.longTermGoals || ''}
+                                        onChange={handleInputChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Objectifs à long terme (5+ ans)..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Aspirations de Carrière */}
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Aspirations de Carrière</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Aspirations de carrière
+                                    </label>
+                                    <textarea
+                                        name="careerAspirations"
+                                        value={currentItem.careerAspirations || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Décrivez les aspirations de carrière du prospect..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Valeurs et Personnalité */}
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Valeurs et Personnalité</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Valeurs personnelles
+                                    </label>
+                                    <textarea
+                                        name="personalValues"
+                                        value={currentItem.personalValues || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Quelles sont les valeurs importantes pour ce prospect ?"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Défis et Soutien */}
+                        <div className="bg-slate-700 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Défis et Besoins de Soutien</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Défis rencontrés
+                                    </label>
+                                    <textarea
+                                        name="challengesFaced"
+                                        value={currentItem.challengesFaced || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Quels défis le prospect rencontre-t-il ?"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Besoins de soutien
+                                    </label>
+                                    <textarea
+                                        name="supportNeeds"
+                                        value={currentItem.supportNeeds || ''}
+                                        onChange={handleInputChange}
+                                        rows={4}
+                                        className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="De quel type de soutien le prospect a-t-il besoin ?"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
             <div className="flex justify-end space-x-2 mt-4 pt-3 border-t border-slate-700">

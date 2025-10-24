@@ -24,6 +24,10 @@ import LungsIcon from '../components/icons/LungsIcon';
 import CyclingIcon from '../components/icons/CyclingIcon';
 import BeakerIcon from '../components/icons/BeakerIcon';
 import ChartBarIcon from '../components/icons/ChartBarIcon';
+import SeasonTransitionNotification from '../components/SeasonTransitionNotification';
+import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
+import { getCurrentSeasonYear, getAvailableSeasonYears, getSeasonLabel } from '../utils/seasonUtils';
+import { getActiveRidersForCurrentSeason, getActiveStaffForCurrentSeason } from '../utils/rosterArchiveUtils';
 
 interface DashboardSectionProps {
   navigateTo: (section: AppSection, eventId?: string) => void;
@@ -96,167 +100,129 @@ const OperationalDashboardView: React.FC<OperationalDashboardViewProps> = ({
   const { t } = useTranslations();
   return (
     <div className="space-y-6">
-        {/* KPI Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            <StatCard title={t('dashNextRace')} value={stats.nextRace} icon={FlagIcon} colorClass="bg-red-100 text-red-600" />
-            <StatCard title={t('dashActiveRiders')} value={stats.activeRiders} subtext={stats.ridersSubtext} icon={UsersIcon} colorClass="bg-blue-100 text-blue-600" />
-            <StatCard title={t('dashActiveStaff')} value={stats.activeStaff} icon={UserGroupIcon} colorClass="bg-green-100 text-green-600" />
-            {stats.scoutingProspects && <StatCard title={t('dashScoutingProspects')} value={stats.scoutingProspects} icon={SearchIcon} colorClass="bg-purple-100 text-purple-600" />}
-            {stats.fleetSize && <StatCard title={t('dashFleetSize')} value={stats.fleetSize} icon={TruckIcon} colorClass="bg-yellow-100 text-yellow-800" />}
-            <StatCard title={t('dashCurrentBalance')} value={stats.balance} subtext={stats.balanceSubtext} icon={CurrencyDollarIcon} colorClass="bg-indigo-100 text-indigo-600" />
+        {/* En-tête simplifié */}
+        <div className="bg-blue-600 text-white p-6 rounded-lg">
+          <h1 className="text-2xl font-bold mb-1">Tableau de Bord</h1>
+          <p className="text-blue-100">Vue d'ensemble de l'équipe</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white p-4 rounded-xl shadow-md">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Événements à Venir</h3>
+        {/* KPI essentiels - Version compacte */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Prochaine Course</p>
+                  <p className="text-lg font-bold text-red-600">{stats.nextRace}</p>
+                </div>
+                <FlagIcon className="w-8 h-8 text-red-500" />
+              </div>
+            </div>
+            
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Athlètes Actifs</p>
+                  <p className="text-lg font-bold text-blue-600">{stats.activeRiders}</p>
+                  {stats.ridersSubtext && (
+                    <p className="text-xs text-orange-600">{stats.ridersSubtext}</p>
+                  )}
+                </div>
+                <UsersIcon className="w-8 h-8 text-blue-500" />
+              </div>
+            </div>
+            
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Staff Actif</p>
+                  <p className="text-lg font-bold text-green-600">{stats.activeStaff}</p>
+                </div>
+                <UserGroupIcon className="w-8 h-8 text-green-500" />
+              </div>
+            </div>
+        </div>
+
+        {/* Section principale - Événements et Alertes */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Prochains événements - Version simplifiée */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                    <FlagIcon className="w-5 h-5 mr-2 text-blue-500" />
+                    Prochains Événements
+                </h3>
                 <div className="space-y-3">
                     {upcomingEvents && upcomingEvents.length > 0 ? (
-                        upcomingEvents.map((event: RaceEvent) => (
-                            <div key={event.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2 hover:bg-gray-100 transition-colors">
-                                <div>
-                                    <p className="font-bold text-gray-800">{event.name}</p>
-                                    <p className="text-xs text-gray-500">{new Date(event.date + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} - {event.location}</p>
-                                </div>
-                                <div className="flex items-center space-x-4 text-xs">
-                                    <div className="text-center">
-                                        <p className="font-semibold text-base">{event.selectedRiderIds.length}</p>
-                                        <p className="text-gray-500">Coureurs</p>
+                        upcomingEvents.slice(0, 2).map((event: RaceEvent) => (
+                            <div key={event.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-gray-800">{event.name}</h4>
+                                        <p className="text-sm text-gray-600">
+                                            {new Date(event.date + 'T12:00:00Z').toLocaleDateString('fr-FR', { 
+                                                day: 'numeric', 
+                                                month: 'short' 
+                                            })} - {event.location}
+                                        </p>
+                                        <div className="flex items-center space-x-3 text-sm text-gray-500 mt-1">
+                                          <span>{event.selectedRiderIds.length} coureur{event.selectedRiderIds.length > 1 ? 's' : ''}</span>
+                                          {event.isLogisticsValidated ? 
+                                              <span className="text-green-600">✓ Logistique OK</span> :
+                                              <span className="text-red-600">⚠ Logistique en attente</span>
+                                          }
+                                        </div>
                                     </div>
-                                    <div className="text-center">
-                                         {event.isLogisticsValidated ? 
-                                            <CheckCircleIcon className="w-6 h-6 text-green-500 mx-auto" title="Logistique Validée"/> :
-                                            <XCircleIcon className="w-6 h-6 text-red-500 mx-auto" title="Logistique non validée"/>
-                                         }
-                                        <p className="text-gray-500">Logistique</p>
-                                    </div>
-                                    <ActionButton onClick={() => navigateTo('eventDetail', event.id)} size="sm" variant="secondary">Voir</ActionButton>
+                                    <ActionButton 
+                                      onClick={() => navigateTo('eventDetail', event.id)} 
+                                      size="sm" 
+                                      variant="secondary"
+                                    >
+                                        Voir
+                                    </ActionButton>
                                 </div>
                             </div>
                         ))
                     ) : (
-                        <p className="text-sm text-gray-500 italic text-center py-4">Aucun événement à venir.</p>
+                        <div className="text-center py-8 bg-gray-50 rounded-lg">
+                            <FlagIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                            <p className="text-gray-500">Aucun événement à venir</p>
+                        </div>
                     )}
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl shadow-md">
-                 <h3 className="text-lg font-semibold text-gray-800 mb-3">Alertes & Actions Requises</h3>
-                 <div className="space-y-2 max-h-96 overflow-y-auto">
+            {/* Alertes - Version simplifiée */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                    <ExclamationTriangleIcon className="w-5 h-5 mr-2 text-orange-500" />
+                    Alertes
+                </h3>
+                <div className="space-y-3">
                     {alerts && alerts.length > 0 ? (
-                        alerts.map(alert => (
-                             <div key={alert.id} className="flex items-center p-2 bg-red-50 border-l-4 border-red-400 rounded">
-                                <ExclamationTriangleIcon className="w-5 h-5 text-red-500 mr-3 flex-shrink-0"/>
-                                <p className="text-sm text-red-800 flex-grow">{alert.text}</p>
-                                {alert.eventId && <ActionButton onClick={() => navigateTo('eventDetail', alert.eventId)} size="sm" variant="secondary" className="text-xs !p-1 !px-2">Voir</ActionButton>}
-                             </div>
+                        alerts.slice(0, 2).map(alert => (
+                            <div key={alert.id} className="p-3 bg-red-50 border-l-4 border-red-400 rounded-lg">
+                                <p className="text-sm text-red-800 mb-2">{alert.text}</p>
+                                {alert.eventId && (
+                                    <ActionButton 
+                                        onClick={() => navigateTo('eventDetail', alert.eventId)} 
+                                        size="sm" 
+                                        variant="secondary"
+                                        className="text-xs"
+                                    >
+                                        Voir
+                                    </ActionButton>
+                                )}
+                            </div>
                         ))
                     ) : (
-                        <div className="flex flex-col items-center justify-center p-4 text-center h-full">
-                            <CheckCircleIcon className="w-12 h-12 text-green-400 mb-2"/>
-                            <p className="text-sm text-gray-500 font-medium">Tout est en ordre !</p>
-                            <p className="text-xs text-gray-500">Aucune alerte logistique pour les 14 prochains jours.</p>
+                        <div className="text-center py-6 bg-green-50 rounded-lg">
+                            <CheckCircleIcon className="w-12 h-12 text-green-400 mx-auto mb-3"/>
+                            <p className="text-sm text-green-600 font-medium">Tout est en ordre !</p>
                         </div>
                     )}
-                 </div>
+                </div>
             </div>
         </div>
 
-        {/* Dernier Débriefing */}
-        {lastDebriefing && (
-          <div className="bg-white p-6 rounded-xl shadow-md">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">Dernier Débriefing</h3>
-              <ActionButton 
-                onClick={() => navigateTo('eventDetail', lastDebriefing.event.id)} 
-                size="sm" 
-                variant="secondary"
-              >
-                Voir l'événement
-              </ActionButton>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h4 className="font-semibold text-blue-800 mb-2">{lastDebriefing.event.name}</h4>
-                <p className="text-sm text-blue-600">
-                  {new Date(lastDebriefing.event.endDate || lastDebriefing.event.date).toLocaleDateString('fr-FR', { 
-                    weekday: 'long', 
-                    day: 'numeric', 
-                    month: 'long',
-                    year: 'numeric' 
-                  })} - {lastDebriefing.event.location}
-                </p>
-              </div>
-              
-              {lastDebriefing.generalObjectives && (
-                <div>
-                  <h5 className="font-medium text-gray-700 mb-2">Objectifs Généraux</h5>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{lastDebriefing.generalObjectives}</p>
-                </div>
-              )}
-              
-              {lastDebriefing.resultsSummary && (
-                <div>
-                  <h5 className="font-medium text-gray-700 mb-2">Résumé des Résultats</h5>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{lastDebriefing.resultsSummary}</p>
-                </div>
-              )}
-              
-              {lastDebriefing.keyLearnings && (
-                <div>
-                  <h5 className="font-medium text-gray-700 mb-2">Enseignements Clés</h5>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{lastDebriefing.keyLearnings}</p>
-                </div>
-              )}
-              
-              {!lastDebriefing.generalObjectives && !lastDebriefing.resultsSummary && !lastDebriefing.keyLearnings && (
-                <p className="text-sm text-gray-500 italic text-center py-4">
-                  Aucun détail de debriefing disponible pour cet événement.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Événements en attente de debriefing */}
-        {recentEventsAwaitingDebriefing.length > 0 && (
-          <div className="bg-white p-6 rounded-xl shadow-md">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">Événements Récents</h3>
-              <span className="text-sm text-gray-500">Débriefing disponible demain</span>
-            </div>
-            <div className="space-y-3">
-              {recentEventsAwaitingDebriefing.map(event => (
-                <div key={event.id} className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-semibold text-gray-800">{event.name}</h4>
-                      <p className="text-sm text-gray-600">
-                        {new Date(event.endDate || event.date).toLocaleDateString('fr-FR', { 
-                          weekday: 'long', 
-                          day: 'numeric', 
-                          month: 'long',
-                          year: 'numeric' 
-                        })} - {event.location}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                        Débriefing demain
-                      </span>
-                      <ActionButton 
-                        onClick={() => navigateTo('eventDetail', event.id)} 
-                        size="sm" 
-                        variant="secondary"
-                      >
-                        Voir l'événement
-                      </ActionButton>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
     </div>
   );
 };
@@ -500,7 +466,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
 
   const stats = useMemo(() => {
     if (isViewer || !riders || !incomeItems || !eventBudgetItems) return null;
-    const injuredRiders = riders.filter(r => 
+    
+    // Utiliser les effectifs actifs pour la saison courante
+    const activeRiders = getActiveRidersForCurrentSeason(riders);
+    const activeStaff = getActiveStaffForCurrentSeason(staff);
+    
+    const injuredRiders = activeRiders.filter(r => 
         r.healthCondition && r.healthCondition !== HealthCondition.PRET_A_COURIR && r.healthCondition !== HealthCondition.INCONNU && r.healthCondition !== HealthCondition.EN_RECUPERATION
     ).length;
 
@@ -529,9 +500,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
 
     return {
         nextRace: nextRace ? `${nextRace.name} - ${new Date(nextRace.date + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}` : 'Aucune course à venir',
-        activeRiders: riders.length.toString(),
+        activeRiders: activeRiders.length.toString(),
         ridersSubtext: injuredRiders > 0 ? `${injuredRiders} blessé(s)` : undefined,
-        activeStaff: staff.length.toString(),
+        activeStaff: activeStaff.length.toString(),
         scoutingProspects: hasScoutingAccess ? scoutingProfiles.length.toString() : undefined,
         fleetSize: hasLogisticsAccess ? vehicles.length.toString() : undefined,
         balance: `${balance.toLocaleString('fr-FR')} €`,
@@ -697,6 +668,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
 
   return (
     <SectionWrapper title={t('titleDashboard')}>
+      <SeasonTransitionNotification className="mb-6" />
       {isViewer ? (
         <AthleteDashboardView
           currentUser={currentUser}

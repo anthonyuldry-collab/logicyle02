@@ -215,8 +215,8 @@ const VehiclesSection: React.FC<VehiclesSectionProps> = ({
     vehicles.length === 0 ? (
         <p className="text-gray-500 italic">Aucun véhicule ajouté pour le moment.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white">
+        <div className="overflow-x-auto max-w-full">
+          <table className="min-w-full bg-white max-w-full">
             <thead className="bg-gray-50">
               <tr>
                 <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom/Descriptif</th>
