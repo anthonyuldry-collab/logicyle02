@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AppState, Rider, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel } from '../types';
+import { AppState, Rider, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel, RiderQualitativeProfile } from '../types';
 import { generatePerformanceArchive } from '../utils/performanceArchiveUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import UsersIcon from '../components/icons/UsersIcon';
@@ -9,6 +9,10 @@ import CakeIcon from '../components/icons/CakeIcon';
 import ChartBarIcon from '../components/icons/ChartBarIcon';
 import { getAgeCategory } from '../utils/ageUtils';
 import { PowerAnalysisTable } from '../components';
+import PerformanceProjectSynergyAnalyzer from '../components/PerformanceProjectSynergyAnalyzer';
+import WorkGroupManager from '../components/WorkGroupManager';
+import PerformanceOverviewEnhanced from '../components/PerformanceOverviewEnhanced';
+import PerformanceProjectDetails from '../components/PerformanceProjectDetails';
 
 interface PerformancePoleSectionProps {
   appState: AppState;
@@ -17,12 +21,14 @@ interface PerformancePoleSectionProps {
 }
 
 type PerformanceTab = 'overview' | 'powerAnalysis' | 'debriefings' | 'archives' | 'performanceProjects';
+type PerformanceViewMode = 'overview' | 'synergy' | 'workgroups' | 'details';
 
 const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appState, effectivePermissions, currentUser }) => {
   const [activeTab, setActiveTab] = useState<PerformanceTab>('overview');
   const [selectedYear, setSelectedYear] = useState<number | null>(2025); // Par défaut 2025
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [performanceViewMode, setPerformanceViewMode] = useState<PerformanceViewMode>('overview');
   // Protection contre appState null/undefined
   if (!appState) {
     return (
@@ -426,144 +432,118 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       )}
 
       {activeTab === 'powerAnalysis' && (
-        <div className="space-y-6">
-          <PowerAnalysisTable riders={riders} scoutingProfiles={scoutingProfiles} />
-        </div>
+        <PowerAnalysisSubSection riders={riders} scoutingProfiles={scoutingProfiles} />
       )}
 
       {activeTab === 'performanceProjects' && (
-        <div className="space-y-4">
-          {/* En-tête simplifié */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
+        <div className="space-y-6">
+          {/* En-tête avec navigation */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">Projets Performance</h3>
-                <p className="text-sm text-gray-600">Vue d'ensemble des objectifs athlètes</p>
+                <h3 className="text-2xl font-bold text-gray-800">Projets Performance</h3>
+                <p className="text-gray-600">Vue d'ensemble des objectifs athlètes et analyse des synergies</p>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-900">{riders.length}</div>
-                <div className="text-xs text-gray-500">athlètes</div>
-              </div>
+                <div className="text-3xl font-bold text-gray-900">{riders.length}</div>
+                <div className="text-sm text-gray-500">athlètes</div>
             </div>
           </div>
 
-          {/* Statistiques compactes */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white p-3 rounded border border-gray-200 text-center">
-              <div className="text-lg font-bold text-green-600">
-                {riders.filter(r => r.performanceGoals).length}
-              </div>
-              <div className="text-xs text-gray-600">Avec objectifs</div>
-            </div>
-            <div className="bg-white p-3 rounded border border-gray-200 text-center">
-              <div className="text-lg font-bold text-blue-600">
-                {riders.filter(r => r.physiquePerformanceProject || r.techniquePerformanceProject || r.mentalPerformanceProject || r.environnementPerformanceProject || r.tactiquePerformanceProject).length}
-              </div>
-              <div className="text-xs text-gray-600">Projets détaillés</div>
-            </div>
-            <div className="bg-white p-3 rounded border border-gray-200 text-center">
-              <div className="text-lg font-bold text-red-600">
-                {riders.filter(r => r.qualitativeProfile === 'Grimpeur').length}
-              </div>
-              <div className="text-xs text-gray-600">Grimpeurs</div>
-            </div>
-            <div className="bg-white p-3 rounded border border-gray-200 text-center">
-              <div className="text-lg font-bold text-green-600">
-                {riders.filter(r => r.qualitativeProfile === 'Sprinteur').length}
-              </div>
-              <div className="text-xs text-gray-600">Sprinters</div>
+            {/* Navigation des vues */}
+            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setPerformanceViewMode('overview')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  performanceViewMode === 'overview'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Vue d'ensemble
+              </button>
+              <button
+                onClick={() => setPerformanceViewMode('synergy')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  performanceViewMode === 'synergy'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Analyse des synergies
+              </button>
+              <button
+                onClick={() => setPerformanceViewMode('workgroups')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  performanceViewMode === 'workgroups'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Groupes de travail
+              </button>
+              <button
+                onClick={() => setPerformanceViewMode('details')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  performanceViewMode === 'details'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Détails des domaines
+              </button>
             </div>
           </div>
           
-          {/* Liste simplifiée des athlètes */}
-          <div className="space-y-3">
-            {riders.map((rider) => {
-              const hasPerformanceData = rider.performanceGoals || rider.physiquePerformanceProject || rider.techniquePerformanceProject || rider.mentalPerformanceProject || rider.environnementPerformanceProject || rider.tactiquePerformanceProject;
-              const profileColor = rider.qualitativeProfile === 'Grimpeur' ? 'bg-red-100 text-red-800' :
-                                 rider.qualitativeProfile === 'Sprinteur' ? 'bg-green-100 text-green-800' :
-                                 rider.qualitativeProfile === 'Rouleur' ? 'bg-blue-100 text-blue-800' :
-                                 rider.qualitativeProfile === 'Puncheur' ? 'bg-yellow-100 text-yellow-800' :
-                                 rider.qualitativeProfile === 'Complet' ? 'bg-purple-100 text-purple-800' :
-                                 'bg-gray-100 text-gray-800';
-              
-              return (
-                <div key={rider.id} className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                  {/* En-tête compact */}
-                  <div className="p-4 border-b border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                          <span className="text-gray-600 font-medium text-sm">
-                            {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                          </span>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-900">{rider.firstName} {rider.lastName}</h4>
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${profileColor}`}>
-                            {typeof rider.qualitativeProfile === 'string' 
-                              ? rider.qualitativeProfile 
-                              : typeof rider.qualitativeProfile === 'object' 
-                                ? JSON.stringify(rider.qualitativeProfile)
-                                : 'Non défini'
-                            }
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {hasPerformanceData && (
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          {hasPerformanceData ? 'Complet' : 'En attente'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Contenu simplifié */}
-                  <div className="p-4">
-                    {rider.performanceGoals && (
-                      <div className="mb-3">
-                        <h5 className="text-sm font-medium text-gray-700 mb-1">Objectifs</h5>
-                        <p className="text-sm text-gray-600 line-clamp-2">{rider.performanceGoals}</p>
-                      </div>
-                    )}
-                    
-                    {(rider.physiquePerformanceProject || rider.techniquePerformanceProject || rider.mentalPerformanceProject || rider.environnementPerformanceProject || rider.tactiquePerformanceProject) && (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Domaines de travail</h5>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { key: 'Physique', value: rider.physiquePerformanceProject },
-                            { key: 'Technique', value: rider.techniquePerformanceProject },
-                            { key: 'Mental', value: rider.mentalPerformanceProject },
-                            { key: 'Environnement', value: rider.environnementPerformanceProject },
-                            { key: 'Tactique', value: rider.tactiquePerformanceProject }
-                          ].filter(item => item.value).map(({ key, value }) => (
-                            <div key={key} className="bg-gray-50 px-2 py-1 rounded text-xs text-gray-600">
-                              {key}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {!hasPerformanceData && (
-                      <div className="text-center py-4 text-gray-500">
-                        <p className="text-sm">Aucun projet performance défini</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          
-          {riders.length === 0 && (
-            <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-              <StarIcon className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-              <p className="text-gray-500">Aucun athlète trouvé</p>
-            </div>
+          {/* Contenu conditionnel selon le mode de vue */}
+          {performanceViewMode === 'overview' && (
+            <PerformanceOverviewEnhanced 
+              riders={riders}
+              onRiderSelect={(rider) => {
+                console.log('Athlète sélectionné:', rider);
+                // Ici vous pouvez ajouter une logique pour afficher les détails de l'athlète
+              }}
+            />
+          )}
+
+          {performanceViewMode === 'synergy' && (
+            <PerformanceProjectSynergyAnalyzer 
+              riders={riders}
+              onGroupSelect={(group) => {
+                console.log('Groupe sélectionné:', group);
+                // Ici vous pouvez ajouter une logique pour afficher les détails du groupe
+              }}
+            />
+          )}
+
+          {performanceViewMode === 'workgroups' && (
+            <WorkGroupManager 
+              riders={riders}
+              staffMembers={appState.staff || []}
+              onGroupCreate={(group) => {
+                console.log('Groupe créé:', group);
+                // Ici vous pouvez ajouter une logique pour sauvegarder le groupe
+              }}
+              onGroupUpdate={(group) => {
+                console.log('Groupe modifié:', group);
+                // Ici vous pouvez ajouter une logique pour mettre à jour le groupe
+              }}
+              onGroupDelete={(groupId) => {
+                console.log('Groupe supprimé:', groupId);
+                // Ici vous pouvez ajouter une logique pour supprimer le groupe
+              }}
+            />
+          )}
+
+
+          {performanceViewMode === 'details' && (
+            <PerformanceProjectDetails 
+              riders={riders}
+              onRiderSelect={(rider) => {
+                console.log('Athlète sélectionné:', rider);
+                // Ici vous pouvez ajouter une logique pour afficher les détails de l'athlète
+              }}
+            />
           )}
         </div>
       )}
@@ -1427,6 +1407,471 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       )}
     </SectionWrapper>
     </>
+  );
+};
+
+// Composant pour la sous-section Analyse de Puissance avec sous-onglets
+type PowerAnalysisSubTab = 'powers' | 'durability';
+
+interface PowerAnalysisSubSectionProps {
+  riders: Rider[];
+  scoutingProfiles?: any[];
+}
+
+const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ riders, scoutingProfiles }) => {
+  const [subTab, setSubTab] = useState<PowerAnalysisSubTab>('powers');
+  
+  // Configuration des durées de puissance
+  const powerDurations = [
+    { key: '1s', label: '1s', field: 'power1s' },
+    { key: '5s', label: '5s', field: 'power5s' },
+    { key: '30s', label: '30s', field: 'power30s' },
+    { key: '1min', label: '1min', field: 'power1min' },
+    { key: '3min', label: '3min', field: 'power3min' },
+    { key: '5min', label: '5min', field: 'power5min' },
+    { key: '12min', label: '12min', field: 'power12min' },
+    { key: '20min', label: '20min', field: 'power20min' },
+    { key: 'cp', label: 'CP', field: 'criticalPower' }
+  ];
+  
+  // États pour les filtres de la vue durabilité
+  const [durabilityGenderFilter, setDurabilityGenderFilter] = useState<'all' | Sex>('all');
+  const [durabilityCategoryFilter, setDurabilityCategoryFilter] = useState<'all' | string>('all');
+  const [durabilityDurationFilter, setDurabilityDurationFilter] = useState<string[]>(powerDurations.map(d => d.key)); // Toutes les durées par défaut
+  const [durabilityKjFilter, setDurabilityKjFilter] = useState<'all' | '15kj' | '30kj' | '45kj'>('all');
+  
+  // États pour le tri et la mise en évidence des priorités
+  const [durabilitySortColumn, setDurabilitySortColumn] = useState<string>('');
+  const [durabilitySortDirection, setDurabilitySortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showPriorities, setShowPriorities] = useState<boolean>(true);
+
+  // Calcul des indicateurs de durabilité (Δ% pour 15/30/45 kJ/kg en W/kg)
+  const getDropPercentages = (rider: Rider | any): Record<string, { d15?: number; d30?: number; d45?: number }> => {
+    const results: Record<string, { d15?: number; d30?: number; d45?: number }> = {};
+    
+    // Uniquement pour les riders - ce filtre a déjà été fait en amont
+    if (!rider) return results;
+
+    const weight = rider.weightKg || 0;
+    if (!weight || weight <= 0) return results;
+
+    powerDurations.forEach(duration => {
+      const fresh = (rider.powerProfileFresh as any)?.[duration.field];
+      const k15 = (rider.powerProfile15KJ as any)?.[duration.field];
+      const k30 = (rider.powerProfile30KJ as any)?.[duration.field];
+      const k45 = (rider.powerProfile45KJ as any)?.[duration.field];
+
+      if (!fresh || fresh <= 0) {
+        results[duration.key] = {};
+        return;
+      }
+
+      const freshWkg = fresh / weight;
+      const calc = (v?: number) => (v && v > 0 ? ((v / weight - freshWkg) / freshWkg) * 100 : undefined);
+
+      results[duration.key] = {
+        d15: calc(k15),
+        d30: calc(k30),
+        d45: calc(k45)
+      };
+    });
+
+    return results;
+  };
+
+  const getColorClass = (drop?: number): string => {
+    if (drop === undefined || drop >= -2) return 'text-gray-800';
+    const absDrop = Math.abs(drop);
+    if (absDrop <= 10) return 'text-yellow-600 font-semibold';
+    if (absDrop <= 20) return 'text-orange-600 font-semibold';
+    return 'text-red-600 font-semibold';
+  };
+
+  // Fonction pour obtenir la valeur à trier
+  const getDurabilityValue = (item: Rider | any, durationKey: string, kjLevel: 'd15' | 'd30' | 'd45'): number => {
+    const durability = getDropPercentages(item);
+    const drops = durability[durationKey] || {};
+    const value = drops[kjLevel];
+    return value !== undefined ? value : -999; // -999 pour mettre les valeurs manquantes en fin
+  };
+
+  // Fonction de tri
+  const handleDurabilitySort = (durationKey: string) => {
+    if (durabilitySortColumn === durationKey) {
+      setDurabilitySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setDurabilitySortColumn(durationKey);
+      setDurabilitySortDirection('asc');
+    }
+  };
+
+  // Fonction pour déterminer si une cellule est prioritaire (régression forte)
+  const isPriorityCell = (drop?: number): boolean => {
+    if (drop === undefined) return false;
+    return drop < -20; // Régression de plus de 20%
+  };
+
+  // Filtrage et tri des données pour la vue durabilité
+  const filteredDurabilityData = useMemo(() => {
+    // Exclure les scouts - seulement les riders de l'équipe
+    const allData = [...riders];
+    let filtered = allData.filter(item => {
+      // Filtre par sexe
+      if (durabilityGenderFilter !== 'all' && item.sex !== durabilityGenderFilter) return false;
+      
+      // Filtre par catégorie d'âge
+      if (durabilityCategoryFilter !== 'all') {
+        const { category } = getAgeCategory(item.birthDate);
+        if (category !== durabilityCategoryFilter) return false;
+      }
+      
+      return true;
+    });
+
+    // Tri si une colonne est sélectionnée
+    if (durabilitySortColumn && durabilityKjFilter !== 'all') {
+      const kjLevel = durabilityKjFilter === '15kj' ? 'd15' : durabilityKjFilter === '30kj' ? 'd30' : 'd45';
+      filtered.sort((a, b) => {
+        const aValue = getDurabilityValue(a, durabilitySortColumn, kjLevel as 'd15' | 'd30' | 'd45');
+        const bValue = getDurabilityValue(b, durabilitySortColumn, kjLevel as 'd15' | 'd30' | 'd45');
+        
+        if (durabilitySortDirection === 'asc') {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue;
+        }
+      });
+    }
+
+    return filtered;
+  }, [riders, durabilityGenderFilter, durabilityCategoryFilter, durabilitySortColumn, durabilitySortDirection, durabilityKjFilter]);
+
+  // Durées affichées selon le filtre
+  const visibleDurations = powerDurations.filter(d => durabilityDurationFilter.includes(d.key));
+
+  return (
+    <div className="space-y-6">
+      {/* Navigation des sous-onglets */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+        <nav className="flex space-x-1">
+          <button
+            onClick={() => setSubTab('powers')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              subTab === 'powers'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <ChartBarIcon className="w-4 h-4 inline mr-2" />
+            Analyse des Puissances
+          </button>
+          <button
+            onClick={() => setSubTab('durability')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              subTab === 'durability'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            📊 Indicateurs de Durabilité
+          </button>
+        </nav>
+      </div>
+
+      {/* Contenu du sous-onglet actif */}
+      {subTab === 'powers' && (
+        <PowerAnalysisTable riders={riders} scoutingProfiles={scoutingProfiles} />
+      )}
+
+      {subTab === 'durability' && (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white">
+            <h2 className="text-xl font-bold mb-2">Indicateurs de Durabilité</h2>
+            <p className="text-sm text-blue-100">
+              Analyse des régressions (%) de puissance entre le profil frais et après 15, 30 et 45 kJ/kg en W/kg
+            </p>
+          </div>
+
+          {/* Barre de filtres */}
+          <div className="bg-gray-50 p-4 border-b border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filtre par sexe */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Sexe:</label>
+                <select
+                  value={durabilityGenderFilter}
+                  onChange={(e) => setDurabilityGenderFilter(e.target.value as 'all' | Sex)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">Tous</option>
+                  <option value={Sex.MALE}>Hommes</option>
+                  <option value={Sex.FEMALE}>Femmes</option>
+                </select>
+              </div>
+
+              {/* Filtre par catégorie */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Catégorie:</label>
+                <select
+                  value={durabilityCategoryFilter}
+                  onChange={(e) => setDurabilityCategoryFilter(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">Toutes</option>
+                  <option value="U15">U15</option>
+                  <option value="U17">U17</option>
+                  <option value="U19">U19</option>
+                  <option value="U23">U23</option>
+                  <option value="Senior">Senior</option>
+                </select>
+              </div>
+
+              {/* Filtre par niveau kJ/kg */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Afficher:</label>
+                <select
+                  value={durabilityKjFilter}
+                  onChange={(e) => setDurabilityKjFilter(e.target.value as any)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">Tous (15/30/45kJ)</option>
+                  <option value="15kj">15 kJ/kg uniquement</option>
+                  <option value="30kj">30 kJ/kg uniquement</option>
+                  <option value="45kj">45 kJ/kg uniquement</option>
+                </select>
+              </div>
+
+              {/* Durées sélectionnées */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Durées:</label>
+                <select
+                  value={durabilityDurationFilter.length === powerDurations.length ? 'all' : durabilityDurationFilter.join(',')}
+                  onChange={(e) => {
+                    if (e.target.value === 'all') {
+                      setDurabilityDurationFilter(powerDurations.map(d => d.key));
+                    } else {
+                      setDurabilityDurationFilter([e.target.value]);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={powerDurations.map(d => d.key).join(',')}>Toutes</option>
+                  {powerDurations.map(d => (
+                    <option key={d.key} value={d.key}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Ligne supplémentaire avec compteur et option de priorité */}
+            <div className="mt-3 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                {filteredDurabilityData.length} athlète{filteredDurabilityData.length !== 1 ? 's' : ''} affiché{filteredDurabilityData.length !== 1 ? 's' : ''}
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Mettre en évidence les priorités:</label>
+                <button
+                  onClick={() => setShowPriorities(!showPriorities)}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                    showPriorities 
+                      ? 'bg-red-600 text-white' 
+                      : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+                  }`}
+                >
+                  {showPriorities ? '✓ Activé' : '✗ Désactivé'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider z-10">
+                    Coureur
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Profil
+                  </th>
+                  {visibleDurations.map(duration => {
+                    const colSpan = durabilityKjFilter === 'all' ? 3 : 1;
+                    const isSortable = durabilityKjFilter !== 'all'; // Triable uniquement si un kJ est sélectionné
+                    const isSorted = durabilitySortColumn === duration.key;
+                    return (
+                      <th 
+                        key={duration.key} 
+                        colSpan={colSpan} 
+                        className={`px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-l border-gray-300 ${
+                          isSortable ? 'cursor-pointer hover:bg-gray-100' : ''
+                        } ${isSorted ? 'bg-blue-100' : ''}`}
+                        onClick={() => isSortable && handleDurabilitySort(duration.key)}
+                        title={isSortable ? 'Cliquer pour trier par cette colonne' : ''}
+                      >
+                        <div className="flex items-center justify-center space-x-1">
+                          <span>{duration.label}</span>
+                          {isSorted && (
+                            <span className="text-blue-600 font-bold">
+                              {durabilitySortDirection === 'asc' ? '↑' : '↓'}
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-gray-50">
+                  <th className="sticky left-0 bg-gray-50 px-4 py-2 text-left text-xs font-medium text-gray-500 z-10"></th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500"></th>
+                  {visibleDurations.map(duration => {
+                    if (durabilityKjFilter === 'all') {
+                      return (
+                        <React.Fragment key={duration.key}>
+                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">
+                            Δ% 15kJ
+                          </th>
+                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500">
+                            Δ% 30kJ
+                          </th>
+                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500">
+                            Δ% 45kJ
+                          </th>
+                        </React.Fragment>
+                      );
+                    } else {
+                      return (
+                        <th key={duration.key} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">
+                          Δ% {durabilityKjFilter}
+                        </th>
+                      );
+                    }
+                  })}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredDurabilityData.map((item, index) => {
+                  const durability = getDropPercentages(item);
+                  
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="sticky left-0 bg-white px-4 py-3 whitespace-nowrap z-10">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-8 w-8">
+                            {item.photoUrl ? (
+                              <img className="h-8 w-8 rounded-full" src={item.photoUrl} alt={`${item.firstName} ${item.lastName}`} />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full flex items-center justify-center bg-gray-300">
+                                <span className="text-xs font-medium text-gray-600">
+                                  {`${item.firstName}`.charAt(0)}{`${item.lastName}`.charAt(0)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="ml-3">
+                            <div className="text-sm font-medium text-gray-900">
+                              {item.firstName} {item.lastName}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {getAgeCategory(item.birthDate).category}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          item.qualitativeProfile === RiderQualitativeProfile.SPRINTEUR ? 'bg-yellow-100 text-yellow-800' :
+                            item.qualitativeProfile === RiderQualitativeProfile.GRIMPEUR ? 'bg-green-100 text-green-800' :
+                            item.qualitativeProfile === RiderQualitativeProfile.PUNCHEUR ? 'bg-blue-100 text-blue-800' :
+                            item.qualitativeProfile === RiderQualitativeProfile.ROULEUR ? 'bg-purple-100 text-purple-800' :
+                            item.qualitativeProfile === RiderQualitativeProfile.COMPLET ? 'bg-indigo-100 text-indigo-800' :
+                            'bg-gray-100 text-gray-600'
+                        }`}>
+                          {item.qualitativeProfile || 'N/A'}
+                      </span>
+                    </td>
+                    {visibleDurations.map(duration => {
+                      const drops = durability[duration.key] || {};
+                      
+                      if (durabilityKjFilter === 'all') {
+                        // Afficher les 3 colonnes (15, 30, 45 kJ)
+                        const isPriority15 = showPriorities && isPriorityCell(drops.d15);
+                        const isPriority30 = showPriorities && isPriorityCell(drops.d30);
+                        const isPriority45 = showPriorities && isPriorityCell(drops.d45);
+                        
+                        return (
+                          <React.Fragment key={duration.key}>
+                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center border-l border-gray-200 ${isPriority15 ? 'bg-red-100 font-bold' : ''}`}>
+                              <span className={getColorClass(drops.d15)}>
+                                {drops.d15 !== undefined ? `${drops.d15.toFixed(0)}%` : '-'}
+                              </span>
+                            </td>
+                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center ${isPriority30 ? 'bg-red-100 font-bold' : ''}`}>
+                              <span className={getColorClass(drops.d30)}>
+                                {drops.d30 !== undefined ? `${drops.d30.toFixed(0)}%` : '-'}
+                              </span>
+                            </td>
+                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center ${isPriority45 ? 'bg-red-100 font-bold' : ''}`}>
+                              <span className={getColorClass(drops.d45)}>
+                                {drops.d45 !== undefined ? `${drops.d45.toFixed(0)}%` : '-'}
+                              </span>
+                            </td>
+                          </React.Fragment>
+                        );
+                      } else {
+                        // Afficher uniquement la colonne filtrée (15, 30 ou 45 kJ)
+                        let dropValue: number | undefined;
+                        if (durabilityKjFilter === '15kj') dropValue = drops.d15;
+                        else if (durabilityKjFilter === '30kj') dropValue = drops.d30;
+                        else if (durabilityKjFilter === '45kj') dropValue = drops.d45;
+                        
+                        const isPriority = showPriorities && isPriorityCell(dropValue);
+                        
+                        return (
+                          <td key={duration.key} className={`px-2 py-3 whitespace-nowrap text-sm text-center border-l border-gray-200 ${isPriority ? 'bg-red-100 font-bold' : ''}`}>
+                            <span className={getColorClass(dropValue)}>
+                              {dropValue !== undefined ? `${dropValue.toFixed(0)}%` : '-'}
+                            </span>
+                          </td>
+                        );
+                      }
+                    })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-gray-50 p-4 border-t border-gray-200">
+            <div className="flex items-center justify-between flex-wrap gap-4 text-xs text-gray-600">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-yellow-400 rounded"></div>
+                  <span>Δ% ≥ -10%</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-400 rounded"></div>
+                  <span>-10% &gt; Δ% &gt; -20%</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-red-400 rounded"></div>
+                  <span>Δ% ≤ -20%</span>
+                </div>
+                {showPriorities && (
+                  <div className="flex items-center space-x-1 ml-2">
+                    <div className="w-6 h-6 bg-red-100 rounded border-2 border-red-500"></div>
+                    <span className="font-semibold">Priorité (Δ% &lt; -20%)</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                Calculé en W/kg pour chaque durée de puissance
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

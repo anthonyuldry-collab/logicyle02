@@ -1334,6 +1334,7 @@ const App: React.FC = () => {
                       vehicles={appState.vehicles}
                       eventTransportLegs={appState.eventTransportLegs}
                       onSaveRaceEvent={onSaveRaceEvent}
+                      navigateTo={navigateTo}
                     />
                   )}
                   {currentSection === "vehicles" && (
@@ -1394,6 +1395,7 @@ const App: React.FC = () => {
                   {currentSection === "scouting" && (
                     <ScoutingSection
                       scoutingProfiles={appState.scoutingProfiles}
+                      riders={appState.riders}
                       onSaveScoutingProfile={onSaveScoutingProfile}
                       onDeleteScoutingProfile={onDeleteScoutingProfile}
                       effectivePermissions={effectivePermissions}

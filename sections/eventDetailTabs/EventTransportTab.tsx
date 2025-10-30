@@ -25,6 +25,7 @@ import {
   AppSection,
   PermissionLevel,
 } from "../../types";
+import { Sex } from "../../types";
 
 interface EventTransportTabProps {
   event: RaceEvent;
@@ -773,6 +774,11 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     return assignedPeople;
   };
 
+  const getRiderRoleLabel = (riderId: string): string => {
+    const rider = appState.riders.find(r => r.id === riderId);
+    return rider?.sex === Sex.FEMALE ? 'coureuse' : 'coureur';
+  };
+
   const getPersonAssignments = (personId: string, personType: "rider" | "staff") => {
     const assignments: string[] = [];
     
@@ -887,19 +893,20 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               {unassignedPeople.length} personne{unassignedPeople.length > 1 ? 's' : ''} participant{unassignedPeople.length > 1 ? 's' : ''} à l'événement n'{unassignedPeople.length > 1 ? 'ont' : 'a'} pas encore été assignée{unassignedPeople.length > 1 ? 's' : ''} aux {tabLabels[tabType]} :
             </p>
             <div className="flex flex-wrap gap-2">
-              {unassignedPeople.map((person) => (
-                <span key={`${person.id}-${'firstName' in person ? 'rider' : 'staff'}`} 
-                      className="bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
-                  {person.firstName} {person.lastName}
-                  <span className={`ml-1 text-xs px-1 py-0.5 rounded-full ${
-                    'firstName' in person 
-                      ? 'bg-pink-100 text-pink-700' 
-                      : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {'firstName' in person ? 'Coureuse' : 'Staff'}
+              {unassignedPeople.map((person) => {
+                const isRider = appState.riders.some(r => r.id === (person as any).id);
+                const roleLabel = isRider ? getRiderRoleLabel((person as any).id) : 'staff';
+                const badgeClass = isRider ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700';
+                return (
+                  <span key={`${person.id}-${isRider ? 'rider' : 'staff'}`} 
+                        className="bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+                    {person.firstName} {person.lastName}
+                    <span className={`ml-1 text-xs px-1 py-0.5 rounded-full ${badgeClass}`}>
+                      {roleLabel}
+                    </span>
                   </span>
-                </span>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1017,7 +1024,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                             ? 'bg-pink-100 text-pink-700' 
                             : 'bg-blue-100 text-blue-700'
                         }`}>
-                          {occ.type === 'rider' ? 'Coureuse' : 'Staff'}
+                          {occ.type === 'rider' ? getRiderRoleLabel(occ.id) : 'staff'}
                         </span>
                       </div>
                       {pickupTime && (
@@ -1316,7 +1323,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                                         ? 'bg-pink-100 text-pink-700' 
                                         : 'bg-blue-100 text-blue-700'
                                     }`}>
-                                      {occ.type === 'rider' ? 'Coureuse' : 'Staff'}
+                                      {occ.type === 'rider' ? getRiderRoleLabel(occ.id) : 'staff'}
                                     </span>
                                   </div>
                                   {pickupTime && (
@@ -1718,7 +1725,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                               ? 'bg-pink-100 text-pink-700' 
                               : 'bg-blue-100 text-blue-700'
                           }`}>
-                            {person.type === "rider" ? "Coureuse" : "Staff"}
+                            {person.type === "rider" ? getRiderRoleLabel(person.id) : "staff"}
                           </span>
                           {person.isParticipant && " - Participant"}
                           {isAssignedElsewhere && (
@@ -1804,7 +1811,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                                 key={`${person.id}-${person.type}`} 
                                 value={person.id}
                               >
-                                {person.name} {person.type === "rider" ? "Coureuse" : "Staff"}
+                                {person.name} {person.type === "rider" ? getRiderRoleLabel(person.id) : "staff"}
                                 {isAssigned && !isCurrentPerson ? " ⚠️ (Aussi assigné ailleurs)" : ""}
                               </option>
                             );

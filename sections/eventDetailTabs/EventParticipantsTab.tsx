@@ -68,7 +68,7 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
     // Check if it's a StaffMember and display role
     const staffMember = appState.staff.find(s => s.id === participant.id);
     if (staffMember) {
-      return `(${staffMember.role})`;
+      return `(${String(staffMember.role || '').toLowerCase()})`;
     }
     // Check if it's a Vehicle and display license plate
     const vehicle = appState.vehicles.find(v => v.id === participant.id);

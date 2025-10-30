@@ -19,6 +19,7 @@ import StarIcon from '../components/icons/StarIcon';
 
 interface ScoutingSectionProps {
   scoutingProfiles: ScoutingProfile[];
+  riders?: Rider[];
   onSaveScoutingProfile: (profile: ScoutingProfile) => void;
   onDeleteScoutingProfile: (profileId: string) => void;
   effectivePermissions?: any;
@@ -138,7 +139,7 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onSaveScoutingProfile, onDeleteScoutingProfile, effectivePermissions, appState, currentTeamId }) => {
+const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, effectivePermissions, appState, currentTeamId }) => {
   // Protection minimale - seulement scoutingProfiles est requis
   if (!scoutingProfiles) {
     return (
@@ -347,13 +348,12 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
   };
   
   const allProfilesForAnalysis = useMemo(() => {
-    // Pour l'instant, on utilise seulement les profils de scouting
-    // TODO: Ajouter une prop riders si nécessaire
     const combined = [
-        ...scoutingProfiles.map(s => ({ ...s, id: s.id, name: `${s.firstName} ${s.lastName}`, type: 'Prospect' }))
+        ...scoutingProfiles.map(s => ({ ...s, id: s.id, name: `${s.firstName} ${s.lastName}`, type: 'Prospect' })),
+        ...riders.map(r => ({ ...r, id: r.id, name: `${r.firstName} ${r.lastName}`, type: 'Membre équipe' }))
     ];
     return combined.sort((a, b) => a.name.localeCompare(b.name));
-  }, [scoutingProfiles]);
+  }, [scoutingProfiles, riders]);
 
   const handleProfileSelectionForAnalysis = (profileId: string) => {
     setSelectedProfileIdsForAnalysis(prev => {
@@ -536,20 +536,54 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
 
     return (
       <div className="space-y-4">
-        <div className="relative">
-            <div className="bg-slate-700 p-2 rounded-lg cursor-pointer flex justify-between items-center group">
-                <span className="text-slate-200">Sélectionner les profils à comparer ({selectedProfileIdsForAnalysis.length} / 6)</span>
-                <details className="relative">
-                    <summary className="list-none text-xs text-slate-400 cursor-pointer">Cliquer pour choisir</summary>
-                    <div className="absolute z-10 right-0 bg-slate-700 border border-slate-600 rounded mt-1 w-72 max-h-60 overflow-y-auto p-2 shadow-lg hidden group-focus-within:block">
-                      {allProfilesForAnalysis.map(p => (
-                        <div key={p.id} className="flex items-center p-1 rounded hover:bg-slate-600">
-                          <input type="checkbox" id={`analysis-select-${p.id}`} checked={selectedProfileIdsForAnalysis.includes(p.id)} onChange={() => handleProfileSelectionForAnalysis(p.id)} disabled={!selectedProfileIdsForAnalysis.includes(p.id) && selectedProfileIdsForAnalysis.length >= 6} className="h-4 w-4 rounded border-slate-500 bg-slate-800 text-blue-500 focus:ring-blue-500"/>
-                          <label htmlFor={`analysis-select-${p.id}`} className="ml-2 text-slate-200">{p.name} <span className="text-xs text-slate-400">({p.type})</span></label>
-                        </div>
-                      ))}
+        <div className="space-y-4">
+            <div className="bg-slate-700 p-4 rounded-lg">
+                <div className="flex justify-between items-center mb-3">
+                    <span className="text-slate-200 font-medium">Sélectionner les profils à comparer ({selectedProfileIdsForAnalysis.length} / 6)</span>
+                    <div className="text-xs text-slate-400">
+                        {selectedProfileIdsForAnalysis.length > 0 && (
+                            <button 
+                                onClick={() => setSelectedProfileIdsForAnalysis([])}
+                                className="text-red-400 hover:text-red-300 underline"
+                            >
+                                Effacer la sélection
+                            </button>
+                        )}
                     </div>
-                </details>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                    {allProfilesForAnalysis.map(p => (
+                        <div key={p.id} className={`flex items-center p-2 rounded border transition-colors ${
+                            selectedProfileIdsForAnalysis.includes(p.id) 
+                                ? 'bg-blue-600/20 border-blue-500' 
+                                : 'bg-slate-600/50 border-slate-500 hover:bg-slate-600'
+                        }`}>
+                            <input 
+                                type="checkbox" 
+                                id={`analysis-select-${p.id}`} 
+                                checked={selectedProfileIdsForAnalysis.includes(p.id)} 
+                                onChange={() => handleProfileSelectionForAnalysis(p.id)} 
+                                disabled={!selectedProfileIdsForAnalysis.includes(p.id) && selectedProfileIdsForAnalysis.length >= 6} 
+                                className="h-4 w-4 rounded border-slate-500 bg-slate-800 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
+                            />
+                            <label htmlFor={`analysis-select-${p.id}`} className="ml-3 flex-1 cursor-pointer">
+                                <div className="text-slate-200 font-medium">{p.name}</div>
+                                <div className={`text-xs ${
+                                    p.type === 'Prospect' ? 'text-yellow-400' : 'text-green-400'
+                                }`}>
+                                    {p.type}
+                                </div>
+                            </label>
+                        </div>
+                    ))}
+                </div>
+                
+                {allProfilesForAnalysis.length === 0 && (
+                    <div className="text-center py-4 text-slate-400">
+                        Aucun profil disponible pour la comparaison
+                    </div>
+                )}
             </div>
         </div>
 
@@ -590,19 +624,31 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, onS
                           <td className="sticky left-0 bg-slate-800 p-2 text-left font-medium text-slate-300 w-48">{metric.label}</td>
                           {selectedProfiles.map(p => {
                               let value: number | null = null;
-                              if (metric.key === 'age') value = getAge(p.birthDate);
-                              else if (metric.key === 'potentialRating') value = 'potentialRating' in p ? p.potentialRating || 0 : null;
-                              else if (metric.key === 'generalPerformanceScore') value = p.generalPerformanceScore || 0;
-                              else if (metric.key === 'fatigueResistanceScore') value = p.fatigueResistanceScore || 0;
-                              else if (metric.key.startsWith('powerProfile')) {
+                              if (metric.key === 'age') {
+                                const age = getAge(p.birthDate);
+                                value = typeof age === 'number' && !isNaN(age) ? age : null;
+                              } else if (metric.key === 'potentialRating') {
+                                const rating = 'potentialRating' in p ? p.potentialRating : null;
+                                value = typeof rating === 'number' && !isNaN(rating) ? rating : null;
+                              } else if (metric.key === 'generalPerformanceScore') {
+                                const score = p.generalPerformanceScore;
+                                value = typeof score === 'number' && !isNaN(score) ? score : null;
+                              } else if (metric.key === 'fatigueResistanceScore') {
+                                const score = p.fatigueResistanceScore;
+                                value = typeof score === 'number' && !isNaN(score) ? score : null;
+                              } else if (metric.key.startsWith('powerProfile')) {
                                 const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
                                 const power = (p[profileKey] as PowerProfile)?.[powerKey];
-                                value = (power && p.weightKg) ? power / p.weightKg : null;
+                                if (typeof power === 'number' && !isNaN(power) && typeof p.weightKg === 'number' && !isNaN(p.weightKg) && p.weightKg > 0) {
+                                  value = power / p.weightKg;
+                                } else {
+                                  value = null;
+                                }
                               }
                               
                               return (
-                                  <td key={p.id} className={`p-2 font-mono border-l border-slate-700 ${value !== null ? getHeatmapColor(value, min, max, metric.invertColor) : 'bg-slate-700/50 text-slate-400'}`}>
-                                      {value !== null ? metric.format(value) : 'N/A'}
+                                  <td key={p.id} className={`p-2 font-mono border-l border-slate-700 ${value !== null && typeof value === 'number' ? getHeatmapColor(value, min, max, metric.invertColor) : 'bg-slate-700/50 text-slate-400'}`}>
+                                      {value !== null && typeof value === 'number' ? metric.format(value) : 'N/A'}
                                   </td>
                               )
                           })}

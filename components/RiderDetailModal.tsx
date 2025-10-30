@@ -257,6 +257,34 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   }, [formData]);
 
 
+  const handleDeleteProfile = (profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ') => {
+    setFormData((prev: Rider | Omit<Rider, 'id'>) => {
+      if (!prev) return prev;
+      
+      const newFormData = structuredClone(prev);
+      
+      // Supprimer toutes les données du profil spécifié
+      if (newFormData[profileKey]) {
+        newFormData[profileKey] = {};
+      }
+      
+      // Supprimer aussi la note associée
+      const noteFieldMap = {
+        'powerProfile15KJ': 'profile15KJ',
+        'powerProfile30KJ': 'profile30KJ', 
+        'powerProfile45KJ': 'profile45KJ'
+      } as const;
+      
+      const noteField = noteFieldMap[profileKey];
+      if (noteField && newFormData[noteField]) {
+        newFormData[noteField] = '';
+      }
+      
+      console.log(`🗑️ Profil ${profileKey} supprimé`);
+      return newFormData;
+    });
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
@@ -534,6 +562,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formFieldsEnabled={isEditMode}
             powerDurationsConfig={powerDurationsConfig}
             profileReliabilityLevel={profileReliabilityLevel}
+            onDeleteProfile={handleDeleteProfile}
           />
         );
       case 'project':

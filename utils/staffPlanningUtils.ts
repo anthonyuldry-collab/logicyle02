@@ -38,7 +38,7 @@ export const getStaffWorkDays = (staffId: string, staffEventSelections: StaffEve
   return staffEventSelections.filter(sel => 
     sel.staffId === staffId && 
     futureEvents.some(event => event.id === sel.eventId) &&
-    sel.status !== null
+    (sel.status === StaffEventStatus.SELECTIONNE || sel.status === StaffEventStatus.PRE_SELECTION)
   ).length;
 };
 

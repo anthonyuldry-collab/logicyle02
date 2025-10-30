@@ -45,6 +45,7 @@ interface StaffSectionProps {
   vehicles?: any[];
   eventTransportLegs?: any[];
   onSaveRaceEvent?: any;
+  navigateTo?: (section: any, eventId?: string) => void;
 }
 
 export default function StaffSection({ 
@@ -70,6 +71,7 @@ export default function StaffSection({
   vehicles,
   eventTransportLegs,
   onSaveRaceEvent
+  ,navigateTo
 }: StaffSectionProps) {
   // Debug logs
   console.log('🔧 StaffSection - Debug Info:');
@@ -86,7 +88,7 @@ export default function StaffSection({
   }
 
   // États pour la gestion des onglets
-  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives'>('staff');
+  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives'>('planning');
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
   
   // États pour les modales
@@ -105,6 +107,24 @@ export default function StaffSection({
 
   // Obtenir le staff actif pour la saison courante
   const activeStaff = staff && staff.length > 0 ? getActiveStaffForCurrentSeason(staff) : [];
+  const handleAssignStaffToEvent = (eventId: string, staffId: string, status: any) => {
+    try {
+      const event = (raceEvents || []).find((e: any) => e.id === eventId);
+      if (!event) return;
+      const current = new Set<string>(event.selectedStaffIds || []);
+      if (status === 'SELECTIONNE' || status === 'PRE_SELECTION') {
+        current.add(staffId);
+      } else {
+        current.delete(staffId);
+      }
+      const updatedEvent = { ...event, selectedStaffIds: Array.from(current) };
+      if (onSaveRaceEvent) {
+        onSaveRaceEvent(updatedEvent);
+      }
+    } catch (e) {
+      console.warn('handleAssignStaffToEvent error', e);
+    }
+  };
   
   console.log('🔧 StaffSection - activeStaff:', activeStaff);
   console.log('🔧 StaffSection - activeStaff.length:', activeStaff.length);
@@ -764,6 +784,8 @@ export default function StaffSection({
              currentUser={currentUser}
              appState={appState}
              onOpenStaffModal={(staffMember) => openViewModal(staffMember)}
+            onAssignStaffToEvent={handleAssignStaffToEvent}
+            onOpenEventDetail={(eventId: string) => navigateTo && navigateTo('eventDetail', eventId)}
            />
          ) : 
          <ArchivesTab />}

@@ -88,6 +88,7 @@ export default function SeasonPlanningSection({
   const [activeView, setActiveView] = useState<'overview' | 'rider-detail' | 'preferences'>('overview');
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
+  const [expandedRiderIds, setExpandedRiderIds] = useState<Set<string>>(new Set());
   
   // États pour les filtres
   const [searchTerm, setSearchTerm] = useState('');
@@ -651,143 +652,133 @@ export default function SeasonPlanningSection({
         />
       </div>
 
-      {/* Liste des athlètes avec leurs événements */}
-      <div className="space-y-4">
-        {filteredRiders.map(rider => {
-          const riderSelections = riderEventSelections.filter(sel => 
-            sel.riderId === rider.id && 
-            futureEvents.some(event => event.id === sel.eventId)
-          );
-          
-          const titulaire = riderSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
-          const preselection = riderSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
-          
-          return (
-            <div key={rider.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-              {/* En-tête de l'athlète */}
-              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0 h-16 w-16">
-                      {rider.photoUrl ? (
-                        <img className="h-16 w-16 rounded-full ring-2 ring-purple-200" src={rider.photoUrl} alt="" />
-                      ) : (
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center ring-2 ring-purple-200">
-                          <span className="text-white font-semibold text-lg">
-                            {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                          </span>
+      {/* Tableau accordéon par athlète */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Athlète</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Âge</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Aperçu à venir</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Titulaire</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Pré-sél.</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredRiders.map(rider => {
+              const riderSelections = riderEventSelections.filter(sel => 
+                sel.riderId === rider.id && futureEvents.some(event => event.id === sel.eventId)
+              );
+              const isExpanded = expandedRiderIds.has(rider.id);
+              const titulaire = riderSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
+              const preselection = riderSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
+              const nextEvents = riderSelections
+                .map(sel => ({ sel, event: futureEvents.find(e => e.id === sel.eventId) }))
+                .filter(x => !!x.event)
+                .sort((a,b) => new Date(a.event!.date).getTime() - new Date(b.event!.date).getTime())
+                .slice(0, 3);
+
+              const toggle = () => {
+                setExpandedRiderIds(prev => {
+                  const copy = new Set(prev);
+                  if (copy.has(rider.id)) copy.delete(rider.id); else copy.add(rider.id);
+                  return copy;
+                });
+              };
+
+              return (
+                <React.Fragment key={rider.id}>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <button onClick={toggle} className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 flex-shrink-0">
+                          {rider.photoUrl ? (
+                            <img className="h-10 w-10 rounded-full ring-2 ring-purple-200" src={rider.photoUrl} alt="" />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center ring-2 ring-purple-200">
+                              <span className="text-white font-semibold text-xs">
+                                {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">
-                        {rider.firstName} {rider.lastName}
-                      </h3>
-                      <div className="flex items-center space-x-3 mt-1">
-                        <span className="text-sm text-gray-600">
-                          {getAge(rider.birthDate)} ans
-                        </span>
-                        {rider.qualitativeProfile && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span className="text-sm text-purple-600 font-medium">
-                              {rider.qualitativeProfile === RiderQualitativeProfile.GRIMPEUR && '🏔️ Grimpeur'}
-                              {rider.qualitativeProfile === RiderQualitativeProfile.ROULEUR && '🛣️ Rouleur'}
-                              {rider.qualitativeProfile === RiderQualitativeProfile.SPRINTEUR && '💨 Sprinteur'}
-                              {rider.qualitativeProfile === RiderQualitativeProfile.PUNCHEUR && '⚡ Puncheur'}
-                              {rider.qualitativeProfile === RiderQualitativeProfile.BAROUDEUR_PROFIL && '🌪️ Baroudeur'}
-                              {rider.qualitativeProfile === RiderQualitativeProfile.AUTRE && '🔧 Autre'}
-                            </span>
-                          </>
+                        <span className="text-sm font-semibold text-gray-900 truncate">{rider.firstName} {rider.lastName}</span>
+                        <span className={`ml-2 text-xs ${isExpanded ? 'text-purple-700' : 'text-gray-400'}`}>{isExpanded ? '▼' : '▶'}</span>
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{getAge(rider.birthDate)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {nextEvents.length > 0 ? nextEvents.map(({ sel, event }) => (
+                          <span key={sel.id} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            sel.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
+                            sel.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`} title={event!.name}>
+                            {event!.name}
+                          </span>
+                        )) : (
+                          <span className="text-xs text-gray-500">Aucun à venir</span>
                         )}
                       </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-4">
-                    <div className="text-center px-4 py-2 bg-white rounded-lg border border-purple-200">
-                      <div className="text-2xl font-bold text-purple-600">{titulaire.length}</div>
-                      <div className="text-xs text-gray-600">Titulaire</div>
-                    </div>
-                    <div className="text-center px-4 py-2 bg-white rounded-lg border border-blue-200">
-                      <div className="text-2xl font-bold text-blue-600">{preselection.length}</div>
-                      <div className="text-xs text-gray-600">Pré-sélection</div>
-                    </div>
-                    <button
-                      onClick={() => openRiderCalendar(rider)}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                    >
-                      <CalendarDaysIcon className="w-5 h-5 inline mr-2" />
-                      Voir calendrier
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Liste des événements de l'athlète */}
-              <div className="p-6">
-                {riderSelections.length > 0 ? (
-                  <div className="space-y-3">
-                    {riderSelections.map(selection => {
-                      const event = futureEvents.find(e => e.id === selection.eventId);
-                      if (!event) return null;
-                      
-                      return (
-                        <div key={selection.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3">
-                              <div className={`w-3 h-3 rounded-full ${
-                                selection.status === RiderEventStatus.TITULAIRE ? 'bg-green-500' :
-                                selection.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-500' :
-                                'bg-yellow-500'
-                              }`}></div>
-                              <div>
-                                <h4 className="font-semibold text-gray-900">{event.name}</h4>
-                                <p className="text-sm text-gray-600">{formatEventDateRange(event)} • {event.location}</p>
-                              </div>
-                            </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{titulaire.length}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{preselection.length}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => openRiderCalendar(rider)} className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded hover:bg-purple-100">
+                        <CalendarDaysIcon className="w-4 h-4 mr-1" /> Calendrier
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr className="bg-gray-50">
+                      <td className="px-4 py-3" colSpan={6}>
+                        {riderSelections.length > 0 ? (
+                          <div className="space-y-2">
+                            {riderSelections.map(selection => {
+                              const event = futureEvents.find(e => e.id === selection.eventId);
+                              if (!event) return null;
+                              return (
+                                <div key={selection.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-md bg-white">
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{event.name}</div>
+                                    <div className="text-xs text-gray-500">{formatEventDateRange(event)} • {event.location}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      selection.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
+                                      selection.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {selection.status === RiderEventStatus.TITULAIRE ? 'Titulaire' : selection.status === RiderEventStatus.PRE_SELECTION ? 'Pré-sél.' : 'Rempl.'}
+                                    </span>
+                                    {selection.riderPreference && (
+                                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800' :
+                                        selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800' :
+                                        selection.riderPreference === RiderEventPreference.ABSENT || selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? '👍' : selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯' : selection.riderPreference === RiderEventPreference.ABSENT ? '❌' : selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? '🚫' : '⏳'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                          
-                          <div className="flex items-center space-x-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              selection.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
-                              selection.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {selection.status === RiderEventStatus.TITULAIRE ? 'Titulaire' :
-                               selection.status === RiderEventStatus.PRE_SELECTION ? 'Pré-sélection' :
-                               'Remplaçant'}
-                            </span>
-                            
-                            {selection.riderPreference && (
-                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800' :
-                                selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800' :
-                                selection.riderPreference === RiderEventPreference.ABSENT || selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? '👍 Veut participer' :
-                                 selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯 Objectifs' :
-                                 selection.riderPreference === RiderEventPreference.ABSENT ? '❌ Absent' :
-                                 selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? '🚫 Ne veut pas' :
-                                 '⏳ En attente'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <CalendarDaysIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                    <p>Aucun événement planifié pour cet athlète</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+                        ) : (
+                          <div className="text-xs text-gray-500">Aucun événement pour cet athlète</div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Message si aucun athlète trouvé */}
@@ -856,219 +847,69 @@ export default function SeasonPlanningSection({
         </div>
       </div>
 
-      {/* Liste des événements avec les préférences */}
-      <div className="space-y-6">
-        {futureEvents.map(event => {
-          const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
-          
-          // Grouper les athlètes par préférence
-          const wantsToParticipate = eventSelections.filter(sel => sel.riderPreference === RiderEventPreference.VEUT_PARTICIPER);
-          const hasObjectives = eventSelections.filter(sel => sel.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES);
-          const unavailable = eventSelections.filter(sel => 
-            sel.riderPreference === RiderEventPreference.ABSENT || 
-            sel.riderPreference === RiderEventPreference.NE_VEUT_PAS
-          );
-          const waiting = eventSelections.filter(sel => sel.riderPreference === RiderEventPreference.EN_ATTENTE);
-          
-          // Appliquer le filtre
-          const shouldShowEvent = preferenceFilter === 'all' || 
-            (preferenceFilter === 'wants' && wantsToParticipate.length > 0) ||
-            (preferenceFilter === 'objectives' && hasObjectives.length > 0) ||
-            (preferenceFilter === 'unavailable' && unavailable.length > 0) ||
-            (preferenceFilter === 'waiting' && waiting.length > 0);
-          
-          if (!shouldShowEvent) return null;
-          
-          return (
-            <div key={event.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              {/* En-tête de l'événement */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">{event.name}</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {formatEventDateRange(event)} • {event.location}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="text-center px-4 py-2 bg-white rounded-lg border border-green-200">
-                      <div className="text-2xl font-bold text-green-600">{wantsToParticipate.length}</div>
-                      <div className="text-xs text-gray-600">Intéressés</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Athlètes groupés par préférence */}
-              <div className="p-6 space-y-6">
-                {/* Veut participer */}
-                {wantsToParticipate.length > 0 && (preferenceFilter === 'all' || preferenceFilter === 'wants') && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                      <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                      Veut participer ({wantsToParticipate.length})
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {wantsToParticipate.map(selection => {
-                        const rider = riders.find(r => r.id === selection.riderId);
-                        if (!rider) return null;
-                        
-                        return (
-                          <div key={selection.id} className="flex items-center space-x-3 p-3 border border-green-200 rounded-lg bg-green-50">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {rider.photoUrl ? (
-                                <img className="h-10 w-10 rounded-full" src={rider.photoUrl} alt="" />
-                              ) : (
-                                <div className="h-10 w-10 rounded-full bg-green-600 flex items-center justify-center">
-                                  <span className="text-white font-semibold text-xs">
-                                    {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {rider.firstName} {rider.lastName}
-                              </p>
-                              {selection.status && (
-                                <p className="text-xs text-gray-600">
-                                  {selection.status === RiderEventStatus.TITULAIRE ? '✓ Titulaire' :
-                                   selection.status === RiderEventStatus.PRE_SELECTION ? '⋯ Pré-sélection' :
-                                   '• Remplaçant'}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Objectifs spécifiques */}
-                {hasObjectives.length > 0 && (preferenceFilter === 'all' || preferenceFilter === 'objectives') && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                      Objectifs spécifiques ({hasObjectives.length})
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {hasObjectives.map(selection => {
-                        const rider = riders.find(r => r.id === selection.riderId);
-                        if (!rider) return null;
-                        
-                        return (
-                          <div key={selection.id} className="flex items-center space-x-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {rider.photoUrl ? (
-                                <img className="h-10 w-10 rounded-full" src={rider.photoUrl} alt="" />
-                              ) : (
-                                <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center">
-                                  <span className="text-white font-semibold text-xs">
-                                    {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {rider.firstName} {rider.lastName}
-                              </p>
-                              {selection.riderObjectives && (
-                                <p className="text-xs text-gray-600 truncate">
-                                  {selection.riderObjectives}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Indisponible */}
-                {unavailable.length > 0 && (preferenceFilter === 'all' || preferenceFilter === 'unavailable') && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                      <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                      Indisponible ({unavailable.length})
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {unavailable.map(selection => {
-                        const rider = riders.find(r => r.id === selection.riderId);
-                        if (!rider) return null;
-                        
-                        return (
-                          <div key={selection.id} className="flex items-center space-x-3 p-3 border border-red-200 rounded-lg bg-red-50">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {rider.photoUrl ? (
-                                <img className="h-10 w-10 rounded-full" src={rider.photoUrl} alt="" />
-                              ) : (
-                                <div className="h-10 w-10 rounded-full bg-red-600 flex items-center justify-center">
-                                  <span className="text-white font-semibold text-xs">
-                                    {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {rider.firstName} {rider.lastName}
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                {selection.riderPreference === RiderEventPreference.ABSENT ? 'Absent' : 'Ne veut pas'}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                
-                {/* En attente */}
-                {waiting.length > 0 && (preferenceFilter === 'all' || preferenceFilter === 'waiting') && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                      <div className="w-3 h-3 bg-gray-400 rounded-full mr-2"></div>
-                      En attente ({waiting.length})
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {waiting.map(selection => {
-                        const rider = riders.find(r => r.id === selection.riderId);
-                        if (!rider) return null;
-                        
-                        return (
-                          <div key={selection.id} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {rider.photoUrl ? (
-                                <img className="h-10 w-10 rounded-full" src={rider.photoUrl} alt="" />
-                              ) : (
-                                <div className="h-10 w-10 rounded-full bg-gray-600 flex items-center justify-center">
-                                  <span className="text-white font-semibold text-xs">
-                                    {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {rider.firstName} {rider.lastName}
-                              </p>
-                              <p className="text-xs text-gray-600">En attente de décision</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+      {/* Vue TABLEAU des préférences uniquement */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-w-full">
+          <div className="px-6 py-4 border-b border-gray-200 bg-emerald-600 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold">Tableau des préférences</h3>
+                <p className="text-emerald-100 text-sm mt-1">
+                  {filteredRiders.length} athlètes × {futureEvents.length} événements
+                </p>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+          <div className="overflow-x-auto" style={{ maxWidth: 'calc(100vw - 400px)' }}>
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
+                    Athlète
+                  </th>
+                  {futureEvents.map(event => (
+                    <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[140px] border-l border-gray-200">
+                      <div className="flex flex-col items-center">
+                        <div className="font-bold text-sm text-gray-700">{event.name}</div>
+                        <div className="text-xs text-gray-500 font-medium">{formatEventDateRange(event)}</div>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredRiders.map((rider, index) => (
+                  <tr key={rider.id} className={`hover:bg-gray-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">
+                      {rider.firstName} {rider.lastName}
+                    </td>
+                    {futureEvents.map(event => {
+                      const pref = getRiderEventPreference(event.id, rider.id);
+                      const color = pref === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800'
+                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800'
+                        : pref === RiderEventPreference.EN_ATTENTE ? 'bg-gray-100 text-gray-800'
+                        : pref === RiderEventPreference.ABSENT || pref === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800'
+                        : 'bg-white text-gray-400';
+                      const label = pref === RiderEventPreference.VEUT_PARTICIPER ? '👍'
+                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯'
+                        : pref === RiderEventPreference.ABSENT ? '❌'
+                        : pref === RiderEventPreference.NE_VEUT_PAS ? '🚫'
+                        : pref === RiderEventPreference.EN_ATTENTE ? '⏳'
+                        : '';
+                      return (
+                        <td key={event.id} className="px-2 py-3 text-center text-sm border-l border-gray-200 min-w-[120px]">
+                          <div className={`inline-flex items-center justify-center px-2 py-1 rounded text-xs font-medium ${color}`}>
+                            {label || '—'}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      
     </div>
   );
 

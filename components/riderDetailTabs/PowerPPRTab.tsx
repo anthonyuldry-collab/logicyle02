@@ -9,6 +9,7 @@ interface PowerPPRTabProps {
     powerDurationsConfig: { key: keyof PowerProfile; label: string; unit: string; sortable: boolean; }[];
     theme?: 'light' | 'dark';
     profileReliabilityLevel?: number;
+    onDeleteProfile?: (profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ') => void;
 }
 
 const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
@@ -17,7 +18,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     formFieldsEnabled,
     powerDurationsConfig,
     theme = 'dark',
-    profileReliabilityLevel = 1
+    profileReliabilityLevel = 1,
+    onDeleteProfile
 }) => {
     const inputClasses = theme === 'light'
         ? "block w-full px-2 py-1 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
@@ -50,10 +52,34 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     ) => {
         const profileData = formData[profileKey];
         const noteValue = formData[profileNoteFieldName] || '';
+        const isDeletable = profileKey !== 'powerProfileFresh' && onDeleteProfile;
+        const hasData = profileData && Object.values(profileData).some(val => val && val > 0);
+
+        const handleDeleteProfile = () => {
+            if (isDeletable && onDeleteProfile && window.confirm(`Êtes-vous sûr de vouloir supprimer toutes les données du profil ${title} ? Cette action ne peut pas être annulée.`)) {
+                onDeleteProfile(profileKey as 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ');
+            }
+        };
 
         return (
             <div className={`${containerClasses} mb-2`}>
-                <h5 className={titleClasses}>{title}</h5>
+                <div className="flex justify-between items-center mb-2">
+                    <h5 className={titleClasses}>{title}</h5>
+                    {isDeletable && hasData && formFieldsEnabled && (
+                        <button
+                            type="button"
+                            onClick={handleDeleteProfile}
+                            className={`px-2 py-1 text-xs rounded ${
+                                theme === 'light' 
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300' 
+                                    : 'bg-red-900 text-red-300 hover:bg-red-800 border border-red-700'
+                            } transition-colors`}
+                            title={`Supprimer toutes les données du profil ${title}`}
+                        >
+                            🗑️ Supprimer
+                        </button>
+                    )}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-2 text-xs">
                     {powerDurationsConfig.map(pdc => (
                         <div key={pdc.key} className="flex flex-col">

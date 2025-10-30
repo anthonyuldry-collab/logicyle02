@@ -29,15 +29,19 @@ interface StaffIndividualCalendarProps {
   raceEvents: RaceEvent[];
   staffEventSelections: StaffEventSelection[];
   onClose: () => void;
+  onOpenEvent?: (eventId: string) => void;
 }
 
 export default function StaffIndividualCalendar({
   staffMember,
   raceEvents,
   staffEventSelections,
-  onClose
+  onClose,
+  onOpenEvent
 }: StaffIndividualCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'calendar' | 'table'>('calendar');
+  const [hidePast, setHidePast] = useState<boolean>(true);
 
   // Générer le calendrier pour le mois actuel
   const calendarDays = useMemo(() => {
@@ -49,13 +53,44 @@ export default function StaffIndividualCalendar({
     return getStaffCalendarStats(calendarDays);
   }, [calendarDays]);
 
-  // Navigation entre les mois
-  const goToPreviousMonth = () => {
-    setCurrentMonth(prev => subMonths(prev, 1));
+  // Vue tableau annuelle: tous les événements de l'année sélectionnée
+  const tableYear = useMemo(() => currentMonth.getFullYear(), [currentMonth]);
+  const annualEvents = useMemo(() => {
+    const today = new Date();
+    const rows = (raceEvents || [])
+      .filter(e => {
+        const d = new Date(e.date);
+        return d.getFullYear() === tableYear;
+      })
+      .map(e => {
+        const sel = (staffEventSelections || []).find(s => s.eventId === e.id && s.staffId === staffMember.id);
+        return {
+          id: e.id,
+          date: new Date(e.date),
+          name: e.name,
+          location: (e as any).location,
+          status: sel?.status || null,
+        };
+      })
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    return hidePast ? rows.filter(r => r.date >= new Date(today.getFullYear(), today.getMonth(), today.getDate())) : rows;
+  }, [raceEvents, staffEventSelections, staffMember.id, tableYear, hidePast]);
+
+  // Navigation (mois en vue calendrier, année en vue tableau)
+  const goToPrevious = () => {
+    if (viewMode === 'calendar') {
+      setCurrentMonth(prev => subMonths(prev, 1));
+    } else {
+      setCurrentMonth(prev => new Date(prev.getFullYear() - 1, prev.getMonth(), 1));
+    }
   };
 
-  const goToNextMonth = () => {
-    setCurrentMonth(prev => addMonths(prev, 1));
+  const goToNext = () => {
+    if (viewMode === 'calendar') {
+      setCurrentMonth(prev => addMonths(prev, 1));
+    } else {
+      setCurrentMonth(prev => new Date(prev.getFullYear() + 1, prev.getMonth(), 1));
+    }
   };
 
   const goToToday = () => {
@@ -119,55 +154,128 @@ export default function StaffIndividualCalendar({
           </div>
         </div>
 
-        {/* Contrôles de navigation */}
+        {/* Contrôles de navigation + switch de vue */}
         <div className="bg-white p-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={goToPreviousMonth}
+                onClick={goToPrevious}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <ChevronLeftIcon className="w-6 h-6" />
               </button>
               <h3 className="text-xl font-semibold text-gray-800">
-                {getMonthName(currentMonth)}
+                {viewMode === 'calendar' ? getMonthName(currentMonth) : tableYear}
               </h3>
               <button
-                onClick={goToNextMonth}
+                onClick={goToNext}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <ChevronRightIcon className="w-6 h-6" />
               </button>
             </div>
-            <button
-              onClick={goToToday}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              Aujourd'hui
-            </button>
-          </div>
-        </div>
-
-        {/* Calendrier */}
-        <div className="p-6 overflow-auto max-h-96">
-          <div className="grid grid-cols-7 gap-1">
-            {/* En-têtes des jours de la semaine */}
-            {weekDays.map(day => (
-              <div key={day} className="p-3 text-center font-semibold text-gray-600 bg-gray-100">
-                {day}
+            <div className="flex items-center gap-2">
+              <div className="bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className={`px-3 py-1.5 text-sm rounded-md ${viewMode === 'calendar' ? 'bg-white shadow border' : 'text-gray-600'}`}
+                >
+                  Calendrier
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 text-sm rounded-md ${viewMode === 'table' ? 'bg-white shadow border' : 'text-gray-600'}`}
+                >
+                  Tableau
+                </button>
               </div>
-            ))}
-
-            {/* Jours du calendrier */}
-            {calendarDays.map((day, index) => (
-              <CalendarDay
-                key={index}
-                day={day}
-                staffMember={staffMember}
-              />
-            ))}
+              {viewMode === 'table' && (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={hidePast} onChange={(e) => setHidePast(e.target.checked)} />
+                  Masquer les événements passés
+                </label>
+              )}
+              <button
+                onClick={() => {
+                  if (viewMode === 'calendar') {
+                    goToToday();
+                  } else {
+                    const now = new Date();
+                    setCurrentMonth(new Date(now.getFullYear(), 0, 1));
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Aujourd'hui
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Corps: Calendrier ou Tableau */}
+        {viewMode === 'calendar' ? (
+          <div className="p-6 overflow-auto max-h-[65vh]">
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map(day => (
+                <div key={day} className="p-3 text-center font-semibold text-gray-600 bg-gray-100">
+                  {day}
+                </div>
+              ))}
+              {calendarDays.map((day, index) => (
+                <CalendarDay key={index} day={day} staffMember={staffMember} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 overflow-auto max-h-[65vh]">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Événement</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lieu</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {annualEvents.map((ev, idx) => {
+                  const prev = annualEvents[idx - 1];
+                  const showMonthHeader = !prev || prev.date.getMonth() !== ev.date.getMonth();
+                  return (
+                    <>
+                      {showMonthHeader && (
+                        <tr key={`m-${ev.date.getFullYear()}-${ev.date.getMonth()}`} className="bg-gray-100">
+                          <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {format(ev.date, 'MMMM yyyy')}
+                          </td>
+                        </tr>
+                      )}
+                      <tr key={ev.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => onOpenEvent && onOpenEvent(ev.id)}>
+                    <td className="px-4 py-3 text-sm text-gray-900">{format(ev.date, 'dd/MM')}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{ev.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{ev.location || '-'}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${
+                        ev.status === StaffEventStatus.SELECTIONNE ? 'bg-green-100 text-green-800' :
+                        ev.status === StaffEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {ev.status === StaffEventStatus.SELECTIONNE ? 'Sélectionné' : ev.status === StaffEventStatus.PRE_SELECTION ? 'Pré-sélection' : 'Non sélectionné'}
+                      </span>
+                    </td>
+                      </tr>
+                    </>
+                  );
+                })}
+                {annualEvents.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">Aucun événement pour cette année</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -176,9 +284,10 @@ export default function StaffIndividualCalendar({
 interface CalendarDayProps {
   day: StaffCalendarDay;
   staffMember: StaffMember;
+  onOpenEvent?: (eventId: string) => void;
 }
 
-function CalendarDay({ day, staffMember }: CalendarDayProps) {
+function CalendarDay({ day, staffMember, onOpenEvent }: CalendarDayProps) {
   const today = new Date();
   const isToday = isSameDay(day.date, today);
 
@@ -198,13 +307,14 @@ function CalendarDay({ day, staffMember }: CalendarDayProps) {
       {/* Événements */}
       <div className="space-y-1">
         {day.events.map(event => (
-          <div
+          <button
             key={event.id}
-            className={`text-xs p-1 rounded border-l-2 ${
+            className={`w-full text-left text-xs p-1 rounded border-l-2 hover:bg-gray-100 transition ${
               event.status === StaffEventStatus.SELECTIONNE ? 'bg-green-50 border-green-400' :
               event.status === StaffEventStatus.PRE_SELECTION ? 'bg-yellow-50 border-yellow-400' :
               'bg-gray-50 border-gray-300'
             }`}
+            onClick={() => onOpenEvent && onOpenEvent(event.id)}
           >
             <div className="font-medium truncate">{event.eventName}</div>
             <div className="flex items-center space-x-1 text-xs text-gray-500">
@@ -217,7 +327,7 @@ function CalendarDay({ day, staffMember }: CalendarDayProps) {
                 <span className="truncate">{event.location}</span>
               </div>
             )}
-          </div>
+          </button>
         ))}
       </div>
     </div>
