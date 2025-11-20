@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   DEFAULT_THEME_ACCENT_COLOR,
   DEFAULT_THEME_PRIMARY_COLOR,
@@ -253,6 +253,7 @@ const App: React.FC = () => {
     "login" | "signup" | "app" | "pending" | "no_team"
   >("login");
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
+  const pendingSignupDataRef = useRef<SignupData | null>(null); // Référence pour éviter les problèmes de closure
 
   const [language, setLanguageState] = useState<"fr" | "en">("fr");
 
@@ -307,14 +308,16 @@ const App: React.FC = () => {
         // If profile doesn't exist (e.g., first login after signup), create it. This makes the app more robust.
         if (!userProfile) {
           try {
-            // Utiliser les données d'inscription stockées si disponibles
-            if (pendingSignupData) {
+            // Utiliser les données d'inscription stockées si disponibles (via ref pour éviter les problèmes de closure)
+            const signupData = pendingSignupDataRef.current;
+            if (signupData) {
               await firebaseService.createUserProfile(
                 firebaseUser.uid,
-                pendingSignupData
+                signupData
               );
               // Nettoyer les données temporaires après utilisation
               setPendingSignupData(null);
+              pendingSignupDataRef.current = null;
             } else {
               // Fallback pour les utilisateurs existants sans données d'inscription
               const { email } = firebaseUser;
@@ -947,8 +950,9 @@ const App: React.FC = () => {
     data: SignupData
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      // Stocker les données d'inscription temporairement
+      // Stocker les données d'inscription temporairement (état et ref)
       setPendingSignupData(data);
+      pendingSignupDataRef.current = data;
       await createUserWithEmailAndPassword(auth, data.email, data.password);
       // The onAuthStateChanged listener will now handle creating the user profile.
       // This prevents race conditions and centralizes profile creation logic.
@@ -956,6 +960,7 @@ const App: React.FC = () => {
     } catch (error: any) {
       // En cas d'erreur, nettoyer les données temporaires
       setPendingSignupData(null);
+      pendingSignupDataRef.current = null;
       if (error.code === "auth/email-already-in-use") {
         return {
           success: false,

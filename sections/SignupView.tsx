@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ActionButton from '../components/ActionButton';
 import { useTranslations } from '../hooks/useTranslations';
 import { LANGUAGE_OPTIONS } from '../constants';
-import { Team, UserRole } from '../types';
+import { Sex, Team, UserRole } from '../types';
 import { TermsAndConditionsModal } from '../components/TermsAndConditionsModal';
 
 export interface SignupData {
@@ -12,7 +12,7 @@ export interface SignupData {
   password: string;
   userRole: UserRole;
   birthDate: string; // Date de naissance obligatoire
-  sex?: 'male' | 'female'; // Genre optionnel mais recommandé
+  sex?: Sex | 'male' | 'female'; // Genre optionnel mais recommandé
 }
 
 interface SignupViewProps {
@@ -40,6 +40,17 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+
+    if (name === 'sex') {
+      setFormData(prev => ({ ...prev, sex: value === '' ? undefined : (value as Sex) }));
+      return;
+    }
+
+    if (name === 'userRole') {
+      setFormData(prev => ({ ...prev, userRole: value as UserRole }));
+      return;
+    }
+
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
@@ -95,11 +106,16 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
     // On success, onAuthStateChanged in App.tsx will handle the rest
   };
 
-  const handleAcceptTerms = () => {
+  const handleAcceptTerms = async () => {
     setHasAcceptedTerms(true);
     setShowTermsModal(false);
-    // Relancer la soumission du formulaire
-    handleSubmit(new Event('submit') as any);
+    // Relancer la soumission du formulaire après acceptation
+    setIsLoading(true);
+    const result = await onRegister(formData);
+    if (result && !result.success) {
+      setError(result.message);
+      setIsLoading(false);
+    }
   };
 
   const handleDeclineTerms = () => {
@@ -159,8 +175,8 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin, te
               className="input-field-sm w-full"
             >
               <option value="">Genre (optionnel)</option>
-              <option value="male">Homme</option>
-              <option value="female">Femme</option>
+              <option value={Sex.MALE}>Homme</option>
+              <option value={Sex.FEMALE}>Femme</option>
             </select>
           </div>
           

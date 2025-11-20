@@ -33,6 +33,7 @@ import {
   TeamLevel,
   StaffMember,
   StaffRole,
+  Sex,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState } from '../constants';
@@ -168,6 +169,13 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
     try {
         const { email, firstName, lastName, userRole, birthDate, sex } = signupData;
 
+        const normalizedSex: Sex | undefined =
+            sex === 'male'
+                ? Sex.MALE
+                : sex === 'female'
+                ? Sex.FEMALE
+                : sex;
+
         const newUser: Omit<User, 'id'> = {
             email,
             firstName,
@@ -178,7 +186,7 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             openToExternalMissions: false,
             signupInfo: {
                 birthDate: birthDate, // Inclure la date de naissance
-                sex: sex, // Inclure le genre si fourni
+                sex: normalizedSex, // Inclure le genre si fourni
             },
         };
         
