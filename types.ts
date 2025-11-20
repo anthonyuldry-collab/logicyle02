@@ -1013,6 +1013,22 @@ export interface PowerProfile {
     power45min?: number;
 }
 
+// Historique des valeurs de puissance pour suivi longitudinal
+export interface PowerProfileHistoryEntry {
+    id: string;
+    date: string; // Date ISO de l'enregistrement
+    powerProfileFresh?: PowerProfile;
+    powerProfile15KJ?: PowerProfile;
+    powerProfile30KJ?: PowerProfile;
+    powerProfile45KJ?: PowerProfile;
+    weightKg?: number; // Poids au moment de l'enregistrement
+    notes?: string; // Notes optionnelles
+}
+
+export interface PowerProfileHistory {
+    entries: PowerProfileHistoryEntry[]; // Entrées triées par date (plus récent en premier)
+}
+
 export interface ResultItem {
   id: string;
   date: string;
@@ -1185,7 +1201,7 @@ export interface Rider {
     ttBikeSetup: BikeSetup;
     clothing: ClothingItem[];
     
-    // Power Data
+    // Power Data - Saison en cours (réinitialisé chaque 1er novembre)
     powerProfileFresh?: PowerProfile;
     powerProfile15KJ?: PowerProfile;
     powerProfile30KJ?: PowerProfile;
@@ -1194,6 +1210,21 @@ export interface Rider {
     profile15KJ?: string;
     profile30KJ?: string;
     profile45KJ?: string;
+    
+    // Power Data - All-time (meilleures valeurs jamais atteintes, jamais réinitialisé)
+    powerProfileAllTime?: {
+        powerProfileFresh?: PowerProfile;
+        powerProfile15KJ?: PowerProfile;
+        powerProfile30KJ?: PowerProfile;
+        powerProfile45KJ?: PowerProfile;
+        lastUpdated?: string; // Date ISO de la dernière mise à jour
+    };
+    
+    // Date de début de la saison en cours (1er novembre de l'année en cours ou précédente)
+    currentSeasonStartDate?: string;
+    
+    // Historique des valeurs de puissance pour suivi longitudinal
+    powerProfileHistory?: PowerProfileHistory;
     
     // Auto-calculated fields
     charSprint: number;

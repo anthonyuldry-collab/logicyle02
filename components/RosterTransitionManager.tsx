@@ -102,7 +102,7 @@ const RosterTransitionManager: React.FC<RosterTransitionManagerProps> = ({
               <li>• Les effectifs 2025 seront archivés et figés</li>
               <li>• Tous les coureurs et staff actifs seront conservés pour 2026</li>
               <li>• Les compteurs de jours de course seront remis à 0</li>
-              <li>• Transition automatique au 1er octobre vers la saison 2026</li>
+              <li>• Transition automatique au 1er novembre vers la saison 2026</li>
             </ul>
           </div>
 

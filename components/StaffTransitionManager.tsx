@@ -98,7 +98,7 @@ const StaffTransitionManager: React.FC<StaffTransitionManagerProps> = ({
               <li>• Les effectifs du staff 2025 seront archivés et figés</li>
               <li>• Tous les membres du staff actifs seront conservés pour 2026</li>
               <li>• Les compteurs de jours de travail seront remis à 0</li>
-              <li>• Transition automatique au 1er octobre vers la saison 2026</li>
+              <li>• Transition automatique au 1er novembre vers la saison 2026</li>
             </ul>
           </div>
 

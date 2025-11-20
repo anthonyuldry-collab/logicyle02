@@ -4,7 +4,7 @@
 
 /**
  * Détermine l'année de saison courante basée sur la date actuelle
- * Transition automatique au 1er octobre vers la saison suivante
+ * Transition automatique au 1er novembre vers la saison suivante
  * Force 2026 comme année de planification prévisionnelle
  */
 export const getCurrentSeasonYear = (): number => {
@@ -14,16 +14,16 @@ export const getCurrentSeasonYear = (): number => {
   
   // Force 2026 comme année de planification prévisionnelle
   if (currentYear <= 2026) {
-    // Transition automatique au 1er octobre vers 2026
-    if (currentMonth >= 10) {
+    // Transition automatique au 1er novembre vers 2026
+    if (currentMonth >= 11) {
       return 2026;
     }
-    // Avant octobre, rester sur l'année courante
+    // Avant novembre, rester sur l'année courante
     return currentYear;
   }
   
-  // À partir d'octobre (mois 10), on considère déjà la saison suivante
-  if (currentMonth >= 10) {
+  // À partir de novembre (mois 11), on considère déjà la saison suivante
+  if (currentMonth >= 11) {
     return currentYear + 1;
   }
   
@@ -32,12 +32,12 @@ export const getCurrentSeasonYear = (): number => {
 
 /**
  * Détermine si on est en période de transition de saison
- * (octobre à décembre - période de transition vers la saison suivante)
+ * (novembre à décembre - période de transition vers la saison suivante)
  */
 export const isInSeasonTransition = (): boolean => {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
-  return currentMonth >= 10;
+  return currentMonth >= 11;
 };
 
 /**
@@ -47,8 +47,8 @@ export const getSeasonYearForDate = (date: Date): number => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   
-  // À partir d'octobre, on considère la saison suivante
-  if (month >= 10) {
+  // À partir de novembre, on considère la saison suivante
+  if (month >= 11) {
     return year + 1;
   }
   
@@ -61,8 +61,8 @@ export const getSeasonYearForDate = (date: Date): number => {
  */
 export const getSeasonTransitionPeriod = (year: number): { startMonth: number; endMonth: number } => {
   return {
-    startMonth: 10, // Octobre de l'année précédente
-    endMonth: 9     // Septembre de l'année courante
+    startMonth: 11, // Novembre de l'année précédente
+    endMonth: 10     // Octobre de l'année courante
   };
 };
 
@@ -73,13 +73,13 @@ export const isDateInSeasonTransition = (date: Date, seasonYear: number): boolea
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   
-  // Pour la saison 2026, on considère octobre 2025 à septembre 2026
+  // Pour la saison 2026, on considère novembre 2025 à octobre 2026
   if (seasonYear === 2026) {
-    return (year === 2025 && month >= 10) || (year === 2026 && month <= 9);
+    return (year === 2025 && month >= 11) || (year === 2026 && month <= 10);
   }
   
   // Logique générale
-  return (year === seasonYear - 1 && month >= 10) || (year === seasonYear && month <= 9);
+  return (year === seasonYear - 1 && month >= 11) || (year === seasonYear && month <= 10);
 };
 
 /**

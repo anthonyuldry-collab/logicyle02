@@ -8,7 +8,8 @@ import {
   addDoc,
   deleteDoc,
   writeBatch,
-  updateDoc
+  updateDoc,
+  runTransaction
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
@@ -212,39 +213,58 @@ export const requestToJoinTeam = async (userId: string, teamId: string, userRole
 };
 
 export const createTeamForUser = async (userId: string, teamData: { name: string; level: TeamLevel; country: string; }, userRole: UserRole) => {
-    // Create the team
-    const teamsColRef = collection(db, 'teams');
-    const newTeamRef = await addDoc(teamsColRef, teamData);
-    
-    // Initialize team subcollections using a batch write
-    const batch = writeBatch(db);
-    for (const collName of TEAM_STATE_COLLECTIONS) {
-        const subCollRef = doc(db, 'teams', newTeamRef.id, collName, '_init_');
-        batch.set(subCollRef, { createdAt: new Date().toISOString() });
+    try {
+        // 1. Créer l'équipe d'abord (hors transaction car addDoc génère un ID)
+        const teamsColRef = collection(db, 'teams');
+        const newTeamRef = await addDoc(teamsColRef, teamData);
+        
+        // 2. Utiliser une transaction pour garantir l'atomicité des opérations critiques
+        await runTransaction(db, async (transaction) => {
+            // Lire le document utilisateur pour préserver les données existantes
+            const userDocRef = doc(db, 'users', userId);
+            const userDoc = await transaction.get(userDocRef);
+            const currentUserData = userDoc.exists() ? userDoc.data() : {};
+            
+            // 3. Créer le membership actif pour le créateur
+            const membershipsColRef = collection(db, 'teamMemberships');
+            const membershipRef = doc(membershipsColRef);
+            transaction.set(membershipRef, {
+                userId: userId,
+                teamId: newTeamRef.id,
+                status: TeamMembershipStatus.ACTIVE,
+                userRole: UserRole.MANAGER,
+                startDate: new Date().toISOString().split('T')[0],
+            });
+
+            // 4. Mettre à jour le profil utilisateur avec les permissions admin et le teamId
+            transaction.set(
+                userDocRef,
+                { 
+                    ...currentUserData,
+                    permissionRole: TeamRole.ADMIN, 
+                    userRole: UserRole.MANAGER,
+                    teamId: newTeamRef.id
+                },
+                { merge: true }
+            );
+        });
+
+        // 3. Initialiser les sous-collections de l'équipe avec un batch (après la transaction)
+        const batch = writeBatch(db);
+        for (const collName of TEAM_STATE_COLLECTIONS) {
+            const subCollRef = doc(db, 'teams', newTeamRef.id, collName, '_init_');
+            batch.set(subCollRef, { createdAt: new Date().toISOString() });
+        }
+        await batch.commit();
+
+        // Attendre un court délai pour s'assurer que Firestore a propagé les changements
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        return { teamId: newTeamRef.id };
+    } catch (error) {
+        console.error('❌ Erreur lors de la création de l\'équipe:', error);
+        throw new Error(`Échec de la création de l'équipe: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
-    await batch.commit();
-
-    // Make the creator an active admin
-    const membershipsColRef = collection(db, 'teamMemberships');
-    await addDoc(membershipsColRef, {
-        userId: userId,
-        teamId: newTeamRef.id,
-        status: TeamMembershipStatus.ACTIVE,
-        userRole: UserRole.MANAGER,
-        startDate: new Date().toISOString().split('T')[0],
-    });
-
-    // Update user permission role AND teamId
-    const userDocRef = doc(db, 'users', userId);
-    await setDoc(
-        userDocRef,
-        { 
-            permissionRole: TeamRole.ADMIN, 
-            userRole: UserRole.MANAGER,
-            teamId: newTeamRef.id  // AJOUTER le teamId !
-        },
-        { merge: true }
-    );
 };
 
 // --- GLOBAL DATA ---

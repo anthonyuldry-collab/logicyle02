@@ -58,7 +58,7 @@ const SeasonTransitionNotification: React.FC<SeasonTransitionNotificationProps> 
             </p>
             <div className="mt-2 flex items-center text-xs text-blue-600">
               <ArrowRightIcon className="h-3 w-3 mr-1" />
-              <span>Transition fluide : Octobre 2025 → Novembre 2025</span>
+              <span>Transition fluide : Novembre 2025 → Décembre 2025</span>
             </div>
           </div>
         </div>

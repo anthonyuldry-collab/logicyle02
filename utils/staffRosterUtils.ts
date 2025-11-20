@@ -127,15 +127,15 @@ export function getStaffStatsForSeason(
 
 /**
  * Vérifie si une transition de saison est nécessaire pour le staff
- * Transition automatique au 1er octobre vers la nouvelle saison
+ * Transition automatique au 1er novembre vers la nouvelle saison
  */
 export function shouldTransitionStaffToNewSeason(): boolean {
   const now = new Date();
   const currentMonth = now.getMonth() + 1; // getMonth() retourne 0-11, on veut 1-12
   const currentYear = now.getFullYear();
   
-  // Transition automatique au 1er octobre
-  if (currentMonth >= 10) {
+  // Transition automatique au 1er novembre
+  if (currentMonth >= 11) {
     return true;
   }
   
@@ -171,7 +171,7 @@ export function getStaffTransitionMessage(fromSeason: number, toSeason: number):
 Les effectifs du staff de ${fromSeason} sont maintenant archivés et figés.
 Tous les membres du staff actifs sont conservés pour ${toSeason}.
 Les compteurs de jours de travail sont remis à 0 pour la nouvelle saison.
-Transition automatique au 1er octobre.`;
+Transition automatique au 1er novembre.`;
 }
 
 /**

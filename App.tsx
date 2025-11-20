@@ -43,6 +43,10 @@ import {
   MoralStatus,
   HealthCondition,
   BikeType,
+  // Types pour l'historique PPR
+  PowerProfileHistoryEntry,
+  PowerProfileHistory,
+  PowerProfile,
 } from "./types";
 
 // Firebase imports
@@ -261,40 +265,54 @@ const App: React.FC = () => {
 
   const loadDataForUser = useCallback(async (user: User) => {
     setIsLoading(true);
-    const globalData = await firebaseService.getGlobalData();
-    const userMemberships = (globalData.teamMemberships || []).filter(
-      (m) => m.userId === user.id
-    );
-    const activeMembership = userMemberships.find(
-      (m) => m.status === TeamMembershipStatus.ACTIVE
-    );
+    try {
+      const globalData = await firebaseService.getGlobalData();
+      const userMemberships = (globalData.teamMemberships || []).filter(
+        (m) => m.userId === user.id
+      );
+      const activeMembership = userMemberships.find(
+        (m) => m.status === TeamMembershipStatus.ACTIVE
+      );
 
-    let teamData: Partial<TeamState> = getInitialTeamState();
-    let finalActiveTeamId: string | null = null;
+      let teamData: Partial<TeamState> = getInitialTeamState();
+      let finalActiveTeamId: string | null = null;
 
-    if (activeMembership) {
-      finalActiveTeamId = activeMembership.teamId;
-      teamData = await firebaseService.getTeamData(finalActiveTeamId);
-      setView("app");
-    } else if (
-      userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
-    ) {
-      setView("pending");
-    } else {
+      // Vérifier d'abord le membership actif
+      if (activeMembership) {
+        finalActiveTeamId = activeMembership.teamId;
+      } 
+      // Si pas de membership mais l'utilisateur a un teamId (cas après création d'équipe)
+      else if (user.teamId) {
+        finalActiveTeamId = user.teamId;
+      }
+
+      if (finalActiveTeamId) {
+        teamData = await firebaseService.getTeamData(finalActiveTeamId);
+        setView("app");
+      } else if (
+        userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
+      ) {
+        setView("pending");
+      } else {
+        setView("no_team");
+      }
+
+      setAppState({
+        ...getInitialGlobalState(),
+        ...getInitialTeamState(),
+        ...globalData,
+        ...teamData,
+        activeEventId: null, // Reset event detail view on user/team change
+        activeTeamId: finalActiveTeamId,
+      });
+
+      setLanguageState(teamData.language || "fr");
+    } catch (error) {
+      console.error("❌ Erreur lors du chargement des données utilisateur:", error);
       setView("no_team");
+    } finally {
+      setIsLoading(false);
     }
-
-    setAppState({
-      ...getInitialGlobalState(),
-      ...getInitialTeamState(),
-      ...globalData,
-      ...teamData,
-      activeEventId: null, // Reset event detail view on user/team change
-      activeTeamId: finalActiveTeamId,
-    });
-
-    setLanguageState(teamData.language || "fr");
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -402,6 +420,79 @@ const App: React.FC = () => {
     document.body.style.backgroundColor = lightenDarkenColor(primaryColor, -20);
   }, [primaryColor, accentColor]);
 
+  // Fonction utilitaire pour comparer deux profils de puissance
+  const hasPowerProfileChanged = (oldProfile?: PowerProfile, newProfile?: PowerProfile): boolean => {
+    if (!oldProfile && !newProfile) return false;
+    if (!oldProfile || !newProfile) {
+      // Si un profil existe et pas l'autre, vérifier si le nouveau a des valeurs
+      const profileToCheck = newProfile || oldProfile;
+      if (profileToCheck) {
+        // Vérifier s'il y a au moins une valeur définie
+        return Object.values(profileToCheck).some(val => val !== undefined && val !== null && val !== 0);
+      }
+      return false;
+    }
+    
+    const keys: (keyof PowerProfile)[] = ['power1s', 'power5s', 'power30s', 'power1min', 'power3min', 'power5min', 'power12min', 'power20min', 'criticalPower', 'power45min'];
+    
+    for (const key of keys) {
+      const oldVal = oldProfile[key];
+      const newVal = newProfile[key];
+      
+      // Comparer les valeurs (en tenant compte de undefined/null)
+      if (oldVal !== newVal) {
+        // Si une valeur a changé (y compris de undefined à une valeur ou vice versa)
+        if ((oldVal !== undefined && oldVal !== null) || (newVal !== undefined && newVal !== null)) {
+          // Vérifier si c'est vraiment un changement significatif (pas juste 0 vs undefined)
+          if (oldVal !== newVal && !(oldVal === 0 && !newVal) && !(newVal === 0 && !oldVal)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Fonction pour obtenir la date de début de saison (1er novembre de l'année en cours ou précédente)
+  const getCurrentSeasonStartDate = (): string => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    
+    // Si on est après le 1er novembre, la saison a commencé le 1er novembre de l'année en cours
+    // Sinon, la saison a commencé le 1er novembre de l'année précédente
+    const seasonYear = currentMonth >= 11 ? currentYear : currentYear - 1;
+    return `${seasonYear}-11-01T00:00:00.000Z`;
+  };
+
+  // Fonction pour comparer deux valeurs de puissance et retourner la meilleure
+  const getBetterPowerValue = (val1?: number, val2?: number): number | undefined => {
+    if (!val1 && !val2) return undefined;
+    if (!val1) return val2;
+    if (!val2) return val1;
+    return Math.max(val1, val2);
+  };
+
+  // Fonction pour mettre à jour un PowerProfile avec les meilleures valeurs
+  const updatePowerProfileWithBest = (current?: PowerProfile, newValues?: PowerProfile): PowerProfile | undefined => {
+    if (!current && !newValues) return undefined;
+    if (!current) return newValues ? { ...newValues } : undefined;
+    if (!newValues) return current ? { ...current } : undefined;
+    
+    return {
+      power1s: getBetterPowerValue(current.power1s, newValues.power1s),
+      power5s: getBetterPowerValue(current.power5s, newValues.power5s),
+      power30s: getBetterPowerValue(current.power30s, newValues.power30s),
+      power1min: getBetterPowerValue(current.power1min, newValues.power1min),
+      power3min: getBetterPowerValue(current.power3min, newValues.power3min),
+      power5min: getBetterPowerValue(current.power5min, newValues.power5min),
+      power12min: getBetterPowerValue(current.power12min, newValues.power12min),
+      power20min: getBetterPowerValue(current.power20min, newValues.power20min),
+      criticalPower: getBetterPowerValue(current.criticalPower, newValues.criticalPower),
+      power45min: getBetterPowerValue(current.power45min, newValues.power45min),
+    };
+  };
+
   // --- DATA HANDLERS ---
   const onSaveRider = useCallback(async (item: Rider) => {
     console.log('🔧 DEBUG - onSaveRider appelé avec:', item);
@@ -419,21 +510,162 @@ const App: React.FC = () => {
     }
     
     try {
+      // Récupérer le rider existant pour comparer les valeurs
+      const existingRider = appState.riders.find(r => r.id === item.id);
+      
+      // Calculer la date de début de saison actuelle
+      const currentSeasonStartDate = getCurrentSeasonStartDate();
+      
+      // Vérifier si on doit réinitialiser les PPR de la saison
+      const shouldResetSeason = existingRider?.currentSeasonStartDate && 
+        existingRider.currentSeasonStartDate < currentSeasonStartDate;
+      
+      // Utiliser l'historique existant du rider (depuis l'état ou depuis l'item)
+      let updatedHistory: PowerProfileHistory | undefined = existingRider?.powerProfileHistory || item.powerProfileHistory;
+      
+      // Gérer la réinitialisation des PPR de saison et la mise à jour du PPR all-time
+      let updatedItem = { ...item };
+      let updatedAllTime = existingRider?.powerProfileAllTime || item.powerProfileAllTime;
+      
+      if (shouldResetSeason) {
+        // Sauvegarder les valeurs de la saison précédente dans l'historique avant réinitialisation
+        if (existingRider) {
+          const seasonEndEntry: PowerProfileHistoryEntry = {
+            id: generateId(),
+            date: currentSeasonStartDate,
+            powerProfileFresh: existingRider.powerProfileFresh ? { ...existingRider.powerProfileFresh } : undefined,
+            powerProfile15KJ: existingRider.powerProfile15KJ ? { ...existingRider.powerProfile15KJ } : undefined,
+            powerProfile30KJ: existingRider.powerProfile30KJ ? { ...existingRider.powerProfile30KJ } : undefined,
+            powerProfile45KJ: existingRider.powerProfile45KJ ? { ...existingRider.powerProfile45KJ } : undefined,
+            weightKg: existingRider.weightKg,
+            notes: 'Fin de saison - Réinitialisation PPR',
+          };
+          
+          if (!updatedHistory) {
+            updatedHistory = { entries: [] };
+          }
+          updatedHistory.entries = [seasonEndEntry, ...updatedHistory.entries];
+        }
+        
+        // Mettre à jour le PPR all-time avec les meilleures valeurs de la saison précédente
+        if (existingRider) {
+          updatedAllTime = {
+            powerProfileFresh: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfileFresh,
+              existingRider.powerProfileFresh
+            ),
+            powerProfile15KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile15KJ,
+              existingRider.powerProfile15KJ
+            ),
+            powerProfile30KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile30KJ,
+              existingRider.powerProfile30KJ
+            ),
+            powerProfile45KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile45KJ,
+              existingRider.powerProfile45KJ
+            ),
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+        
+        // Réinitialiser les PPR de la saison en cours
+        updatedItem = {
+          ...updatedItem,
+          powerProfileFresh: undefined,
+          powerProfile15KJ: undefined,
+          powerProfile30KJ: undefined,
+          powerProfile45KJ: undefined,
+          currentSeasonStartDate: currentSeasonStartDate,
+        };
+        
+        console.log('🔄 Réinitialisation PPR saison - Nouvelle saison commencée le', currentSeasonStartDate);
+      } else {
+        // Mettre à jour le PPR all-time avec les meilleures valeurs actuelles
+        if (item.powerProfileFresh || item.powerProfile15KJ || item.powerProfile30KJ || item.powerProfile45KJ) {
+          updatedAllTime = {
+            powerProfileFresh: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfileFresh,
+              item.powerProfileFresh
+            ),
+            powerProfile15KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile15KJ,
+              item.powerProfile15KJ
+            ),
+            powerProfile30KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile30KJ,
+              item.powerProfile30KJ
+            ),
+            powerProfile45KJ: updatePowerProfileWithBest(
+              updatedAllTime?.powerProfile45KJ,
+              item.powerProfile45KJ
+            ),
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+        
+        // S'assurer que currentSeasonStartDate est défini
+        if (!updatedItem.currentSeasonStartDate) {
+          updatedItem.currentSeasonStartDate = currentSeasonStartDate;
+        }
+      }
+      
+      // Vérifier si les valeurs de puissance ont changé (seulement si un rider existant existe et si on ne réinitialise pas)
+      if (existingRider && !shouldResetSeason) {
+        const powerChanged = 
+          hasPowerProfileChanged(existingRider.powerProfileFresh, updatedItem.powerProfileFresh) ||
+          hasPowerProfileChanged(existingRider.powerProfile15KJ, updatedItem.powerProfile15KJ) ||
+          hasPowerProfileChanged(existingRider.powerProfile30KJ, updatedItem.powerProfile30KJ) ||
+          hasPowerProfileChanged(existingRider.powerProfile45KJ, updatedItem.powerProfile45KJ) ||
+          existingRider.weightKg !== updatedItem.weightKg;
+        
+        // Si les valeurs ont changé, créer une entrée d'historique avec les anciennes valeurs
+        if (powerChanged) {
+          const historyEntry: PowerProfileHistoryEntry = {
+            id: generateId(),
+            date: new Date().toISOString(),
+            powerProfileFresh: existingRider.powerProfileFresh ? { ...existingRider.powerProfileFresh } : undefined,
+            powerProfile15KJ: existingRider.powerProfile15KJ ? { ...existingRider.powerProfile15KJ } : undefined,
+            powerProfile30KJ: existingRider.powerProfile30KJ ? { ...existingRider.powerProfile30KJ } : undefined,
+            powerProfile45KJ: existingRider.powerProfile45KJ ? { ...existingRider.powerProfile45KJ } : undefined,
+            weightKg: existingRider.weightKg,
+          };
+          
+          // Initialiser l'historique s'il n'existe pas
+          if (!updatedHistory) {
+            updatedHistory = { entries: [] };
+          }
+          
+          // Ajouter la nouvelle entrée au début (plus récent en premier)
+          updatedHistory.entries = [historyEntry, ...updatedHistory.entries];
+          
+          console.log('📊 Historique PPR mis à jour:', updatedHistory);
+        }
+      }
+      
       // Enrichir automatiquement les données du coureur avec les informations du profil utilisateur
       const enrichedItem: Rider = {
-        ...item,
+        ...updatedItem,
         // S'assurer que la date de naissance est présente
-        birthDate: item.birthDate || currentUser?.signupInfo?.birthDate || "1990-01-01",
+        birthDate: updatedItem.birthDate || currentUser?.signupInfo?.birthDate || "1990-01-01",
         // S'assurer que le genre est présent
-        sex: item.sex || currentUser?.signupInfo?.sex || undefined,
+        sex: updatedItem.sex || currentUser?.signupInfo?.sex || undefined,
         // S'assurer que l'email est présent
-        email: item.email || currentUser?.email || "",
+        email: updatedItem.email || currentUser?.email || "",
+        // Ajouter l'historique mis à jour
+        powerProfileHistory: updatedHistory || updatedItem.powerProfileHistory,
+        // Ajouter le PPR all-time mis à jour
+        powerProfileAllTime: updatedAllTime,
+        // S'assurer que currentSeasonStartDate est défini
+        currentSeasonStartDate: updatedItem.currentSeasonStartDate || currentSeasonStartDate,
       };
       
       console.log('🔧 DEBUG - Données enrichies:', {
         birthDate: enrichedItem.birthDate,
         sex: enrichedItem.sex,
-        email: enrichedItem.email
+        email: enrichedItem.email,
+        hasHistory: !!enrichedItem.powerProfileHistory
       });
       
       console.log('Sauvegarde dans Firebase...');
@@ -460,7 +692,7 @@ const App: React.FC = () => {
     } catch (error) {
       console.warn('⚠️ Erreur lors de la sauvegarde du rider:', error);
     }
-  }, [appState.activeTeamId, currentUser]);
+  }, [appState.activeTeamId, appState.riders, currentUser]);
 
   const onDeleteRider = useCallback(async (item: Rider) => {
     console.log('🗑️ onDeleteRider appelé avec:', item.firstName, item.lastName, 'ID:', item.id);
@@ -1002,23 +1234,43 @@ const App: React.FC = () => {
   }) => {
     if (!currentUser) return;
     try {
+      setIsLoading(true);
       // Forcer le rôle Manager lors de la création d'équipe
       await firebaseService.createTeamForUser(
         currentUser.id,
         teamData,
         UserRole.MANAGER // Forcer le rôle Manager
       );
-      // Refresh user profile to pick up new roles (Admin/Manager)
-      const refreshedProfile = await firebaseService.getUserProfile(currentUser.id);
+      
+      // Attendre un peu plus pour s'assurer que toutes les données sont propagées
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refresh user profile to pick up new roles (Admin/Manager) avec retry
+      let refreshedProfile = await firebaseService.getUserProfile(currentUser.id);
+      let retries = 0;
+      while (!refreshedProfile && retries < 3) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        refreshedProfile = await firebaseService.getUserProfile(currentUser.id);
+        retries++;
+      }
+      
       if (refreshedProfile) {
         setCurrentUser(refreshedProfile);
         await loadDataForUser(refreshedProfile);
+        
+        // Redirection automatique vers le tableau de bord administrateur pour les managers/admins
+        if (refreshedProfile.permissionRole === TeamRole.ADMIN || refreshedProfile.userRole === UserRole.MANAGER) {
+          setCurrentSection("myDashboard");
+        }
       } else {
+        console.warn("⚠️ Impossible de récupérer le profil utilisateur après création d'équipe");
+        // Essayer de recharger avec l'utilisateur actuel
         await loadDataForUser(currentUser);
       }
     } catch (error) {
       console.error("Failed to create team:", error);
-      alert(t("errorCreateTeam"));
+      alert(t("errorCreateTeam") + (error instanceof Error ? `: ${error.message}` : ''));
+      setIsLoading(false);
     }
   };
 
@@ -1100,7 +1352,7 @@ const App: React.FC = () => {
       );
       
       // FORCER les permissions si l'utilisateur est Manager/Admin
-      if (currentUser.userRole === 'Manager' || currentUser.permissionRole === 'Administrateur') {
+      if (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN) {
         console.log('🔧 FORÇAGE des permissions Manager');
         effectivePermissions = {
           events: ['view', 'edit'],

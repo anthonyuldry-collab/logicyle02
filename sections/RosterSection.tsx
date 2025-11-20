@@ -2900,7 +2900,7 @@ Les compteurs de jours de course ont été remis à 0.`);
                     <div>
                       <h4 className="text-sm font-medium text-blue-800">Saison 2026 - Transition Active</h4>
                       <p className="text-sm text-blue-600 mt-1">
-                        La saison 2026 est officiellement lancée ! La transition fluide permet de commencer la planification dès octobre 2025. 
+                        La saison 2026 est officiellement lancée ! La transition fluide permet de commencer la planification dès novembre 2025. 
                         Créez des événements dans la section "Calendrier" pour les voir apparaître ici.
                       </p>
                     </div>
