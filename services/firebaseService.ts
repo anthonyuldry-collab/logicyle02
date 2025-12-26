@@ -9,7 +9,9 @@ import {
   deleteDoc,
   writeBatch,
   updateDoc,
-  runTransaction
+  runTransaction,
+  query,
+  where
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
@@ -35,6 +37,7 @@ import {
   StaffMember,
   StaffRole,
   Sex,
+  SignupInfo,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState } from '../constants';
@@ -168,14 +171,56 @@ export const getUserProfile = async (userId: string): Promise<User | null> => {
 
 export const createUserProfile = async (uid: string, signupData: SignupData) => {
     try {
+        console.log("🔍 DEBUG createUserProfile - Début:", { uid, signupData: { 
+            email: signupData?.email, 
+            firstName: signupData?.firstName, 
+            lastName: signupData?.lastName,
+            userRole: signupData?.userRole,
+            hasPassword: !!signupData?.password,
+            birthDate: signupData?.birthDate,
+            sex: signupData?.sex
+        }});
+
         const { email, firstName, lastName, userRole, birthDate, sex } = signupData;
 
-        const normalizedSex: Sex | undefined =
-            sex === 'male'
-                ? Sex.MALE
-                : sex === 'female'
-                ? Sex.FEMALE
-                : sex;
+        // Validation des données requises
+        if (!email || !firstName || !lastName) {
+            const missingFields = [];
+            if (!email) missingFields.push('email');
+            if (!firstName) missingFields.push('firstName');
+            if (!lastName) missingFields.push('lastName');
+            throw new Error(`Données d'inscription incomplètes: ${missingFields.join(', ')} sont requis.`);
+        }
+
+        if (!userRole) {
+            throw new Error("Le rôle utilisateur est requis.");
+        }
+
+        // Validation de la date de naissance (peut être optionnelle pour les utilisateurs existants)
+        if (!birthDate && signupData.password) {
+            // Si c'est une nouvelle inscription (avec mot de passe), birthDate est requis
+            throw new Error("La date de naissance est requise pour l'inscription.");
+        }
+
+        // Normalisation du sex avec gestion améliorée
+        let normalizedSex: Sex | undefined = undefined;
+        if (sex !== undefined && sex !== null) {
+            if (sex === 'male' || sex === Sex.MALE) {
+                normalizedSex = Sex.MALE;
+            } else if (sex === 'female' || sex === Sex.FEMALE) {
+                normalizedSex = Sex.FEMALE;
+            } else if (sex === Sex.MALE || sex === Sex.FEMALE) {
+                normalizedSex = sex;
+            }
+        }
+
+        const signupInfo: SignupInfo = {};
+        if (birthDate) {
+            signupInfo.birthDate = birthDate;
+        }
+        if (normalizedSex !== undefined) {
+            signupInfo.sex = normalizedSex;
+        }
 
         const newUser: Omit<User, 'id'> = {
             email,
@@ -185,31 +230,128 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             userRole: userRole, // Utiliser le rôle sélectionné lors de l'inscription
             isSearchable: false,
             openToExternalMissions: false,
-            signupInfo: {
-                birthDate: birthDate, // Inclure la date de naissance
-                sex: normalizedSex, // Inclure le genre si fourni
-            },
+            signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : undefined,
         };
         
-        const cleanedNewUser = cleanDataForFirebase(newUser);
-        const userDocRef = doc(db, 'users', uid);
+        console.log("📝 Création du profil utilisateur:", { 
+            uid, 
+            email, 
+            firstName, 
+            lastName, 
+            userRole,
+            signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : 'vide'
+        });
         
-        await setDoc(userDocRef, cleanedNewUser);
+        const cleanedNewUser = cleanDataForFirebase(newUser);
+        console.log("🔍 DEBUG - Données nettoyées:", JSON.stringify(cleanedNewUser, null, 2));
+        
+        const userDocRef = doc(db, 'users', uid);
+        console.log("🔍 DEBUG - Référence document:", userDocRef.path);
+        
+        // Vérifier si le document existe déjà
+        const existingDoc = await getDoc(userDocRef);
+        if (existingDoc.exists()) {
+            console.warn("⚠️ Le document utilisateur existe déjà, utilisation de merge: true");
+            await setDoc(userDocRef, cleanedNewUser, { merge: true });
+        } else {
+            await setDoc(userDocRef, cleanedNewUser);
+        }
+        
+        console.log("✅ Profil utilisateur créé avec succès:", uid);
 
-    } catch (error) {
-        console.warn("⚠️ FIRESTORE WRITE ERROR:", error);
+    } catch (error: any) {
+        console.error("❌ FIRESTORE WRITE ERROR lors de la création du profil:", error);
+        console.error("Détails complets de l'erreur:", {
+            code: error?.code,
+            message: error?.message,
+            stack: error?.stack,
+            uid,
+            signupData: { 
+                email: signupData?.email, 
+                firstName: signupData?.firstName, 
+                lastName: signupData?.lastName,
+                userRole: signupData?.userRole,
+                birthDate: signupData?.birthDate,
+                sex: signupData?.sex
+            },
+            errorName: error?.name,
+            errorString: String(error)
+        });
+        
+        // Améliorer le message d'erreur selon le type d'erreur
+        if (error?.code === 'permission-denied') {
+            const enhancedError = new Error("Erreur de permissions Firestore. Vérifiez que les règles de sécurité permettent la création de documents dans la collection 'users'.");
+            (enhancedError as any).code = error.code;
+            (enhancedError as any).originalError = error;
+            throw enhancedError;
+        } else if (error?.code === 'unavailable') {
+            const enhancedError = new Error("Service Firestore indisponible. Vérifiez votre connexion internet.");
+            (enhancedError as any).code = error.code;
+            (enhancedError as any).originalError = error;
+            throw enhancedError;
+        }
+        
         throw error;
     }
 };
 
 export const requestToJoinTeam = async (userId: string, teamId: string, userRole: UserRole) => {
-    const membershipsColRef = collection(db, 'teamMemberships');
-    await addDoc(membershipsColRef, {
-        userId: userId,
-        teamId: teamId,
-        status: TeamMembershipStatus.PENDING,
-        userRole: userRole,
-    });
+    try {
+        console.log("📝 Demande de rejoindre l'équipe:", { userId, teamId, userRole });
+        
+        // Vérifier si l'utilisateur a déjà un membership pour cette équipe
+        const membershipsColRef = collection(db, 'teamMemberships');
+        const existingMemberships = await getDocs(
+            query(
+                membershipsColRef,
+                where('userId', '==', userId),
+                where('teamId', '==', teamId)
+            )
+        );
+        
+        if (!existingMemberships.empty) {
+            const existingMembership = existingMemberships.docs[0].data();
+            const status = existingMembership.status;
+            
+            if (status === TeamMembershipStatus.ACTIVE) {
+                throw new Error("Vous êtes déjà membre actif de cette équipe.");
+            }
+            
+            if (status === TeamMembershipStatus.PENDING) {
+                throw new Error("Vous avez déjà une demande en attente pour cette équipe.");
+            }
+        }
+        
+        // Vérifier que l'équipe existe
+        const teamDocRef = doc(db, 'teams', teamId);
+        const teamDoc = await getDoc(teamDocRef);
+        
+        if (!teamDoc.exists()) {
+            throw new Error("Cette équipe n'existe pas.");
+        }
+        
+        // Créer la demande de membership
+        await addDoc(membershipsColRef, {
+            userId: userId,
+            teamId: teamId,
+            status: TeamMembershipStatus.PENDING,
+            userRole: userRole,
+            requestedAt: new Date().toISOString(),
+        });
+        
+        console.log("✅ Demande de rejoindre l'équipe créée avec succès");
+    } catch (error: any) {
+        console.error("❌ Erreur lors de la demande pour rejoindre l'équipe:", error);
+        console.error("Détails:", {
+            code: error?.code,
+            message: error?.message,
+            stack: error?.stack,
+            userId,
+            teamId,
+            userRole
+        });
+        throw error;
+    }
 };
 
 export const createTeamForUser = async (userId: string, teamData: { name: string; level: TeamLevel; country: string; }, userRole: UserRole) => {

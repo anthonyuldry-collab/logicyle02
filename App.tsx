@@ -359,15 +359,57 @@ const App: React.FC = () => {
             userProfile = await firebaseService.getUserProfile(
               firebaseUser.uid
             ); // Re-fetch the newly created profile
-          } catch (profileError) {
+          } catch (profileError: any) {
             console.error(
-              "Erreur lors de la création du profil utilisateur:",
+              "❌ Erreur lors de la création du profil utilisateur:",
               profileError
             );
-            // Ne pas déconnecter l'utilisateur, mais afficher un message d'erreur
-            alert(
-              "Erreur lors de la création du profil. Veuillez contacter l'administrateur."
-            );
+            console.error("Détails complets de l'erreur:", {
+              code: profileError?.code,
+              message: profileError?.message,
+              stack: profileError?.stack,
+              signupData: pendingSignupDataRef.current,
+              firebaseUser: {
+                uid: firebaseUser?.uid,
+                email: firebaseUser?.email
+              }
+            });
+            
+            // Nettoyer les données temporaires en cas d'erreur
+            setPendingSignupData(null);
+            pendingSignupDataRef.current = null;
+            
+            // Déconnecter l'utilisateur pour éviter un état incohérent
+            try {
+              await signOut(auth);
+            } catch (signOutError) {
+              console.error("Erreur lors de la déconnexion:", signOutError);
+            }
+            
+            // Afficher un message d'erreur plus détaillé selon le type d'erreur
+            let errorMessage = "Erreur lors de la création du profil. Veuillez contacter l'administrateur.";
+            
+            if (profileError?.code === 'permission-denied') {
+              errorMessage = "Erreur de permissions Firestore. Les règles de sécurité ne permettent pas la création de votre profil. Veuillez contacter l'administrateur.";
+            } else if (profileError?.code === 'unavailable') {
+              errorMessage = "Service Firestore indisponible. Vérifiez votre connexion internet et réessayez.";
+            } else if (profileError?.code === 'failed-precondition') {
+              errorMessage = "Condition préalable non remplie. Veuillez réessayer ou contacter l'administrateur.";
+            } else if (profileError?.code === 'already-exists') {
+              errorMessage = "Un profil existe déjà pour cet utilisateur. Veuillez vous connecter.";
+            } else if (profileError?.message) {
+              // Utiliser le message d'erreur amélioré si disponible
+              errorMessage = profileError.message.includes("Données d'inscription incomplètes") 
+                ? profileError.message
+                : `Erreur lors de la création du profil: ${profileError.message}`;
+            }
+            
+            // Afficher l'erreur dans la console pour le débogage
+            console.error("💬 Message d'erreur affiché à l'utilisateur:", errorMessage);
+            
+            alert(errorMessage);
+            setIsLoading(false);
+            return; // Sortir de la fonction pour éviter de continuer
           }
         }
 
@@ -1213,7 +1255,10 @@ const App: React.FC = () => {
   };
 
   const handleJoinTeamRequest = async (teamId: string) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      alert("Vous devez être connecté pour rejoindre une équipe.");
+      return;
+    }
     try {
       await firebaseService.requestToJoinTeam(
         currentUser.id,
@@ -1221,9 +1266,12 @@ const App: React.FC = () => {
         currentUser.userRole
       );
       setView("pending");
-    } catch (error) {
-      console.error("Failed to join team:", error);
-      alert(t("errorJoinTeam"));
+      // Recharger les données pour mettre à jour les memberships
+      await loadDataForUser(currentUser);
+    } catch (error: any) {
+      console.error("❌ Échec de la demande pour rejoindre l'équipe:", error);
+      const errorMessage = error?.message || t("errorJoinTeam");
+      alert(errorMessage);
     }
   };
 
