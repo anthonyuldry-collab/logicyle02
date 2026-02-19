@@ -570,6 +570,8 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
  * Met à jour les champs PPR et l'historique d'un coureur (sauvegarde directe)
  * Utilisé pour garantir que les modifications PPR et l'historique sont bien persistées
  */
+const PPR_PROFILE_KEYS = ['powerProfileFresh', 'powerProfile15KJ', 'powerProfile30KJ', 'powerProfile45KJ'] as const;
+
 export const updateRiderPowerProfiles = async (
   teamId: string,
   riderId: string,
@@ -585,10 +587,17 @@ export const updateRiderPowerProfiles = async (
     powerProfileHistory?: { entries: Array<Record<string, unknown>> };
   }
 ): Promise<void> => {
-  const cleanedData = cleanDataForFirebase(powerProfiles);
+  let cleanedData = cleanDataForFirebase(powerProfiles) as Record<string, unknown>;
+  for (const key of PPR_PROFILE_KEYS) {
+    if (key in cleanedData && typeof cleanedData[key] === 'object' && cleanedData[key] !== null && !Array.isArray(cleanedData[key])) {
+      const obj = cleanedData[key] as Record<string, unknown>;
+      if (Object.keys(obj).length === 0) {
+        cleanedData = { ...cleanedData, [key]: null };
+      }
+    }
+  }
   if (Object.keys(cleanedData).length === 0) return;
   const docRef = doc(db, 'teams', teamId, 'riders', riderId);
-  // setDoc avec merge: true fonctionne pour documents existants ET nouveaux (updateDoc échoue si le doc n'existe pas)
   await setDoc(docRef, cleanedData, { merge: true });
 };
 

@@ -3137,7 +3137,7 @@ Les compteurs de jours de course ont été remis à 0.`);
     // Fonction pour changer le statut d'un athlète pour un événement
     const updateRiderEventStatus = async (eventId: string, riderId: string, newStatus: RiderEventStatus) => {
       try {
-        const existingSelection = appState.riderEventSelections.find(
+        const existingSelection = localRiderEventSelections.find(
           sel => sel.eventId === eventId && sel.riderId === riderId
         );
 
@@ -3315,19 +3315,29 @@ Les compteurs de jours de course ont été remis à 0.`);
 
         let savedCount = 0;
         let errorCount = 0;
+        const updatedSelections = [...localRiderEventSelections];
 
-        for (const selection of localRiderEventSelections) {
+        for (let i = 0; i < updatedSelections.length; i++) {
+          const selection = updatedSelections[i];
           try {
-            await saveData(
+            const savedId = await saveData(
               appState.activeTeamId,
               "riderEventSelections",
               selection
             );
+            if (!selection.id) {
+              updatedSelections[i] = { ...selection, id: savedId };
+            }
             savedCount++;
           } catch (error) {
             console.error('❌ Erreur lors de la sauvegarde de la sélection:', selection.id, error);
             errorCount++;
           }
+        }
+
+        if (savedCount > 0) {
+          setLocalRiderEventSelections(updatedSelections);
+          setRiderEventSelections(updatedSelections);
         }
 
         if (errorCount === 0) {

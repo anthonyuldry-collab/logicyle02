@@ -295,65 +295,59 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
-    
-    setFormData((prev: Rider | Omit<Rider, 'id'>) => {
-        if (!prev) return prev;
-        
-        const newFormData = structuredClone(prev); // Use structuredClone for safe deep copy
-        const keys = name.split('.');
-        
-        let currentLevel: any = newFormData;
-        for (let i = 0; i < keys.length - 1; i++) {
-            const key = keys[i];
-            if (!currentLevel[key]) currentLevel[key] = {};
-            currentLevel = currentLevel[key];
-        }
+    const prev: Rider | Omit<Rider, 'id'> | null = formDataRef.current ?? formData;
+    if (!prev) return;
 
-        const lastKey = keys[keys.length - 1];
-        let processedValue: any = value;
-        if (type === 'checkbox') {
-            processedValue = checked;
-        } else if (type === 'number') {
-            const parsed = value === '' ? undefined : parseFloat(value);
-            processedValue = (parsed !== undefined && !Number.isNaN(parsed)) ? parsed : undefined;
-        }
+    const newFormData = structuredClone(prev);
+    const keys = name.split('.');
 
-        // Special handling for array properties like disciplines, categories
-        if (type === 'checkbox' && (name === 'disciplines' || name === 'categories')) {
-            const list = (newFormData as any)[name] as string[] || [];
-            if (checked) {
-                if (!list.includes(value)) {
-                    (newFormData as any)[name] = [...list, value];
-                }
-            } else {
-                (newFormData as any)[name] = list.filter(item => item !== value);
+    let currentLevel: any = newFormData;
+    for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        if (!currentLevel[key]) currentLevel[key] = {};
+        currentLevel = currentLevel[key];
+    }
+
+    const lastKey = keys[keys.length - 1];
+    let processedValue: any = value;
+    if (type === 'checkbox') {
+        processedValue = checked;
+    } else if (type === 'number') {
+        if (value === '') {
+            processedValue = null;
+        } else {
+            const parsed = parseFloat(value);
+            processedValue = !Number.isNaN(parsed) ? parsed : undefined;
+        }
+    }
+
+    if (type === 'checkbox' && (name === 'disciplines' || name === 'categories')) {
+        const list = (newFormData as any)[name] as string[] || [];
+        if (checked) {
+            if (!list.includes(value)) {
+                (newFormData as any)[name] = [...list, value];
             }
         } else {
-            currentLevel[lastKey] = processedValue;
+            (newFormData as any)[name] = list.filter(item => item !== value);
         }
+    } else {
+        currentLevel[lastKey] = processedValue;
+    }
 
-        // Gestion automatique des catégories d'âge lors du changement de date de naissance
-        if (name === 'birthDate' && value) {
-            const { category } = getAgeCategory(value);
-            if (category && category !== 'N/A') {
-                // S'assurer que categories est un tableau
-                if (!newFormData.categories) {
-                    newFormData.categories = [];
-                }
-                
-                // Retirer l'ancienne catégorie d'âge si elle existe
-                const ageCategories = ['U15', 'U17', 'U19', 'U23', 'Senior'];
-                newFormData.categories = newFormData.categories.filter(cat => !ageCategories.includes(cat));
-                
-                // Ajouter la nouvelle catégorie d'âge
-                newFormData.categories.push(category);
+    if (name === 'birthDate' && value) {
+        const { category } = getAgeCategory(value);
+        if (category && category !== 'N/A') {
+            if (!newFormData.categories) {
+                newFormData.categories = [];
             }
+            const ageCategories = ['U15', 'U17', 'U19', 'U23', 'Senior'];
+            newFormData.categories = newFormData.categories.filter(cat => !ageCategories.includes(cat));
+            newFormData.categories.push(category);
         }
+    }
 
-        // Mettre à jour la ref immédiatement pour éviter les données périmées lors de la sauvegarde
-        formDataRef.current = newFormData;
-        return newFormData;
-    });
+    formDataRef.current = newFormData;
+    setFormData(newFormData);
   };
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
