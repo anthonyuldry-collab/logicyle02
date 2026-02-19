@@ -151,15 +151,11 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
   };
 
   const handleSave = async () => {
-    console.log('🔧 DEBUG - handleSave appelé', { profileData, currentUser });
-    
     if (!profileData || !currentUser?.userRole) {
-      console.log('❌ DEBUG - Conditions non remplies', { profileData: !!profileData, currentUser: !!currentUser });
       return;
     }
     
     if (currentUser.userRole === UserRole.COUREUR) {
-      console.log('🔧 DEBUG - Sauvegarde coureur', { riderId: (profileData as Rider).id, firstName: (profileData as Rider).firstName, lastName: (profileData as Rider).lastName });
       
       try {
         // Sauvegarder dans Firebase
@@ -168,7 +164,6 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
         // Mettre à jour l'état local
         setRiders(prevRiders => {
           const updatedRiders = prevRiders.map(r => r.id === (profileData as Rider).id ? (profileData as Rider) : r);
-          console.log('🔧 DEBUG - Riders mis à jour', updatedRiders.find(r => r.id === (profileData as Rider).id));
           return updatedRiders;
         });
         
@@ -184,7 +179,6 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
               sex: (profileData as Rider).sex || currentUser.signupInfo?.sex,
             }
           };
-          console.log('🔧 DEBUG - Mise à jour utilisateur', updatedUser);
           
           // Sauvegarder dans Firebase
           try {
@@ -196,9 +190,8 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
                 sex: (profileData as Rider).sex || currentUser.signupInfo?.sex,
               }
             });
-            console.log('✅ DEBUG - Utilisateur sauvegardé dans Firebase');
           } catch (userError) {
-            console.error('❌ DEBUG - Erreur sauvegarde utilisateur:', userError);
+            // Erreur sauvegarde utilisateur
           }
           
           // Mettre à jour l'état local
@@ -209,11 +202,8 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
         alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
       }
     } else {
-      console.log('🔧 DEBUG - Sauvegarde staff', { staffId: (profileData as StaffMember).id });
-      
       setStaff(prevStaff => {
         const updatedStaff = prevStaff.map(s => s.id === (profileData as StaffMember).id ? (profileData as StaffMember) : s);
-        console.log('🔧 DEBUG - Staff mis à jour', updatedStaff.find(s => s.id === (profileData as StaffMember).id));
         return updatedStaff;
       });
       
@@ -228,7 +218,6 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
             ...currentUser.signupInfo,
           }
         };
-        console.log('🔧 DEBUG - Mise à jour utilisateur staff', updatedUser);
         
         // Sauvegarder dans Firebase
         try {
@@ -240,9 +229,8 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
               ...currentUser.signupInfo,
             }
           });
-          console.log('✅ DEBUG - Utilisateur staff sauvegardé dans Firebase');
         } catch (userError) {
-          console.error('❌ DEBUG - Erreur sauvegarde utilisateur staff:', userError);
+          // Erreur sauvegarde utilisateur staff
         }
         
         // Mettre à jour l'état local
@@ -250,7 +238,6 @@ const AdminDossierSection: React.FC<AdminDossierSectionProps> = ({
       }
     }
     
-    console.log('✅ DEBUG - Sauvegarde terminée');
     alert(t('saveSuccess'));
   };
 

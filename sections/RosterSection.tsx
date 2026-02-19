@@ -1066,14 +1066,15 @@ export default function RosterSection({
   };
 
   // Fonction pour gérer la sauvegarde d'un coureur
-  const handleSaveRider = (rider: Rider) => {
+  const handleSaveRider = async (rider: Rider) => {
     try {
-      onSaveRider(rider);
+      await onSaveRider(rider);
       setIsEditModalOpen(false);
       setSelectedRider(null);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
-      alert('Erreur lors de la sauvegarde du coureur');
+      const message = error instanceof Error ? error.message : 'Erreur inconnue';
+      alert('Erreur lors de la sauvegarde : ' + message);
     }
   };
 
@@ -1231,53 +1232,6 @@ Les compteurs de jours de course ont été remis à 0.`);
     // Utiliser les coureurs actifs pour la saison courante
     const ridersToUse = activeRiders.length > 0 ? activeRiders : riders;
     
-    // Debug: Afficher tous les coureurs et leurs données
-    console.log('=== DEBUG EFFECTIF ===');
-    console.log('Total coureurs:', riders.length);
-    console.log('Coureurs actifs:', activeRiders.length);
-    console.log('Coureurs utilisés:', ridersToUse.length);
-    console.log('Événements locaux:', localRaceEvents.length);
-    console.log('Détail des événements:', localRaceEvents.map(e => ({ 
-      name: e.name, 
-      date: e.date, 
-      selectedRiderIds: e.selectedRiderIds?.length || 0 
-    })));
-    console.log('Filtres actifs:', { searchTerm, genderFilter, ageCategoryFilter, minAgeFilter, maxAgeFilter });
-    
-    // Recherche spécifique d'Anthony Uldry
-    const anthonyRider = ridersToUse.find(rider => 
-      rider.firstName?.toLowerCase().includes('anthony') && 
-      rider.lastName?.toLowerCase().includes('uldry')
-    );
-    
-    if (anthonyRider) {
-      console.log('🔍 ANTHONY ULDRY TROUVÉ:', anthonyRider);
-    } else {
-      console.log('❌ ANTHONY ULDRY NON TROUVÉ dans la liste des coureurs');
-      console.log('📋 Liste des coureurs disponibles:', ridersToUse.map(r => `${r.firstName} ${r.lastName} (${r.email})`));
-    }
-    
-    ridersToUse.forEach((rider, index) => {
-      const { age, category } = getAgeCategory(rider.birthDate);
-      const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
-                       rider.lastName?.toLowerCase().includes('uldry');
-      
-      console.log(`Coureur ${index + 1}${isAnthony ? ' ⭐ ANTHONY' : ''}:`, {
-        id: rider.id,
-        nom: `${rider.firstName} ${rider.lastName}`,
-        email: rider.email,
-        sex: rider.sex,
-        birthDate: rider.birthDate,
-        age,
-        category,
-        matchesSearch: rider.firstName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      rider.lastName.toLowerCase().includes(searchTerm.toLowerCase()),
-        matchesGender: genderFilter === 'all' || rider.sex === genderFilter,
-        matchesAge: age !== null && age >= minAgeFilter && age <= maxAgeFilter,
-        matchesCategory: ageCategoryFilter === 'all' || (age !== null && category === ageCategoryFilter)
-      });
-    });
-    
     let filtered = ridersToUse.filter(rider => {
       const matchesSearch = rider.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            rider.lastName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1295,32 +1249,8 @@ Les compteurs de jours de course ont été remis à 0.`);
       const levelCategory = getLevelCategory(rider);
       const matchesLevel = levelFilter === 'all' || levelCategory === levelFilter;
       
-      const isAnthony = rider.firstName?.toLowerCase().includes('anthony') && 
-                       rider.lastName?.toLowerCase().includes('uldry');
-      
-      if (isAnthony) {
-        console.log('🔍 ANTHONY ULDRY - Analyse du filtrage:', {
-          matchesSearch,
-          matchesGender,
-          matchesAge,
-          matchesCategory,
-          age,
-          birthDate: rider.birthDate,
-          sex: rider.sex,
-          searchTerm,
-          genderFilter,
-          ageCategoryFilter,
-          minAgeFilter,
-          maxAgeFilter,
-          'FINAL_RESULT': matchesSearch && matchesGender && matchesAge && matchesCategory
-        });
-      }
-      
       return matchesSearch && matchesGender && matchesAge && matchesCategory && matchesLevel;
     });
-    
-    console.log('Coureurs filtrés:', filtered.length);
-    console.log('=== FIN DEBUG ===');
 
     // Tri
     filtered.sort((a, b) => {

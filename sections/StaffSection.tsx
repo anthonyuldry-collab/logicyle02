@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserGroupIcon, 
   CalendarDaysIcon,
@@ -8,11 +8,13 @@ import {
   TrashIcon,
   EyeIcon,
   DocumentDuplicateIcon,
-  ArchiveBoxIcon
+  ArchiveBoxIcon,
+  DocumentTextIcon,
+  EnvelopeIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
-import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection } from '../types';
+import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection, MeetingReport, MeetingRecurrence } from '../types';
 import { getCurrentSeasonYear, getAvailableSeasonYears } from '../utils/seasonUtils';
 import { getActiveStaffForCurrentSeason } from '../utils/rosterArchiveUtils';
 import { 
@@ -29,6 +31,8 @@ interface StaffSectionProps {
   appState: AppState;
   onSave?: (staff: StaffMember) => void;
   onDelete?: (staff: StaffMember) => void;
+  onSaveMeetingReport?: (report: MeetingReport) => void;
+  onDeleteMeetingReport?: (report: MeetingReport) => void;
   onStaffTransition?: (archive: StaffArchive, transition: StaffTransition) => void;
   staffEventSelections?: StaffEventSelection[];
   setStaffEventSelections?: (updater: React.SetStateAction<StaffEventSelection[]>) => void;
@@ -55,6 +59,8 @@ export default function StaffSection({
   appState,
   onSave,
   onDelete,
+  onSaveMeetingReport,
+  onDeleteMeetingReport,
   onStaffTransition,
   staffEventSelections = [],
   setStaffEventSelections,
@@ -73,22 +79,13 @@ export default function StaffSection({
   onSaveRaceEvent
   ,navigateTo
 }: StaffSectionProps) {
-  // Debug logs
-  console.log('🔧 StaffSection - Debug Info:');
-  console.log('🔧 staff:', staff);
-  console.log('🔧 staff.length:', staff?.length);
-  console.log('🔧 appState:', appState);
-  console.log('🔧 currentUser:', currentUser);
-  console.log('🔧 raceEvents:', raceEvents?.length);
-
   // Vérification plus permissive pour éviter le blocage
   if (!appState && !staff) {
-    console.log('🔧 StaffSection - appState and staff are undefined');
     return <div>Chargement...</div>;
   }
 
   // États pour la gestion des onglets
-  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives'>('planning');
+  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives' | 'meetings'>('planning');
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
   
   // États pour les modales
@@ -104,6 +101,31 @@ export default function StaffSection({
   const [staffArchives, setStaffArchives] = useState<StaffArchive[]>([]);
   const [selectedArchive, setSelectedArchive] = useState<StaffArchive | null>(null);
   const [isArchiveDetailOpen, setIsArchiveDetailOpen] = useState(false);
+
+  // États pour les comptes rendus de réunions
+  const [meetingReports, setMeetingReports] = useState<MeetingReport[]>(() => {
+    // Charger depuis appState au montage
+    return appState?.meetingReports || [];
+  });
+
+  // Synchroniser avec appState quand il change
+  useEffect(() => {
+    if (appState?.meetingReports) {
+      setMeetingReports(appState.meetingReports);
+    }
+  }, [appState?.meetingReports]);
+  const [isMeetingReportModalOpen, setIsMeetingReportModalOpen] = useState(false);
+  const [selectedMeetingReport, setSelectedMeetingReport] = useState<MeetingReport | null>(null);
+  const [meetingReportForm, setMeetingReportForm] = useState<Partial<MeetingReport>>({
+    title: '',
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    organizerId: currentUser?.id || '',
+    participantIds: [],
+    agenda: '',
+    content: '',
+    actionItems: [],
+  });
 
   // Obtenir le staff actif pour la saison courante
   const activeStaff = staff && staff.length > 0 ? getActiveStaffForCurrentSeason(staff) : [];
@@ -122,17 +144,13 @@ export default function StaffSection({
         onSaveRaceEvent(updatedEvent);
       }
     } catch (e) {
-      console.warn('handleAssignStaffToEvent error', e);
+      // Erreur silencieuse - l'assignation a échoué
     }
   };
-  
-  console.log('🔧 StaffSection - activeStaff:', activeStaff);
-  console.log('🔧 StaffSection - activeStaff.length:', activeStaff.length);
 
   // Fonction pour calculer le nombre de jours de staff depuis le début de saison
   const getStaffDays = (staffId: string) => {
     if (!raceEvents || !Array.isArray(raceEvents)) {
-      console.log('🔧 getStaffDays - raceEvents not available');
       return 0;
     }
 
@@ -152,7 +170,6 @@ export default function StaffSection({
                eventDate >= seasonStart && 
                eventDate <= currentDate;
     } catch (error) {
-        console.warn('🔧 getStaffDays - Error parsing event date:', event);
         return false;
       }
     });
@@ -173,7 +190,6 @@ export default function StaffSection({
           const eventDurationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
           return total + eventDurationDays;
           } catch (error) {
-          console.warn('🔧 getStaffDays - Error calculating event duration:', event);
           return total;
         }
       }
@@ -181,20 +197,16 @@ export default function StaffSection({
       return total;
     }, 0);
     
-    console.log(`👥 Jours de staff pour ${staffId} en ${currentSeason}:`, totalDays, 'jours sur', seasonEvents.length, 'événements');
-    
     return totalDays;
   };
 
   // Fonctions pour les modales
   const openViewModal = (staffMember: StaffMember) => {
-    console.log('🔍 Ouvrir modal de visualisation pour:', staffMember);
     setSelectedStaff(staffMember);
     setIsViewModalOpen(true);
   };
   
   const openEditModal = (staffMember: StaffMember) => {
-    console.log('✏️ Ouvrir modal d\'édition pour:', staffMember);
     setSelectedStaff(staffMember);
     setFormData({
       ...staffMember,
@@ -210,13 +222,11 @@ export default function StaffSection({
   };
 
   const openDeleteModal = (staffMember: StaffMember) => {
-    console.log('🗑️ Ouvrir modal de suppression pour:', staffMember);
     setSelectedStaff(staffMember);
     setIsDeleteModalOpen(true);
   };
 
   const handleAddStaff = () => {
-    console.log('➕ Ajouter un nouveau membre du staff');
     setSelectedStaff(null);
     setFormData({
       firstName: '',
@@ -248,8 +258,6 @@ export default function StaffSection({
   };
 
   const handleSaveStaff = () => {
-    console.log('💾 Sauvegarder membre du staff:', formData);
-    
     if (!formData.firstName || !formData.lastName || !formData.email) {
       alert('Veuillez remplir les champs obligatoires (Nom, Prénom, Email)');
       return;
@@ -286,7 +294,6 @@ export default function StaffSection({
   };
 
   const handleDeleteStaff = (staffMember: StaffMember) => {
-    console.log('🗑️ Supprimer membre du staff:', staffMember);
     if (onDelete) {
       onDelete(staffMember);
     }
@@ -296,8 +303,6 @@ export default function StaffSection({
 
   // Fonctions pour la gestion des effectifs
   const handleStaffTransition = (archive: StaffArchive, transition: StaffTransition) => {
-    console.log('🔄 Transition des effectifs du staff:', { archive, transition });
-    
     // Ajouter l'archive à la liste
     setStaffArchives(prev => [...prev, archive]);
     
@@ -308,7 +313,6 @@ export default function StaffSection({
   };
 
   const handleViewArchive = (archive: StaffArchive) => {
-    console.log('👁️ Consultation de l\'archive du staff:', archive);
     setSelectedArchive(archive);
     setIsArchiveDetailOpen(true);
   };
@@ -701,8 +705,811 @@ export default function StaffSection({
       </div>
     );
   };
-                
-  console.log('🔧 StaffSection - Rendering with staff count:', staff?.length || 0);
+
+  // Composant MeetingReportsTab - Gestion des comptes rendus de réunions
+  const MeetingReportsTab = () => {
+    // Vérification de sécurité
+    if (!staff || staff.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun membre du staff</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Veuillez d'abord ajouter des membres du staff pour créer des comptes rendus.
+          </p>
+        </div>
+      );
+    }
+
+    const handleNewMeetingReport = () => {
+      const now = new Date();
+      const defaultTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      setMeetingReportForm({
+        title: '',
+        date: now.toISOString().split('T')[0],
+        time: defaultTime,
+        location: '',
+        organizerId: currentUser?.id || '',
+        participantIds: [],
+        agenda: '',
+        content: '',
+        actionItems: [],
+        recurrence: MeetingRecurrence.NONE,
+        isScheduled: true,
+      });
+      setSelectedMeetingReport(null);
+      setIsMeetingReportModalOpen(true);
+    };
+
+    const handleEditMeetingReport = (report: MeetingReport) => {
+      setSelectedMeetingReport(report);
+      const reportDate = new Date(report.date);
+      const dateStr = reportDate.toISOString().split('T')[0];
+      const timeStr = report.time || '';
+      
+      setMeetingReportForm({
+        title: report.title,
+        date: dateStr,
+        time: timeStr,
+        endTime: report.endTime || '',
+        location: report.location || '',
+        organizerId: report.organizerId,
+        participantIds: report.participantIds || [],
+        agenda: report.agenda || '',
+        content: report.content,
+        actionItems: report.actionItems || [],
+        recurrence: report.recurrence || MeetingRecurrence.NONE,
+        recurrenceEndDate: report.recurrenceEndDate ? report.recurrenceEndDate.split('T')[0] : '',
+        recurrenceCount: report.recurrenceCount,
+        isScheduled: report.isScheduled !== undefined ? report.isScheduled : true,
+        meetingSeriesId: report.meetingSeriesId,
+      });
+      setIsMeetingReportModalOpen(true);
+    };
+
+    // Fonction pour calculer la prochaine réunion en fonction de la récurrence
+    const calculateNextMeetingDate = (report: MeetingReport): string | null => {
+      if (!report.recurrence || report.recurrence === MeetingRecurrence.NONE) {
+        return null;
+      }
+
+      const lastDate = new Date(report.date);
+      const now = new Date();
+      
+      // Si la réunion est dans le futur, retourner cette date
+      if (lastDate > now) {
+        return report.date;
+      }
+
+      let nextDate = new Date(lastDate);
+      
+      switch (report.recurrence) {
+        case MeetingRecurrence.DAILY:
+          nextDate.setDate(nextDate.getDate() + 1);
+          break;
+        case MeetingRecurrence.WEEKLY:
+          nextDate.setDate(nextDate.getDate() + 7);
+          break;
+        case MeetingRecurrence.BIWEEKLY:
+          nextDate.setDate(nextDate.getDate() + 14);
+          break;
+        case MeetingRecurrence.MONTHLY:
+          nextDate.setMonth(nextDate.getMonth() + 1);
+          break;
+        case MeetingRecurrence.QUARTERLY:
+          nextDate.setMonth(nextDate.getMonth() + 3);
+          break;
+        case MeetingRecurrence.YEARLY:
+          nextDate.setFullYear(nextDate.getFullYear() + 1);
+          break;
+        default:
+          return null;
+      }
+
+      // Vérifier si la date de fin de récurrence est dépassée
+      if (report.recurrenceEndDate && nextDate > new Date(report.recurrenceEndDate)) {
+        return null;
+      }
+
+      return nextDate.toISOString();
+    };
+
+    const handleSaveMeetingReport = async () => {
+      if (!meetingReportForm.title || !meetingReportForm.date) {
+        alert('Veuillez remplir les champs obligatoires (Titre, Date)');
+        return;
+      }
+
+      if (!appState.activeTeamId) {
+        alert('Erreur: Aucune équipe active');
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const meetingDate = new Date(meetingReportForm.date!);
+      if (meetingReportForm.time) {
+        const [hours, minutes] = meetingReportForm.time.split(':');
+        meetingDate.setHours(parseInt(hours), parseInt(minutes), 0);
+      }
+
+      // Calculer la prochaine date si récurrence activée
+      let nextMeetingDate: string | undefined;
+      if (meetingReportForm.recurrence && meetingReportForm.recurrence !== MeetingRecurrence.NONE) {
+        const nextDate = calculateNextMeetingDate({
+          ...meetingReportForm,
+          date: meetingDate.toISOString(),
+        } as MeetingReport);
+        nextMeetingDate = nextDate || undefined;
+      }
+
+      // Générer un ID de série si c'est une nouvelle réunion récurrente
+      const meetingSeriesId = meetingReportForm.meetingSeriesId || 
+        (meetingReportForm.recurrence && meetingReportForm.recurrence !== MeetingRecurrence.NONE 
+          ? `series_${Date.now()}` 
+          : undefined);
+
+      const reportToSave: MeetingReport = {
+        id: selectedMeetingReport?.id || `meeting_${Date.now()}`,
+        title: meetingReportForm.title!,
+        date: meetingDate.toISOString(),
+        time: meetingReportForm.time,
+        endTime: meetingReportForm.endTime,
+        location: meetingReportForm.location,
+        organizerId: meetingReportForm.organizerId!,
+        participantIds: meetingReportForm.participantIds || [],
+        agenda: meetingReportForm.agenda,
+        content: meetingReportForm.content || '',
+        actionItems: meetingReportForm.actionItems || [],
+        attachments: meetingReportForm.attachments || [],
+        createdAt: selectedMeetingReport?.createdAt || now,
+        updatedAt: now,
+        createdBy: currentUser?.id || '',
+        emailSent: selectedMeetingReport?.emailSent || false,
+        emailSentAt: selectedMeetingReport?.emailSentAt,
+        recurrence: meetingReportForm.recurrence || MeetingRecurrence.NONE,
+        recurrenceEndDate: meetingReportForm.recurrenceEndDate 
+          ? new Date(meetingReportForm.recurrenceEndDate).toISOString() 
+          : undefined,
+        recurrenceCount: meetingReportForm.recurrenceCount,
+        nextMeetingDate: nextMeetingDate,
+        isScheduled: meetingReportForm.isScheduled !== undefined ? meetingReportForm.isScheduled : true,
+        meetingSeriesId: meetingSeriesId,
+      };
+
+      try {
+        // Sauvegarder via le handler parent
+        if (onSaveMeetingReport) {
+          await onSaveMeetingReport(reportToSave);
+        } else {
+          // Fallback: sauvegarder directement
+          const { saveData } = await import('../services/firebaseService');
+          if (appState.activeTeamId) {
+            await saveData(appState.activeTeamId, 'meetingReports', reportToSave);
+          }
+        }
+
+        // Mettre à jour l'état local
+        const updatedReports = selectedMeetingReport
+          ? meetingReports.map(r => r.id === reportToSave.id ? reportToSave : r)
+          : [...meetingReports, reportToSave];
+        
+        setMeetingReports(updatedReports);
+
+        setIsMeetingReportModalOpen(false);
+        setSelectedMeetingReport(null);
+        setMeetingReportForm({});
+      } catch (error) {
+        alert('Erreur lors de la sauvegarde du compte rendu');
+      }
+    };
+
+    const handleSendEmail = async (report: MeetingReport) => {
+      if (!report.participantIds || report.participantIds.length === 0) {
+        alert('Aucun participant sélectionné pour cette réunion');
+        return;
+      }
+
+      const participants = staff.filter(s => report.participantIds.includes(s.id));
+      const organizer = staff.find(s => s.id === report.organizerId);
+
+      if (!organizer) {
+        alert('Organisateur non trouvé');
+        return;
+      }
+
+      // Générer le contenu de l'email
+      const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('fr-FR', { 
+          weekday: 'long', 
+          day: 'numeric', 
+          month: 'long', 
+          year: 'numeric' 
+        });
+      };
+
+      let emailBody = `Bonjour,\n\n`;
+      emailBody += `Vous trouverez ci-dessous le compte rendu de la réunion "${report.title}".\n\n`;
+      emailBody += `DATE : ${formatDate(report.date)}\n`;
+      if (report.location) {
+        emailBody += `LIEU : ${report.location}\n`;
+      }
+      emailBody += `ORGANISATEUR : ${organizer.firstName} ${organizer.lastName}\n\n`;
+
+      if (report.agenda) {
+        emailBody += `ORDRE DU JOUR\n${'='.repeat(50)}\n${report.agenda}\n\n`;
+      }
+
+      emailBody += `COMPTE RENDU\n${'='.repeat(50)}\n${report.content}\n\n`;
+
+      if (report.actionItems && report.actionItems.length > 0) {
+        emailBody += `POINTS D'ACTION\n${'='.repeat(50)}\n`;
+        report.actionItems.forEach((item, index) => {
+          const assignedTo = item.assignedToId 
+            ? staff.find(s => s.id === item.assignedToId)
+            : null;
+          emailBody += `${index + 1}. ${item.description}\n`;
+          if (assignedTo) {
+            emailBody += `   Assigné à : ${assignedTo.firstName} ${assignedTo.lastName}\n`;
+          }
+          if (item.dueDate) {
+            emailBody += `   Échéance : ${formatDate(item.dueDate)}\n`;
+          }
+          emailBody += `   Statut : ${item.status === 'completed' ? 'Terminé' : item.status === 'in_progress' ? 'En cours' : 'En attente'}\n\n`;
+        });
+      }
+
+      emailBody += `\nCordialement,\n${organizer.firstName} ${organizer.lastName}`;
+
+      // Simuler l'envoi d'email (à remplacer par un vrai service d'email)
+      // Mettre à jour le statut d'envoi
+      const updatedReport: MeetingReport = {
+        ...report,
+        emailSent: true,
+        emailSentAt: new Date().toISOString(),
+      };
+
+      try {
+        // Sauvegarder via le handler parent
+        if (onSaveMeetingReport) {
+          await onSaveMeetingReport(updatedReport);
+        } else if (appState.activeTeamId) {
+          // Fallback: sauvegarder directement
+          const { saveData } = await import('../services/firebaseService');
+          await saveData(appState.activeTeamId, 'meetingReports', updatedReport);
+        }
+        
+        setMeetingReports(meetingReports.map(r => r.id === report.id ? updatedReport : r));
+        alert(`Email envoyé à ${participants.filter(p => p.email).length} participant(s)`);
+      } catch (error) {
+        alert('Erreur lors de l\'envoi de l\'email');
+      }
+    };
+
+    const getOrganizerName = (organizerId: string) => {
+      const organizer = staff.find(s => s.id === organizerId);
+      return organizer ? `${organizer.firstName} ${organizer.lastName}` : 'Inconnu';
+    };
+
+    const formatDate = (dateString: string) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('fr-FR', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      });
+    };
+
+    // Trouver le dernier compte rendu et la prochaine réunion
+    const sortedReports = [...meetingReports].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    const lastReport = sortedReports.find(r => r.content && r.content.trim() !== '') || sortedReports[0];
+    const upcomingMeetings = meetingReports
+      .filter(r => {
+        const meetingDate = new Date(r.date);
+        return meetingDate >= new Date() || (r.recurrence && r.recurrence !== MeetingRecurrence.NONE);
+      })
+      .map(r => ({
+        ...r,
+        nextDate: r.nextMeetingDate || calculateNextMeetingDate(r) || r.date
+      }))
+      .sort((a, b) => new Date(a.nextDate).getTime() - new Date(b.nextDate).getTime());
+
+    const nextMeeting = upcomingMeetings[0];
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Comptes Rendus de Réunions
+          </h3>
+          <ActionButton onClick={handleNewMeetingReport} icon={<PlusCircleIcon className="w-5 h-5" />}>
+            Planifier une Réunion
+          </ActionButton>
+        </div>
+
+        {/* Section: Dernier compte rendu et prochaine réunion */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Dernier compte rendu */}
+          {lastReport && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-medium text-gray-900">Dernier Compte Rendu</h4>
+                <span className="text-sm text-gray-500">{formatDate(lastReport.date)}</span>
+              </div>
+              <div className="space-y-2">
+                <h5 className="font-semibold text-gray-800">{lastReport.title}</h5>
+                {lastReport.location && (
+                  <p className="text-sm text-gray-600">📍 {lastReport.location}</p>
+                )}
+                {lastReport.content && (
+                  <p className="text-sm text-gray-700 line-clamp-3">{lastReport.content}</p>
+                )}
+                <div className="flex items-center space-x-4 mt-4">
+                  <span className="text-xs text-gray-500">
+                    {lastReport.participantIds?.length || 0} participant(s)
+                  </span>
+                  {lastReport.actionItems && lastReport.actionItems.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {lastReport.actionItems.length} point(s) d'action
+                    </span>
+                  )}
+                </div>
+                <div className="mt-4">
+                  <ActionButton 
+                    onClick={() => handleEditMeetingReport(lastReport)} 
+                    variant="secondary" 
+                    size="sm"
+                  >
+                    Voir le compte rendu complet
+                  </ActionButton>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Prochaine réunion */}
+          {nextMeeting && (
+            <div className="bg-blue-50 shadow rounded-lg p-6 border-2 border-blue-200">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-medium text-blue-900">Prochaine Réunion</h4>
+                <span className="text-sm font-semibold text-blue-700">
+                  {formatDate(nextMeeting.nextDate)}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <h5 className="font-semibold text-blue-800">{nextMeeting.title}</h5>
+                {nextMeeting.time && (
+                  <p className="text-sm text-blue-700">🕐 {nextMeeting.time}</p>
+                )}
+                {nextMeeting.location && (
+                  <p className="text-sm text-blue-700">📍 {nextMeeting.location}</p>
+                )}
+                {nextMeeting.recurrence && nextMeeting.recurrence !== MeetingRecurrence.NONE && (
+                  <p className="text-xs text-blue-600">
+                    🔄 Récurrence: {nextMeeting.recurrence}
+                  </p>
+                )}
+                {nextMeeting.agenda && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-blue-800 mb-1">Ordre du jour:</p>
+                    <p className="text-sm text-blue-700 line-clamp-2">{nextMeeting.agenda}</p>
+                  </div>
+                )}
+                <div className="mt-4">
+                  <ActionButton 
+                    onClick={() => {
+                      if (nextMeeting.content && nextMeeting.content.trim() !== '') {
+                        handleEditMeetingReport(nextMeeting);
+                      } else {
+                        // Créer un nouveau compte rendu pour cette réunion
+                        setSelectedMeetingReport(nextMeeting);
+                        setMeetingReportForm({
+                          ...nextMeeting,
+                          date: nextMeeting.nextDate.split('T')[0],
+                        });
+                        setIsMeetingReportModalOpen(true);
+                      }
+                    }} 
+                    variant="primary" 
+                    size="sm"
+                  >
+                    {nextMeeting.content && nextMeeting.content.trim() !== '' 
+                      ? 'Voir le compte rendu' 
+                      : 'Créer le compte rendu'}
+                  </ActionButton>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Liste des comptes rendus */}
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Comptes Rendus</h4>
+            <p className="text-sm text-gray-600">
+              Gestion et suivi des comptes rendus de réunions du staff
+            </p>
+          </div>
+
+          {meetingReports.length === 0 ? (
+            <div className="text-center py-8">
+              <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun compte rendu</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Créez votre premier compte rendu de réunion
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Titre
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Organisateur
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Participants
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Email envoyé
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {meetingReports
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((report) => (
+                      <tr key={report.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{report.title}</div>
+                          {report.location && (
+                            <div className="text-sm text-gray-500">{report.location}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{formatDate(report.date)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{getOrganizerName(report.organizerId)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className="text-sm text-gray-900">
+                            {report.participantIds?.length || 0}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          {report.emailSent ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Oui
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              Non
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <div className="flex items-center justify-center space-x-2">
+                            <ActionButton
+                              onClick={() => handleEditMeetingReport(report)}
+                              variant="warning"
+                              size="sm"
+                              icon={<PencilIcon className="w-4 h-4" />}
+                              title="Modifier"
+                            />
+                            {!report.emailSent && (
+                              <ActionButton
+                                onClick={() => handleSendEmail(report)}
+                                variant="primary"
+                                size="sm"
+                                icon={<EnvelopeIcon className="w-4 h-4" />}
+                                title="Envoyer par email"
+                              />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Modal de création/édition */}
+        {isMeetingReportModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4">
+                {selectedMeetingReport 
+                  ? (selectedMeetingReport.content && selectedMeetingReport.content.trim() !== '' 
+                      ? 'Modifier le Compte Rendu' 
+                      : 'Modifier la Réunion')
+                  : (meetingReportForm.content && meetingReportForm.content.trim() !== '' 
+                      ? 'Nouveau Compte Rendu' 
+                      : 'Planifier une Réunion')}
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Titre *</label>
+                    <input
+                      type="text"
+                      value={meetingReportForm.title || ''}
+                      onChange={(e) => setMeetingReportForm({ ...meetingReportForm, title: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                      placeholder="Ex: Réunion de préparation saison 2026"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Date *</label>
+                    <input
+                      type="date"
+                      value={meetingReportForm.date || ''}
+                      onChange={(e) => setMeetingReportForm({ ...meetingReportForm, date: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Heure de début</label>
+                    <input
+                      type="time"
+                      value={meetingReportForm.time || ''}
+                      onChange={(e) => setMeetingReportForm({ ...meetingReportForm, time: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Heure de fin</label>
+                    <input
+                      type="time"
+                      value={meetingReportForm.endTime || ''}
+                      onChange={(e) => setMeetingReportForm({ ...meetingReportForm, endTime: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Lieu</label>
+                  <input
+                    type="text"
+                    value={meetingReportForm.location || ''}
+                    onChange={(e) => setMeetingReportForm({ ...meetingReportForm, location: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    placeholder="Ex: Siège de l'équipe"
+                  />
+                </div>
+
+                {/* Récurrence - Section mise en avant */}
+                <div className="border-t-2 border-blue-200 pt-4 bg-blue-50 rounded-lg p-4 mt-4">
+                  <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center">
+                    <CalendarDaysIcon className="w-5 h-5 mr-2 text-blue-600" />
+                    Planification et Récurrence
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Type de récurrence
+                      </label>
+                      <select
+                        value={meetingReportForm.recurrence || MeetingRecurrence.NONE}
+                        onChange={(e) => setMeetingReportForm({ 
+                          ...meetingReportForm, 
+                          recurrence: e.target.value as MeetingRecurrence 
+                        })}
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
+                      >
+                        {Object.values(MeetingRecurrence).map((recurrence) => (
+                          <option key={recurrence} value={recurrence}>
+                            {recurrence}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Sélectionnez la fréquence de répétition
+                      </p>
+                    </div>
+                    {(meetingReportForm.recurrence && meetingReportForm.recurrence !== MeetingRecurrence.NONE) && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Date de fin de récurrence (optionnel)
+                        </label>
+                        <input
+                          type="date"
+                          value={meetingReportForm.recurrenceEndDate || ''}
+                          onChange={(e) => setMeetingReportForm({ ...meetingReportForm, recurrenceEndDate: e.target.value })}
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
+                        />
+                        <p className="mt-1 text-xs text-gray-600">
+                          Laisser vide pour une récurrence sans fin
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-blue-200">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={meetingReportForm.isScheduled !== undefined ? meetingReportForm.isScheduled : true}
+                        onChange={(e) => setMeetingReportForm({ ...meetingReportForm, isScheduled: e.target.checked })}
+                        className="rounded border-gray-300 w-4 h-4"
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-700">
+                        Planifier cette réunion dans le calendrier
+                      </span>
+                    </label>
+                    <p className="mt-1 ml-6 text-xs text-gray-600">
+                      La réunion sera visible dans le calendrier de l'équipe
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Participants</label>
+                  <div className="mt-2 space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
+                    {staff.map((member) => (
+                      <label key={member.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={meetingReportForm.participantIds?.includes(member.id) || false}
+                          onChange={(e) => {
+                            const currentIds = meetingReportForm.participantIds || [];
+                            if (e.target.checked) {
+                              setMeetingReportForm({ ...meetingReportForm, participantIds: [...currentIds, member.id] });
+                            } else {
+                              setMeetingReportForm({ ...meetingReportForm, participantIds: currentIds.filter(id => id !== member.id) });
+                            }
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {member.firstName} {member.lastName} ({member.role})
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Ordre du jour</label>
+                  <textarea
+                    value={meetingReportForm.agenda || ''}
+                    onChange={(e) => setMeetingReportForm({ ...meetingReportForm, agenda: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    rows={4}
+                    placeholder="Points à aborder lors de la réunion..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Compte rendu 
+                    <span className="text-gray-500 text-xs ml-1">(optionnel - peut être ajouté après la réunion)</span>
+                  </label>
+                  <textarea
+                    value={meetingReportForm.content || ''}
+                    onChange={(e) => setMeetingReportForm({ ...meetingReportForm, content: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    rows={8}
+                    placeholder="Rédigez le compte rendu de la réunion... (peut être complété après la réunion)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Points d'action</label>
+                  <div className="space-y-2">
+                    {(meetingReportForm.actionItems || []).map((item, index) => (
+                      <div key={item.id || index} className="flex items-start space-x-2 p-2 border border-gray-300 rounded-md">
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => {
+                              const updatedItems = [...(meetingReportForm.actionItems || [])];
+                              updatedItems[index] = { ...item, description: e.target.value };
+                              setMeetingReportForm({ ...meetingReportForm, actionItems: updatedItems });
+                            }}
+                            className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+                            placeholder="Description du point d'action"
+                          />
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <select
+                              value={item.assignedToId || ''}
+                              onChange={(e) => {
+                                const updatedItems = [...(meetingReportForm.actionItems || [])];
+                                updatedItems[index] = { ...item, assignedToId: e.target.value || undefined };
+                                setMeetingReportForm({ ...meetingReportForm, actionItems: updatedItems });
+                              }}
+                              className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                            >
+                              <option value="">Non assigné</option>
+                              {staff.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.firstName} {member.lastName}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="date"
+                              value={item.dueDate || ''}
+                              onChange={(e) => {
+                                const updatedItems = [...(meetingReportForm.actionItems || [])];
+                                updatedItems[index] = { ...item, dueDate: e.target.value || undefined };
+                                setMeetingReportForm({ ...meetingReportForm, actionItems: updatedItems });
+                              }}
+                              className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                              placeholder="Échéance"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const updatedItems = (meetingReportForm.actionItems || []).filter((_, i) => i !== index);
+                            setMeetingReportForm({ ...meetingReportForm, actionItems: updatedItems });
+                          }}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const newItem = {
+                          id: `action_${Date.now()}`,
+                          description: '',
+                          status: 'pending' as const,
+                        };
+                        setMeetingReportForm({
+                          ...meetingReportForm,
+                          actionItems: [...(meetingReportForm.actionItems || []), newItem],
+                        });
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      + Ajouter un point d'action
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 mt-6">
+                <ActionButton onClick={() => {
+                  setIsMeetingReportModalOpen(false);
+                  setSelectedMeetingReport(null);
+                  setMeetingReportForm({});
+                }} variant="secondary">
+                  Annuler
+                </ActionButton>
+                <ActionButton onClick={handleSaveMeetingReport} variant="primary">
+                  Sauvegarder
+                </ActionButton>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <SectionWrapper 
@@ -768,6 +1575,19 @@ export default function StaffSection({
               <span>Archives</span>
             </div>
           </button>
+          <button
+            onClick={() => setActiveTab('meetings')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'meetings' 
+                ? 'border-blue-500 text-blue-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <DocumentTextIcon className="w-5 h-5" />
+              <span>Comptes Rendus</span>
+            </div>
+          </button>
         </nav>
             </div>
 
@@ -788,6 +1608,7 @@ export default function StaffSection({
             onOpenEventDetail={(eventId: string) => navigateTo && navigateTo('eventDetail', eventId)}
            />
          ) : 
+         activeTab === 'meetings' ? <MeetingReportsTab /> :
          <ArchivesTab />}
       </div>
 

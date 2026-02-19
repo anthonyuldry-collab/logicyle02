@@ -10,6 +10,7 @@ interface PowerPPRTabProps {
     theme?: 'light' | 'dark';
     profileReliabilityLevel?: number;
     onDeleteProfile?: (profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ') => void;
+    onSaveRequest?: () => void;
 }
 
 const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
@@ -19,7 +20,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     powerDurationsConfig,
     theme = 'dark',
     profileReliabilityLevel = 1,
-    onDeleteProfile
+    onDeleteProfile,
+    onSaveRequest
 }) => {
     const inputClasses = theme === 'light'
         ? "block w-full px-2 py-1 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
@@ -93,6 +95,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                 id={`${profileKey}.${pdc.key}`}
                                 value={profileData?.[pdc.key] ?? ''}
                                 onChange={handleInputChange}
+                                onBlur={handleInputChange}
                                 className={inputClasses}
                                 disabled={!isEditable}
                             />
@@ -135,7 +138,9 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     
     // État pour gérer l'affichage de l'historique
     const [showHistory, setShowHistory] = useState(false);
-    const [historyView, setHistoryView] = useState<'table' | 'comparison' | 'season-n1'>('table');
+    const [historyView, setHistoryView] = useState<'table' | 'synthèse' | 'comparison' | 'season-n1'>('synthèse');
+    const [selectedHistoryEntryIndex, setSelectedHistoryEntryIndex] = useState<number>(0);
+    const [evolutionModal, setEvolutionModal] = useState<{ metric: keyof PowerProfile; profileType: 'powerProfileFresh' | 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ' } | null>(null);
     const [selectedDuration, setSelectedDuration] = useState<keyof PowerProfile | 'all'>('all');
     const [maxEntries, setMaxEntries] = useState<number>(10);
     
@@ -819,6 +824,21 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
             </div>
             
             <div className="space-y-4">
+                {onSaveRequest && formFieldsEnabled && activeSubTab === 'ppr' && !showAllTimePPR && (
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={onSaveRequest}
+                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                                theme === 'light'
+                                    ? 'bg-green-600 text-white hover:bg-green-700'
+                                    : 'bg-green-700 text-white hover:bg-green-600'
+                            }`}
+                        >
+                            💾 Sauvegarder les PPR
+                        </button>
+                    </div>
+                )}
                 {/* Première ligne : Frais et 15kJ côte à côte */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {renderPowerProfileSectionInputs('powerProfileFresh', 'profilePRR', 'Profil - Frais', displayFormData)}
@@ -929,7 +949,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                 Vue
                                             </label>
                                             <div className="flex gap-1 flex-wrap">
-                                                {(['table', 'comparison', 'season-n1'] as const).map(view => (
+                                                {(['synthèse', 'table', 'comparison', 'season-n1'] as const).map(view => (
                                                     <button
                                                         key={view}
                                                         type="button"
@@ -944,6 +964,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                                     : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                                                         }`}
                                                     >
+                                                        {view === 'synthèse' && '📋 Synthèse'}
                                                         {view === 'table' && '📊 Tableau'}
                                                         {view === 'comparison' && '⚖️ Comparaison'}
                                                         {view === 'season-n1' && '📅 Comparaison N-1'}
@@ -955,7 +976,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                     </div>
 
                                     {/* Deuxième ligne : Filtres par période */}
-                                    {historyView === 'table' && (
+                                    {(historyView === 'table' || historyView === 'synthèse') && (
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             {/* Type de filtre */}
                                             <div>
@@ -1261,6 +1282,171 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                     )}
                                 </div>
                             </div>
+
+                            {/* Vue Synthèse - Format Analyse de Fatigue avec cellules cliquables */}
+                            {historyView === 'synthèse' && (
+                                <div className="space-y-4">
+                                    <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} p-3 rounded-lg border ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'}`}>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                            <h5 className={`${titleClasses} text-center`}>Analyse de Fatigue - Synthèse des Pertes</h5>
+                                            <select
+                                                value={selectedHistoryEntryIndex}
+                                                onChange={(e) => setSelectedHistoryEntryIndex(parseInt(e.target.value, 10))}
+                                                className={`px-3 py-1.5 text-xs rounded border ${theme === 'light' ? 'bg-white border-gray-300 text-gray-700' : 'bg-slate-700 border-slate-600 text-slate-200'}`}
+                                            >
+                                                <option value={0}>Actuel ({formatDate(new Date().toISOString())})</option>
+                                                {filteredHistory.map((entry, idx) => (
+                                                    <option key={entry.id} value={idx + 1}>
+                                                        {formatDate(entry.date)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <p className={`text-[10px] mb-2 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                            Cliquez sur une valeur pour voir son évolution détaillée. <span className="text-green-500">↑</span> = progression, <span className="text-red-500">↓</span> = régression (vs entrée précédente)
+                                        </p>
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full text-xs">
+                                                <thead className={theme === 'light' ? "bg-gray-200 text-gray-600" : "bg-slate-600 text-slate-300"}>
+                                                    <tr>
+                                                        <th className="p-1.5 text-left">Métrique</th>
+                                                        <th className="p-1.5 text-right">Frais (W/kg)</th>
+                                                        <th className="p-1.5 text-right">15kJ (W/kg)</th>
+                                                        <th className="p-1.5 text-right">Δ% (15kJ)</th>
+                                                        <th className="p-1.5 text-right">30kJ (W/kg)</th>
+                                                        <th className="p-1.5 text-right">Δ% (30kJ)</th>
+                                                        <th className="p-1.5 text-right">45kJ (W/kg)</th>
+                                                        <th className="p-1.5 text-right">Δ% (45kJ)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                {(() => {
+                                                    const currentData = { powerProfileFresh: formData.powerProfileFresh, powerProfile15KJ: formData.powerProfile15KJ, powerProfile30KJ: formData.powerProfile30KJ, powerProfile45KJ: formData.powerProfile45KJ, weightKg: formData.weightKg };
+                                                    const displayEntry = selectedHistoryEntryIndex === 0 
+                                                        ? currentData
+                                                        : filteredHistory[selectedHistoryEntryIndex - 1] || currentData;
+                                                    // Liste triée par date (plus récent en premier) pour trouver l'entrée précédente chronologiquement
+                                                    const sortedEntries = [
+                                                        { date: new Date().toISOString(), entry: currentData, isCurrent: true },
+                                                        ...filteredHistory.map(e => ({ date: e.date, entry: e, isCurrent: false }))
+                                                    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                                                    const displayedHistoryEntry = selectedHistoryEntryIndex > 0 ? filteredHistory[selectedHistoryEntryIndex - 1] : null;
+                                                    const displayIndex = selectedHistoryEntryIndex === 0
+                                                        ? sortedEntries.findIndex(x => x.isCurrent)
+                                                        : sortedEntries.findIndex(x => !x.isCurrent && displayedHistoryEntry && (
+                                                            (x.entry as PowerProfileHistoryEntry).id === displayedHistoryEntry.id ||
+                                                            (x.entry as PowerProfileHistoryEntry).date === displayedHistoryEntry.date
+                                                        ));
+                                                    const prevEntry = displayIndex >= 0 && displayIndex < sortedEntries.length - 1 ? sortedEntries[displayIndex + 1] : null;
+                                                    const prevEntryData = prevEntry?.entry;
+                                                    const getEvolution = (profileKey: 'powerProfileFresh' | 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ', metricKey: keyof PowerProfile): number | null => {
+                                                        if (!prevEntryData) return null;
+                                                        const currVal = displayEntry?.[profileKey]?.[metricKey];
+                                                        const prevVal = prevEntryData[profileKey]?.[metricKey];
+                                                        const currW = displayEntry?.weightKg;
+                                                        const prevW = prevEntryData.weightKg;
+                                                        if (!currVal || !prevVal || !currW || !prevW || prevVal === 0) return null;
+                                                        const currWkg = currVal / currW;
+                                                        const prevWkg = prevVal / prevW;
+                                                        return ((currWkg - prevWkg) / prevWkg) * 100;
+                                                    };
+                                                    const renderEvolutionBadge = (pct: number | null) => {
+                                                        if (pct === null) return null;
+                                                        const isProgression = pct > 0;
+                                                        const sign = pct >= 0 ? '+' : '';
+                                                        return (
+                                                            <span className={`block text-[10px] mt-0.5 font-medium ${isProgression ? 'text-green-500' : 'text-red-500'}`} title={isProgression ? 'Progression' : 'Régression'}>
+                                                                {isProgression ? '↑' : '↓'} {sign}{pct.toFixed(1)}%
+                                                            </span>
+                                                        );
+                                                    };
+                                                    return powerDurationsConfig.map(pdc => {
+                                                        const weight = displayEntry?.weightKg;
+                                                        const freshVal = displayEntry?.powerProfileFresh?.[pdc.key];
+                                                        const kj15Val = displayEntry?.powerProfile15KJ?.[pdc.key];
+                                                        const kj30Val = displayEntry?.powerProfile30KJ?.[pdc.key];
+                                                        const kj45Val = displayEntry?.powerProfile45KJ?.[pdc.key];
+                                                        const freshWkg = (freshVal && weight) ? freshVal / weight : undefined;
+                                                        const kj15Wkg = (kj15Val && weight) ? kj15Val / weight : undefined;
+                                                        const kj30Wkg = (kj30Val && weight) ? kj30Val / weight : undefined;
+                                                        const kj45Wkg = (kj45Val && weight) ? kj45Val / weight : undefined;
+                                                        const drop15 = (freshWkg && kj15Wkg) ? ((kj15Wkg - freshWkg) / freshWkg) * 100 : undefined;
+                                                        const drop30 = (freshWkg && kj30Wkg) ? ((kj30Wkg - freshWkg) / freshWkg) * 100 : undefined;
+                                                        const drop45 = (freshWkg && kj45Wkg) ? ((kj45Wkg - freshWkg) / freshWkg) * 100 : undefined;
+                                                        const kj15Color = getDropColorClass(drop15);
+                                                        const kj30Color = getDropColorClass(drop30);
+                                                        const kj45Color = getDropColorClass(drop45);
+                                                        const evoFresh = getEvolution('powerProfileFresh', pdc.key);
+                                                        const evo15 = getEvolution('powerProfile15KJ', pdc.key);
+                                                        const evo30 = getEvolution('powerProfile30KJ', pdc.key);
+                                                        const evo45 = getEvolution('powerProfile45KJ', pdc.key);
+                                                        const cellClass = `p-1.5 text-right cursor-pointer hover:ring-2 hover:ring-blue-400 rounded transition-all ${theme === 'light' ? 'hover:bg-blue-50' : 'hover:bg-slate-600'}`;
+                                                        return (
+                                                            <tr key={pdc.key} className={`border-b ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'}`}>
+                                                                <td className={`p-1.5 ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>{pdc.label}</td>
+                                                                <td className={cellClass} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfileFresh' })}>
+                                                                    <span className={`font-medium ${theme === 'light' ? 'text-gray-800' : 'text-slate-200'}`}>{freshWkg?.toFixed(1) ?? '-'}</span>
+                                                                    {renderEvolutionBadge(evoFresh)}
+                                                                </td>
+                                                                <td className={`${cellClass} ${kj15Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile15KJ' })}>
+                                                                    <span>{kj15Wkg?.toFixed(1) ?? '-'}</span>
+                                                                    {renderEvolutionBadge(evo15)}
+                                                                </td>
+                                                                <td className={`${cellClass} ${kj15Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile15KJ' })}>{drop15?.toFixed(0) ?? '-'}%</td>
+                                                                <td className={`${cellClass} ${kj30Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile30KJ' })}>
+                                                                    <span>{kj30Wkg?.toFixed(1) ?? '-'}</span>
+                                                                    {renderEvolutionBadge(evo30)}
+                                                                </td>
+                                                                <td className={`${cellClass} ${kj30Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile30KJ' })}>{drop30?.toFixed(0) ?? '-'}%</td>
+                                                                <td className={`${cellClass} ${kj45Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile45KJ' })}>
+                                                                    <span>{kj45Wkg?.toFixed(1) ?? '-'}</span>
+                                                                    {renderEvolutionBadge(evo45)}
+                                                                </td>
+                                                                <td className={`${cellClass} ${kj45Color}`} onClick={() => setEvolutionModal({ metric: pdc.key, profileType: 'powerProfile45KJ' })}>{drop45?.toFixed(0) ?? '-'}%</td>
+                                                            </tr>
+                                                        );
+                                                    });
+                                                })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    {/* Modal évolution détaillée */}
+                                    {evolutionModal && (
+                                        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={() => setEvolutionModal(null)}>
+                                            <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h3 className={`text-lg font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-slate-200'}`}>
+                                                        Évolution : {powerDurationsConfig.find(p => p.key === evolutionModal.metric)?.label} ({evolutionModal.profileType === 'powerProfileFresh' ? 'Frais' : evolutionModal.profileType === 'powerProfile15KJ' ? '15kJ' : evolutionModal.profileType === 'powerProfile30KJ' ? '30kJ' : '45kJ'})
+                                                    </h3>
+                                                    <button onClick={() => setEvolutionModal(null)} className={`text-2xl ${theme === 'light' ? 'text-gray-500 hover:text-gray-700' : 'text-slate-400 hover:text-slate-200'}`}>&times;</button>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {[
+                                                        { date: new Date().toISOString(), entry: { powerProfileFresh: formData.powerProfileFresh, powerProfile15KJ: formData.powerProfile15KJ, powerProfile30KJ: formData.powerProfile30KJ, powerProfile45KJ: formData.powerProfile45KJ, weightKg: formData.weightKg }, isCurrent: true },
+                                                        ...filteredHistory.map((e) => ({ date: e.date, entry: e, isCurrent: false }))
+                                                    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(({ date, entry, isCurrent }) => {
+                                                        const profile = entry[evolutionModal.profileType];
+                                                        const val = profile?.[evolutionModal.metric];
+                                                        const weight = entry.weightKg || formData.weightKg;
+                                                        const wkg = (val && weight) ? (val / weight).toFixed(1) : '-';
+                                                        return (
+                                                            <div key={isCurrent ? 'current' : date} className={`flex justify-between items-center p-3 rounded ${theme === 'light' ? 'bg-gray-50' : 'bg-slate-700'}`}>
+                                                                <span className={`font-medium ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>
+                                                                    {formatDate(date)}{isCurrent && ' (Actuel)'}
+                                                                </span>
+                                                                <span className={`font-bold ${theme === 'light' ? 'text-gray-800' : 'text-slate-200'}`}>
+                                                                    {wkg} W/kg {val != null && <span className={`text-xs font-normal ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>({Math.round(val)} W)</span>}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Vue Tableau */}
                             {historyView === 'table' && (

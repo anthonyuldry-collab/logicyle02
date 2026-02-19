@@ -425,6 +425,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                             Ajouter une allergie
                         </ActionButton>
                     )}
+                    </div>
 
                     {/* Plan Nutritionnel Course */}
                     <div className="bg-slate-700 p-4 rounded-lg">

@@ -170,15 +170,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             const sectionsInGroup = groupedSections[group];
             if (!sectionsInGroup) return null;
 
-            // Debug pour le tableau de bord
-            if (group === 'Tableau de Bord') {
-                console.log('🔍 DEBUG Sidebar - Groupe Tableau de Bord:', {
-                    group,
-                    sectionsInGroup: sectionsInGroup.map(s => ({ id: s.id, labels: s.labels })),
-                    currentUser: currentUser ? { userRole: currentUser.userRole, permissionRole: currentUser.permissionRole } : null
-                });
-            }
-
             // Filtrer les sections selon le rôle de l'utilisateur
             let visibleSections = sectionsInGroup;
             
@@ -190,7 +181,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                     
                     // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
                     if (section.group[language] === 'Tableau de Bord') {
-                        console.log('🔍 DEBUG Sidebar - Admin: Affichage tableau de bord:', section.id);
                         return true;
                     }
                     
@@ -208,7 +198,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                     
                     // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
                     if (section.group[language] === 'Tableau de Bord') {
-                        console.log('🔍 DEBUG Sidebar - Autre: Affichage tableau de bord:', section.id);
                         return true;
                     }
                     

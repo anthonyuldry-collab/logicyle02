@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-    Rider, RaceEvent, RiderEventSelection, PerformanceEntry, PowerProfile, FavoriteRace, 
+    Rider, RaceEvent, RiderEventSelection, PerformanceEntry, PowerProfile, PowerProfileHistory, PowerProfileHistoryEntry, FavoriteRace, 
     PerformanceFactorDetail, RiderRating, AllergyItem, BikeSetup, BikeSpecificMeasurements, 
     BikeFitMeasurements, RiderQualitativeProfile, Address, PerformanceNutrition, 
     SelectedProduct, TeamProduct, ClothingItem, AppState,
@@ -30,7 +30,7 @@ import CalendarTab from './riderDetailTabs/CalendarTab';
 import SettingsTab from './riderDetailTabs/SettingsTab';
 import RiderDashboardTab from './riderDetailTabs/RiderDashboardTab';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
-import { uploadFile } from '../services/firebaseService';
+import { uploadFile, updateRiderPowerProfiles } from '../services/firebaseService';
 import { getAgeCategory } from '../utils/ageUtils';
 
 
@@ -44,7 +44,7 @@ interface RiderDetailModalProps {
   powerDurationsConfig: { key: keyof PowerProfile; label: string; unit: string; sortable: boolean; }[];
   calculateWkg: (power?: number, weight?: number) => string;
   isEditMode?: boolean;
-  onSaveRider?: (riderData: Rider) => void;
+  onSaveRider?: (riderData: Rider) => void | Promise<void>;
   initialFormData?: Omit<Rider, 'id'> | Rider; 
   appState: AppState;
   currentUser?: User | null;
@@ -190,6 +190,9 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   const [formData, setFormData] = useState<Rider | Omit<Rider, 'id'>>(() =>
     isNew ? createNewRiderState() : structuredClone(rider)
   );
+  // Ref pour toujours avoir les dernières données du formulaire (évite la stale closure lors de la sauvegarde)
+  const formDataRef = useRef<Rider | Omit<Rider, 'id'>>(formData);
+  formDataRef.current = formData;
   const [activeTab, setActiveTab] = useState(initialTab);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [newLicenseData, setNewLicenseData] = useState<{base64: string, mimeType: string} | null>(null);
@@ -202,13 +205,17 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   const onUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
     // Cette fonction sera implémentée dans le composant parent (RosterSection)
     // Pour l'instant, on ne fait rien car les permissions sont gérées côté parent
-    console.log('onUpdateRiderPreference appelé:', { eventId, riderId, preference, objectives });
   };
 
+  // N'initialiser le formulaire que lorsque le modal S'OUVRE (isOpen passe à true)
+  // Ne PAS réinitialiser quand rider change pendant que le modal est ouvert - cela écraserait les modifications PPR
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+    if (justOpened) {
       let initialData = isNew ? createNewRiderState() : structuredClone(rider);
-      
+      formDataRef.current = initialData;
       setFormData(initialData);
       setPhotoPreview((initialData as Rider).photoUrl || null);
       setNewLicenseData(null);
@@ -216,7 +223,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
       setActiveTab(initialTab);
       setIsEditMode(isNew || initialIsEditMode);
     }
-  }, [isOpen, rider, isNew, initialIsEditMode]);
+  }, [isOpen, rider, isNew, initialIsEditMode, initialTab]);
 
   // Réinitialiser l'onglet actif si on passe d'un profil utilisateur à un autre
   useEffect(() => {
@@ -280,7 +287,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         newFormData[noteField] = '';
       }
       
-      console.log(`🗑️ Profil ${profileKey} supprimé`);
+      formDataRef.current = newFormData;
       return newFormData;
     });
   };
@@ -289,11 +296,6 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     
-    // Log pour les changements PPR
-    if (name.includes('powerProfile') || name === 'weightKg') {
-      console.log('🔧 DEBUG - Changement PPR détecté:', { name, value, type });
-    }
-
     setFormData((prev: Rider | Omit<Rider, 'id'>) => {
         if (!prev) return prev;
         
@@ -312,7 +314,8 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         if (type === 'checkbox') {
             processedValue = checked;
         } else if (type === 'number') {
-            processedValue = value === '' ? undefined : parseFloat(value);
+            const parsed = value === '' ? undefined : parseFloat(value);
+            processedValue = (parsed !== undefined && !Number.isNaN(parsed)) ? parsed : undefined;
         }
 
         // Special handling for array properties like disciplines, categories
@@ -344,22 +347,11 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
                 
                 // Ajouter la nouvelle catégorie d'âge
                 newFormData.categories.push(category);
-                
-                console.log(`✅ Catégorie d'âge mise à jour automatiquement: ${category}`);
             }
         }
 
-        // Log pour les changements PPR après mise à jour
-        if (name.includes('powerProfile') || name === 'weightKg') {
-          console.log('🔧 DEBUG - formData mis à jour avec PPR:', {
-            powerProfileFresh: newFormData.powerProfileFresh,
-            powerProfile15KJ: newFormData.powerProfile15KJ,
-            powerProfile30KJ: newFormData.powerProfile30KJ,
-            powerProfile45KJ: newFormData.powerProfile45KJ,
-            weightKg: newFormData.weightKg
-          });
-        }
-
+        // Mettre à jour la ref immédiatement pour éviter les données périmées lors de la sauvegarde
+        formDataRef.current = newFormData;
         return newFormData;
     });
   };
@@ -383,6 +375,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         if (!prev) return prev;
         const updated = structuredClone(prev);
         updated.photoUrl = undefined;
+        formDataRef.current = updated;
         return updated;
     });
     setNewPhotoData(null);
@@ -390,35 +383,65 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   };
 
   const handleGlobalPreferencesUpdate = (riderId: string, globalWishes: string, seasonObjectives: string) => {
-    setFormData(prev => ({
-      ...prev,
-      globalWishes,
-      seasonObjectives
-    }));
+    setFormData(prev => {
+      const updated = { ...prev, globalWishes, seasonObjectives };
+      formDataRef.current = updated;
+      return updated;
+    });
   };
   
   const handleSave = async () => {
-    console.log('🔧 DEBUG - handleSave appelé dans RiderDetailModal');
-    console.log('🔧 DEBUG - formData:', formData);
-    console.log('🔧 DEBUG - onSaveRider existe:', !!onSaveRider);
-    console.log('🔧 DEBUG - Données PPR dans formData:', {
-      powerProfileFresh: formData.powerProfileFresh,
-      powerProfile15KJ: formData.powerProfile15KJ,
-      powerProfile30KJ: formData.powerProfile30KJ,
-      powerProfile45KJ: formData.powerProfile45KJ,
-      weightKg: formData.weightKg
-    });
+    // Utiliser formDataRef pour avoir toujours les données les plus récentes (évite la stale closure)
+    const latestFormData = formDataRef.current;
     
     if (!onSaveRider) {
-      console.warn('⚠️ onSaveRider n\'est pas défini - sauvegarde impossible');
       alert('⚠️ Fonction de sauvegarde non disponible. Veuillez contacter l\'administrateur.');
       return;
     }
     
     let dataToSave: Rider = {
-        ...(formData as Omit<Rider, 'id'>),
-        id: (formData as Rider).id || `rider_${generateId()}`
+        ...(rider || latestFormData),
+        ...(latestFormData as Omit<Rider, 'id'>),
+        id: (latestFormData as Rider).id || `rider_${generateId()}`
     };
+    // S'assurer explicitement que les PPR du formulaire sont bien inclus (priorité aux données éditées)
+    dataToSave.powerProfileFresh = latestFormData.powerProfileFresh;
+    dataToSave.powerProfile15KJ = latestFormData.powerProfile15KJ;
+    dataToSave.powerProfile30KJ = latestFormData.powerProfile30KJ;
+    dataToSave.powerProfile45KJ = latestFormData.powerProfile45KJ;
+
+    // Mettre à jour l'historique PPR quand les données ont changé (comparer avec le rider d'origine)
+    if (rider && (rider as Rider).id) {
+      const hasPprChanged = (
+        (a?: PowerProfile, b?: PowerProfile) => {
+          if (!a && !b) return false;
+          if (!a || !b) return true;
+          const keys: (keyof PowerProfile)[] = ['power1s', 'power5s', 'power30s', 'power1min', 'power3min', 'power5min', 'power12min', 'power20min', 'criticalPower'];
+          return keys.some(k => (a[k] ?? null) !== (b[k] ?? null));
+        }
+      );
+      const powerChanged = 
+        hasPprChanged(rider.powerProfileFresh, dataToSave.powerProfileFresh) ||
+        hasPprChanged(rider.powerProfile15KJ, dataToSave.powerProfile15KJ) ||
+        hasPprChanged(rider.powerProfile30KJ, dataToSave.powerProfile30KJ) ||
+        hasPprChanged(rider.powerProfile45KJ, dataToSave.powerProfile45KJ) ||
+        rider.weightKg !== dataToSave.weightKg;
+      if (powerChanged) {
+        const historyEntry: PowerProfileHistoryEntry = {
+          id: generateId(),
+          date: new Date().toISOString(),
+          powerProfileFresh: rider.powerProfileFresh ? { ...rider.powerProfileFresh } : undefined,
+          powerProfile15KJ: rider.powerProfile15KJ ? { ...rider.powerProfile15KJ } : undefined,
+          powerProfile30KJ: rider.powerProfile30KJ ? { ...rider.powerProfile30KJ } : undefined,
+          powerProfile45KJ: rider.powerProfile45KJ ? { ...rider.powerProfile45KJ } : undefined,
+          weightKg: rider.weightKg,
+        };
+        const existingHistory: PowerProfileHistory = dataToSave.powerProfileHistory || rider.powerProfileHistory || { entries: [] };
+        dataToSave.powerProfileHistory = {
+          entries: [historyEntry, ...(existingHistory.entries || [])],
+        };
+      }
+    }
     
     // Ajouter automatiquement la catégorie d'âge calculée
     if (dataToSave.birthDate) {
@@ -435,37 +458,57 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             
             // Ajouter la nouvelle catégorie d'âge
             dataToSave.categories.push(category);
-            
-            console.log(`✅ Catégorie d'âge automatiquement ajoutée: ${category}`);
         }
     }
-    
-    console.log('dataToSave avant uploads:', dataToSave);
 
     if (newPhotoData && appState.activeTeamId) {
-        console.log('Upload de la photo...');
         const path = `teams/${appState.activeTeamId}/riders/${dataToSave.id}/photo`;
         const url = await uploadFile(newPhotoData.base64, path, newPhotoData.mimeType);
         dataToSave.photoUrl = url;
-        console.log('Photo uploadée:', url);
     }
 
     if (newLicenseData && appState.activeTeamId) {
-        console.log('Upload de la licence...');
         const path = `teams/${appState.activeTeamId}/riders/${dataToSave.id}/license`;
         const url = await uploadFile(newLicenseData.base64, path, newLicenseData.mimeType);
         dataToSave.licenseImageUrl = url;
         dataToSave.licenseImageBase64 = undefined;
         dataToSave.licenseImageMimeType = undefined;
-        console.log('Licence uploadée:', url);
     }
     
-    console.log('Appel de onSaveRider avec:', dataToSave);
-    onSaveRider(dataToSave);
+    try {
+      if (!appState.activeTeamId) {
+        throw new Error('Aucune équipe sélectionnée. Veuillez sélectionner une équipe.');
+      }
+      if (!dataToSave.id) {
+        throw new Error('Identifiant du coureur manquant.');
+      }
+      // Sauvegarde directe des PPR et de l'historique dans Firebase (garantit la persistance)
+      const pprData = {
+        powerProfileFresh: dataToSave.powerProfileFresh,
+        powerProfile15KJ: dataToSave.powerProfile15KJ,
+        powerProfile30KJ: dataToSave.powerProfile30KJ,
+        powerProfile45KJ: dataToSave.powerProfile45KJ,
+        profilePRR: dataToSave.profilePRR,
+        profile15KJ: dataToSave.profile15KJ,
+        profile30KJ: dataToSave.profile30KJ,
+        profile45KJ: dataToSave.profile45KJ,
+        powerProfileHistory: dataToSave.powerProfileHistory,
+      };
+      await updateRiderPowerProfiles(appState.activeTeamId, dataToSave.id, pprData);
+      await onSaveRider(dataToSave);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+      alert('Erreur lors de la sauvegarde : ' + (error instanceof Error ? error.message : 'Veuillez réessayer.'));
+      throw error;
+    }
   };
   
   const setFormDataForChild = (updater: React.SetStateAction<Rider | Omit<Rider, 'id'>>) => {
-      setFormData(updater);
+      setFormData((prev) => {
+          const next = typeof updater === 'function' ? (updater as (p: Rider | Omit<Rider, 'id'>) => Rider | Omit<Rider, 'id'>)(prev) : updater;
+          formDataRef.current = next;
+          return next;
+      });
   };
   
   const handleLicenseUpdate = (base64?: string, mimeType?: string) => {
@@ -477,6 +520,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             updated.licenseImageBase64 = base64.split(',')[1];
             updated.licenseImageMimeType = mimeType;
             updated.licenseImageUrl = undefined;
+            formDataRef.current = updated;
             return updated;
         });
     } else {
@@ -487,6 +531,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             updated.licenseImageUrl = undefined;
             updated.licenseImageBase64 = undefined;
             updated.licenseImageMimeType = undefined;
+            formDataRef.current = updated;
             return updated;
         });
     }
@@ -494,16 +539,6 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   
   // Vérifier si c'est le profil de l'utilisateur connecté
   const isCurrentUserProfile = currentUser && formData && currentUser.id === (formData as Rider).id;
-  
-  // Debug logs
-  console.log('🔍 DEBUG Settings Tab:', {
-    currentUserId: currentUser?.id,
-    riderId: (formData as Rider)?.id,
-    isCurrentUserProfile,
-    currentUserRole: currentUser?.userRole,
-    currentUserEmail: currentUser?.email,
-    riderEmail: (formData as Rider)?.email
-  });
   
   // TEMPORAIRE : Toujours afficher l'onglet paramètres pour debug
   const shouldShowSettings = true; // isCurrentUserProfile;
@@ -523,9 +558,6 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     // Afficher l'onglet paramètres (temporairement toujours visible pour debug)
     ...(shouldShowSettings ? [{ id: 'settings', label: 'Paramètres' }] : []),
   ];
-
-  // Debug: Afficher les onglets dans la console
-  console.log('🔍 DEBUG - Onglets disponibles:', tabs.map(t => t.label));
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -563,6 +595,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             powerDurationsConfig={powerDurationsConfig}
             profileReliabilityLevel={profileReliabilityLevel}
             onDeleteProfile={handleDeleteProfile}
+            onSaveRequest={onSaveRider ? handleSave : undefined}
           />
         );
       case 'project':
@@ -585,7 +618,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         return (
           <ResultsTab
             formData={formData}
-            setFormData={setFormData}
+            setFormData={setFormDataForChild}
             formFieldsEnabled={isEditMode}
           />
         );
@@ -605,7 +638,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         return (
           <NutritionTab
             formData={formData}
-            setFormData={setFormData}
+            setFormData={setFormDataForChild}
             formFieldsEnabled={isEditMode}
             teamProducts={appState.teamProducts || []}
           />
@@ -614,7 +647,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         return (
           <EquipmentTab
             formData={formData}
-            setFormData={setFormData}
+            setFormData={setFormDataForChild}
             formFieldsEnabled={isEditMode}
           />
         );
@@ -690,9 +723,11 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
                     ) : (
                         <div className="flex space-x-2">
                            <ActionButton variant="secondary" onClick={() => {
-                                if (!isNew) {
+                                if (!isNew && rider) {
+                                    const resetData = structuredClone(rider);
+                                    formDataRef.current = resetData;
+                                    setFormData(resetData); // Reset changes
                                     setIsEditMode(false);
-                                    setFormData(structuredClone(rider)); // Reset changes
                                 } else {
                                     onClose();
                                 }

@@ -102,7 +102,7 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
 };
 
 // Helper function to remove undefined properties from an object recursively
-// Optimisé pour de meilleures performances
+// Firestore n'accepte pas les valeurs undefined - elles doivent être supprimées
 const cleanDataForFirebase = (data: any): any => {
     // Retour rapide pour les types primitifs
     if (data === null || typeof data !== 'object') {
@@ -114,34 +114,20 @@ const cleanDataForFirebase = (data: any): any => {
         return data;
     }
 
-    // Gestion optimisée des tableaux
+    // Gestion des tableaux
     if (Array.isArray(data)) {
-        // Filtrage rapide des undefined et récursion seulement si nécessaire
-        const filtered = data.filter(item => item !== undefined);
-        if (filtered.length === data.length) {
-            // Aucun undefined trouvé, pas besoin de récursion
-            return data;
-        }
-        return filtered.map(item => cleanDataForFirebase(item));
+        return data
+            .filter(item => item !== undefined)
+            .map(item => cleanDataForFirebase(item));
     }
     
-    // Vérification rapide pour les objets simples
+    // Objets : toujours nettoyer récursivement (les undefined peuvent être dans des objets imbriqués)
     if (data.constructor !== Object) {
         return data;
     }
 
-    // Optimisation : vérifier d'abord s'il y a des undefined
-    const keys = Object.keys(data);
-    const hasUndefined = keys.some(key => data[key] === undefined);
-    
-    if (!hasUndefined) {
-        // Aucun undefined, retourner l'objet tel quel
-        return data;
-    }
-
-    // Nettoyage seulement si nécessaire
     const cleaned: { [key: string]: any } = {};
-    for (const key of keys) {
+    for (const key of Object.keys(data)) {
         const value = data[key];
         if (value !== undefined) {
             cleaned[key] = cleanDataForFirebase(value);
@@ -171,16 +157,6 @@ export const getUserProfile = async (userId: string): Promise<User | null> => {
 
 export const createUserProfile = async (uid: string, signupData: SignupData) => {
     try {
-        console.log("🔍 DEBUG createUserProfile - Début:", { uid, signupData: { 
-            email: signupData?.email, 
-            firstName: signupData?.firstName, 
-            lastName: signupData?.lastName,
-            userRole: signupData?.userRole,
-            hasPassword: !!signupData?.password,
-            birthDate: signupData?.birthDate,
-            sex: signupData?.sex
-        }});
-
         const { email, firstName, lastName, userRole, birthDate, sex } = signupData;
 
         // Validation des données requises
@@ -233,50 +209,19 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : undefined,
         };
         
-        console.log("📝 Création du profil utilisateur:", { 
-            uid, 
-            email, 
-            firstName, 
-            lastName, 
-            userRole,
-            signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : 'vide'
-        });
-        
         const cleanedNewUser = cleanDataForFirebase(newUser);
-        console.log("🔍 DEBUG - Données nettoyées:", JSON.stringify(cleanedNewUser, null, 2));
-        
         const userDocRef = doc(db, 'users', uid);
-        console.log("🔍 DEBUG - Référence document:", userDocRef.path);
         
         // Vérifier si le document existe déjà
         const existingDoc = await getDoc(userDocRef);
         if (existingDoc.exists()) {
-            console.warn("⚠️ Le document utilisateur existe déjà, utilisation de merge: true");
             await setDoc(userDocRef, cleanedNewUser, { merge: true });
         } else {
             await setDoc(userDocRef, cleanedNewUser);
         }
-        
-        console.log("✅ Profil utilisateur créé avec succès:", uid);
 
     } catch (error: any) {
-        console.error("❌ FIRESTORE WRITE ERROR lors de la création du profil:", error);
-        console.error("Détails complets de l'erreur:", {
-            code: error?.code,
-            message: error?.message,
-            stack: error?.stack,
-            uid,
-            signupData: { 
-                email: signupData?.email, 
-                firstName: signupData?.firstName, 
-                lastName: signupData?.lastName,
-                userRole: signupData?.userRole,
-                birthDate: signupData?.birthDate,
-                sex: signupData?.sex
-            },
-            errorName: error?.name,
-            errorString: String(error)
-        });
+        console.error("Erreur lors de la création du profil:", error);
         
         // Améliorer le message d'erreur selon le type d'erreur
         if (error?.code === 'permission-denied') {
@@ -297,8 +242,6 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
 
 export const requestToJoinTeam = async (userId: string, teamId: string, userRole: UserRole) => {
     try {
-        console.log("📝 Demande de rejoindre l'équipe:", { userId, teamId, userRole });
-        
         // Vérifier si l'utilisateur a déjà un membership pour cette équipe
         const membershipsColRef = collection(db, 'teamMemberships');
         const existingMemberships = await getDocs(
@@ -338,18 +281,8 @@ export const requestToJoinTeam = async (userId: string, teamId: string, userRole
             userRole: userRole,
             requestedAt: new Date().toISOString(),
         });
-        
-        console.log("✅ Demande de rejoindre l'équipe créée avec succès");
     } catch (error: any) {
-        console.error("❌ Erreur lors de la demande pour rejoindre l'équipe:", error);
-        console.error("Détails:", {
-            code: error?.code,
-            message: error?.message,
-            stack: error?.stack,
-            userId,
-            teamId,
-            userRole
-        });
+        console.error("Erreur lors de la demande pour rejoindre l'équipe:", error);
         throw error;
     }
 };
@@ -412,17 +345,11 @@ export const createTeamForUser = async (userId: string, teamData: { name: string
 // --- GLOBAL DATA ---
 export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
     try {
-        console.log('🔍 DEBUG: Tentative de connexion à Firestore...');
         const usersSnap = await getDocs(collection(db, 'users'));
-        console.log('✅ DEBUG: Collection users récupérée');
         const teamsSnap = await getDocs(collection(db, 'teams'));
-        console.log('✅ DEBUG: Collection teams récupérée');
         const membershipsSnap = await getDocs(collection(db, 'teamMemberships'));
-        console.log('✅ DEBUG: Collection teamMemberships récupérée');
         const permissionsSnap = await getDocs(collection(db, 'permissions'));
-        console.log('✅ DEBUG: Collection permissions récupérée');
         const permissionRolesSnap = await getDocs(collection(db, 'permissionRoles'));
-        console.log('✅ DEBUG: Collection permissionRoles récupérée');
     
     const permissionsDoc = permissionsSnap.docs[0];
     const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
@@ -438,30 +365,17 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
             permissionRoles
         };
     } catch (error) {
-        console.error('❌ DEBUG: Erreur lors de la récupération des données globales:', error);
-        console.error('❌ DEBUG: Type d\'erreur:', typeof error);
-        console.error('❌ DEBUG: Message d\'erreur:', error instanceof Error ? error.message : 'Erreur inconnue');
-        console.error('❌ DEBUG: Stack trace:', error instanceof Error ? error.stack : 'Pas de stack trace');
+        console.error('Erreur lors de la récupération des données globales:', error);
         throw error;
     }
 };
 
 export const getEffectivePermissions = (user: User, basePermissions: AppPermissions, staff: StaffMember[] = []): Partial<Record<AppSection, PermissionLevel[]>> => {
-    console.log('🔍 DEBUG - getEffectivePermissions appelé avec:', { 
-        userId: user.id, 
-        userRole: user.userRole, 
-        permissionRole: user.permissionRole,
-        teamId: user.teamId,
-        email: user.email
-    });
-    console.log('🔍 DEBUG - UserRole.COUREUR:', UserRole.COUREUR, 'Comparaison:', user.userRole === UserRole.COUREUR);
-    
     // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager pour tous les utilisateurs avec teamId
     // ou pour les utilisateurs qui ont créé une équipe
     
     // Vérifier si l'utilisateur est admin (via permissionRole) OU manager (via userRole)
     if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
-        console.log('✅ DEBUG - Utilisateur identifié comme Admin/Manager');
         const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
         SECTIONS.forEach(section => {
             // Exclure TOUJOURS les sections "Mon Espace" pour les managers/admins
@@ -500,8 +414,6 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         });
         return managerPermissions;
     }
-    
-    console.log('⚠️ DEBUG - Utilisateur NOT Admin/Manager, utilisation des permissions par défaut');
 
     const effectiveRoleKey = user.permissionRole || TeamRole.VIEWER;
     let rolePerms = basePermissions[effectiveRoleKey] || DEFAULT_ROLE_PERMISSIONS[effectiveRoleKey] || {};
@@ -515,7 +427,6 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
     
     // Vérification supplémentaire : supprimer TOUJOURS les sections "Mon Espace" pour les non-coureurs
     if (user.userRole !== UserRole.COUREUR) {
-        console.log('👤 DEBUG - Utilisateur non-coureur, suppression des sections "Mon Espace"');
         // Supprimer explicitement toutes les sections "Mon Espace" pour les non-coureurs
         delete effectivePerms.career;
         delete effectivePerms.nutrition;
@@ -530,13 +441,10 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         delete effectivePerms.myResults;
         delete effectivePerms.bikeSetup;
         delete effectivePerms.myCareer;
-        console.log('🎯 DEBUG - myDashboard conservé pour non-coureur:', effectivePerms.myDashboard);
     }
     
     // Logique spéciale pour les coureurs (UserRole.COUREUR) - PRIORITAIRE sur les autres rôles
     if (user.userRole === UserRole.COUREUR) {
-        console.log('🏃‍♂️ DEBUG - Utilisateur identifié comme COUREUR, ajout des permissions "Mon Espace"');
-        
         // Réinitialiser les permissions pour les coureurs
         Object.keys(effectivePerms).forEach(key => delete effectivePerms[key as AppSection]);
         
@@ -560,9 +468,6 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         effectivePerms.myResults = ['view', 'edit'];
         effectivePerms.bikeSetup = ['view', 'edit'];
         effectivePerms.myCareer = ['view', 'edit'];
-        
-        console.log('✅ DEBUG - Permissions "Mon Espace" ajoutées:', effectivePerms);
-        console.log('🎯 DEBUG - myDashboard permissions:', effectivePerms.myDashboard);
         
         // Coureurs n'ont PAS accès aux sections administratives et générales
         delete effectivePerms.financial;
@@ -617,9 +522,6 @@ export const getEffectivePermissions = (user: User, basePermissions: AppPermissi
         return DEFAULT_ROLE_PERMISSIONS[TeamRole.VIEWER] || {};
     }
     
-    console.log('🎯 DEBUG - Permissions finales:', effectivePerms);
-    console.log('🎯 DEBUG - myDashboard dans permissions finales:', effectivePerms.myDashboard);
-    
     return effectivePerms;
 };
 
@@ -663,6 +565,33 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
 };
 
 // --- DATA MODIFICATION ---
+
+/**
+ * Met à jour les champs PPR et l'historique d'un coureur (sauvegarde directe)
+ * Utilisé pour garantir que les modifications PPR et l'historique sont bien persistées
+ */
+export const updateRiderPowerProfiles = async (
+  teamId: string,
+  riderId: string,
+  powerProfiles: {
+    powerProfileFresh?: Record<string, number | undefined>;
+    powerProfile15KJ?: Record<string, number | undefined>;
+    powerProfile30KJ?: Record<string, number | undefined>;
+    powerProfile45KJ?: Record<string, number | undefined>;
+    profilePRR?: string;
+    profile15KJ?: string;
+    profile30KJ?: string;
+    profile45KJ?: string;
+    powerProfileHistory?: { entries: Array<Record<string, unknown>> };
+  }
+): Promise<void> => {
+  const cleanedData = cleanDataForFirebase(powerProfiles);
+  if (Object.keys(cleanedData).length === 0) return;
+  const docRef = doc(db, 'teams', teamId, 'riders', riderId);
+  // setDoc avec merge: true fonctionne pour documents existants ET nouveaux (updateDoc échoue si le doc n'existe pas)
+  await setDoc(docRef, cleanedData, { merge: true });
+};
+
 export const saveData = async <T extends { id?: string }>(teamId: string, collectionName: string, data: T): Promise<string> => {
     const { id, ...dataToSave } = data;
     const cleanedData = cleanDataForFirebase(dataToSave);

@@ -28,6 +28,7 @@ import {
   StaffRole,
   StaffStatus,
   StaffEventSelection,
+  MeetingReport,
   StockItem,
   TeamProduct,
   TeamLevel,
@@ -140,7 +141,7 @@ function getSafeStaffRole(role: string): string {
       return StaffRole.AUTRE;
     }
   } catch (error) {
-    console.warn('⚠️ StaffRole non disponible, utilisation de valeur par défaut');
+    // StaffRole non disponible
   }
   return "Autre";
 }
@@ -152,7 +153,7 @@ function getSafeStaffStatus(status: string): string {
       return StaffStatus.VACATAIRE;
     }
   } catch (error) {
-    console.warn('⚠️ StaffStatus non disponible, utilisation de valeur par défaut');
+    // StaffStatus non disponible
   }
   return "Vacataire";
 }
@@ -164,20 +165,20 @@ function getSafeDisciplinePracticed(discipline: string): string {
       return DisciplinePracticed.ROUTE;
     }
   } catch (error) {
-    console.warn('⚠️ DisciplinePracticed non disponible, utilisation de valeur par défaut');
+    // DisciplinePracticed non disponible
   }
   return "Route";
 }
 
 function getSafeFormeStatus(status: string): string {
   try {
-    if (typeof FormeStatus !== 'undefined' && FormeStatus.BONNE) {
-      return FormeStatus.BONNE;
+    if (typeof FormeStatus !== 'undefined' && FormeStatus.BON) {
+      return FormeStatus.BON;
     }
   } catch (error) {
-    console.warn('⚠️ FormeStatus non disponible, utilisation de valeur par défaut');
+    // FormeStatus non disponible
   }
-  return "Bonne";
+  return "Bon";
 }
 
 function getSafeMoralStatus(status: string): string {
@@ -186,20 +187,20 @@ function getSafeMoralStatus(status: string): string {
       return MoralStatus.BON;
     }
   } catch (error) {
-    console.warn('⚠️ MoralStatus non disponible, utilisation de valeur par défaut');
+    // MoralStatus non disponible
   }
   return "Bon";
 }
 
 function getSafeHealthCondition(condition: string): string {
   try {
-    if (typeof HealthCondition !== 'undefined' && HealthCondition.BON) {
-      return HealthCondition.BON;
+    if (typeof HealthCondition !== 'undefined' && HealthCondition.PRET_A_COURIR) {
+      return HealthCondition.PRET_A_COURIR;
     }
   } catch (error) {
-    console.warn('⚠️ HealthCondition non disponible, utilisation de valeur par défaut');
+    // HealthCondition non disponible
   }
-  return "Bon";
+  return "Prêt(e) à courir";
 }
 
 function getSafeBikeType(type: string): string {
@@ -208,7 +209,7 @@ function getSafeBikeType(type: string): string {
       return BikeType.ROUTE;
     }
   } catch (error) {
-    console.warn('⚠️ BikeType non disponible, utilisation de valeur par défaut');
+    // BikeType non disponible
   }
   return "Route";
 }
@@ -308,7 +309,7 @@ const App: React.FC = () => {
 
       setLanguageState(teamData.language || "fr");
     } catch (error) {
-      console.error("❌ Erreur lors du chargement des données utilisateur:", error);
+      console.error("Erreur lors du chargement des données utilisateur:", error);
       setView("no_team");
     } finally {
       setIsLoading(false);
@@ -360,20 +361,7 @@ const App: React.FC = () => {
               firebaseUser.uid
             ); // Re-fetch the newly created profile
           } catch (profileError: any) {
-            console.error(
-              "❌ Erreur lors de la création du profil utilisateur:",
-              profileError
-            );
-            console.error("Détails complets de l'erreur:", {
-              code: profileError?.code,
-              message: profileError?.message,
-              stack: profileError?.stack,
-              signupData: pendingSignupDataRef.current,
-              firebaseUser: {
-                uid: firebaseUser?.uid,
-                email: firebaseUser?.email
-              }
-            });
+            console.error("Erreur lors de la création du profil utilisateur:", profileError);
             
             // Nettoyer les données temporaires en cas d'erreur
             setPendingSignupData(null);
@@ -383,7 +371,7 @@ const App: React.FC = () => {
             try {
               await signOut(auth);
             } catch (signOutError) {
-              console.error("Erreur lors de la déconnexion:", signOutError);
+              // Erreur de déconnexion silencieuse
             }
             
             // Afficher un message d'erreur plus détaillé selon le type d'erreur
@@ -404,9 +392,6 @@ const App: React.FC = () => {
                 : `Erreur lors de la création du profil: ${profileError.message}`;
             }
             
-            // Afficher l'erreur dans la console pour le débogage
-            console.error("💬 Message d'erreur affiché à l'utilisateur:", errorMessage);
-            
             alert(errorMessage);
             setIsLoading(false);
             return; // Sortir de la fonction pour éviter de continuer
@@ -423,9 +408,6 @@ const App: React.FC = () => {
           }
         } else {
           // This case should ideally not be reached if profile creation is successful.
-          console.error(
-            "Critical: Failed to create or retrieve user profile. Logging out."
-          );
           signOut(auth); // Log out to prevent inconsistent state
         }
       } else {
@@ -466,31 +448,14 @@ const App: React.FC = () => {
   const hasPowerProfileChanged = (oldProfile?: PowerProfile, newProfile?: PowerProfile): boolean => {
     if (!oldProfile && !newProfile) return false;
     if (!oldProfile || !newProfile) {
-      // Si un profil existe et pas l'autre, vérifier si le nouveau a des valeurs
       const profileToCheck = newProfile || oldProfile;
-      if (profileToCheck) {
-        // Vérifier s'il y a au moins une valeur définie
-        return Object.values(profileToCheck).some(val => val !== undefined && val !== null && val !== 0);
-      }
-      return false;
+      return profileToCheck ? Object.values(profileToCheck).some(val => val != null && val !== 0) : false;
     }
-    
     const keys: (keyof PowerProfile)[] = ['power1s', 'power5s', 'power30s', 'power1min', 'power3min', 'power5min', 'power12min', 'power20min', 'criticalPower', 'power45min'];
-    
     for (const key of keys) {
-      const oldVal = oldProfile[key];
-      const newVal = newProfile[key];
-      
-      // Comparer les valeurs (en tenant compte de undefined/null)
-      if (oldVal !== newVal) {
-        // Si une valeur a changé (y compris de undefined à une valeur ou vice versa)
-        if ((oldVal !== undefined && oldVal !== null) || (newVal !== undefined && newVal !== null)) {
-          // Vérifier si c'est vraiment un changement significatif (pas juste 0 vs undefined)
-          if (oldVal !== newVal && !(oldVal === 0 && !newVal) && !(newVal === 0 && !oldVal)) {
-            return true;
-          }
-        }
-      }
+      const oldVal = oldProfile[key] ?? null;
+      const newVal = newProfile[key] ?? null;
+      if (oldVal !== newVal) return true;
     }
     return false;
   };
@@ -537,18 +502,14 @@ const App: React.FC = () => {
 
   // --- DATA HANDLERS ---
   const onSaveRider = useCallback(async (item: Rider) => {
-    console.log('🔧 DEBUG - onSaveRider appelé avec:', item);
-    console.log('🔧 DEBUG - Données PPR dans onSaveRider:', {
-      powerProfileFresh: item.powerProfileFresh,
-      powerProfile15KJ: item.powerProfile15KJ,
-      powerProfile30KJ: item.powerProfile30KJ,
-      powerProfile45KJ: item.powerProfile45KJ,
-      weightKg: item.weightKg
-    });
-    
     if (!appState.activeTeamId) {
-      console.warn('⚠️ Pas de activeTeamId - opération impossible');
-      return;
+      console.error('Sauvegarde impossible : aucune équipe sélectionnée (activeTeamId manquant)');
+      throw new Error('Aucune équipe sélectionnée. Veuillez sélectionner une équipe pour sauvegarder.');
+    }
+    
+    if (!item.id) {
+      console.error('Sauvegarde impossible : le coureur n\'a pas d\'ID');
+      throw new Error('Impossible de sauvegarder : identifiant du coureur manquant.');
     }
     
     try {
@@ -612,17 +573,17 @@ const App: React.FC = () => {
           };
         }
         
-        // Réinitialiser les PPR de la saison en cours
+        // Réinitialiser les PPR de la saison en cours - SAUF si l'utilisateur a saisi de nouvelles données
+        // (évite d'effacer les modifications PPR que l'utilisateur vient d'entrer pour la nouvelle saison)
+        const hasUserProvidedNewPPR = item.powerProfileFresh || item.powerProfile15KJ || item.powerProfile30KJ || item.powerProfile45KJ;
         updatedItem = {
           ...updatedItem,
-          powerProfileFresh: undefined,
-          powerProfile15KJ: undefined,
-          powerProfile30KJ: undefined,
-          powerProfile45KJ: undefined,
+          powerProfileFresh: hasUserProvidedNewPPR ? item.powerProfileFresh : undefined,
+          powerProfile15KJ: hasUserProvidedNewPPR ? item.powerProfile15KJ : undefined,
+          powerProfile30KJ: hasUserProvidedNewPPR ? item.powerProfile30KJ : undefined,
+          powerProfile45KJ: hasUserProvidedNewPPR ? item.powerProfile45KJ : undefined,
           currentSeasonStartDate: currentSeasonStartDate,
         };
-        
-        console.log('🔄 Réinitialisation PPR saison - Nouvelle saison commencée le', currentSeasonStartDate);
       } else {
         // Mettre à jour le PPR all-time avec les meilleures valeurs actuelles
         if (item.powerProfileFresh || item.powerProfile15KJ || item.powerProfile30KJ || item.powerProfile45KJ) {
@@ -654,6 +615,8 @@ const App: React.FC = () => {
       }
       
       // Vérifier si les valeurs de puissance ont changé (seulement si un rider existant existe et si on ne réinitialise pas)
+      // Priorité à l'historique déjà calculé dans le modal (item.powerProfileHistory) pour éviter les doublons
+      updatedHistory = item.powerProfileHistory || updatedHistory;
       if (existingRider && !shouldResetSeason) {
         const powerChanged = 
           hasPowerProfileChanged(existingRider.powerProfileFresh, updatedItem.powerProfileFresh) ||
@@ -662,8 +625,10 @@ const App: React.FC = () => {
           hasPowerProfileChanged(existingRider.powerProfile45KJ, updatedItem.powerProfile45KJ) ||
           existingRider.weightKg !== updatedItem.weightKg;
         
-        // Si les valeurs ont changé, créer une entrée d'historique avec les anciennes valeurs
-        if (powerChanged) {
+        // Si les valeurs ont changé et que l'historique n'a pas déjà été mis à jour (par le modal)
+        const lastEntryDate = updatedHistory?.entries?.[0]?.date;
+        const alreadyAddedByModal = lastEntryDate && (Date.now() - new Date(lastEntryDate).getTime()) < 5000;
+        if (powerChanged && !alreadyAddedByModal) {
           const historyEntry: PowerProfileHistoryEntry = {
             id: generateId(),
             date: new Date().toISOString(),
@@ -674,15 +639,10 @@ const App: React.FC = () => {
             weightKg: existingRider.weightKg,
           };
           
-          // Initialiser l'historique s'il n'existe pas
           if (!updatedHistory) {
             updatedHistory = { entries: [] };
           }
-          
-          // Ajouter la nouvelle entrée au début (plus récent en premier)
           updatedHistory.entries = [historyEntry, ...updatedHistory.entries];
-          
-          console.log('📊 Historique PPR mis à jour:', updatedHistory);
         }
       }
       
@@ -703,23 +663,13 @@ const App: React.FC = () => {
         currentSeasonStartDate: updatedItem.currentSeasonStartDate || currentSeasonStartDate,
       };
       
-      console.log('🔧 DEBUG - Données enrichies:', {
-        birthDate: enrichedItem.birthDate,
-        sex: enrichedItem.sex,
-        email: enrichedItem.email,
-        hasHistory: !!enrichedItem.powerProfileHistory
-      });
-      
-      console.log('Sauvegarde dans Firebase...');
       const savedId = await firebaseService.saveData(
         appState.activeTeamId,
         "riders",
         enrichedItem
       );
-      console.log('Rider sauvegardé avec ID:', savedId);
       
       const finalItem = { ...enrichedItem, id: enrichedItem.id || savedId };
-      console.log('Item final:', finalItem);
 
       setAppState((prev: AppState) => {
         const collection = prev.riders;
@@ -728,51 +678,42 @@ const App: React.FC = () => {
           ? collection.map((i: Rider) => (i.id === finalItem.id ? finalItem : i))
           : [...collection, finalItem];
         
-        console.log('Nouvelle collection riders:', newCollection);
         return { ...prev, riders: newCollection };
       });
     } catch (error) {
-      console.warn('⚠️ Erreur lors de la sauvegarde du rider:', error);
+      console.error('Erreur lors de la sauvegarde du rider:', error);
+      throw error;
     }
   }, [appState.activeTeamId, appState.riders, currentUser]);
 
   const onDeleteRider = useCallback(async (item: Rider) => {
-    console.log('🗑️ onDeleteRider appelé avec:', item.firstName, item.lastName, 'ID:', item.id);
     if (!appState.activeTeamId || !item.id) {
-      console.warn('⚠️ Pas de activeTeamId ou ID manquant:', { activeTeamId: appState.activeTeamId, itemId: item.id });
       return;
     }
     
     try {
-      console.log('🗑️ Suppression de Firebase...');
       await firebaseService.deleteData(
         appState.activeTeamId,
         "riders",
         item.id
       );
-      console.log('✅ Suppression Firebase réussie');
 
       setAppState((prev: AppState) => {
         const collection = prev.riders;
         const newRiders = collection.filter((i: Rider) => i.id !== item.id);
-        console.log('🔄 Mise à jour de l\'état local:', { avant: collection.length, après: newRiders.length });
         return {
           ...prev,
           riders: newRiders,
         };
       });
-      console.log('✅ Suppression terminée avec succès');
     } catch (error) {
-      console.error('❌ Erreur lors de la suppression:', error);
+      console.error('Erreur lors de la suppression:', error);
       throw error;
     }
   }, [appState.activeTeamId]);
 
   const onSaveStaff = useCallback(async (item: StaffMember) => {
-    console.log('onSaveStaff appelé avec:', item);
-    
     if (!appState.activeTeamId) {
-      console.warn('⚠️ Pas de activeTeamId - opération impossible');
       return;
     }
     
@@ -782,10 +723,8 @@ const App: React.FC = () => {
         "staff",
         item
       );
-      console.log('Staff sauvegardé avec ID:', savedId);
       
       const finalItem = { ...item, id: item.id || savedId };
-      console.log('Item final:', finalItem);
 
       setAppState((prev: AppState) => {
         const collection = prev.staff;
@@ -794,11 +733,10 @@ const App: React.FC = () => {
           ? collection.map((i: StaffMember) => (i.id === finalItem.id ? finalItem : i))
           : [...collection, finalItem];
         
-        console.log('Nouvelle collection staff:', newCollection);
         return { ...prev, staff: newCollection };
       });
     } catch (error) {
-      console.warn('⚠️ Erreur lors de la sauvegarde du staff:', error);
+      console.error('Erreur lors de la sauvegarde du staff:', error);
     }
   }, [appState.activeTeamId]);
 
@@ -815,6 +753,41 @@ const App: React.FC = () => {
       return {
         ...prev,
         staff: collection.filter((i: StaffMember) => i.id !== item.id),
+      };
+    });
+  }, [appState.activeTeamId]);
+
+  const onSaveMeetingReport = useCallback(async (item: MeetingReport) => {
+    if (!appState.activeTeamId) return;
+    const savedId = await firebaseService.saveData(
+      appState.activeTeamId,
+      "meetingReports",
+      item
+    );
+    const finalItem = { ...item, id: item.id || savedId };
+    setAppState((prev: AppState) => {
+      const collection = prev.meetingReports || [];
+      const exists = collection.some((i: MeetingReport) => i.id === finalItem.id);
+      const newCollection = exists
+        ? collection.map((i: MeetingReport) => (i.id === finalItem.id ? finalItem : i))
+        : [...collection, finalItem];
+      return { ...prev, meetingReports: newCollection };
+    });
+  }, [appState.activeTeamId]);
+
+  const onDeleteMeetingReport = useCallback(async (item: MeetingReport) => {
+    if (!appState.activeTeamId || !item.id) return;
+    await firebaseService.deleteData(
+      appState.activeTeamId,
+      "meetingReports",
+      item.id
+    );
+
+    setAppState((prev: AppState) => {
+      const collection = prev.meetingReports || [];
+      return {
+        ...prev,
+        meetingReports: collection.filter((i: MeetingReport) => i.id !== item.id),
       };
     });
   }, [appState.activeTeamId]);
@@ -1156,7 +1129,6 @@ const App: React.FC = () => {
     collectionName: keyof TeamState
   ): React.Dispatch<React.SetStateAction<T[]>> =>
     (updater: React.SetStateAction<T[]>) => {
-      console.log(`🔧 DEBUG - createBatchSetHandler appelé pour ${String(collectionName)}`, { updater });
       setAppState((prev: AppState) => {
         const currentItems = prev[collectionName] as T[];
         const newItems =
@@ -1164,11 +1136,6 @@ const App: React.FC = () => {
             ? (updater as (prevState: T[]) => T[])(currentItems)
             : updater;
 
-        console.log(`🔧 DEBUG - Mise à jour ${String(collectionName)}`, { 
-          ancien: currentItems.length, 
-          nouveau: newItems.length,
-          items: newItems 
-        });
         return { ...prev, [collectionName]: newItems };
       });
     };
@@ -1311,7 +1278,6 @@ const App: React.FC = () => {
           setCurrentSection("myDashboard");
         }
       } else {
-        console.warn("⚠️ Impossible de récupérer le profil utilisateur après création d'équipe");
         // Essayer de recharger avec l'utilisateur actuel
         await loadDataForUser(currentUser);
       }
@@ -1401,7 +1367,6 @@ const App: React.FC = () => {
       
       // FORCER les permissions si l'utilisateur est Manager/Admin
       if (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN) {
-        console.log('🔧 FORÇAGE des permissions Manager');
         effectivePermissions = {
           events: ['view', 'edit'],
           financial: ['view', 'edit'],
@@ -1618,8 +1583,9 @@ const App: React.FC = () => {
                       staff={appState.staff}
                       onSave={onSaveStaff}
                       onDelete={onDeleteStaff}
+                      onSaveMeetingReport={onSaveMeetingReport}
+                      onDeleteMeetingReport={onDeleteMeetingReport}
                       onStaffTransition={(archive, transition) => {
-                        console.log('🔄 Transition des effectifs du staff:', { archive, transition });
                         // TODO: Implémenter la sauvegarde des archives et transitions
                       }}
                       staffEventSelections={appState.staffEventSelections || []}
@@ -1640,6 +1606,7 @@ const App: React.FC = () => {
                       eventTransportLegs={appState.eventTransportLegs}
                       onSaveRaceEvent={onSaveRaceEvent}
                       navigateTo={navigateTo}
+                      appState={appState}
                     />
                   )}
                   {currentSection === "vehicles" && (
@@ -1714,28 +1681,22 @@ const App: React.FC = () => {
                       currentTeamId={appState.activeTeamId || ''}
                       onApprove={async (membership) => {
                         try {
-                          console.log('🔍 DEBUG: Début de onApprove avec membership:', membership);
-                          
                           // Vérifier que membership est valide
                           if (!membership || !membership.id || !membership.email || !membership.teamId) {
-                            console.error('❌ DEBUG: Membership invalide:', membership);
                             alert('Erreur: Données d\'adhésion invalides');
                             return;
                           }
                           
                           // Vérifier les permissions
                           if (!currentUser || !effectivePermissions) {
-                            console.error('❌ DEBUG: currentUser ou effectivePermissions manquant:', { currentUser, effectivePermissions });
                             alert('Erreur: Permissions non définies. Veuillez vous reconnecter.');
                             return;
                           }
 
                           // Vérifier si l'utilisateur a le droit d'approuver des adhésions
                           const canApproveMemberships = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                      currentUser.permissionRole === TeamRole.ADMINISTRATOR ||
+                                                      currentUser.permissionRole === TeamRole.ADMIN ||
                                                       currentUser.userRole === UserRole.MANAGER;
-                          
-                          console.log('🔍 DEBUG: canApproveMemberships =', canApproveMemberships);
                           
                           if (!canApproveMemberships) {
                             alert('Erreur: Vous n\'avez pas les permissions nécessaires pour approuver des adhésions.');
@@ -1761,14 +1722,10 @@ const App: React.FC = () => {
                           }));
 
                           // Créer un profil utilisateur si nécessaire
-                          console.log('🔍 DEBUG: Vérification de l\'utilisateur existant...');
                           const existingUser = appState.users.find(u => u.email === membership.email);
-                          console.log('🔍 DEBUG: existingUser =', existingUser);
                           
                           if (!existingUser) {
-                            console.log('🔍 DEBUG: Création d\'un nouvel utilisateur...');
                             const newUserId = generateId();
-                            console.log('🔍 DEBUG: ID généré =', newUserId);
                             
                             const newUser: User = {
                               id: newUserId,
@@ -1783,20 +1740,14 @@ const App: React.FC = () => {
                               isActive: true
                             };
                             
-                            console.log('🔍 DEBUG: Nouvel utilisateur créé:', newUser);
-                            console.log('🔍 DEBUG: Sauvegarde Firebase...');
-                            
                             await setDoc(doc(db, 'users', newUser.id), newUser);
-                            console.log('🔍 DEBUG: Utilisateur sauvegardé en Firebase');
                             
                             setAppState((prev: AppState) => ({
                               ...prev,
                               users: [...prev.users, newUser]
                             }));
-                            console.log('🔍 DEBUG: État local mis à jour');
 
                             // 🎯 AJOUTER L'UTILISATEUR AUX COLLECTIONS CORRESPONDANTES
-                            console.log('🔍 DEBUG: Ajout aux collections riders/staff...');
                             
                             if (membership.userRole === UserRole.COUREUR) {
                               // Créer le profil coureur
@@ -1849,16 +1800,13 @@ const App: React.FC = () => {
                               };
 
                               // Sauvegarder en Firebase
-                              console.log('💾 DEBUG: Sauvegarde Firebase du coureur...');
                               await setDoc(doc(db, 'teams', membership.teamId, 'riders', newUserId), newRider);
-                              console.log('✅ DEBUG: Coureur sauvegardé en Firebase');
 
                               // Mettre à jour l'état local
                               setAppState((prev: AppState) => ({
                                 ...prev,
                                 riders: [...prev.riders, newRider]
                               }));
-                              console.log('✅ DEBUG: État local mis à jour avec le coureur');
 
                             } else if (membership.userRole === UserRole.STAFF) {
                               // Créer le profil staff
@@ -1875,31 +1823,20 @@ const App: React.FC = () => {
                               };
 
                               // Sauvegarder en Firebase
-                              console.log('💾 DEBUG: Sauvegarde Firebase du staff...');
                               await setDoc(doc(db, 'teams', membership.teamId, 'staff', newUserId), newStaffMember);
-                              console.log('✅ DEBUG: Staff sauvegardé en Firebase');
 
                               // Mettre à jour l'état local
                               setAppState((prev: AppState) => ({
                                 ...prev,
                                 staff: [...prev.staff, newStaffMember]
                               }));
-                              console.log('✅ DEBUG: État local mis à jour avec le staff');
                             }
-
-                            console.log('🎉 DEBUG: Utilisateur ajouté avec succès aux collections correspondantes !');
                             
                             // Message de confirmation pour l'utilisateur
                             const roleText = membership.userRole === UserRole.COUREUR ? 'coureurs' : 'staff';
                             alert(`✅ ${newUser.firstName} ${newUser.lastName} a été approuvé et ajouté aux ${roleText} !`);
-                          } else {
-                            console.log('🔍 DEBUG: Utilisateur existant trouvé, pas de création nécessaire');
                           }
                         } catch (error) {
-                          console.error('❌ DEBUG: Erreur détaillée lors de l\'approbation:', error);
-                          console.error('❌ DEBUG: Type d\'erreur:', typeof error);
-                          console.error('❌ DEBUG: Stack trace:', error instanceof Error ? error.stack : 'Pas de stack trace');
-                          
                           let errorMessage = 'Erreur lors de l\'approbation de l\'adhésion';
                           
                           if (error instanceof Error) {
@@ -1914,7 +1851,6 @@ const App: React.FC = () => {
                             }
                           }
                           
-                          console.error('❌ DEBUG: Message d\'erreur final:', errorMessage);
                           alert(errorMessage);
                         }
                       }}
@@ -1928,7 +1864,7 @@ const App: React.FC = () => {
 
                           // Vérifier si l'utilisateur a le droit de refuser des adhésions
                           const canDenyMemberships = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                   currentUser.permissionRole === TeamRole.ADMINISTRATOR ||
+                                                   currentUser.permissionRole === TeamRole.ADMIN ||
                                                    currentUser.userRole === UserRole.MANAGER;
                           
                           if (!canDenyMemberships) {
@@ -1974,7 +1910,7 @@ const App: React.FC = () => {
 
                           // Vérifier si l'utilisateur a le droit d'inviter des membres
                           const canInviteMembers = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                 currentUser.permissionRole === TeamRole.ADMINISTRATOR ||
+                                                 currentUser.permissionRole === TeamRole.ADMIN ||
                                                  currentUser.userRole === UserRole.MANAGER;
                           
                           if (!canInviteMembers) {
@@ -2056,28 +1992,22 @@ const App: React.FC = () => {
                       }}
                       onUpdateRole={async (userId, teamId, newUserRole) => {
                         try {
-                          console.log('🔍 DEBUG: onUpdateRole appelé avec:', { userId, teamId, newUserRole });
                           
                           const user = appState.users.find(u => u.id === userId);
-                          console.log('🔍 DEBUG: Utilisateur trouvé:', user);
                           
                           if (!user) {
-                            console.error('❌ DEBUG: Utilisateur non trouvé pour ID:', userId);
                             alert('Utilisateur non trouvé');
                             return;
                           }
 
-                          console.log('🔍 DEBUG: Mise à jour du rôle utilisateur en Firebase...');
                           // Mettre à jour le rôle utilisateur
                           const userRef = doc(db, 'users', userId);
                           await updateDoc(userRef, {
                             userRole: newUserRole,
                             updatedAt: new Date().toISOString()
                           });
-                          console.log('✅ DEBUG: Rôle utilisateur mis à jour en Firebase');
 
                           // CORRECTION: Mettre à jour aussi le userRole dans teamMemberships
-                          console.log('🔍 DEBUG: Mise à jour du userRole dans teamMemberships...');
                           const membership = appState.teamMemberships.find(m => m.userId === userId && m.teamId === teamId);
                           if (membership && membership.id) {
                             const membershipRef = doc(db, 'teamMemberships', membership.id);
@@ -2085,10 +2015,8 @@ const App: React.FC = () => {
                               userRole: newUserRole,
                               updatedAt: new Date().toISOString()
                             });
-                            console.log('✅ DEBUG: userRole mis à jour dans teamMemberships');
                           }
 
-                          console.log('🔍 DEBUG: Mise à jour de l\'état local des utilisateurs...');
                           // Mettre à jour l'état local des utilisateurs
                           setAppState((prev: AppState) => ({
                             ...prev,
@@ -2104,10 +2032,8 @@ const App: React.FC = () => {
                                 : m
                             )
                           }));
-                          console.log('✅ DEBUG: État local des utilisateurs et teamMemberships mis à jour');
 
                           // Ajouter l'utilisateur aux bonnes collections selon son nouveau rôle
-                          console.log('🔍 DEBUG: Création du profil coureur pour:', user.email);
                           if (newUserRole === UserRole.COUREUR) {
                             // Ajouter aux riders
                             const newRider: Rider = {
@@ -2159,19 +2085,15 @@ const App: React.FC = () => {
                             };
 
                             // Sauvegarder en Firebase
-                            console.log('💾 DEBUG: Sauvegarde Firebase du coureur...');
                             await setDoc(doc(db, 'teams', teamId, 'riders', userId), newRider);
-                            console.log('✅ DEBUG: Coureur sauvegardé en Firebase');
 
                             // Mettre à jour l'état local
                             setAppState((prev: AppState) => ({
                               ...prev,
                               riders: [...prev.riders, newRider]
                             }));
-                            console.log('✅ DEBUG: État local mis à jour avec le coureur');
 
                           } else if (newUserRole === UserRole.STAFF) {
-                            console.log('🔍 DEBUG: Création du profil staff pour:', user.email);
                             // Ajouter aux staff
                             const newStaffMember: StaffMember = {
                               id: userId,
@@ -2186,25 +2108,17 @@ const App: React.FC = () => {
                             };
 
                             // Sauvegarder en Firebase
-                            console.log('💾 DEBUG: Sauvegarde Firebase du staff...');
                             await setDoc(doc(db, 'teams', teamId, 'staff', userId), newStaffMember);
-                            console.log('✅ DEBUG: Staff sauvegardé en Firebase');
 
                             // Mettre à jour l'état local
                             setAppState((prev: AppState) => ({
                               ...prev,
                               staff: [...prev.staff, newStaffMember]
                             }));
-                            console.log('✅ DEBUG: État local mis à jour avec le staff');
                           }
 
                           alert(`Rôle utilisateur mis à jour avec succès. ${user.firstName} ${user.lastName} a été ajouté aux ${newUserRole === UserRole.COUREUR ? 'coureurs' : 'staff'}.`);
                         } catch (error) {
-                          console.error('❌ DEBUG: Erreur détaillée lors de la mise à jour du rôle:', error);
-                          console.error('❌ DEBUG: Type d\'erreur:', typeof error);
-                          console.error('❌ DEBUG: Message d\'erreur:', error instanceof Error ? error.message : 'Erreur inconnue');
-                          console.error('❌ DEBUG: Stack trace:', error instanceof Error ? error.stack : 'Pas de stack trace');
-                          
                           let errorMessage = 'Erreur lors de la mise à jour du rôle';
                           
                           if (error instanceof Error) {
@@ -2347,12 +2261,10 @@ const App: React.FC = () => {
                       teamMemberships={appState.teamMemberships || []}
                       onRequestTransfer={async (destinationTeamId: string) => {
                         // TODO: Implémenter la logique de demande de transfert
-                        console.log("Demande de transfert vers:", destinationTeamId);
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
                       onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected') => {
                         // TODO: Implémenter la logique de réponse aux demandes de suivi
-                        console.log("Réponse à la demande de suivi:", requestId, response);
                       }}
                       onUpdateVisibility={async (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => {
                         try {
@@ -2421,7 +2333,6 @@ const App: React.FC = () => {
                             }
                           }
                           
-                          console.log("✅ Visibilité mise à jour avec succès:", updates);
                         } catch (error) {
                           console.error("❌ Erreur lors de la mise à jour de la visibilité:", error);
                           alert("Erreur lors de la mise à jour de la visibilité. Veuillez réessayer.");
@@ -2519,7 +2430,7 @@ const App: React.FC = () => {
                       currentUser={currentUser}
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
-                      onSaveRider={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
                       onUpdateRiderPreference={handleUpdateRiderPreference}
                       appState={appState}
                       effectivePermissions={appState.effectivePermissions}

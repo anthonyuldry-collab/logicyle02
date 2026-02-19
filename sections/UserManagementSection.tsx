@@ -251,10 +251,6 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                 </thead>
                                 <tbody className="divide-y">
                                     {pendingMemberships.map((membership: TeamMembership) => {
-                                        console.log('🔍 DEBUG: Structure complète de membership:', membership);
-                                        console.log('🔍 DEBUG: membership.id =', membership.id);
-                                        console.log('🔍 DEBUG: membership.userId =', membership.userId);
-                                        
                                         const user = getUser(membership.userId || '');
                                         const team = getTeam(membership.teamId || '');
                                         if (!user || !team) return null;
@@ -269,18 +265,10 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                     <ActionButton 
                                                         onClick={async () => {
                                                             try {
-                                                                console.log('🔍 DEBUG: Données brutes - membership:', membership);
-                                                                console.log('🔍 DEBUG: Données brutes - user:', user);
-                                                                console.log('🔍 DEBUG: Données brutes - team:', team);
-                                                                
                                                                 // Transformer les données pour correspondre à l'interface attendue
                                                                 // IMPORTANT: Dans Firebase, chaque document a un ID unique
                                                                 // Si membership.id n'existe pas, nous devons le récupérer différemment
                                                                 const membershipId = membership.id || membership.userId || 'unknown-id';
-                                                                
-                                                                console.log('🔍 DEBUG: ID choisi pour le document:', membershipId);
-                                                                console.log('🔍 DEBUG: membership.id =', membership.id);
-                                                                console.log('🔍 DEBUG: membership.userId =', membership.userId);
                                                                 
                                                                 const transformedMembership = {
                                                                     id: membershipId, // Utiliser l'ID disponible
@@ -295,11 +283,8 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                                     requestedBy: membership.requestedBy || 'unknown'
                                                                 };
                                                                 
-                                                                console.log('🔍 DEBUG: Membership transformé:', transformedMembership);
-                                                                
                                                                 // Vérifier que toutes les propriétés requises sont présentes
                                                                 if (!transformedMembership.id || !transformedMembership.email || !transformedMembership.teamId) {
-                                                                    console.error('❌ DEBUG: Données transformées invalides:', transformedMembership);
                                                                     alert('Erreur: Impossible de transformer les données d\'adhésion');
                                                                     return;
                                                                 }
@@ -319,17 +304,10 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                     <ActionButton 
                                                         onClick={async () => {
                                                             try {
-                                                                console.log('🔍 DEBUG: Données brutes pour refus - membership:', membership);
-                                                                console.log('🔍 DEBUG: Données brutes pour refus - user:', user);
-                                                                
                                                                 // Transformer les données pour correspondre à l'interface attendue
                                                                 // IMPORTANT: Dans Firebase, chaque document a un ID unique
                                                                 // Si membership.id n'existe pas, nous devons le récupérer différemment
                                                                 const membershipId = membership.id || membership.userId || 'unknown-id';
-                                                                
-                                                                console.log('🔍 DEBUG: ID choisi pour le document (refus):', membershipId);
-                                                                console.log('🔍 DEBUG: membership.id (refus) =', membership.id);
-                                                                console.log('🔍 DEBUG: membership.userId (refus) =', membership.userId);
                                                                 
                                                                 const transformedMembership = {
                                                                     id: membershipId, // Utiliser l'ID disponible
@@ -344,11 +322,8 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                                     requestedBy: membership.requestedBy || 'unknown'
                                                                 };
                                                                 
-                                                                console.log('🔍 DEBUG: Membership transformé pour refus:', transformedMembership);
-                                                                
                                                                 // Vérifier que toutes les propriétés requises sont présentes
                                                                 if (!transformedMembership.id || !transformedMembership.email || !transformedMembership.teamId) {
-                                                                    console.error('❌ DEBUG: Données transformées invalides pour refus:', transformedMembership);
                                                                     alert('Erreur: Impossible de transformer les données d\'adhésion pour le refus');
                                                                     return;
                                                                 }
@@ -435,23 +410,10 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                         <select
                                                             value={membership.userRole}
                                                             onChange={async (e: ChangeEvent<HTMLSelectElement>) => {
-                                                                console.log('🔄 DEBUG: Changement de rôle détecté:', e.target.value);
-                                                                console.log('🔄 DEBUG: Type de valeur:', typeof e.target.value);
-                                                                console.log('🔄 DEBUG: User ID:', user.id);
-                                                                console.log('🔄 DEBUG: Team ID:', currentTeamId);
-                                                                console.log('🔄 DEBUG: UserRole.STAFF:', UserRole.STAFF);
-                                                                console.log('🔄 DEBUG: UserRole.COUREUR:', UserRole.COUREUR);
-                                                                console.log('🔄 DEBUG: Comparaison STAFF:', e.target.value === UserRole.STAFF);
-                                                                console.log('🔄 DEBUG: Comparaison COUREUR:', e.target.value === UserRole.COUREUR);
-                                                                console.log('🔍 DEBUG: Structure membership:', membership);
-                                                                console.log('🔍 DEBUG: Structure user:', user);
-                                                                console.log('🔍 DEBUG: Différence userRole:', user.userRole !== membership.userRole);
                                                                 try {
-                                                                    console.log('🔄 DEBUG: Appel de onUpdateRole...');
                                                                     await onUpdateRole(user.id, currentTeamId, e.target.value as UserRole);
-                                                                    console.log('✅ DEBUG: onUpdateRole terminé avec succès');
                                                                 } catch (error) {
-                                                                    console.error('❌ DEBUG: Erreur lors de la mise à jour du rôle:', error);
+                                                                    console.error('Erreur lors de la mise à jour du rôle:', error);
                                                                     alert('Erreur lors de la mise à jour du rôle');
                                                                 }
                                                             }}

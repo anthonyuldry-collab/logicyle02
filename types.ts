@@ -1400,6 +1400,54 @@ export interface GlobalState {
     scoutingRequests: ScoutingRequest[];
 }
 
+export enum MeetingRecurrence {
+    NONE = "Aucune",
+    DAILY = "Quotidienne",
+    WEEKLY = "Hebdomadaire",
+    BIWEEKLY = "Bihebdomadaire",
+    MONTHLY = "Mensuelle",
+    QUARTERLY = "Trimestrielle",
+    YEARLY = "Annuelle"
+}
+
+export interface MeetingReport {
+    id: string;
+    title: string;
+    date: string; // Date de la réunion (ISO string)
+    time?: string; // Heure de la réunion (HH:mm)
+    endTime?: string; // Heure de fin (HH:mm)
+    location?: string;
+    organizerId: string; // ID du membre du staff qui organise
+    participantIds: string[]; // IDs des membres du staff participants
+    agenda?: string; // Ordre du jour
+    content: string; // Contenu du compte rendu
+    actionItems?: {
+        id: string;
+        description: string;
+        assignedToId?: string; // ID du membre du staff assigné
+        dueDate?: string;
+        status: 'pending' | 'in_progress' | 'completed';
+    }[];
+    attachments?: {
+        name: string;
+        url: string;
+        type: string;
+    }[];
+    createdAt: string;
+    updatedAt: string;
+    createdBy: string; // ID de l'utilisateur qui a créé le compte rendu
+    emailSent: boolean;
+    emailSentAt?: string;
+    // Nouveaux champs pour la planification et la récurrence
+    recurrence?: MeetingRecurrence;
+    recurrenceEndDate?: string; // Date de fin de la récurrence (ISO string)
+    recurrenceCount?: number; // Nombre d'occurrences
+    nextMeetingDate?: string; // Date de la prochaine réunion planifiée (ISO string)
+    isScheduled?: boolean; // Si la réunion est planifiée dans le calendrier
+    meetingSeriesId?: string; // ID pour regrouper les réunions récurrentes
+    previousMeetingReportId?: string; // ID du compte rendu de la réunion précédente
+}
+
 export interface TeamState {
     teamLevel?: TeamLevel;
     themePrimaryColor?: string;
@@ -1435,6 +1483,7 @@ export interface TeamState {
     dietaryPlans: any[];
     missions: Mission[];
     performanceArchives: PerformanceArchive[];
+    meetingReports: MeetingReport[];
 }
 
 export interface AppState extends GlobalState, TeamState {

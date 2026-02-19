@@ -28,12 +28,7 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
   const { t } = useTranslations();
 
   useEffect(() => {
-    console.log('🔍 DEBUG MyDashboardSection - currentUser:', currentUser);
-    console.log('🔍 DEBUG MyDashboardSection - riders count:', riders.length);
-    console.log('🔍 DEBUG MyDashboardSection - staff count:', staff.length);
-    
     if (!currentUser || !currentUser.userRole || !currentUser.email) {
-      console.log('⚠️ DEBUG MyDashboardSection - currentUser invalide');
       setIsLoading(false);
       return;
     }
@@ -41,13 +36,10 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
     let userProfile: Rider | StaffMember | undefined;
 
     if (currentUser.userRole === UserRole.COUREUR) {
-        console.log('🔍 DEBUG MyDashboardSection - Recherche coureur avec email:', currentUser.email);
         userProfile = riders.find(r => r.email === currentUser.email);
-        console.log('🔍 DEBUG MyDashboardSection - Coureur trouvé:', userProfile);
         
         // Si le coureur n'existe pas encore, créer un profil temporaire
         if (!userProfile) {
-          console.log('⚠️ DEBUG MyDashboardSection - Coureur non trouvé, création profil temporaire');
           userProfile = {
             id: currentUser.id,
             firstName: currentUser.firstName || 'Coureur',
@@ -97,13 +89,10 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
           } as Rider;
         }
     } else if (currentUser.userRole === UserRole.STAFF || currentUser.userRole === UserRole.MANAGER) {
-        console.log('🔍 DEBUG MyDashboardSection - Recherche staff avec email:', currentUser.email);
         userProfile = staff.find(s => s.email === currentUser.email);
-        console.log('🔍 DEBUG MyDashboardSection - Staff trouvé:', userProfile);
         
         // Si le staff n'existe pas encore, créer un profil temporaire
         if (!userProfile) {
-          console.log('⚠️ DEBUG MyDashboardSection - Staff non trouvé, création profil temporaire');
           userProfile = {
             id: currentUser.id,
             firstName: currentUser.firstName || 'Staff',
@@ -119,10 +108,7 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
     }
     
     if (userProfile) {
-        console.log('✅ DEBUG MyDashboardSection - Profil défini:', userProfile);
         setProfileData(userProfile);
-    } else {
-        console.log('❌ DEBUG MyDashboardSection - Aucun profil trouvé');
     }
     
     setIsLoading(false);
