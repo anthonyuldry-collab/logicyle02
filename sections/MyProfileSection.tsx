@@ -9,6 +9,7 @@ import CheckIcon from '../components/icons/CheckIcon';
 import { useTranslations } from '../hooks/useTranslations';
 import { updateUserProfile } from '../services/firebaseService';
 import RiderDashboardTab from '../components/riderDetailTabs/RiderDashboardTab';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 interface MyProfileSectionProps {
   riders: Rider[];
@@ -529,7 +530,7 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
               {(profileData as StaffMember).firstName} {(profileData as StaffMember).lastName}
             </h2>
             <p className="text-gray-600">
-              {(profileData as StaffMember).role} • {(profileData as StaffMember).status}
+              {getStaffRoleDisplayLabel((profileData as StaffMember).role)} • {(profileData as StaffMember).status}
             </p>
             <p className="text-sm text-gray-500">
               {currentTeam?.name || 'Équipe'}

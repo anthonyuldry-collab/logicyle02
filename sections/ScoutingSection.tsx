@@ -22,6 +22,7 @@ interface ScoutingSectionProps {
   riders?: Rider[];
   onSaveScoutingProfile: (profile: ScoutingProfile) => void;
   onDeleteScoutingProfile: (profileId: string) => void;
+  onSaveRider?: (rider: Rider) => void | Promise<void>;
   effectivePermissions?: any;
   appState?: AppState;
   currentTeamId?: string | null;
@@ -139,7 +140,7 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, effectivePermissions, appState, currentTeamId }) => {
+const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, effectivePermissions, appState, currentTeamId }) => {
   // Protection minimale - seulement scoutingProfiles est requis
   if (!scoutingProfiles) {
     return (
@@ -158,6 +159,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   const [isEditing, setIsEditing] = useState(false);
   const [activeModalTab, setActiveModalTab] = useState<'info' | 'power' | 'project' | 'interview'>('info');
   const [confirmAction, setConfirmAction] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<ScoutingProfile | null>(null);
   
   const [addProspectModal, setAddProspectModal] = useState<{isOpen: boolean; mode: 'choice' | 'manual' | 'scout'; initialData?: ScoutingProfile | null }>({isOpen: false, mode: 'choice' });
 
@@ -268,46 +270,58 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     setIsModalOpen(false);
   };
   
+  const buildRiderFromProfile = (profile: ScoutingProfile, rosterRole: 'principal' | 'reserve'): Rider => ({
+    ...profile,
+    qualitativeProfile: profile.qualitativeProfile || RiderQualitativeProfile.AUTRE,
+    id: `rider_${profile.id}_${Date.now()}`,
+    disciplines: [profile.discipline],
+    categories: profile.categories || [],
+    performanceGoals: '',
+    forme: FormeStatus.INCONNU,
+    moral: MoralStatus.INCONNU,
+    healthCondition: HealthCondition.PRET_A_COURIR,
+    favoriteRaces: [],
+    resultsHistory: [],
+    allergies: profile.allergies || [],
+    performanceNutrition: { carbsPerHourTarget: 0, hydrationNotes: '', selectedGels: [], selectedBars: [], selectedDrinks: [], customProducts: [] },
+    roadBikeSetup: { specifics: {}, cotes: {} },
+    ttBikeSetup: { specifics: {}, cotes: {} },
+    clothing: [],
+    physiquePerformanceProject: getInitialPerformanceFactorDetail('physiquePerformanceProject'),
+    techniquePerformanceProject: getInitialPerformanceFactorDetail('techniquePerformanceProject'),
+    mentalPerformanceProject: getInitialPerformanceFactorDetail('mentalPerformanceProject'),
+    environnementPerformanceProject: getInitialPerformanceFactorDetail('environnementPerformanceProject'),
+    tactiquePerformanceProject: getInitialPerformanceFactorDetail('tactiquePerformanceProject'),
+    charSprint: profile.charSprint ?? 0,
+    charAnaerobic: profile.charAnaerobic ?? 0,
+    charPuncher: profile.charPuncher ?? 0,
+    charClimbing: profile.charClimbing ?? 0,
+    charRouleur: profile.charRouleur ?? 0,
+    generalPerformanceScore: profile.generalPerformanceScore ?? 0,
+    fatigueResistanceScore: profile.fatigueResistanceScore ?? 0,
+    rosterRole,
+  });
+
   const handlePromoteToRoster = (profile: ScoutingProfile) => {
-    setConfirmAction({
-        title: `Promouvoir ${profile.firstName} ${profile.lastName} dans l'effectif`,
-        message: "Ceci créera une nouvelle entrée dans l'effectif avec les données de ce profil de scouting et le supprimera de cette liste. Continuer ?",
-        onConfirm: () => {
-            const newRider: Rider = {
-                ...profile,
-                qualitativeProfile: profile.qualitativeProfile || RiderQualitativeProfile.AUTRE,
-                id: `rider_${profile.id}`,
-                disciplines: [profile.discipline],
-                categories: profile.categories || [],
-                performanceGoals: '',
-                forme: FormeStatus.INCONNU,
-                moral: MoralStatus.INCONNU,
-                healthCondition: HealthCondition.PRET_A_COURIR,
-                favoriteRaces: [],
-                resultsHistory: [],
-                allergies: profile.allergies || [],
-                performanceNutrition: {},
-                roadBikeSetup: { specifics: {}, cotes: {} },
-                ttBikeSetup: { specifics: {}, cotes: {} },
-                clothing: [],
-                physiquePerformanceProject: getInitialPerformanceFactorDetail('physiquePerformanceProject'),
-                techniquePerformanceProject: getInitialPerformanceFactorDetail('techniquePerformanceProject'),
-                mentalPerformanceProject: getInitialPerformanceFactorDetail('mentalPerformanceProject'),
-                environnementPerformanceProject: getInitialPerformanceFactorDetail('environnementPerformanceProject'),
-                tactiquePerformanceProject: getInitialPerformanceFactorDetail('tactiquePerformanceProject'),
-                charSprint: profile.charSprint ?? 0,
-                charAnaerobic: profile.charAnaerobic ?? 0,
-                charPuncher: profile.charPuncher ?? 0,
-                charClimbing: profile.charClimbing ?? 0,
-                charRouleur: profile.charRouleur ?? 0,
-                generalPerformanceScore: profile.generalPerformanceScore ?? 0,
-                fatigueResistanceScore: profile.fatigueResistanceScore ?? 0,
-            };
-            // TODO: Implémenter l'ajout du coureur via une fonction de callback
-            console.log('Nouveau coureur à ajouter:', newRider);
-            onDeleteScoutingProfile(profile.id);
-        }
-    });
+    setPromoteTarget(profile);
+  };
+
+  const handleConfirmPromote = async (rosterRole: 'principal' | 'reserve') => {
+    const profile = promoteTarget;
+    if (!profile || !onSaveRider) {
+      setPromoteTarget(null);
+      return;
+    }
+    try {
+      const newRider = buildRiderFromProfile(profile, rosterRole);
+      await onSaveRider(newRider);
+      onDeleteScoutingProfile(profile.id);
+    } catch (e) {
+      console.error('Erreur lors de la promotion dans l\'effectif:', e);
+      alert('Impossible d\'ajouter le coureur à l\'effectif. Vérifiez qu\'une équipe est sélectionnée.');
+    } finally {
+      setPromoteTarget(null);
+    }
   };
 
   const handleDeleteProfile = (profileId: string) => {
@@ -766,37 +780,100 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                     </>
                 )}
                 {activeModalTab === 'power' && (
-                  <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                          <thead className="bg-slate-700/50">
-                              <tr>
-                                  <th className="px-2 py-2 text-left text-slate-300 font-semibold">Durée</th>
-                                  <th className="px-2 py-2 text-center text-slate-300 font-semibold">Frais (W)</th>
-                                  <th className="px-2 py-2 text-center text-slate-300 font-semibold">15 kJ/kg (W)</th>
-                                  <th className="px-2 py-2 text-center text-slate-300 font-semibold">30 kJ/kg (W)</th>
-                                  <th className="px-2 py-2 text-center text-slate-300 font-semibold">45 kJ/kg (W)</th>
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-700">
-                              {powerMetricsConfig.map(metric => (
-                                  <tr key={metric.key}>
-                                      <td className="px-2 py-1.5 font-medium text-slate-300">Puissance {metric.label}</td>
-                                      {(['powerProfileFresh', 'powerProfile15KJ', 'powerProfile30KJ', 'powerProfile45KJ'] as const).map(profileKey => (
-                                          <td key={profileKey} className="px-1 py-1.5">
-                                              <input
-                                                  type="number"
-                                                  name={`${profileKey}.${metric.key}`}
-                                                  value={(currentItem[profileKey] as any)?.[metric.key] ?? ''}
-                                                  onChange={handleInputChange}
-                                                  placeholder="W"
-                                                  className="input-field-sm w-full text-center"
-                                              />
-                                          </td>
-                                      ))}
+                  <div className="space-y-4">
+                      <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm">
+                              <thead className="bg-slate-700/50">
+                                  <tr>
+                                      <th className="px-2 py-2 text-left text-slate-300 font-semibold">Durée</th>
+                                      <th className="px-2 py-2 text-center text-slate-300 font-semibold">Frais (W)</th>
+                                      <th className="px-2 py-2 text-center text-slate-300 font-semibold">15 kJ/kg (W)</th>
+                                      <th className="px-2 py-2 text-center text-slate-300 font-semibold">30 kJ/kg (W)</th>
+                                      <th className="px-2 py-2 text-center text-slate-300 font-semibold">45 kJ/kg (W)</th>
                                   </tr>
-                              ))}
-                          </tbody>
-                      </table>
+                              </thead>
+                              <tbody className="divide-y divide-slate-700">
+                                  {powerMetricsConfig.map(metric => (
+                                      <tr key={metric.key}>
+                                          <td className="px-2 py-1.5 font-medium text-slate-300">Puissance {metric.label}</td>
+                                          {(['powerProfileFresh', 'powerProfile15KJ', 'powerProfile30KJ', 'powerProfile45KJ'] as const).map(profileKey => (
+                                              <td key={profileKey} className="px-1 py-1.5">
+                                                  <input
+                                                      type="number"
+                                                      name={`${profileKey}.${metric.key}`}
+                                                      value={(currentItem[profileKey] as any)?.[metric.key] ?? ''}
+                                                      onChange={handleInputChange}
+                                                      placeholder="W"
+                                                      className="input-field-sm w-full text-center"
+                                                  />
+                                              </td>
+                                          ))}
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+
+                      {/* ANALYSE DE FATIGUE - SYNTHÈSE DES PERTES (W/kg et Δ% vs PPR de base) */}
+                      <div className="rounded-lg overflow-hidden border border-slate-600 bg-slate-800">
+                          <h3 className="bg-blue-900/80 text-white px-4 py-2 text-sm font-semibold">
+                              ANALYSE DE FATIGUE - SYNTHÈSE DES PERTES
+                          </h3>
+                          <div className="overflow-x-auto">
+                              <table className="min-w-full text-sm">
+                                  <thead className="bg-slate-700/80 text-slate-200">
+                                      <tr>
+                                          <th className="px-3 py-2 text-left font-semibold">Métrique</th>
+                                          <th className="px-3 py-2 text-center font-semibold">Frais (W/kg)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">15kJ (W/kg)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">Δ% (15kJ)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">30kJ (W/kg)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">Δ% (30kJ)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">45kJ (W/kg)</th>
+                                          <th className="px-3 py-2 text-center font-semibold">Δ% (45kJ)</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-700 text-white">
+                                      {powerMetricsConfig.map(metric => {
+                                          const weight = (currentItem.weightKg ?? 70) > 0 ? (currentItem.weightKg ?? 70) : 70;
+                                          const fresh = (currentItem.powerProfileFresh as Record<string, number>)?.[metric.key];
+                                          const freshWkg = fresh && weight ? (fresh / weight) : null;
+                                          const v15 = (currentItem.powerProfile15KJ as Record<string, number>)?.[metric.key];
+                                          const wkg15 = v15 && weight ? (v15 / weight) : null;
+                                          const v30 = (currentItem.powerProfile30KJ as Record<string, number>)?.[metric.key];
+                                          const wkg30 = v30 && weight ? (v30 / weight) : null;
+                                          const v45 = (currentItem.powerProfile45KJ as Record<string, number>)?.[metric.key];
+                                          const wkg45 = v45 && weight ? (v45 / weight) : null;
+                                          const delta15 = freshWkg != null && freshWkg > 0 && wkg15 != null ? Math.round(((wkg15 - freshWkg) / freshWkg) * 100) : null;
+                                          const delta30 = freshWkg != null && freshWkg > 0 && wkg30 != null ? Math.round(((wkg30 - freshWkg) / freshWkg) * 100) : null;
+                                          const delta45 = freshWkg != null && freshWkg > 0 && wkg45 != null ? Math.round(((wkg45 - freshWkg) / freshWkg) * 100) : null;
+                                          const metricLabel = metric.key === 'criticalPower' ? 'CP' : metric.label;
+                                          const deltaClass = (d: number | null) => {
+                                              if (d === null) return 'text-slate-400';
+                                              if (d >= 0) return 'text-white';
+                                              if (d >= -10) return 'text-amber-400';
+                                              return 'text-red-400';
+                                          };
+                                          return (
+                                              <tr key={metric.key} className="hover:bg-slate-700/50">
+                                                  <td className="px-3 py-2 font-medium text-slate-200">{metricLabel}</td>
+                                                  <td className="px-3 py-2 text-center">{freshWkg != null ? freshWkg.toFixed(1) : '-'}</td>
+                                                  <td className="px-3 py-2 text-center">{wkg15 != null ? wkg15.toFixed(1) : '-'}</td>
+                                                  <td className={`px-3 py-2 text-center ${deltaClass(delta15)}`}>{delta15 != null ? `${delta15}%` : '-'}</td>
+                                                  <td className="px-3 py-2 text-center">{wkg30 != null ? wkg30.toFixed(1) : '-'}</td>
+                                                  <td className={`px-3 py-2 text-center ${deltaClass(delta30)}`}>{delta30 != null ? `${delta30}%` : '-'}</td>
+                                                  <td className="px-3 py-2 text-center">{wkg45 != null ? wkg45.toFixed(1) : '-'}</td>
+                                                  <td className={`px-3 py-2 text-center ${deltaClass(delta45)}`}>{delta45 != null ? `${delta45}%` : '-'}</td>
+                                              </tr>
+                                          );
+                                      })}
+                                  </tbody>
+                              </table>
+                          </div>
+                          {!(currentItem.weightKg && currentItem.weightKg > 0) && (
+                              <p className="text-xs text-slate-400 px-4 py-2 border-t border-slate-700">W/kg calculés avec 70 kg par défaut. Renseignez le poids dans l’onglet Infos pour des valeurs précises.</p>
+                          )}
+                      </div>
                   </div>
                 )}
                 
@@ -1244,6 +1321,23 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
       </Modal>
 
       {confirmAction && <ConfirmationModal isOpen={!!confirmAction} onClose={() => setConfirmAction(null)} onConfirm={() => {confirmAction.onConfirm(); setConfirmAction(null);}} title={confirmAction.title} message={confirmAction.message}/>}
+
+      {promoteTarget && (
+        <Modal isOpen={!!promoteTarget} onClose={() => setPromoteTarget(null)} title={`Promouvoir ${promoteTarget.firstName} ${promoteTarget.lastName} dans l'effectif`}>
+          <div className="space-y-4">
+            <p className="text-slate-300 text-sm">Choisir la destination dans l'effectif :</p>
+            <div className="flex flex-wrap gap-3">
+              <ActionButton variant="primary" onClick={() => handleConfirmPromote('principal')} icon={<ArrowUpCircleIcon className="w-4 h-4" />}>
+                Équipe première
+              </ActionButton>
+              <ActionButton variant="secondary" onClick={() => handleConfirmPromote('reserve')} icon={<ArrowUpCircleIcon className="w-4 h-4" />}>
+                Réserve
+              </ActionButton>
+              <ActionButton variant="secondary" onClick={() => setPromoteTarget(null)}>Annuler</ActionButton>
+            </div>
+          </div>
+        </Modal>
+      )}
     </SectionWrapper>
   );
 };

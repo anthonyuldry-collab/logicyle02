@@ -14,6 +14,7 @@ import ListBulletIcon from '../components/icons/ListBulletIcon';
 import ChevronLeftIcon from '../components/icons/ChevronLeftIcon';
 import ChevronRightIcon from '../components/icons/ChevronRightIcon';
 import { useTranslations } from '../hooks/useTranslations';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 
 interface VehiclesSectionProps {
@@ -404,7 +405,7 @@ const VehiclesSection: React.FC<VehiclesSectionProps> = ({
                     <label htmlFor="driverIdModal" className="block text-sm font-medium text-gray-700">Chauffeur Principal</label>
                     <select name="driverId" id="driverIdModal" value={currentVehicle.driverId || ''} onChange={handleInputChange} className={lightSelectClass}>
                     <option value="">Sélectionner un chauffeur...</option>
-                    {staff && staff.map(s => <option key={s.id} value={s.id}>{`${s.firstName} ${s.lastName}`} ({s.role})</option>)}
+                    {staff && staff.map(s => <option key={s.id} value={s.id}>{`${s.firstName} ${s.lastName}`} ({getStaffRoleDisplayLabel(s.role)})</option>)}
                     </select>
                 </div>
                 <div>

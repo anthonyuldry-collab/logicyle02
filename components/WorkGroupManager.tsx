@@ -8,6 +8,7 @@ import {
   UsersIcon,
   TagIcon
 } from '@heroicons/react/24/outline';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 interface StaffMember {
   id: string;
@@ -339,7 +340,7 @@ const WorkGroupManager: React.FC<WorkGroupManagerProps> = ({
                   <option value="">Aucun</option>
                   {staffMembers.map((staff) => (
                     <option key={staff.id} value={staff.id}>
-                      {staff.firstName} {staff.lastName} - {staff.role}
+                      {staff.firstName} {staff.lastName} - {getStaffRoleDisplayLabel(staff.role)}
                     </option>
                   ))}
                 </select>

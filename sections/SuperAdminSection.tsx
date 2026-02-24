@@ -5,6 +5,7 @@ import ActionButton from '../components/ActionButton';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { TrashIcon, UserGroupIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { deleteData } from '../services/firebaseService';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 interface SuperAdminSectionProps {
   riders: Rider[];
@@ -438,7 +439,7 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
                     </div>
                   </div>
                   <div className="text-sm text-gray-500">
-                    {member.role}
+                    {getStaffRoleDisplayLabel(member.role)}
                   </div>
                 </div>
               </div>

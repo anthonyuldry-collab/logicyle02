@@ -11,7 +11,6 @@ import {
   XCircleIcon,
   ClockIcon,
   StarIcon,
-  Cog6ToothIcon,
   TrophyIcon,
   TableCellsIcon
 } from '@heroicons/react/24/outline';
@@ -27,6 +26,7 @@ import {
   TalentAvailability,
   User,
   AppState,
+  AppSection,
   RiderQualitativeProfile,
   Sex,
   ScoutingProfile,
@@ -35,6 +35,13 @@ import {
 import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { isFutureEvent, getEventYear, formatEventDate, formatEventDateRange } from '../utils/dateUtils';
 import { getEffectivePermissions } from '../services/firebaseService';
+
+/** Statuts qui font apparaître l'athlète dans l'événement (onglet Participants / calendrier) */
+const RIDER_STATUS_IN_EVENT: RiderEventStatus[] = [
+  RiderEventStatus.TITULAIRE,
+  RiderEventStatus.PRE_SELECTION,
+  RiderEventStatus.REMPLACANT,
+];
 
 interface SeasonPlanningSectionProps {
   riders: Rider[];
@@ -50,6 +57,8 @@ interface SeasonPlanningSectionProps {
   currentUser: User;
   appState: AppState;
   onOpenRiderModal?: (rider: Rider, initialTab?: string) => void;
+  onSaveRaceEvent?: (event: Partial<RaceEvent> & { id: string }) => void;
+  navigateTo?: (section: AppSection, eventId?: string) => void;
 }
 
 export default function SeasonPlanningSection({ 
@@ -65,7 +74,9 @@ export default function SeasonPlanningSection({
   teamProducts, 
   currentUser, 
   appState,
-  onOpenRiderModal
+  onOpenRiderModal,
+  onSaveRaceEvent,
+  navigateTo
 }: SeasonPlanningSectionProps) {
   if (!appState) {
     return <div>Chargement...</div>;
@@ -98,6 +109,7 @@ export default function SeasonPlanningSection({
   const [preferenceFilter, setPreferenceFilter] = useState<'all' | 'wants' | 'objectives' | 'unavailable' | 'waiting'>('all');
   const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'uci' | 'championnat' | 'coupe-france' | 'federal'>('all');
   const [showFilters, setShowFilters] = useState(true);
+  const [hidePastEvents, setHidePastEvents] = useState(true);
 
   // Déterminer le type de course à partir de l'eligibleCategory
   const getRaceType = (eligibleCategory: string): string => {
@@ -182,6 +194,26 @@ export default function SeasonPlanningSection({
     return filtered;
   }, [raceEvents, selectedYear, raceTypeFilter]);
 
+  // Tous les événements de l'année (pour option "afficher les passés")
+  const eventsForSelectedYear = useMemo(() => {
+    const filtered = raceEvents.filter(event => {
+      if (selectedYear !== 'all' && getEventYear(event.date) !== selectedYear) return false;
+      if (raceTypeFilter !== 'all') {
+        const eventRaceType = getRaceType(event.eligibleCategory || '');
+        if (eventRaceType !== raceTypeFilter) return false;
+      }
+      return true;
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return filtered;
+  }, [raceEvents, selectedYear, raceTypeFilter]);
+
+  // Liste affichée : sans les passés si l'option est cochée (comparaison réelle date >= aujourd'hui)
+  const displayEvents = useMemo(() => {
+    if (!hidePastEvents) return eventsForSelectedYear;
+    const todayStr = new Date().toISOString().split('T')[0];
+    return futureEvents.filter(event => (event.endDate || event.date) >= todayStr);
+  }, [hidePastEvents, futureEvents, eventsForSelectedYear]);
+
   // Obtenir les années disponibles
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -194,13 +226,13 @@ export default function SeasonPlanningSection({
   }, [raceEvents]);
 
   // Déterminer si on doit afficher la vue calendrier (plus de 5 événements)
-  const shouldShowCalendarView = futureEvents.length > 5;
+  const shouldShowCalendarView = displayEvents.length > 5;
 
   // Fonction pour calculer le nombre de jours de course prévu pour un athlète (titulaires uniquement)
   const getRiderRaceDays = (riderId: string) => {
     return riderEventSelections.filter(sel => 
       sel.riderId === riderId && 
-      futureEvents.some(event => event.id === sel.eventId) &&
+      displayEvents.some(event => event.id === sel.eventId) &&
       sel.status === RiderEventStatus.TITULAIRE
     ).length;
   };
@@ -209,7 +241,7 @@ export default function SeasonPlanningSection({
   const getRiderPreselections = (riderId: string) => {
     return riderEventSelections.filter(sel => 
       sel.riderId === riderId && 
-      futureEvents.some(event => event.id === sel.eventId) &&
+      displayEvents.some(event => event.id === sel.eventId) &&
       sel.status === RiderEventStatus.PRE_SELECTION
     ).length;
   };
@@ -320,6 +352,19 @@ export default function SeasonPlanningSection({
     return selection?.talentAvailability || null;
   };
 
+  // Synchronise event.selectedRiderIds avec les sélections (pour que l'athlète apparaisse dans l'événement / calendrier)
+  const syncEventSelectedRiderIds = (eventId: string, currentIds: string[], riderId: string, status: RiderEventStatus, isRemoval: boolean) => {
+    const isInEvent = !isRemoval && RIDER_STATUS_IN_EVENT.includes(status);
+    const newSelectedRiderIds = isInEvent
+      ? (currentIds.includes(riderId) ? currentIds : [...currentIds, riderId])
+      : currentIds.filter(id => id !== riderId);
+    const event = raceEvents.find(e => e.id === eventId);
+    if (!event) return;
+    const updatedEvent = { ...event, selectedRiderIds: newSelectedRiderIds };
+    setRaceEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    if (onSaveRaceEvent) onSaveRaceEvent(updatedEvent);
+  };
+
   // Fonction pour ajouter un athlète à un événement
   const addRiderToEvent = async (eventId: string, riderId: string, status: RiderEventStatus = RiderEventStatus.PRE_SELECTION) => {
     try {
@@ -357,6 +402,8 @@ export default function SeasonPlanningSection({
         };
         setRiderEventSelections(prev => [...prev, newSelection]);
       }
+      // Connexion planning → événement : faire apparaître l'athlète dans l'événement (calendrier / onglet Participants)
+      syncEventSelectedRiderIds(eventId, event.selectedRiderIds || [], riderId, status, false);
     } catch (error) {
       console.error('Erreur lors de l\'ajout de l\'athlète:', error);
     }
@@ -418,9 +465,12 @@ export default function SeasonPlanningSection({
 
   // Fonction pour retirer un athlète d'un événement
   const removeRiderFromEvent = (eventId: string, riderId: string) => {
+    const event = raceEvents.find(e => e.id === eventId);
     setRiderEventSelections(prev => 
       prev.filter(sel => !(sel.eventId === eventId && sel.riderId === riderId))
     );
+    // Connexion planning → événement : retirer l'athlète de l'événement
+    if (event) syncEventSelectedRiderIds(eventId, event.selectedRiderIds || [], riderId, RiderEventStatus.NON_RETENU, true);
   };
 
 
@@ -540,14 +590,21 @@ export default function SeasonPlanningSection({
         <div className="p-6">
           <h4 className="text-lg font-semibold text-gray-900 mb-4">Événements à venir</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {futureEvents.map(event => {
+            {displayEvents.map(event => {
               const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
               const titulaires = eventSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
               const preselections = eventSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
               const remplacants = eventSelections.filter(sel => sel.status === RiderEventStatus.REMPLACANT);
               
               return (
-                <div key={event.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div
+                  key={event.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigateTo?.('eventDetail', event.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && navigateTo?.('eventDetail', event.id)}
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                >
                   <div className="flex justify-between items-start mb-3">
                     <h5 className="font-semibold text-gray-900 text-lg">{event.name}</h5>
                     <span className="text-sm text-gray-500">
@@ -668,13 +725,13 @@ export default function SeasonPlanningSection({
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredRiders.map(rider => {
               const riderSelections = riderEventSelections.filter(sel => 
-                sel.riderId === rider.id && futureEvents.some(event => event.id === sel.eventId)
+                sel.riderId === rider.id && displayEvents.some(event => event.id === sel.eventId)
               );
               const isExpanded = expandedRiderIds.has(rider.id);
               const titulaire = riderSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
               const preselection = riderSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
               const nextEvents = riderSelections
-                .map(sel => ({ sel, event: futureEvents.find(e => e.id === sel.eventId) }))
+                .map(sel => ({ sel, event: displayEvents.find(e => e.id === sel.eventId) }))
                 .filter(x => !!x.event)
                 .sort((a,b) => new Date(a.event!.date).getTime() - new Date(b.event!.date).getTime())
                 .slice(0, 3);
@@ -737,7 +794,7 @@ export default function SeasonPlanningSection({
                         {riderSelections.length > 0 ? (
                           <div className="space-y-2">
                             {riderSelections.map(selection => {
-                              const event = futureEvents.find(e => e.id === selection.eventId);
+                              const event = displayEvents.find(e => e.id === selection.eventId);
                               if (!event) return null;
                               return (
                                 <div key={selection.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-md bg-white">
@@ -854,7 +911,7 @@ export default function SeasonPlanningSection({
               <div>
                 <h3 className="text-xl font-bold">Tableau des préférences</h3>
                 <p className="text-emerald-100 text-sm mt-1">
-                  {filteredRiders.length} athlètes × {futureEvents.length} événements
+                  {filteredRiders.length} athlètes × {displayEvents.length} événements
                 </p>
               </div>
             </div>
@@ -866,7 +923,7 @@ export default function SeasonPlanningSection({
                   <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
                     Athlète
                   </th>
-                  {futureEvents.map(event => (
+                  {displayEvents.map(event => (
                     <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[140px] border-l border-gray-200">
                       <div className="flex flex-col items-center">
                         <div className="font-bold text-sm text-gray-700">{event.name}</div>
@@ -882,7 +939,7 @@ export default function SeasonPlanningSection({
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">
                       {rider.firstName} {rider.lastName}
                     </td>
-                    {futureEvents.map(event => {
+                    {displayEvents.map(event => {
                       const pref = getRiderEventPreference(event.id, rider.id);
                       const color = pref === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800'
                         : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800'
@@ -927,7 +984,7 @@ export default function SeasonPlanningSection({
           </div>
           
           {/* Contrôles principaux */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-center">
             {/* Sélecteur d'année */}
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-gray-700">Année :</label>
@@ -944,6 +1001,16 @@ export default function SeasonPlanningSection({
                 ))}
               </select>
             </div>
+            
+            <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-lg border border-gray-200">
+              <input
+                type="checkbox"
+                checked={hidePastEvents}
+                onChange={(e) => setHidePastEvents(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Masquer les événements passés</span>
+            </label>
             
             {/* Sélecteur de vue */}
             <div className="flex bg-white rounded-lg p-1 border border-gray-200">
@@ -1092,7 +1159,7 @@ export default function SeasonPlanningSection({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Événements</p>
-                <p className="text-2xl font-bold text-green-600">{futureEvents.length}</p>
+                <p className="text-2xl font-bold text-green-600">{displayEvents.length}</p>
               </div>
               <CalendarDaysIcon className="w-8 h-8 text-green-500" />
             </div>
@@ -1105,7 +1172,7 @@ export default function SeasonPlanningSection({
             <button
               onClick={() => {
                 filteredRiders.forEach(rider => {
-                  futureEvents.forEach(event => {
+                  displayEvents.forEach(event => {
                     const selection = riderEventSelections.find(sel => 
                       sel.riderId === rider.id && sel.eventId === event.id
                     );
@@ -1123,7 +1190,7 @@ export default function SeasonPlanningSection({
             <button
               onClick={() => {
                 filteredRiders.forEach(rider => {
-                  futureEvents.forEach(event => {
+                  displayEvents.forEach(event => {
                     const selection = riderEventSelections.find(sel => 
                       sel.riderId === rider.id && sel.eventId === event.id
                     );
@@ -1150,7 +1217,7 @@ export default function SeasonPlanningSection({
                 const data = {
                   riders: filteredRiders.map(rider => ({
                     nom: `${rider.firstName} ${rider.lastName}`,
-                    selections: futureEvents.map(event => {
+                    selections: displayEvents.map(event => {
                       const selection = riderEventSelections.find(sel => 
                         sel.riderId === rider.id && sel.eventId === event.id
                       );
@@ -1187,7 +1254,7 @@ export default function SeasonPlanningSection({
                 Tableau de Pilotage des Sélections
               </h3>
               <p className="text-blue-100 text-sm mt-1">
-                Gestion des souhaits et sélections - {filteredRiders.length} athlètes × {futureEvents.length} événements
+                Gestion des souhaits et sélections - {filteredRiders.length} athlètes × {displayEvents.length} événements
               </p>
             </div>
           </div>
@@ -1271,7 +1338,7 @@ export default function SeasonPlanningSection({
                 </th>
                 
                 {/* Colonnes dynamiques pour chaque événement */}
-                {futureEvents.map(event => {
+                {displayEvents.map(event => {
                   const eventDate = new Date(event.date);
                   const isPlanningYear = getEventYear(event.date) === 2026;
                   const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
@@ -1340,14 +1407,7 @@ export default function SeasonPlanningSection({
                   );
                 })}
                 
-                {/* Colonne Actions */}
-                <th className="px-2 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky right-0 bg-gray-50 z-20 border-l border-gray-200 w-32">
-                  <div className="flex items-center space-x-1">
-                    <Cog6ToothIcon className="h-4 w-4" />
-                    <span>Actions</span>
-                  </div>
-                </th>
-              </tr>
+                </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredRiders.map((rider, index) => {
@@ -1368,8 +1428,28 @@ export default function SeasonPlanningSection({
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-gray-900 truncate">
-                            {rider.firstName} {rider.lastName}
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900 truncate">
+                              {rider.firstName} {rider.lastName}
+                            </span>
+                            <span className="flex shrink-0 gap-0.5" title="Calendrier • Profil">
+                              <button
+                                type="button"
+                                onClick={() => openRiderCalendar(rider)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Calendrier"
+                              >
+                                <CalendarDaysIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRiderProfile(rider)}
+                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                title="Profil"
+                              >
+                                <EyeIcon className="h-4 w-4" />
+                              </button>
+                            </span>
                           </div>
                           <div className="space-y-1 mt-1">
                             {/* Ligne 1: Âge et profil qualitatif */}
@@ -1416,7 +1496,7 @@ export default function SeasonPlanningSection({
                     </td>
                     
                     {/* Colonnes dynamiques pour chaque événement */}
-                    {futureEvents.map(event => {
+                    {displayEvents.map(event => {
                       const riderSelection = riderEventSelections.find(sel => sel.eventId === event.id && sel.riderId === rider.id);
                       const riderStatus = riderSelection?.status || null;
                       const riderPreference = riderSelection?.riderPreference || null;
@@ -1524,28 +1604,6 @@ export default function SeasonPlanningSection({
                         </td>
                       );
                     })}
-                    
-                    {/* Colonne Actions - sticky à droite */}
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium sticky right-0 bg-white z-10 border-l border-gray-200">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => openRiderCalendar(rider)}
-                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors duration-150"
-                          title="Voir le calendrier prévisionnel"
-                        >
-                          <CalendarDaysIcon className="h-4 w-4 mr-1" />
-                          Calendrier
-                        </button>
-                        <button
-                          onClick={() => openRiderProfile(rider)}
-                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors duration-150"
-                          title="Voir le profil complet"
-                        >
-                          <EyeIcon className="h-4 w-4 mr-1" />
-                          Profil
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
@@ -1555,7 +1613,7 @@ export default function SeasonPlanningSection({
       </div>
 
       {/* Message si aucun événement futur */}
-      {futureEvents.length === 0 && (
+      {displayEvents.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <CalendarDaysIcon className="w-12 h-12 mx-auto text-yellow-400 mb-4" />
           <h3 className="text-lg font-medium text-yellow-800 mb-2">Aucun événement futur trouvé</h3>

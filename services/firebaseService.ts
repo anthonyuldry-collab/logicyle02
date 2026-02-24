@@ -38,6 +38,8 @@ import {
   StaffRole,
   Sex,
   SignupInfo,
+  ChecklistRole,
+  ChecklistTemplate,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState } from '../constants';
@@ -541,10 +543,29 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
                 language: teamData.language,
                 teamLogoUrl: teamData.teamLogoUrl,
                 categoryBudgets: teamData.categoryBudgets,
-                checklistTemplates: teamData.checklistTemplates,
             });
         }
     }
+
+    // Charger les modèles de checklist depuis la sous-collection et grouper par rôle
+    const checklistCollRef = collection(teamDocRef, 'checklistTemplates');
+    const checklistSnap = await getDocs(checklistCollRef);
+    const checklistDocs = checklistSnap.docs
+        .filter(d => d.id !== '_init_')
+        .map(d => ({ id: d.id, ...d.data() } as ChecklistTemplate & { role?: string }));
+    const checklistByRole: Record<ChecklistRole, ChecklistTemplate[]> = {
+        [ChecklistRole.DS]: [],
+        [ChecklistRole.ASSISTANT]: [],
+        [ChecklistRole.MECANO]: [],
+        [ChecklistRole.MANAGER]: [],
+        [ChecklistRole.COMMUNICATION]: [],
+        [ChecklistRole.COUREUR]: [],
+    };
+    for (const t of checklistDocs) {
+        const role = (t.role as ChecklistRole) || ChecklistRole.DS;
+        if (checklistByRole[role]) checklistByRole[role].push({ id: t.id, name: t.name, role, kind: t.kind, eventType: t.eventType, timing: t.timing, timingLabel: t.timingLabel });
+    }
+    teamState.checklistTemplates = checklistByRole;
 
     for (const coll of TEAM_STATE_COLLECTIONS) {
         const collRef = collection(teamDocRef, coll);

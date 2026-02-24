@@ -50,6 +50,8 @@ interface RiderDetailModalProps {
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   initialTab?: string;
+  /** Liste des coureurs de l'équipe (pour sous-onglet Analyse PPR : comparaison à la moyenne équipe) */
+  allRiders?: Rider[];
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -185,6 +187,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   currentUser,
   effectivePermissions,
   initialTab = 'info',
+  allRiders = [],
 }: RiderDetailModalProps) => {
   const isNew = !rider;
   const [formData, setFormData] = useState<Rider | Omit<Rider, 'id'>>(() =>
@@ -590,6 +593,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             profileReliabilityLevel={profileReliabilityLevel}
             onDeleteProfile={handleDeleteProfile}
             onSaveRequest={onSaveRider ? handleSave : undefined}
+            allRiders={allRiders}
           />
         );
       case 'project':

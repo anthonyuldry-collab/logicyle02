@@ -8,6 +8,7 @@ import TruckIcon from '../../components/icons/TruckIcon';
 import BuildingOfficeIcon from '../../components/icons/BuildingOfficeIcon';
 import ClockIcon from '../../components/icons/ClockIcon';
 import { STAFF_ROLES_CONFIG } from '../../constants';
+import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
 
 interface LogisticsSummaryTabProps {
   event: RaceEvent;
@@ -62,7 +63,7 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     text += `ENCADREMENT\n--------------------\n`;
     text += `- Directeur(s) Sportif(s) : ${getStaffNames('directeurSportifId', event, appState)}\n`;
     text += `- Assistant(s) : ${getStaffNames('assistantId', event, appState)}\n`;
-    text += `- Mécano(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
+    text += `- Mécanicien(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
     const kineNames = getStaffNamesForConvocation('kineId', event, appState);
     if (kineNames) {
         text += `- Kiné(s) : ${kineNames}\n`;
@@ -76,10 +77,13 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
             text += `  • ${leg.direction} (${leg.mode})\n`;
             text += `    - Départ : ${formatDate(leg.departureDate)} à ${leg.departureTime} de ${leg.departureLocation}\n`;
             text += `    - Arrivée : ${formatDate(leg.arrivalDate)} à ${leg.arrivalTime} à ${leg.arrivalLocation}\n`;
-            if (leg.assignedVehicleId && leg.driverId) {
-                const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+            if (leg.driverId) {
                 const driver = appState.staff.find(s => s.id === leg.driverId);
-                if (vehicle && driver) text += `    - Véhicule : ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
+            }
+            if (leg.assignedVehicleId) {
+                const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
             }
             if (leg.details) text += `    - Détails : ${leg.details}\n`;
         });
@@ -102,11 +106,11 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     const staff = appState.staff.find(s => s.id === staffId);
     if (!staff) return "Erreur: Membre du staff non trouvé.";
 
-    let roleInEvent = staff.role;
+    let roleInEvent = getStaffRoleDisplayLabel(staff.role);
     for (const key in event) {
         if (key.endsWith('Id') && Array.isArray((event as any)[key]) && (event as any)[key].includes(staffId)) {
-            const roleName = STAFF_ROLES_CONFIG.flatMap(g => g.roles).find(r => r.key === key)?.label.replace('(s)','');
-            if(roleName) { roleInEvent = roleName as StaffRole; break; }
+            const roleName = STAFF_ROLES_CONFIG.flatMap(g => g.roles).find(r => r.key === key)?.label.replace(/\s*\(s\)\s*$/, '');
+            if (roleName) { roleInEvent = roleName; break; }
         }
     }
 
@@ -123,21 +127,36 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
         drivingLegs.forEach(leg => {
             const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
             text += `  • Véhicule : ${vehicle?.name || 'N/A'} (${leg.direction})\n`;
-            text += `    - Trajet : De ${leg.departureLocation} à ${leg.arrivalLocation}\n`;
-            text += `    - Horaire : Départ le ${formatDate(leg.departureDate)} à ${leg.departureTime}, Arrivée le ${formatDate(leg.arrivalDate)} à ${leg.arrivalTime}\n`;
+            if (leg.departureLocation || leg.arrivalLocation) {
+                text += `    - Trajet : De ${leg.departureLocation || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            }
+            if (leg.departureDate || leg.departureTime || leg.arrivalDate || leg.arrivalTime) {
+                const dep = [leg.departureDate && formatDate(leg.departureDate), leg.departureTime].filter(Boolean).join(' à ');
+                const arr = [leg.arrivalDate && formatDate(leg.arrivalDate), leg.arrivalTime].filter(Boolean).join(' à ');
+                text += `    - Horaire : Départ ${dep || '—'}, Arrivée ${arr || '—'}\n`;
+            } else {
+                text += `    - Horaire : Non renseigné\n`;
+            }
             const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
             text += `    - Passagers : ${occupants || 'Aucun'}\n`;
         });
         text += `\n`;
     }
     
-    const myTransportLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id && (leg.occupants || []).some(occ => occ.id === staff.id) && leg.driverId !== staff.id);
+    const myTransportLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && ((leg.occupants || []).some(occ => occ.id === staff.id) || leg.driverId === staff.id)
+    );
     if (myTransportLegs.length > 0) {
-        text += `MES TRAJETS (PASSAGER)\n--------------------\n`;
+        text += `MES TRAJETS PERSONNELS\n--------------------\n`;
         myTransportLegs.forEach(leg => {
-            text += `  • ${leg.direction} (${leg.mode})\n`;
-            text += `    - Départ : ${formatDate(leg.departureDate)} à ${leg.departureTime} de ${leg.departureLocation}\n`;
-            text += `    - Arrivée : ${formatDate(leg.arrivalDate)} à ${leg.arrivalTime} à ${leg.arrivalLocation}\n`;
+            const asDriver = leg.driverId === staff.id;
+            text += `  • ${leg.direction} (${leg.mode})${asDriver ? ' [conducteur]' : ' [passager]'}\n`;
+            if (leg.departureDate || leg.departureTime || leg.departureLocation) {
+                text += `    - Départ : ${leg.departureDate ? formatDate(leg.departureDate) : ''}${leg.departureTime ? ` à ${leg.departureTime}` : ''}${leg.departureLocation ? ` de ${leg.departureLocation}` : ''}\n`;
+            }
+            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
+                text += `    - Arrivée : ${leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}${leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}${leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}\n`;
+            }
         });
         text += `\n`;
     }
@@ -165,7 +184,7 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
     text += `ENCADREMENT\n--------------------\n`;
     text += `- Directeur(s) Sportif(s) : ${getStaffNames('directeurSportifId', event, appState)}\n`;
     text += `- Assistant(s) : ${getStaffNames('assistantId', event, appState)}\n`;
-    text += `- Mécano(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
+    text += `- Mécanicien(s) : ${getStaffNames('mecanoId', event, appState)}\n`;
     const kineNames = getStaffNamesForConvocation('kineId', event, appState);
     if (kineNames) {
         text += `- Kiné(s) : ${kineNames}\n`;
@@ -242,7 +261,11 @@ const ConvocationPreview: React.FC<{
     
     const participant = mode === 'athlete' ? appState.riders.find(r => r.id === participantId) : (mode === 'staff' ? appState.staff.find(s => s.id === participantId) : null);
     const allRiders = appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id));
-    const myTransportLegs = participant ? appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.occupants.some(occ => occ.id === participant.id) && leg.driverId !== participant.id) : [];
+    // Mes trajets personnels = tous les trajets où la personne est passagère OU conducteur (pour le staff, inclut donc les véhicules à conduire)
+    const myTransportLegs = participant ? appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id &&
+        (leg.occupants?.some(occ => occ.id === participant.id) || leg.driverId === participant.id)
+    ) : [];
     const drivingLegs = (mode === 'staff' && participant) ? appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.driverId === participant.id) : [];
     const allTransportLegs = appState.eventTransportLegs.filter(leg => 
         leg.eventId === event.id && leg.direction !== 'Transport Jour J'
@@ -277,7 +300,7 @@ const ConvocationPreview: React.FC<{
             <Section title="Encadrement" icon={UserGroupIcon}>
                 <p><strong>Directeur(s) Sportif(s):</strong> {getStaffNames('directeurSportifId', event, appState)}</p>
                 <p><strong>Assistant(s):</strong> {getStaffNames('assistantId', event, appState)}</p>
-                <p><strong>Mécano(s):</strong> {getStaffNames('mecanoId', event, appState)}</p>
+                <p><strong>Mécanicien(s):</strong> {getStaffNames('mecanoId', event, appState)}</p>
                 {getStaffNamesForConvocation('kineId', event, appState) && (
                     <p><strong>Kiné(s):</strong> {getStaffNamesForConvocation('kineId', event, appState)}</p>
                 )}
@@ -288,6 +311,15 @@ const ConvocationPreview: React.FC<{
                     <div className="space-y-3">{drivingLegs.map(leg => (
                          <div key={leg.id} className="p-2 border rounded bg-yellow-50">
                              <p className="font-semibold">{appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} ({leg.direction})</p>
+                             {(leg.departureDate || leg.departureTime) && (
+                                 <p className="text-xs text-gray-600"><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) : '—'}{leg.departureTime ? ` à ${leg.departureTime}` : ''}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>
+                             )}
+                             {(leg.arrivalDate || leg.arrivalTime) && (
+                                 <p className="text-xs text-gray-600"><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) : '—'}{leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>
+                             )}
+                             {(!leg.departureDate && !leg.departureTime && !leg.arrivalDate && !leg.arrivalTime) && (
+                                 <p className="text-xs text-amber-600 italic">Horaires non renseignés</p>
+                             )}
                              <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
                          </div>
                     ))}</div>
@@ -336,17 +368,23 @@ const ConvocationPreview: React.FC<{
                                 )}
                             </>
                         ) : (
-                            /* Affichage normal pour les autres modes */
-                            myTransportLegs.map(leg => (
+                            /* Affichage normal pour les autres modes (athlète ou staff : tous les trajets personnels) */
+                            myTransportLegs.map(leg => {
+                                const isDriver = mode === 'staff' && participant && leg.driverId === participant.id;
+                                const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+                                return (
                                 <div key={leg.id} className="p-2 border rounded bg-white">
-                                    <p className="font-semibold">{leg.direction} ({leg.mode})</p>
-                                    <p><strong>Départ:</strong> {formatDate(leg.departureDate)} à {leg.departureTime} de {leg.departureLocation}</p>
-                                    <p><strong>Arrivée:</strong> {formatDate(leg.arrivalDate)} à {leg.arrivalTime} à {leg.arrivalLocation}</p>
-                                    {leg.assignedVehicleId && leg.driverId && (
-                                        <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                                    <p className="font-semibold">{leg.direction} ({leg.mode}){isDriver && <span className="ml-1 text-xs font-normal text-amber-700">(conducteur)</span>}</p>
+                                    {(leg.departureDate || leg.departureTime) && <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) : ''}{leg.departureTime ? ` à ${leg.departureTime}` : ''}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>}
+                                    {(leg.arrivalDate || leg.arrivalTime) && <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}{leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>}
+                                    {(!leg.departureDate && !leg.departureTime && !leg.arrivalDate && !leg.arrivalTime) && <p className="text-xs text-amber-600 italic">Horaires non renseignés</p>}
+                                    <p className="text-sm text-gray-700"><strong>Chauffeur:</strong> {driver ? `${driver.firstName} ${driver.lastName}` : <span className="italic text-amber-600">Non renseigné</span>}</p>
+                                    {leg.assignedVehicleId && (
+                                        <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name}</p>
                                     )}
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 ) : <p className="italic">Aucun transport planifié.</p>}

@@ -5,6 +5,7 @@ import LocationMarkerIcon from './icons/LocationMarkerIcon';
 import StarIcon from './icons/StarIcon';
 import PhoneIcon from './icons/PhoneIcon';
 import MailIcon from './icons/MailIcon';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 interface StaffSearchTabProps {
     allStaff: StaffMember[];
@@ -163,7 +164,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({ allStaff, raceEvents, t
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h5 className="font-bold">{vacataire.firstName} {vacataire.lastName}</h5>
-                                            <p className="text-sm text-gray-600">{vacataire.role}</p>
+                                            <p className="text-sm text-gray-600">{getStaffRoleDisplayLabel(vacataire.role)}</p>
                                         </div>
                                         <div className="text-right">
                                             <div className="flex items-center text-yellow-500 font-bold">
@@ -191,7 +192,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({ allStaff, raceEvents, t
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={() => setContactInfo(null)}>
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
                         <h4 className="text-lg font-bold">Contacter {contactInfo.firstName} {contactInfo.lastName}</h4>
-                        <p className="text-sm text-gray-500 mb-4">{contactInfo.role}</p>
+                        <p className="text-sm text-gray-500 mb-4">{getStaffRoleDisplayLabel(contactInfo.role)}</p>
                         <div className="space-y-2">
                            {contactInfo.phone && <p className="flex items-center"><PhoneIcon className="w-5 h-5 mr-2 text-gray-400"/> {contactInfo.phone}</p>}
                            {contactInfo.email && <p className="flex items-center"><MailIcon className="w-5 h-5 mr-2 text-gray-400"/> <a href={`mailto:${contactInfo.email}`} className="text-blue-600 hover:underline">{contactInfo.email}</a></p>}

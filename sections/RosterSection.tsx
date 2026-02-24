@@ -8,7 +8,9 @@ import {
   MagnifyingGlassIcon,
   UserGroupIcon,
   CalendarDaysIcon,
-  TrophyIcon
+  TrophyIcon,
+  ArrowDownCircleIcon,
+  ArrowUpCircleIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -103,6 +105,7 @@ export default function RosterSection({
   const [planningExpanded, setPlanningExpanded] = useState(true);
   const [localRaceEvents, setLocalRaceEvents] = useState(appState.raceEvents || []);
   const [includeScouts, setIncludeScouts] = useState(false);
+  const [qualityRoleFilter, setQualityRoleFilter] = useState<'team1' | 'reserve' | 'both'>('both');
   const [localRiderEventSelections, setLocalRiderEventSelections] = useState(appState.riderEventSelections || []);
 
   // États pour la qualité
@@ -114,6 +117,7 @@ export default function RosterSection({
   const [planningGenderFilter, setPlanningGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [planningStatusFilter, setPlanningStatusFilter] = useState<'all' | 'selected' | 'unselected'>('all');
   const [activePlanningTab, setActivePlanningTab] = useState<'unified' | 'monitoring'>('monitoring');
+  const [hidePastEventsInPlanning, setHidePastEventsInPlanning] = useState(true);
   const [riderSortField, setRiderSortField] = useState<'alphabetical' | 'raceDays' | 'potential'>('alphabetical');
   const [riderSortDirection, setRiderSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
@@ -199,10 +203,16 @@ export default function RosterSection({
     });
   };
   
-  // Fonction pour obtenir les riders triés pour la qualité (utilise les effectifs actifs)
+  // Fonction pour obtenir les riders triés pour la qualité (utilise les effectifs actifs, filtre Équipe 1 / Réserve)
   const getSortedRidersForQuality = () => {
     const ridersToUse = activeRiders.length > 0 ? activeRiders : riders;
-    const allRiders = includeScouts ? [...ridersToUse, ...(appState.scoutingProfiles || [])] : ridersToUse;
+    let filteredByRole = ridersToUse;
+    if (qualityRoleFilter === 'team1') {
+      filteredByRole = ridersToUse.filter(r => (r as Rider).rosterRole !== 'reserve');
+    } else if (qualityRoleFilter === 'reserve') {
+      filteredByRole = ridersToUse.filter(r => (r as Rider).rosterRole === 'reserve');
+    }
+    const allRiders = includeScouts ? [...filteredByRole, ...(appState.scoutingProfiles || [])] : filteredByRole;
     return allRiders.sort((a, b) => {
       let valueA: any, valueB: any;
       
@@ -1069,8 +1079,9 @@ export default function RosterSection({
   const handleSaveRider = async (rider: Rider) => {
     try {
       await onSaveRider(rider);
-      setIsEditModalOpen(false);
-      setSelectedRider(null);
+      // Mettre à jour le coureur affiché au lieu de fermer la modal, pour éviter que
+      // le profil "disparaisse" quand on envoie en équipe première ou réserve
+      setSelectedRider(rider);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
       const message = error instanceof Error ? error.message : 'Erreur inconnue';
@@ -1314,6 +1325,25 @@ Les compteurs de jours de course ont été remis à 0.`);
     return filtered;
   }, [riders, searchTerm, genderFilter, ageCategoryFilter, levelFilter, minAgeFilter, maxAgeFilter, rosterSortBy, rosterSortDirection]);
 
+  // Répartition équipe principale / réserve (par défaut principal si non défini)
+  const principalRiders = useMemo(() => 
+    sortedRidersForAdmin.filter(r => r.rosterRole !== 'reserve'), 
+    [sortedRidersForAdmin]
+  );
+  const reserveRiders = useMemo(() => 
+    sortedRidersForAdmin.filter(r => r.rosterRole === 'reserve'), 
+    [sortedRidersForAdmin]
+  );
+
+  const handleMoveRosterRole = async (rider: Rider, newRole: 'principal' | 'reserve') => {
+    const updatedRider = { ...rider, rosterRole: newRole };
+    await onSaveRider(updatedRider);
+    // Si le profil de ce coureur est ouvert, mettre à jour l’affichage pour qu’il ne disparaisse pas
+    if (selectedRider?.id === rider.id) {
+      setSelectedRider(updatedRider);
+    }
+  };
+
   // Calcul des jours de course par coureur
   const raceDaysByRider = useMemo(() => {
     const riderRaceDays = new Map<string, { raceDays: number; events: RaceEvent[] }>();
@@ -1452,160 +1482,116 @@ Les compteurs de jours de course ont été remis à 0.`);
         
       </div>
 
-      {/* Liste des coureurs */}
+      {/* Section Équipe principale */}
       <div className="bg-white rounded-lg shadow-sm border">
+        <div className="px-6 py-4 border-b border-gray-200 bg-blue-50/50">
+          <h3 className="text-lg font-semibold text-gray-900">Équipe principale</h3>
+          <p className="text-sm text-gray-500 mt-0.5">{principalRiders.length} coureur{principalRiders.length !== 1 ? 's' : ''}</p>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleRiderSort('name')}
-                  title="Trier par nom de famille"
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Nom</span>
-                    {rosterSortBy === 'name' && (
-                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('name')} title="Trier par nom de famille">
+                  <div className="flex items-center space-x-1"><span>Nom</span>{rosterSortBy === 'name' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
                 </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleRiderSort('firstName')}
-                  title="Trier par prénom"
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Prénom</span>
-                    {rosterSortBy === 'firstName' && (
-                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('firstName')} title="Trier par prénom">
+                  <div className="flex items-center space-x-1"><span>Prénom</span>{rosterSortBy === 'firstName' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
                 </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleRiderSort('age')}
-                  title="Trier par âge"
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Âge</span>
-                    {rosterSortBy === 'age' && (
-                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('age')} title="Trier par âge">
+                  <div className="flex items-center space-x-1"><span>Âge</span>{rosterSortBy === 'age' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
                 </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleRiderSort('levelCategory')}
-                  title="Trier par niveau de performance"
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Niveau</span>
-                    {rosterSortBy === 'levelCategory' && (
-                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('levelCategory')} title="Trier par niveau">
+                  <div className="flex items-center space-x-1"><span>Niveau</span>{rosterSortBy === 'levelCategory' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
                 </th>
-                <th 
-                  className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleRiderSort('raceDays')}
-                  title="Trier par nombre de jours de course"
-                >
-                  <div className="flex items-center justify-center space-x-1">
-                    <span>Jours de course</span>
-                    {rosterSortBy === 'raceDays' && (
-                      <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('raceDays')} title="Trier par jours de course">
+                  <div className="flex items-center justify-center space-x-1"><span>Jours de course</span>{rosterSortBy === 'raceDays' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedRidersForAdmin.map((rider) => {
+              {principalRiders.map((rider) => {
                 const { category, age } = getAgeCategory(rider.birthDate);
                 const levelCategory = getLevelCategory(rider);
-                
                 return (
                   <tr key={rider.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        {rider.photoUrl ? (
-                          <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/>
-                        ) : (
-                          <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>
-                        )}
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
-                        </div>
+                        {rider.photoUrl ? <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/> : <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>}
+                        <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{rider.firstName}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {age !== null ? `${age} ans` : 'Âge inconnu'}
-                        {age !== null && (
-                          <span className="text-xs text-gray-500 ml-1">({category})</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        {levelCategory}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          🏁 {(() => {
-                            const raceDays = getRiderRaceDays(rider.id);
-                            console.log(`🏁 Affichage jours de course pour ${rider.firstName} ${rider.lastName}:`, raceDays);
-                            return raceDays;
-                          })()}
-                        </span>
-                      </div>
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{rider.firstName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{age !== null ? `${age} ans` : 'Âge inconnu'}{age !== null && <span className="text-xs text-gray-500 ml-1">({category})</span>}</td>
+                    <td className="px-6 py-4 whitespace-nowrap"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{levelCategory}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">🏁 {getRiderRaceDays(rider.id)}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <ActionButton 
-                          onClick={() => openViewModal(rider)} 
-                          variant="secondary" 
-                          size="sm" 
-                          icon={<EyeIcon className="w-4 h-4"/>} 
-                          title="Voir"
-                        >
-                          <span className="sr-only">Voir</span>
-                        </ActionButton>
-                        <ActionButton 
-                          onClick={() => openEditModal(rider)} 
-                          variant="warning" 
-                          size="sm" 
-                          icon={<PencilIcon className="w-4 h-4"/>} 
-                          title="Modifier"
-                        >
-                          <span className="sr-only">Modifier</span>
-                        </ActionButton>
-                        <ActionButton 
-                          onClick={() => handleDeleteRider(rider)} 
-                          variant="danger" 
-                          size="sm" 
-                          icon={<TrashIcon className="w-4 h-4"/>} 
-                          title="Supprimer"
-                        >
-                          <span className="sr-only">Supprimer</span>
-                        </ActionButton>
+                      <div className="flex flex-wrap gap-2">
+                        <ActionButton onClick={() => openViewModal(rider)} variant="secondary" size="sm" icon={<EyeIcon className="w-4 h-4"/>} title="Voir"><span className="sr-only">Voir</span></ActionButton>
+                        <ActionButton onClick={() => openEditModal(rider)} variant="warning" size="sm" icon={<PencilIcon className="w-4 h-4"/>} title="Modifier"><span className="sr-only">Modifier</span></ActionButton>
+                        <ActionButton onClick={() => handleMoveRosterRole(rider, 'reserve')} variant="secondary" size="sm" icon={<ArrowDownCircleIcon className="w-4 h-4"/>} title="Déplacer en réserve">Réserve</ActionButton>
+                        <ActionButton onClick={() => handleDeleteRider(rider)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>} title="Supprimer"><span className="sr-only">Supprimer</span></ActionButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Section Réserve */}
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="px-6 py-4 border-b border-gray-200 bg-amber-50/50">
+          <h3 className="text-lg font-semibold text-gray-900">Réserve</h3>
+          <p className="text-sm text-gray-500 mt-0.5">{reserveRiders.length} coureur{reserveRiders.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('name')} title="Trier par nom de famille">
+                  <div className="flex items-center space-x-1"><span>Nom</span>{rosterSortBy === 'name' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('firstName')} title="Trier par prénom">
+                  <div className="flex items-center space-x-1"><span>Prénom</span>{rosterSortBy === 'firstName' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('age')} title="Trier par âge">
+                  <div className="flex items-center space-x-1"><span>Âge</span>{rosterSortBy === 'age' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('levelCategory')} title="Trier par niveau">
+                  <div className="flex items-center space-x-1"><span>Niveau</span>{rosterSortBy === 'levelCategory' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
+                </th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('raceDays')} title="Trier par jours de course">
+                  <div className="flex items-center justify-center space-x-1"><span>Jours de course</span>{rosterSortBy === 'raceDays' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reserveRiders.map((rider) => {
+                const { category, age } = getAgeCategory(rider.birthDate);
+                const levelCategory = getLevelCategory(rider);
+                return (
+                  <tr key={rider.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        {rider.photoUrl ? <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/> : <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>}
+                        <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{rider.firstName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{age !== null ? `${age} ans` : 'Âge inconnu'}{age !== null && <span className="text-xs text-gray-500 ml-1">({category})</span>}</td>
+                    <td className="px-6 py-4 whitespace-nowrap"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{levelCategory}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">🏁 {getRiderRaceDays(rider.id)}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex flex-wrap gap-2">
+                        <ActionButton onClick={() => openViewModal(rider)} variant="secondary" size="sm" icon={<EyeIcon className="w-4 h-4"/>} title="Voir"><span className="sr-only">Voir</span></ActionButton>
+                        <ActionButton onClick={() => openEditModal(rider)} variant="warning" size="sm" icon={<PencilIcon className="w-4 h-4"/>} title="Modifier"><span className="sr-only">Modifier</span></ActionButton>
+                        <ActionButton onClick={() => handleMoveRosterRole(rider, 'principal')} variant="primary" size="sm" icon={<ArrowUpCircleIcon className="w-4 h-4"/>} title="Déplacer en équipe principale">Équipe principale</ActionButton>
+                        <ActionButton onClick={() => handleDeleteRider(rider)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>} title="Supprimer"><span className="sr-only">Supprimer</span></ActionButton>
                       </div>
                     </td>
                   </tr>
@@ -1686,13 +1672,14 @@ Les compteurs de jours de course ont été remis à 0.`);
     saveAllSelections: () => void;
     onUpdateRiderPreference?: (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => void;
   }) => {
-    const [viewMode, setViewMode] = useState<'calendar' | 'table'>('table');
+    const [viewMode, setViewMode] = useState<'calendar' | 'table' | 'matrix'>('matrix');
     const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
     const [editingCell, setEditingCell] = useState<{riderId: string, eventId: string} | null>(null);
     const [tempPreference, setTempPreference] = useState<RiderEventPreference | null>(null);
     const [tempObjectives, setTempObjectives] = useState<string>('');
     const [statusDropdown, setStatusDropdown] = useState<{riderId: string, eventId: string} | null>(null);
+    const [matrixCellMenu, setMatrixCellMenu] = useState<{riderId: string, eventId: string} | null>(null);
     const [sortField, setSortField] = useState<'lastName' | 'firstName' | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'uci' | 'championnat' | 'coupe-france' | 'federal'>('all');
@@ -1896,6 +1883,7 @@ Les compteurs de jours de course ont été remis à 0.`);
     const closeAllDropdowns = () => {
       setStatusDropdown(null);
       setEditingCell(null);
+      setMatrixCellMenu(null);
     };
 
     // Gérer le tri des colonnes
@@ -1906,6 +1894,252 @@ Les compteurs de jours de course ont été remis à 0.`);
         setSortField(field);
         setSortDirection('asc');
       }
+    };
+
+    // Vue matrice : tableau coureurs × événements (type tableur)
+    const renderMatrixView = () => {
+      const filteredEventsForMatrix = raceTypeFilter === 'all'
+        ? futureEvents
+        : futureEvents.filter(event => getRaceType(event.eligibleCategory || '') === raceTypeFilter);
+
+      const principalRiders = filteredAndSortedRiders.filter(r => (r as any).rosterRole !== 'reserve');
+      const reserveRiders = filteredAndSortedRiders.filter(r => (r as any).rosterRole === 'reserve');
+      const displayRiders = reserveRiders.length > 0
+        ? [...principalRiders, ...reserveRiders]
+        : filteredAndSortedRiders;
+
+      const getStatusBadge = (status: RiderEventStatus | null) => {
+        if (!status) return null;
+        switch (status) {
+          case RiderEventStatus.TITULAIRE: return { label: 'T', class: 'bg-green-500 text-white' };
+          case RiderEventStatus.REMPLACANT: return { label: 'R', class: 'bg-blue-500 text-white' };
+          case RiderEventStatus.PRE_SELECTION: return { label: 'P', class: 'bg-amber-500 text-white' };
+          case RiderEventStatus.INDISPONIBLE: return { label: 'I', class: 'bg-red-500 text-white' };
+          case RiderEventStatus.NON_RETENU: return { label: 'N', class: 'bg-slate-500 text-white' };
+          default: return { label: '·', class: 'bg-slate-200 text-slate-600' };
+        }
+      };
+
+      const getEventTypeBadge = (event: RaceEvent) => {
+        const t = getRaceType(event.eligibleCategory || '');
+        if (t === 'uci') return { label: 'UCI', class: 'bg-violet-100 text-violet-800' };
+        if (t === 'coupe-france') return { label: 'CDF', class: 'bg-blue-100 text-blue-800' };
+        if (t === 'federal') return { label: 'Fédéral', class: 'bg-yellow-100 text-yellow-800' };
+        if (t === 'championnat') return { label: 'Champ.', class: 'bg-red-100 text-red-800' };
+        return { label: '', class: '' };
+      };
+
+      return (
+        <div className="space-y-4">
+          {/* Barre d’outils : filtre + vues */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-medium text-slate-600">Type de course</span>
+              <select
+                value={raceTypeFilter}
+                onChange={(e) => setRaceTypeFilter(e.target.value as any)}
+                className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-400 bg-white"
+              >
+                <option value="all">Tous</option>
+                <option value="uci">UCI</option>
+                <option value="championnat">Championnat</option>
+                <option value="coupe-france">Coupe de France</option>
+                <option value="federal">Fédéral</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500 hidden sm:inline">Vues :</span>
+              <button
+                onClick={() => setViewMode('table')}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                Souhaits
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                Calendrier
+              </button>
+            </div>
+          </div>
+
+          {/* Légende compacte inline */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2.5 px-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+            <span className="font-medium text-slate-600">Légende</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-5 rounded flex items-center justify-center bg-green-500 text-white font-bold text-[10px]">T</span> Titulaire</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-5 rounded flex items-center justify-center bg-blue-500 text-white font-bold text-[10px]">R</span> Remplaçant</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-5 rounded flex items-center justify-center bg-amber-500 text-white font-bold text-[10px]">P</span> Pré-sélection</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-5 rounded flex items-center justify-center bg-red-500 text-white font-bold text-[10px]">I</span> Indisponible</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-5 rounded flex items-center justify-center bg-slate-500 text-white font-bold text-[10px]">N</span> Non retenu</span>
+            <span className="text-slate-500 ml-auto">Cliquez sur une cellule pour modifier</span>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/50">
+            <table className="w-full border-collapse min-w-[800px]">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-200">
+                  <th className="sticky left-0 z-10 bg-slate-100 border-r border-slate-200 px-4 py-3 text-left text-sm font-semibold text-slate-700 min-w-[180px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                    Athlète
+                  </th>
+                  {filteredEventsForMatrix.map(event => {
+                    const badge = getEventTypeBadge(event);
+                    return (
+                      <th key={event.id} className="border-r border-slate-200 px-2 py-2.5 text-center last:border-r-0 min-w-[100px]">
+                        <div className="text-xs font-medium text-slate-700">
+                          {new Date(event.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="text-xs text-slate-600 truncate" title={event.name}>{event.name}</div>
+                        {badge.label && (
+                          <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.class}`}>
+                            {badge.label}
+                          </span>
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {reserveRiders.length > 0 && principalRiders.length > 0 && (
+                  <>
+                    <tr className="bg-emerald-50/70">
+                      <td colSpan={(filteredEventsForMatrix.length + 1)} className="sticky left-0 z-10 bg-emerald-50/70 border-r border-b border-slate-200 px-4 py-2 text-sm font-semibold text-emerald-800">
+                        RIDERS
+                      </td>
+                    </tr>
+                    {principalRiders.map((rider, idx) => (
+                      <tr key={rider.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-50 transition-colors`}>
+                        <td className="sticky left-0 z-10 bg-inherit border-r border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-900 whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                          {rider.lastName} {rider.firstName}
+                        </td>
+                        {filteredEventsForMatrix.map(event => {
+                          const status = getRiderEventStatus(event.id, rider.id);
+                          const badge = getStatusBadge(status);
+                          const isMenuOpen = matrixCellMenu?.riderId === rider.id && matrixCellMenu?.eventId === event.id;
+                          return (
+                            <td key={event.id} className="border-r border-slate-100 p-0 align-middle last:border-r-0 relative">
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="w-full h-full min-h-[44px] flex items-center justify-center cursor-pointer hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 transition-colors"
+                                onClick={() => setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id })}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id }); }}
+                              >
+                                {badge ? (
+                                  <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold shadow-sm ${badge.class}`}>
+                                    {badge.label}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">–</span>
+                                )}
+                              </div>
+                              {isMenuOpen && (
+                                <div className="absolute left-0 top-full z-20 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-xl py-1 min-w-[150px] dropdown-container">
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 text-slate-800 font-medium" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.TITULAIRE); setMatrixCellMenu(null); }}>T Titulaire</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.REMPLACANT); setMatrixCellMenu(null); }}>R Remplaçant</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.PRE_SELECTION); setMatrixCellMenu(null); }}>P Pré-sélection</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.INDISPONIBLE); setMatrixCellMenu(null); }}>I Indisponible</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 text-slate-600 border-t border-slate-100" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.NON_RETENU); setMatrixCellMenu(null); }}>Retirer</button>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    <tr className="bg-amber-50/70">
+                      <td colSpan={(filteredEventsForMatrix.length + 1)} className="sticky left-0 z-10 bg-amber-50/70 border-r border-b border-slate-200 px-4 py-2 text-sm font-semibold text-amber-800">
+                        Réserve
+                      </td>
+                    </tr>
+                    {reserveRiders.map((rider, idx) => (
+                      <tr key={rider.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-50 transition-colors`}>
+                        <td className="sticky left-0 z-10 bg-inherit border-r border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-900 whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                          {rider.lastName} {rider.firstName}
+                        </td>
+                        {filteredEventsForMatrix.map(event => {
+                          const status = getRiderEventStatus(event.id, rider.id);
+                          const badge = getStatusBadge(status);
+                          const isMenuOpen = matrixCellMenu?.riderId === rider.id && matrixCellMenu?.eventId === event.id;
+                          return (
+                            <td key={event.id} className="border-r border-slate-100 p-0 align-middle last:border-r-0 relative">
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="w-full h-full min-h-[44px] flex items-center justify-center cursor-pointer hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 transition-colors"
+                                onClick={() => setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id })}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id }); }}
+                              >
+                                {badge ? (
+                                  <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold shadow-sm ${badge.class}`}>
+                                    {badge.label}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">–</span>
+                                )}
+                              </div>
+                              {isMenuOpen && (
+                                <div className="absolute left-0 top-full z-20 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-xl py-1 min-w-[150px] dropdown-container">
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 text-slate-800 font-medium" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.TITULAIRE); setMatrixCellMenu(null); }}>T Titulaire</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.REMPLACANT); setMatrixCellMenu(null); }}>R Remplaçant</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.PRE_SELECTION); setMatrixCellMenu(null); }}>P Pré-sélection</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.INDISPONIBLE); setMatrixCellMenu(null); }}>I Indisponible</button>
+                                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 text-slate-600 border-t border-slate-100" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.NON_RETENU); setMatrixCellMenu(null); }}>Retirer</button>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </>
+                )}
+                {(!reserveRiders.length || !principalRiders.length) && displayRiders.map((rider, idx) => (
+                  <tr key={rider.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-50 transition-colors`}>
+                    <td className="sticky left-0 z-10 bg-inherit border-r border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-900 whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                      {rider.lastName} {rider.firstName}
+                    </td>
+                    {filteredEventsForMatrix.map(event => {
+                      const status = getRiderEventStatus(event.id, rider.id);
+                      const badge = getStatusBadge(status);
+                      const isMenuOpen = matrixCellMenu?.riderId === rider.id && matrixCellMenu?.eventId === event.id;
+                      return (
+                        <td key={event.id} className="border-r border-slate-100 p-0 align-middle last:border-r-0 relative">
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="w-full h-full min-h-[44px] flex items-center justify-center cursor-pointer hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 transition-colors"
+                            onClick={() => setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id })}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setMatrixCellMenu(isMenuOpen ? null : { riderId: rider.id, eventId: event.id }); }}
+                          >
+                            {badge ? (
+                              <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold shadow-sm ${badge.class}`}>
+                                {badge.label}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-sm">–</span>
+                            )}
+                          </div>
+                          {isMenuOpen && (
+                            <div className="absolute left-0 top-full z-20 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-xl py-1 min-w-[150px] dropdown-container">
+                              <button className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 text-slate-800 font-medium" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.TITULAIRE); setMatrixCellMenu(null); }}>T Titulaire</button>
+                              <button className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.REMPLACANT); setMatrixCellMenu(null); }}>R Remplaçant</button>
+                              <button className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.PRE_SELECTION); setMatrixCellMenu(null); }}>P Pré-sélection</button>
+                              <button className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 text-slate-800" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.INDISPONIBLE); setMatrixCellMenu(null); }}>I Indisponible</button>
+                              <button className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 text-slate-600 border-t border-slate-100" onClick={() => { handleStatusChange(rider.id, event.id, RiderEventStatus.NON_RETENU); setMatrixCellMenu(null); }}>Retirer</button>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
     };
 
     // Vue calendrier compacte
@@ -1998,6 +2232,16 @@ Les compteurs de jours de course ont été remis à 0.`);
                   }`}
                 >
                   📊 Vue Tableau
+                </button>
+                <button
+                  onClick={() => setViewMode('matrix')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'matrix' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  📋 Vue Matrice
                 </button>
               </div>
             </div>
@@ -2220,7 +2464,16 @@ Les compteurs de jours de course ont été remis à 0.`);
                   className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
                 >
                   📅 Vue Calendrier
-              </button>
+                </button>
+                {/* Vue Matrice */}
+                <button
+                  onClick={() => setViewMode('matrix')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'matrix' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  📋 Vue Matrice
+                </button>
               </div>
             </div>
           </div>
@@ -2501,33 +2754,33 @@ Les compteurs de jours de course ont été remis à 0.`);
             );
           })}
 
-          {/* Légende simplifiée */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">💡 Cliquez sur une cellule pour modifier le statut</h4>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+          {/* Légende des statuts (T / R / P cohérent avec la vue matrice) */}
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Légende des statuts</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                <span>✓ Titulaire</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-green-500 text-white font-bold">T</span>
+                <span>Titulaire</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                <span>🔄 Remplaçant</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-blue-500 text-white font-bold">R</span>
+                <span>Remplaçant</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                <span>⏳ Pré-sélectionné</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500 text-white font-bold">P</span>
+                <span>Pré-sélection</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                <span>❌ Indisponible</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-red-500 text-white font-bold">I</span>
+                <span>Indisponible</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-gray-500 rounded-full"></span>
-                <span>🚫 Non retenu</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-gray-500 text-white font-bold">N</span>
+                <span>Non retenu</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
-                <span>💭 Préférence</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-gray-200 text-gray-600 font-bold">·</span>
+                <span>Non renseigné</span>
               </div>
             </div>
           </div>
@@ -2550,41 +2803,35 @@ Les compteurs de jours de course ont été remis à 0.`);
     }, []);
 
     return (
-      <div className="space-y-6">
-        {/* Barre de recherche et filtres */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                value={planningSearchTerm}
-                onChange={(e) => setPlanningSearchTerm(e.target.value)}
-                placeholder="Rechercher un athlète..."
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            
+      <div className="space-y-5">
+        {/* Barre de recherche et filtres - compacte */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div className="flex-1 relative min-w-0">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={planningSearchTerm}
+              onChange={(e) => setPlanningSearchTerm(e.target.value)}
+              placeholder="Rechercher un athlète (nom, prénom)..."
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-slate-400 bg-white"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={planningGenderFilter}
               onChange={(e) => setPlanningGenderFilter(e.target.value as 'all' | 'male' | 'female')}
-              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-400 bg-white"
             >
-              <option value="all">Tous les athlètes</option>
+              <option value="all">Tous</option>
               <option value="male">Hommes</option>
               <option value="female">Femmes</option>
             </select>
-            
             <button
-              onClick={() => {
-                setPlanningSearchTerm('');
-                setPlanningGenderFilter('all');
-              }}
-              className="px-4 py-3 text-gray-600 hover:text-gray-800 transition-colors border border-gray-300 rounded-lg hover:bg-gray-50"
+              type="button"
+              onClick={() => { setPlanningSearchTerm(''); setPlanningGenderFilter('all'); }}
+              className="px-3 py-2.5 text-sm text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
             >
               Réinitialiser
             </button>
@@ -2592,7 +2839,7 @@ Les compteurs de jours de course ont été remis à 0.`);
         </div>
 
         {/* Contenu principal */}
-        {viewMode === 'calendar' ? renderCalendarView() : renderTableView()}
+        {viewMode === 'calendar' ? renderCalendarView() : viewMode === 'matrix' ? renderMatrixView() : renderTableView()}
       </div>
     );
   };
@@ -2957,21 +3204,11 @@ Les compteurs de jours de course ont été remis à 0.`);
 
   // Rendu de l'onglet Planning de Saison - Version avec monitoring de groupe
   const renderSeasonPlanningTab = () => {
-    console.log('🎯 Rendu du planning - Sélections actuelles:', appState.riderEventSelections?.length || 0);
-    console.log('🎯 Événements locaux:', localRaceEvents.length);
-    console.log('🎯 Détail des sélections:', appState.riderEventSelections);
-    console.log('🎯 Sélections locales:', localRiderEventSelections.length);
-    console.log('🎯 Détail des sélections locales:', localRiderEventSelections);
-    console.log('🎯 Scouts disponibles:', appState.scoutingProfiles?.length || 0);
-    console.log('🎯 Détail des scouts:', appState.scoutingProfiles);
-    console.log('🎯 Riders disponibles:', riders.length);
-    console.log('🎯 TeamId actif:', appState.activeTeamId);
-    
     // Filtrer les événements passés de l'année sélectionnée
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const pastEvents = localRaceEvents.filter(event => {
       const eventDate = new Date(event.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const eventYear = eventDate.getFullYear();
       return eventDate < today && eventYear === selectedYear;
     });
@@ -2979,14 +3216,18 @@ Les compteurs de jours de course ont été remis à 0.`);
     // Filtrer les événements futurs de l'année sélectionnée (pas de saison prochaine)
     const futureEvents = localRaceEvents.filter(event => {
       const eventDate = new Date(event.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const eventYear = eventDate.getFullYear();
       const currentYear = today.getFullYear();
-      
-      // Ne prendre que les événements de l'année sélectionnée ET de l'année courante
       return eventDate >= today && eventYear === selectedYear && eventYear === currentYear;
     });
+
+    // Tous les événements de l'année sélectionnée (pour l'option "afficher les passés")
+    const eventsForSelectedYear = localRaceEvents.filter(event =>
+      new Date(event.date).getFullYear() === selectedYear
+    );
+
+    // Liste affichée : sans les passés si l'option est cochée
+    const displayEvents = hidePastEventsInPlanning ? futureEvents : eventsForSelectedYear;
 
     // Fonction pour mettre à jour les préférences d'un athlète pour un événement
     const onUpdateRiderPreference = async (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
@@ -3448,61 +3689,80 @@ Les compteurs de jours de course ont été remis à 0.`);
     };
 
     return (
-      <div className="space-y-8">
+      <div className="space-y-6 max-w-[1600px] mx-auto">
         {/* En-tête du centre de pilotage */}
-        <div className="text-center">
-          <h3 className="text-3xl font-light text-gray-800 mb-2">Centre de Pilotage Saison</h3>
-          <p className="text-gray-600">Gestion stratégique des sélections et calendriers</p>
+        <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-200/80 px-6 py-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-800 tracking-tight">Centre de Pilotage Saison</h2>
+              <p className="text-slate-600 text-sm mt-1">Gestion des sélections et calendriers par événement</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hidePastEventsInPlanning}
+                  onChange={(e) => setHidePastEventsInPlanning(e.target.checked)}
+                  className="h-4 w-4 text-slate-600 border-slate-300 rounded focus:ring-slate-500"
+                />
+                <span>Masquer les événements passés</span>
+              </label>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                {displayEvents.length} événement(s) affiché(s)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                {riders.length} athlète(s)
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Onglets de navigation */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6" aria-label="Tabs">
-              <button
-                onClick={() => setActivePlanningTab('monitoring')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activePlanningTab === 'monitoring'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <UserGroupIcon className="w-5 h-5" />
-                  <span>Monitoring du Groupe</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActivePlanningTab('unified')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activePlanningTab === 'unified'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                  <span>Gestion des Sélections & Disponibilités</span>
-                </div>
-              </button>
-            </nav>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <nav className="flex" aria-label="Onglets planning">
+            <button
+              onClick={() => setActivePlanningTab('monitoring')}
+              className={`flex-1 sm:flex-none py-4 px-5 font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                activePlanningTab === 'monitoring'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <UserGroupIcon className="w-5 h-5 shrink-0" />
+              <span>Monitoring du Groupe</span>
+            </button>
+            <button
+              onClick={() => setActivePlanningTab('unified')}
+              className={`flex-1 sm:flex-none py-4 px-5 font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                activePlanningTab === 'unified'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+              <span className="hidden xs:inline">Sélections & Disponibilités</span>
+              <span className="xs:hidden">Sélections</span>
+            </button>
+          </nav>
+          <div className="border-t border-slate-200" />
 
           {/* Contenu des onglets */}
           <div className="p-6">
             {activePlanningTab === 'monitoring' ? (
               <MonitoringTab 
                 riders={riders}
-                raceEvents={localRaceEvents}
+                raceEvents={displayEvents}
                 riderEventSelections={localRiderEventSelections}
                 selectedYear={selectedYear}
                 setSelectedYear={setSelectedYear}
               />
             ) : (
               <UnifiedSelectionTab 
-                futureEvents={futureEvents}
+                futureEvents={displayEvents}
                 riders={riders}
                 riderEventSelections={localRiderEventSelections}
                 planningSearchTerm={planningSearchTerm}
@@ -3770,6 +4030,14 @@ Les compteurs de jours de course ont été remis à 0.`);
 
   // Rendu de l'onglet Qualité d'Effectif
   const renderQualityTab = () => {
+    const qualityPrincipalRiders = activeRiders.filter(r => r.rosterRole !== 'reserve');
+    const qualityReserveRiders = activeRiders.filter(r => r.rosterRole === 'reserve');
+    const avgPrincipal = qualityPrincipalRiders.length > 0
+      ? Math.round(qualityPrincipalRiders.reduce((sum, r) => sum + calculateCogganProfileScore(r).generalScore, 0) / qualityPrincipalRiders.length)
+      : 0;
+    const avgReserve = qualityReserveRiders.length > 0
+      ? Math.round(qualityReserveRiders.reduce((sum, r) => sum + calculateCogganProfileScore(r).generalScore, 0) / qualityReserveRiders.length)
+      : 0;
 
     return (
       <div className="space-y-6">
@@ -3795,22 +4063,56 @@ Les compteurs de jours de course ont été remis à 0.`);
           </div>
         </div>
 
+        {/* Comparatif Équipe 1 / Réserve (affiché quand les deux sont inclus) */}
+        {qualityRoleFilter === 'both' && (qualityPrincipalRiders.length > 0 || qualityReserveRiders.length > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-800 border border-blue-500/50 p-4 rounded-lg shadow text-white">
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-blue-200">Équipe 1</h4>
+                <p className="text-2xl font-bold text-blue-300">{qualityPrincipalRiders.length} coureur{qualityPrincipalRiders.length !== 1 ? 's' : ''}</p>
+                <p className="text-lg text-blue-100 mt-1">Moy. {avgPrincipal}</p>
+              </div>
+            </div>
+            <div className="bg-gray-800 border border-amber-500/50 p-4 rounded-lg shadow text-white">
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-amber-200">Réserve</h4>
+                <p className="text-2xl font-bold text-amber-300">{qualityReserveRiders.length} coureur{qualityReserveRiders.length !== 1 ? 's' : ''}</p>
+                <p className="text-lg text-amber-100 mt-1">Moy. {avgReserve}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tableau de pilotage style Pro Cycling Manager */}
         <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700">
                       <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
               <h3 className="text-xl font-bold text-white">
                 Qualité d'Effectif
               </h3>
-                <label className="flex items-center space-x-2 text-sm text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={includeScouts}
-                    onChange={(e) => setIncludeScouts(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>Inclure les scouts</span>
-                </label>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">Afficher :</span>
+                    <select
+                      value={qualityRoleFilter}
+                      onChange={(e) => setQualityRoleFilter(e.target.value as 'team1' | 'reserve' | 'both')}
+                      className="rounded border border-gray-600 bg-gray-700 text-white text-sm px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="both">Équipe 1 + Réserve</option>
+                      <option value="team1">Équipe 1</option>
+                      <option value="reserve">Réserve</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center space-x-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={includeScouts}
+                      onChange={(e) => setIncludeScouts(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Inclure les scouts</span>
+                  </label>
+                </div>
               </div>
             </div>
           <div className="overflow-x-auto">
@@ -3831,6 +4133,7 @@ Les compteurs de jours de course ont été remis à 0.`);
                       )}
                     </div>
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Rôle</th>
                   <th 
                     className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
                     onClick={() => handleQualitySort('age')}
@@ -3959,6 +4262,15 @@ Les compteurs de jours de course ont été remis à 0.`);
                             <div className="text-sm text-gray-400">{category} / {levelCategory}</div>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {(rider as any).isScout ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Scout</span>
+                        ) : (rider as Rider).rosterRole === 'reserve' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/50">Réserve</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/50">Équipe 1</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         {age !== null ? `${age} ans` : 'Âge inconnu'}
@@ -4269,6 +4581,7 @@ Les compteurs de jours de course ont été remis à 0.`);
           currentUser={currentUser}
           effectivePermissions={appState.effectivePermissions}
           initialTab={initialModalTab}
+          allRiders={riders}
         />
       )}
 

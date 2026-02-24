@@ -8,13 +8,42 @@ import { isFutureEvent, getEventYear, formatEventDate } from './dateUtils';
 
 
 /**
- * Filtre les événements futurs pour le staff
+ * Filtre les événements futurs pour le staff (pour le dropdown année / années disponibles).
+ * Utilise isFutureEvent donc peut inclure toute l'année 2026 selon dateUtils.
  */
 export const getFutureEventsForStaff = (raceEvents: RaceEvent[], selectedYear?: number | 'all') => {
   return raceEvents.filter(event => {
-    if (!isFutureEvent(event.date)) return false;
+    if (!event.date || !isFutureEvent(event.date)) return false;
     if (selectedYear !== 'all' && selectedYear && getEventYear(event.date) !== selectedYear) return false;
     return true;
+  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+};
+
+/**
+ * Événements dont la date est >= aujourd'hui (comparaison réelle).
+ * Utilisé pour "Masquer les événements passés" dans le planning staff.
+ */
+export const getStrictFutureEventsForStaff = (raceEvents: RaceEvent[], selectedYear?: number | 'all') => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return raceEvents.filter(event => {
+    if (!event.date) return false;
+    const eventDate = new Date(event.date + 'T12:00:00Z');
+    eventDate.setHours(0, 0, 0, 0);
+    if (eventDate < today) return false;
+    if (selectedYear !== 'all' && selectedYear && getEventYear(event.date) !== selectedYear) return false;
+    return true;
+  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+};
+
+/**
+ * Tous les événements de l'année sélectionnée (pour l'option "afficher les passés")
+ */
+export const getEventsForSelectedYear = (raceEvents: RaceEvent[], selectedYear: number | 'all') => {
+  return raceEvents.filter(event => {
+    if (!event.date) return false;
+    if (selectedYear === 'all') return true;
+    return getEventYear(event.date) === selectedYear;
   }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
@@ -181,7 +210,8 @@ export const updateStaffAvailability = (
 };
 
 /**
- * Filtre les membres du staff selon les critères
+ * Filtre les membres du staff selon les critères.
+ * roleFilter : 'all' ou clé de rôle (ex: MECANO, ASSISTANT). Compare via getStaffRoleKey pour uniformité.
  */
 export const filterStaff = (
   staff: StaffMember[],
@@ -189,13 +219,15 @@ export const filterStaff = (
   roleFilter: string,
   statusFilter: string,
   preferenceFilter: string,
-  staffEventSelections: StaffEventSelection[]
+  staffEventSelections: StaffEventSelection[],
+  getStaffRoleKey?: (role: string | null | undefined) => string | null
 ) => {
   return staff.filter(member => {
     const matchesSearch = searchTerm === '' || 
       `${member.firstName} ${member.lastName}`.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesRole = roleFilter === 'all' || member.role === roleFilter;
+    const memberRoleKey = getStaffRoleKey ? getStaffRoleKey(member.role) : member.role;
+    const matchesRole = roleFilter === 'all' || memberRoleKey === roleFilter || member.role === roleFilter;
     
     const matchesStatus = statusFilter === 'all' || 
       (statusFilter === 'active' && member.isActive !== false) ||

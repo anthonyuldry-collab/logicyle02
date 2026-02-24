@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Rider, ScoutingProfile, Sex } from '../types';
 import { getAgeCategory } from '../utils/ageUtils';
+import { computeGroupAverages, getCellInsight, type PowerDurationKey } from '../utils/performanceInsights';
 
 interface PowerAnalysisTableProps {
   riders: Rider[];
@@ -75,6 +76,12 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
       return weight > 0 ? powerValue / weight : 0;
     }
   };
+
+  // Moyennes équipe pour détection des valeurs intéressantes (vs profils)
+  const groupAverages = useMemo(
+    () => computeGroupAverages(riders, displayMode, fatigueProfile),
+    [riders, displayMode, fatigueProfile]
+  );
 
   // Filtrage des riders et scouts
   const filteredData = useMemo(() => {
@@ -361,16 +368,35 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
                     // Mise en évidence des meilleures performances
                     const isHighlighted = value === maxValue && value > 0;
                     const isSorted = sortBy === duration.key;
+                    // Détection intelligente : au-dessus de la moyenne équipe ou catégorie
+                    const cellInsight = getCellInsight(
+                      item,
+                      duration.key as PowerDurationKey,
+                      groupAverages,
+                      displayMode,
+                      fatigueProfile
+                    );
                     
                     return (
                       <td key={duration.key} className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                        <span className={`font-medium ${
-                          isSorted ? 'text-blue-600 bg-blue-50 px-2 py-1 rounded' : 
-                          isHighlighted ? 'text-green-600 bg-green-50 px-2 py-1 rounded' :
-                          'text-gray-900'
-                        }`}>
-                          {formattedValue}
-                        </span>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className={`font-medium ${
+                            isSorted ? 'text-blue-600 bg-blue-50 px-2 py-1 rounded' : 
+                            isHighlighted ? 'text-green-600 bg-green-50 px-2 py-1 rounded' :
+                            'text-gray-900'
+                          }`}>
+                            {formattedValue}
+                          </span>
+                          {(cellInsight.aboveTeam || cellInsight.aboveCategory) && (
+                            <span className="text-xs text-green-600 font-medium" title="Au-dessus de la moyenne équipe ou catégorie">
+                              {cellInsight.aboveTeam && cellInsight.percentAboveTeam != null && (
+                                <span className="inline-block bg-green-100 text-green-800 px-1.5 py-0.5 rounded">
+                                  ↑ +{cellInsight.percentAboveTeam}%
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </td>
                     );
                   })}

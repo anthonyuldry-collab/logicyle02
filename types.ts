@@ -31,7 +31,7 @@ export enum StaffRole {
 export enum ChecklistRole {
   DS = "Directeur Sportif",
   ASSISTANT = "Assistant",
-  MECANO = "Mécano",
+  MECANO = "Mécanicien",
   MANAGER = "Manager",
   COMMUNICATION = "Communication",
   COUREUR = "Coureur",
@@ -751,6 +751,12 @@ export interface EventChecklistItem {
   assignedRole?: ChecklistRole;
   status: ChecklistItemStatus;
   notes?: string;
+  /** Hérité du modèle : affiche un indicateur "Remarque" */
+  templateKind?: ChecklistTemplateKind;
+  /** Moment : avant / pendant / après (hérité du modèle) */
+  timing?: ChecklistTiming;
+  /** Libellé de moment (ex. "Avant départ", "Matin avant la sortie") – hérité du modèle */
+  timingLabel?: string;
 }
 
 export interface PeerRating {
@@ -982,9 +988,24 @@ export interface EventStaffAvailability {
   notes?: string;
 }
 
+/** Type d'entrée de checklist modèle : tâche à faire ou remarque */
+export type ChecklistTemplateKind = 'task' | 'a_prevoir';
+
+/** Moment / timing dans le déroulé de l'événement */
+export type ChecklistTiming = 'avant' | 'pendant' | 'apres';
+
 export interface ChecklistTemplate {
     id: string;
     name: string;
+    role?: ChecklistRole;
+    /** 'task' = tâche, 'a_prevoir' = remarque (note / rappel) */
+    kind?: ChecklistTemplateKind;
+    /** Type d'événement : tâches différentes pour Stage vs Compétition. Absent = s'applique aux deux */
+    eventType?: EventType;
+    /** Moment dans le déroulé : avant / pendant / après l'événement */
+    timing?: ChecklistTiming;
+    /** Libellé issu de la fiche de poste (ex. "Avant départ", "Matin avant la sortie") – affiché à la place du timing générique */
+    timingLabel?: string;
 }
 
 export interface TeamProduct {
@@ -1145,6 +1166,7 @@ export interface Rider {
     // Gestion des saisons
     currentSeason?: number; // Saison active du coureur
     isActive?: boolean; // Si le coureur est actif dans l'effectif actuel
+    rosterRole?: 'principal' | 'reserve'; // Équipe principale ou réserve
 
     // Performance Profile
     qualitativeProfile: RiderQualitativeProfile;
@@ -1471,7 +1493,7 @@ export interface TeamState {
     riderEventSelections: RiderEventSelection[];
     eventStaffAvailabilities: EventStaffAvailability[];
     incomeItems: IncomeItem[];
-    checklistTemplates: ChecklistTemplate[];
+    checklistTemplates: Record<ChecklistRole, ChecklistTemplate[]>;
     categoryBudgets: Partial<Record<BudgetItemCategory, number>>;
     scoutingProfiles: ScoutingProfile[];
     teamProducts: TeamProduct[];

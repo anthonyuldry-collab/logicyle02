@@ -1,6 +1,13 @@
 
 import React, { useState } from 'react';
 import { Rider, PowerProfile, PowerProfileHistoryEntry } from '../../types';
+import {
+    POWER_DURATION_KEYS,
+    computeGroupAverages,
+    getRiderPowerWkg,
+    getRiderPowerWatts,
+    type PowerDurationKey,
+} from '../../utils/performanceInsights';
 
 interface PowerPPRTabProps {
     formData: Rider | Omit<Rider, 'id'>;
@@ -11,7 +18,14 @@ interface PowerPPRTabProps {
     profileReliabilityLevel?: number;
     onDeleteProfile?: (profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ') => void;
     onSaveRequest?: () => void;
+    /** Liste des coureurs de l'équipe pour la comparaison dans le sous-onglet Analyse (moyenne équipe) */
+    allRiders?: Rider[];
 }
+
+const DURATION_LABELS: Record<PowerDurationKey, string> = {
+    '1s': '1s', '5s': '5s', '30s': '30s', '1min': '1min',
+    '3min': '3min', '5min': '5min', '12min': '12min', '20min': '20min', cp: 'CP',
+};
 
 const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     formData,
@@ -21,7 +35,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     theme = 'dark',
     profileReliabilityLevel = 1,
     onDeleteProfile,
-    onSaveRequest
+    onSaveRequest,
+    allRiders = [],
 }) => {
     const inputClasses = theme === 'light'
         ? "block w-full px-2 py-1 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
@@ -134,7 +149,11 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     };
 
     // État pour gérer les sous-onglets
-    const [activeSubTab, setActiveSubTab] = useState<'ppr' | 'history' | 'summary'>('ppr');
+    const [activeSubTab, setActiveSubTab] = useState<'ppr' | 'history' | 'summary' | 'analyse'>('ppr');
+    // Filtre fatigue pour le sous-onglet Analyse
+    const [analyseFatigue, setAnalyseFatigue] = useState<'fresh' | '15kj' | '30kj' | '45kj'>('fresh');
+    // Unité d'affichage Analyse : W/kg ou watts bruts
+    const [analyseUnit, setAnalyseUnit] = useState<'wattsPerKg' | 'watts'>('wattsPerKg');
     
     // État pour gérer l'affichage de l'historique
     const [showHistory, setShowHistory] = useState(false);
@@ -651,6 +670,21 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                         }`}
                     >
                         📊 PPR
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveSubTab('analyse')}
+                        className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                            activeSubTab === 'analyse'
+                                ? theme === 'light'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-blue-400 text-blue-400'
+                                : theme === 'light'
+                                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    : 'border-transparent text-slate-400 hover:text-slate-300 hover:border-slate-500'
+                        }`}
+                    >
+                        📈 Analyse
                     </button>
                     <button
                         type="button"
@@ -2171,6 +2205,197 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                             </p>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Contenu du sous-onglet Analyse (toutes durées, filtre fatigue, vs équipe) */}
+            {activeSubTab === 'analyse' && (
+                <div className="space-y-4">
+                    <div className={`${containerClasses} p-4`}>
+                        <h5 className={`${titleClasses} mb-3`}>Profil puissance · toutes durées</h5>
+                        <p className={`text-xs mb-4 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
+                            Comparaison de l&apos;athlète à la moyenne équipe pour le profil de fatigue sélectionné.
+                        </p>
+                        {/* Unité : W/kg ou watts bruts */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            <span className={`text-xs font-medium ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>Unité :</span>
+                            {(['wattsPerKg', 'watts'] as const).map((u) => (
+                                <button
+                                    key={u}
+                                    type="button"
+                                    onClick={() => setAnalyseUnit(u)}
+                                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                        analyseUnit === u
+                                            ? theme === 'light'
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-blue-600 text-white'
+                                            : theme === 'light'
+                                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                    }`}
+                                >
+                                    {u === 'wattsPerKg' ? 'W/kg' : 'W (brut)'}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Filtre fatigue */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            <span className={`text-xs font-medium ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>Profil de fatigue :</span>
+                            {(['fresh', '15kj', '30kj', '45kj'] as const).map((fat) => (
+                                <button
+                                    key={fat}
+                                    type="button"
+                                    onClick={() => setAnalyseFatigue(fat)}
+                                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                        analyseFatigue === fat
+                                            ? theme === 'light'
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-blue-600 text-white'
+                                            : theme === 'light'
+                                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                    }`}
+                                >
+                                    {fat === 'fresh' ? 'Frais' : fat === '15kj' ? '15 kJ/kg' : fat === '30kj' ? '30 kJ/kg' : '45 kJ/kg'}
+                                </button>
+                            ))}
+                        </div>
+                        {(() => {
+                            const riderAsRider = formData as Rider;
+                            const mode = analyseUnit;
+                            const getVal = (r: Rider, dk: PowerDurationKey) => (mode === 'watts' ? getRiderPowerWatts(r, dk, analyseFatigue) : getRiderPowerWkg(r, dk, analyseFatigue));
+                            const teamAvg = allRiders.length > 0 ? computeGroupAverages(allRiders, mode, analyseFatigue).team : {};
+                            /** Min, max et écart-type par durée pour l'équipe */
+                            const getTeamStats = (dk: PowerDurationKey) => {
+                                const values = allRiders.map((r) => getVal(r, dk)).filter((v) => v > 0);
+                                if (values.length === 0) return { min: null as number | null, max: null as number | null, stdDev: null as number | null };
+                                const min = Math.min(...values);
+                                const max = Math.max(...values);
+                                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                                const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+                                return { min, max, stdDev: Math.sqrt(variance) };
+                            };
+                            const series = POWER_DURATION_KEYS.map((dk) => {
+                                const athlete = getVal(riderAsRider, dk);
+                                const team = teamAvg[dk];
+                                const stats = allRiders.length > 0 ? getTeamStats(dk) : { min: null as number | null, max: null as number | null, stdDev: null as number | null };
+                                const hasAthlete = athlete > 0;
+                                const hasTeam = team != null && team > 0;
+                                const percentDiff = hasTeam && team > 0 && hasAthlete ? Math.round(((athlete - team) / team) * 100) : null;
+                                return { durationKey: dk, label: DURATION_LABELS[dk], athlete, team: team ?? 0, hasAthlete, hasTeam, percentDiff, isAbove: percentDiff != null && percentDiff >= 0, teamMin: stats.min, teamMax: stats.max, teamStdDev: stats.stdDev };
+                            }).filter((s) => s.hasAthlete || s.hasTeam);
+                            const maxVal = series.length > 0 ? Math.max(...series.flatMap((s) => [s.athlete, s.team])) * 1.15 || 1 : 1;
+                            const hasComparison = allRiders.length > 0;
+                            const unitLabel = mode === 'watts' ? 'W' : 'W/kg';
+                            const formatVal = (v: number) => (mode === 'watts' ? Math.round(v).toString() : v.toFixed(1));
+                            return (
+                                <>
+                                    {series.length === 0 ? (
+                                        <p className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                            Aucune donnée de puissance pour ce profil de fatigue. Renseignez les PPR (Frais ou fatigue) dans l&apos;onglet PPR.
+                                        </p>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-3 mb-4">
+                                                {series.map((s) => (
+                                                    <div key={s.durationKey} className="flex items-center gap-2">
+                                                        <div className={`w-14 shrink-0 text-xs font-medium ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>{s.label}</div>
+                                                        <div className="flex-1 flex items-center gap-2 min-w-0">
+                                                            {/* Une seule barre : fond = équipe, segment coloré = athlète intégré dedans */}
+                                                            <div className="flex-1 relative h-6 rounded min-w-[60px] overflow-hidden">
+                                                                {hasComparison && s.hasTeam && (
+                                                                    <div
+                                                                        className="absolute inset-y-0 left-0 rounded bg-slate-200 dark:bg-slate-600"
+                                                                        style={{ width: `${Math.min(100, (s.team / maxVal) * 100)}%` }}
+                                                                        title={`Moy. équipe ${formatVal(s.team)} ${unitLabel}`}
+                                                                    />
+                                                                )}
+                                                                {s.hasAthlete && (
+                                                                    <div
+                                                                        className={`absolute inset-y-0 left-0 rounded flex items-center justify-end pr-1 text-xs font-medium text-white ${s.isAbove ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                                                        style={{ width: `${Math.min(100, (s.athlete / maxVal) * 100)}%` }}
+                                                                        title={`${(formData as Rider).firstName} ${(formData as Rider).lastName} ${formatVal(s.athlete)} ${unitLabel}`}
+                                                                    >
+                                                                        {(mode === 'watts' ? s.athlete >= 50 : s.athlete >= 1.5) ? formatVal(s.athlete) : ''}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            {/* Valeurs numériques : athlète, équipe, écart */}
+                                                            {s.hasAthlete && (
+                                                                <span className={`w-12 shrink-0 text-right text-xs font-medium ${theme === 'light' ? 'text-gray-800' : 'text-slate-200'}`} title="Athlète">
+                                                                    {formatVal(s.athlete)}
+                                                                </span>
+                                                            )}
+                                                            {hasComparison && s.hasTeam && (
+                                                                <span className={`w-12 shrink-0 text-right text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`} title="Moy. équipe">
+                                                                    {formatVal(s.team)}
+                                                                </span>
+                                                            )}
+                                                            {s.percentDiff != null && (
+                                                                <span className={`w-10 shrink-0 text-right text-xs font-semibold ${s.isAbove ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                                                    {s.percentDiff >= 0 ? '+' : ''}{s.percentDiff}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {hasComparison && (
+                                                <div className={`flex gap-4 mb-3 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>
+                                                    <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-slate-200" /> Moy. équipe</span>
+                                                    <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-emerald-500" /> Au-dessus</span>
+                                                    <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-amber-500" /> En dessous</span>
+                                                </div>
+                                            )}
+                                            <div className="overflow-x-auto">
+                                                <table className={`min-w-full text-sm border ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'} rounded-lg overflow-hidden`}>
+                                                    <thead>
+                                                        <tr className={theme === 'light' ? 'bg-gray-100' : 'bg-slate-700'}>
+                                                            <th className={`text-left py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Durée</th>
+                                                            <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Athlète ({unitLabel})</th>
+                                                            {hasComparison && (
+                                                                <>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Moy. équipe</th>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Écart type</th>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Min</th>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Max</th>
+                                                                </>
+                                                            )}
+                                                            <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Écart</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {series.map((s) => (
+                                                            <tr key={s.durationKey} className={`border-t ${theme === 'light' ? 'border-gray-100 even:bg-gray-50' : 'border-slate-600 even:bg-slate-700/50'}`}>
+                                                                <td className={`py-2 px-3 font-medium ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>{s.label}</td>
+                                                                <td className={`py-2 px-3 text-right font-medium ${theme === 'light' ? 'text-gray-800' : 'text-slate-200'}`}>{s.athlete > 0 ? formatVal(s.athlete) : '–'}</td>
+                                                                {hasComparison && (
+                                                                    <>
+                                                                        <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>{s.team > 0 ? formatVal(s.team) : '–'}</td>
+                                                                        <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>{s.teamStdDev != null ? (mode === 'watts' ? Math.round(s.teamStdDev) : s.teamStdDev.toFixed(2)) : '–'}</td>
+                                                                        <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>{s.teamMin != null ? formatVal(s.teamMin) : '–'}</td>
+                                                                        <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>{s.teamMax != null ? formatVal(s.teamMax) : '–'}</td>
+                                                                    </>
+                                                                )}
+                                                                <td className={`py-2 px-3 text-right font-semibold ${s.isAbove ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                                                    {s.percentDiff != null ? `${s.percentDiff >= 0 ? '+' : ''}${s.percentDiff}%` : '–'}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {!hasComparison && (
+                                                <p className={`mt-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                    Comparaison équipe non disponible (ouvrir la fiche depuis la liste de l&apos;équipe pour afficher la moyenne équipe).
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
                 </div>
             )}
 

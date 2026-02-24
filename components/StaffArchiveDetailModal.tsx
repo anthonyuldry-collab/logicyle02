@@ -1,6 +1,7 @@
 import React from 'react';
 import { StaffMember, StaffArchive } from '../types';
 import { XMarkIcon, UsersIcon, CalendarIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import { getStaffRoleDisplayLabel, getStaffRoleKey } from '../utils/staffRoleUtils';
 
 interface StaffArchiveDetailModalProps {
   archive: StaffArchive | null;
@@ -50,24 +51,6 @@ const StaffArchiveDetailModal: React.FC<StaffArchiveDetailModalProps> = ({
       'SALARIE': 'bg-blue-100 text-blue-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      'MANAGER': 'Manager',
-      'DS': 'Directeur Sportif',
-      'ASSISTANT': 'Assistant(e)',
-      'MECANO': 'Mécanicien',
-      'COMMUNICATION': 'Communication',
-      'MEDECIN': 'Médecin',
-      'KINE': 'Kinésithérapeute',
-      'RESP_PERF': 'Responsable Performance',
-      'ENTRAINEUR': 'Entraîneur',
-      'DATA_ANALYST': 'Data Analyste',
-      'PREPA_PHYSIQUE': 'Préparateur Physique',
-      'AUTRE': 'Autre'
-    };
-    return labels[role] || 'Autre';
   };
 
   const getStatusLabel = (status: string) => {
@@ -198,8 +181,8 @@ const StaffArchiveDetailModal: React.FC<StaffArchiveDetailModalProps> = ({
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleColor(member.role || 'AUTRE')}`}>
-                          {getRoleLabel(member.role || 'AUTRE')}
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleColor(getStaffRoleKey(member.role) || 'AUTRE')}`}>
+                          {getStaffRoleDisplayLabel(member.role) || 'Autre'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">

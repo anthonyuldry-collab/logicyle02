@@ -9,6 +9,7 @@ import {
   AppSection,
   AppState,
   ChecklistTemplate,
+  ChecklistRole,
   EquipmentItem,
   IncomeItem,
   PerformanceEntry,
@@ -1063,33 +1064,38 @@ const App: React.FC = () => {
 
   const onSaveChecklistTemplate = useCallback(async (item: ChecklistTemplate) => {
     if (!appState.activeTeamId) return;
+    const role = item.role ?? ChecklistRole.DS;
+    const toSave = { ...item, id: item.id || '', name: item.name, role, kind: item.kind || 'task', eventType: item.eventType, timing: item.timing, timingLabel: item.timingLabel };
     const savedId = await firebaseService.saveData(
       appState.activeTeamId,
       "checklistTemplates",
-      item
+      toSave
     );
-    const finalItem = { ...item, id: item.id || savedId };
+    const finalItem = { ...toSave, id: toSave.id || savedId };
     setAppState((prev: AppState) => {
-      const collection = prev.checklistTemplates;
-      const exists = collection.some((i: ChecklistTemplate) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: ChecklistTemplate) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, checklistTemplates: newCollection };
+      const record = prev.checklistTemplates || {};
+      const arr = record[role] || [];
+      const exists = arr.some((i: ChecklistTemplate) => i.id === finalItem.id);
+      const newArr = exists
+        ? arr.map((i: ChecklistTemplate) => (i.id === finalItem.id ? finalItem : i))
+        : [...arr, finalItem];
+      return { ...prev, checklistTemplates: { ...record, [role]: newArr } };
     });
   }, [appState.activeTeamId]);
 
   const onDeleteChecklistTemplate = useCallback(async (item: ChecklistTemplate) => {
     if (!appState.activeTeamId || !item.id) return;
+    const role = item.role ?? ChecklistRole.DS;
     await firebaseService.deleteData(
       appState.activeTeamId,
       "checklistTemplates",
       item.id
     );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      checklistTemplates: prev.checklistTemplates.filter((i: ChecklistTemplate) => i.id !== item.id),
-    }));
+    setAppState((prev: AppState) => {
+      const record = prev.checklistTemplates || {};
+      const arr = (record[role] || []).filter((i: ChecklistTemplate) => i.id !== item.id);
+      return { ...prev, checklistTemplates: { ...record, [role]: arr } };
+    });
   }, [appState.activeTeamId]);
 
   // Handlers pour TeamProduct
@@ -1356,6 +1362,15 @@ const App: React.FC = () => {
         />
       );
     }
+    // Fallback : no_team sans currentUser (ex. erreur au chargement) → retour login
+    if (view === "no_team") {
+      return (
+        <LoginView
+          onLogin={handleLogin}
+          onSwitchToSignup={() => setView("signup")}
+        />
+      );
+    }
 
     if (view === "app" && currentUser && appState.activeTeamId) {
       // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager si l'utilisateur est Manager/Admin
@@ -1438,6 +1453,7 @@ const App: React.FC = () => {
                   }}
                   currentUser={currentUser}
                   setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
+                  onSaveRaceEvent={onSaveRaceEvent}
                   setEventTransportLegs={createBatchSetHandler<EventTransportLeg>(
                     "eventTransportLegs"
                   )}
@@ -1576,6 +1592,8 @@ const App: React.FC = () => {
                       teamProducts={appState.teamProducts}
                       currentUser={currentUser}
                       appState={appState}
+                      onSaveRaceEvent={onSaveRaceEvent}
+                      navigateTo={navigateTo}
                     />
                   )}
                   {currentSection === "staff" && appState.staff && currentUser && (
@@ -1670,6 +1688,7 @@ const App: React.FC = () => {
                       riders={appState.riders}
                       onSaveScoutingProfile={onSaveScoutingProfile}
                       onDeleteScoutingProfile={onDeleteScoutingProfile}
+                      onSaveRider={onSaveRider}
                       effectivePermissions={effectivePermissions}
                       appState={appState}
                       currentTeamId={appState.activeTeamId}
@@ -2390,6 +2409,7 @@ const App: React.FC = () => {
                       riderEventSelections={appState.riderEventSelections}
                       setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       effectivePermissions={appState.effectivePermissions}
+                      navigateTo={navigateTo}
                     />
                   )}
                   {currentSection === "talentAvailability" && currentUser && (
@@ -2498,7 +2518,21 @@ const App: React.FC = () => {
         </LanguageProvider>
       );
     }
-    return null; // Should not be reached if logic is correct
+    // Fallback final : éviter l'écran blanc (ex. état incohérent)
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="text-center p-8">
+          <p className="text-gray-600 mb-4">Chargement de l'application...</p>
+          <button
+            type="button"
+            onClick={() => { setView("login"); setCurrentUser(null); }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+          >
+            Retour à la connexion
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return <>{renderContent()}</>;

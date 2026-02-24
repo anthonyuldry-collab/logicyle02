@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StaffMember, RaceEvent, StaffRole, StaffStatus, ContractType, EventType, WorkExperience, EducationOrCertification, SpokenLanguage, LanguageProficiency, Address, AvailabilityPeriod, AvailabilityStatus, PerformanceEntry, WeeklyAvailability } from '../types';
 import { EVENT_TYPE_COLORS, ALL_COUNTRIES } from '../constants';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 import Modal from './Modal';
 import ActionButton from './ActionButton';
 import UserCircleIcon from './icons/UserCircleIcon';
@@ -119,7 +120,7 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-sm text-slate-400 mb-1">Fonction</div>
-                      <div className="text-slate-200 font-medium">{staffMember.role}</div>
+                      <div className="text-slate-200 font-medium">{getStaffRoleDisplayLabel(staffMember.role)}</div>
                       {staffMember.role === StaffRole.AUTRE && staffMember.customRole && (
                         <div className="text-xs text-slate-400 mt-1">Précisé: {staffMember.customRole}</div>
                       )}

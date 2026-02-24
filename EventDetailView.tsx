@@ -50,6 +50,7 @@ interface EventDetailViewProps {
   
   // Firebase save functions
   onSavePerformanceEntry: (item: AppPerformanceEntry) => Promise<void>;
+  onSaveRaceEvent?: (event: RaceEvent) => Promise<void>;
 }
 
 type EventDetailTab = 
@@ -79,6 +80,7 @@ function EventDetailView({
   setPerformanceEntries,
   setPeerRatings,
   onSavePerformanceEntry,
+  onSaveRaceEvent,
 }: EventDetailViewProps) {
   const [activeTab, setActiveTab] = useState<EventDetailTab>('logisticsSummary');
   const [currentEvent, setCurrentEvent] = useState<RaceEvent>(initialEvent);
@@ -97,7 +99,14 @@ function EventDetailView({
 
 
   const updateEventDetails = (updatedEventData: Partial<RaceEvent>) => {
-    setRaceEvents(prevEvents => prevEvents.map(e => e.id === eventId ? { ...e, ...updatedEventData } : e));
+    const mergedEvent = { ...currentEvent, ...updatedEventData };
+    setRaceEvents(prevEvents => prevEvents.map(e => e.id === eventId ? mergedEvent : e));
+    setCurrentEvent(mergedEvent);
+    if (onSaveRaceEvent) {
+      onSaveRaceEvent(mergedEvent).catch(() => {
+        // Optionnel : afficher une erreur à l'utilisateur si la persistance échoue
+      });
+    }
   };
   
   const updateRadioEquipment = (equipmentOrUpdater: EventRadioEquipment | ((prev: EventRadioEquipment | undefined) => EventRadioEquipment)) => {

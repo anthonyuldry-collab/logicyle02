@@ -3,6 +3,7 @@ import { Rider, User, StaffMember, Team, RaceEvent, RiderEventSelection, AppStat
 import SectionWrapper from '../components/SectionWrapper';
 import RiderDashboardTab from '../components/riderDetailTabs/RiderDashboardTab';
 import { useTranslations } from '../hooks/useTranslations';
+import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 
 interface MyDashboardSectionProps {
   riders: Rider[];
@@ -322,7 +323,7 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
             Bonjour {(profileData as StaffMember).firstName} !
           </h1>
           <p className="text-gray-600">
-            {(profileData as StaffMember).role} • {(profileData as StaffMember).status}
+            {getStaffRoleDisplayLabel((profileData as StaffMember).role)} • {(profileData as StaffMember).status}
           </p>
         </div>
 

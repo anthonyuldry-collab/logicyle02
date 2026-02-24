@@ -10,13 +10,17 @@ import {
   ClockIcon,
   Cog6ToothIcon,
   TrophyIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  TableCellsIcon,
+  Squares2X2Icon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from './SectionWrapper';
 import ActionButton from './ActionButton';
 import { StaffMember, RaceEvent, User, AppState, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability } from '../types';
+import { getStaffRoleDisplayLabel, getStaffRoleKey, STAFF_ROLE_KEYS } from '../utils/staffRoleUtils';
 import { 
-  getFutureEventsForStaff,
+  getStrictFutureEventsForStaff,
+  getEventsForSelectedYear,
   getAvailableYearsForStaff,
   getStaffWorkDays,
   getStaffEventStatus,
@@ -77,6 +81,7 @@ export default function StaffSeasonPlanning({
 
   // États pour la gestion des vues
   const [activeView, setActiveView] = useState<'overview' | 'staff-detail'>('overview');
+  const [planningViewMode, setPlanningViewMode] = useState<'table' | 'cards'>('table');
   const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
   
   // États pour les filtres
@@ -100,6 +105,7 @@ export default function StaffSeasonPlanning({
   const [showGroupMonitoring, setShowGroupMonitoring] = useState(false);
   const [openCellMenu, setOpenCellMenu] = useState<{ eventId: string; staffId: string } | null>(null);
   const [openHeaderMenuEventId, setOpenHeaderMenuEventId] = useState<string | null>(null);
+  const [hidePastEvents, setHidePastEvents] = useState(true);
 
   const isCellMenuOpen = (eventId: string, staffId: string) =>
     openCellMenu && openCellMenu.eventId === eventId && openCellMenu.staffId === staffId;
@@ -154,10 +160,20 @@ export default function StaffSeasonPlanning({
     }
   };
 
-  // Filtrer les événements futurs
+  // Filtrer les événements futurs (date >= aujourd'hui, comme pour les athlètes)
   const futureEvents = useMemo(() => {
-    return getFutureEventsForStaff(raceEvents, selectedYear);
+    return getStrictFutureEventsForStaff(raceEvents, selectedYear);
   }, [raceEvents, selectedYear]);
+
+  // Tous les événements de l'année sélectionnée (pour l'option "afficher les passés")
+  const eventsForSelectedYear = useMemo(() => {
+    return getEventsForSelectedYear(raceEvents, selectedYear);
+  }, [raceEvents, selectedYear]);
+
+  // Liste affichée : sans les passés si l'option est cochée (comme pour les athlètes)
+  const displayEvents = useMemo(() => {
+    return hidePastEvents ? futureEvents : eventsForSelectedYear;
+  }, [hidePastEvents, futureEvents, eventsForSelectedYear]);
 
   // Obtenir les années disponibles
   const availableYears = useMemo(() => {
@@ -177,15 +193,14 @@ export default function StaffSeasonPlanning({
   // Filtrer et trier les membres du staff
   const filteredStaff = useMemo(() => {
     const filtered = filterStaff(
-      staff, 
-      searchTerm, 
-      roleFilter, 
-      statusFilter, 
-      preferenceFilter, 
-      staffEventSelections
+      staff,
+      searchTerm,
+      roleFilter,
+      statusFilter,
+      preferenceFilter,
+      staffEventSelections,
+      getStaffRoleKey
     );
-    
-    // Appliquer le tri
     return sortStaffMembers(filtered);
   }, [staff, searchTerm, roleFilter, statusFilter, preferenceFilter, staffEventSelections, sortField, sortDirection]);
 
@@ -213,7 +228,7 @@ export default function StaffSeasonPlanning({
     
     // Feedback visuel
     const member = staff.find(s => s.id === staffId);
-    const event = futureEvents.find(e => e.id === eventId);
+    const event = displayEvents.find(e => e.id === eventId);
     setLastAction({
       type: status,
       member: member?.name || 'Membre',
@@ -357,6 +372,50 @@ export default function StaffSeasonPlanning({
               </div>
             </div>
 
+            {/* Vue Tableau / Cartes */}
+            <div className="flex items-center gap-1 border border-gray-200 rounded-md p-0.5 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setPlanningViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                  planningViewMode === 'table' ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="Vue Tableau"
+              >
+                <TableCellsIcon className="w-4 h-4" />
+                Tableau
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlanningViewMode('cards')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                  planningViewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="Vue Cartes"
+              >
+                <Squares2X2Icon className="w-4 h-4" />
+                Cartes
+              </button>
+            </div>
+
+            {/* Filtre par rôle */}
+            <div className="flex items-center gap-2 min-w-0">
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Rôle :</label>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]"
+                title="Filtrer par poste"
+              >
+                <option value="all">Tous les rôles</option>
+                {STAFF_ROLE_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {getStaffRoleDisplayLabel(key)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Sélecteur d'année */}
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-gray-700">Année :</label>
@@ -371,6 +430,17 @@ export default function StaffSeasonPlanning({
                 ))}
               </select>
             </div>
+
+            {/* Masquer les événements passés (parité athlètes) */}
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hidePastEvents}
+                onChange={(e) => setHidePastEvents(e.target.checked)}
+                className="h-4 w-4 text-slate-600 border-slate-300 rounded focus:ring-slate-500"
+              />
+              <span className="text-sm text-gray-700">Masquer les événements passés</span>
+            </label>
           </div>
 
           {/* Filtres avancés */}
@@ -469,15 +539,17 @@ export default function StaffSeasonPlanning({
         <span className="inline-flex items-center gap-1"><span>✓</span> Sélectionné</span>
       </div>
 
-      {/* Message si aucun événement futur */}
-      {futureEvents.length === 0 && (
+      {/* Message si aucun événement à afficher */}
+      {displayEvents.length === 0 && (
         <div className="mt-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-3 text-sm">
-          Aucun événement futur pour l'année sélectionnée. Modifiez l'année ou ajoutez des événements à venir dans le calendrier.
+          {hidePastEvents
+            ? "Aucun événement futur pour l'année sélectionnée. Modifiez l'année, cochez « Afficher les événements passés » ou ajoutez des événements à venir dans le calendrier."
+            : "Aucun événement pour l'année sélectionnée."}
         </div>
       )}
 
-        {/* Version mobile - Cartes compactes */}
-        <div className="block md:hidden max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+        {/* Vue Cartes */}
+        <div className={`${planningViewMode === 'cards' ? 'block' : 'hidden'} max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100`}>
           <div className="space-y-4">
           {filteredStaff.map((member) => (
             <div key={member.id} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
@@ -492,7 +564,7 @@ export default function StaffSeasonPlanning({
                     <div className="text-sm font-medium text-gray-900">
                       {member.firstName} {member.lastName}
                     </div>
-                    <div className="text-xs text-gray-500">{member.role || 'AUTRE'}</div>
+                    <div className="text-xs text-gray-500">{getStaffRoleDisplayLabel(member.role) || 'Autre'}</div>
                   </div>
                 </div>
                 <div className="flex space-x-2">
@@ -516,7 +588,7 @@ export default function StaffSeasonPlanning({
               {/* Événements en version mobile */}
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-600 mb-2">Événements :</div>
-                {futureEvents.slice(0, 3).map(event => {
+                {displayEvents.slice(0, 3).map(event => {
                   const status = getStaffEventStatusForEvent(event.id, member.id);
                   const preference = getStaffEventPreferenceForEvent(event.id, member.id);
                   const availability = getStaffEventAvailabilityForEvent(event.id, member.id);
@@ -537,9 +609,9 @@ export default function StaffSeasonPlanning({
                     </div>
                   );
                 })}
-                {futureEvents.length > 3 && (
+                {displayEvents.length > 3 && (
                   <div className="text-xs text-gray-500 text-center">
-                    +{futureEvents.length - 3} autres événements
+                    +{displayEvents.length - 3} autres événements
                   </div>
                 )}
               </div>
@@ -548,8 +620,8 @@ export default function StaffSeasonPlanning({
           </div>
         </div>
 
-        {/* Tableau principal - Version desktop */}
-        <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden w-full max-w-full">
+        {/* Vue Tableau */}
+        <div className={`${planningViewMode === 'table' ? 'block' : 'hidden'} bg-white rounded-lg border border-gray-200 overflow-hidden w-full max-w-full`}>
           <div className="max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
             <div className="table-container">
               <table className="divide-y divide-gray-200" style={{ minWidth: '600px' }}>
@@ -567,7 +639,7 @@ export default function StaffSeasonPlanning({
                   <th className="px-2 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
                     Jours
                   </th>
-                  {futureEvents.map(event => (
+                  {displayEvents.map(event => (
                     <th key={event.id} className="px-2 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px] max-w-[220px]">
                       <div className="flex flex-col items-center space-y-1 relative">
                         <div className="flex items-center gap-2">
@@ -660,7 +732,7 @@ export default function StaffSeasonPlanning({
                     </td>
                     <td className="px-2 py-5 whitespace-nowrap text-center">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {member.role || 'AUTRE'}
+                        {getStaffRoleDisplayLabel(member.role) || 'Autre'}
                       </span>
                     </td>
                     <td className="px-2 py-5 whitespace-nowrap text-center">
@@ -668,7 +740,7 @@ export default function StaffSeasonPlanning({
                         {getStaffWorkDaysCount(member.id)}
                       </span>
                     </td>
-                    {futureEvents.map((event, colIdx) => {
+                    {displayEvents.map((event, colIdx) => {
                       const status = getStaffEventStatusForEvent(event.id, member.id);
                       const preference = getStaffEventPreferenceForEvent(event.id, member.id);
                       const availability = getStaffEventAvailabilityForEvent(event.id, member.id);

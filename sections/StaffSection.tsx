@@ -10,18 +10,23 @@ import {
   DocumentDuplicateIcon,
   ArchiveBoxIcon,
   DocumentTextIcon,
-  EnvelopeIcon
+  EnvelopeIcon,
+  TruckIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
-import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection, MeetingReport, MeetingRecurrence } from '../types';
+import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection, MeetingReport, MeetingRecurrence, EventTransportLeg } from '../types';
 import { getCurrentSeasonYear, getAvailableSeasonYears } from '../utils/seasonUtils';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { getActiveStaffForCurrentSeason } from '../utils/rosterArchiveUtils';
+import { getStaffRoleDisplayLabel, getStaffRoleKey, STAFF_ROLE_KEYS, getEventRoleKeyForStaff, EVENT_ROLE_KEYS, type StaffRoleKeyString } from '../utils/staffRoleUtils';
 import { 
   getStaffStatsForSeason, 
   getDetailedStaffStatsForSeason,
   calculateStaffDaysForSeason 
 } from '../utils/staffRosterUtils';
+import { saveData } from '../services/firebaseService';
 import { StaffTransitionManager, StaffArchiveViewer, StaffArchiveDetailModal, StaffSeasonPlanning } from '../components';
 
 interface StaffSectionProps {
@@ -50,6 +55,138 @@ interface StaffSectionProps {
   eventTransportLegs?: any[];
   onSaveRaceEvent?: any;
   navigateTo?: (section: any, eventId?: string) => void;
+}
+
+/** Affiche le calendrier des déplacements par mois (année en cours uniquement), style visuel type planning. */
+function StaffMemberTravelCalendar({
+  staffMember,
+  raceEvents,
+  eventTransportLegs,
+  vehicles = [],
+}: {
+  staffMember: StaffMember;
+  raceEvents: RaceEvent[];
+  eventTransportLegs: EventTransportLeg[];
+  vehicles?: { id?: string; name?: string }[];
+}) {
+  const currentYear = getCurrentSeasonYear();
+
+  const eventsForStaff = (raceEvents || []).filter((e) => {
+    const eventYear = e.date ? new Date(e.date + 'T12:00:00Z').getFullYear() : null;
+    if (eventYear !== currentYear) return false;
+    if (e.selectedStaffIds?.includes(staffMember.id)) return true;
+    const roleKeys = ['managerId', 'directeurSportifId', 'assistantId', 'mecanoId', 'kineId', 'medecinId', 'respPerfId', 'entraineurId', 'dataAnalystId', 'prepaPhysiqueId', 'communicationId'];
+    return roleKeys.some((key) => {
+      const arr = (e as Record<string, unknown>)[key];
+      return Array.isArray(arr) && arr.includes(staffMember.id);
+    });
+  });
+
+  const legsForStaffCurrentYear = (eventTransportLegs || []).filter((leg) => {
+    const legYear = leg.departureDate ? new Date(leg.departureDate + 'T12:00:00Z').getFullYear() : currentYear;
+    if (legYear !== currentYear) return false;
+    return leg.driverId === staffMember.id || (leg.occupants || []).some((o) => o.type === 'staff' && o.id === staffMember.id);
+  });
+
+  const getEventName = (eventId: string) => raceEvents.find((e) => e.id === eventId)?.name || 'Événement';
+
+  // Grouper les événements par mois (1-12)
+  const eventsByMonth = useMemo(() => {
+    const byMonth: Record<number, RaceEvent[]> = {};
+    for (let m = 1; m <= 12; m++) byMonth[m] = [];
+    eventsForStaff.forEach((e) => {
+      if (!e.date) return;
+      const month = new Date(e.date + 'T12:00:00Z').getMonth() + 1;
+      byMonth[month].push(e);
+    });
+    Object.keys(byMonth).forEach((m) => {
+      const month = Number(m);
+      byMonth[month].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    });
+    return byMonth;
+  }, [eventsForStaff]);
+
+  const formatEventDate = (e: RaceEvent) => {
+    const start = e.date ? new Date(e.date + 'T12:00:00Z') : null;
+    const end = e.endDate ? new Date(e.endDate + 'T12:00:00Z') : null;
+    const loc = e.location || '';
+    if (!start) return loc ? `– ${loc}` : '–';
+    const startStr = format(start, 'd MMM', { locale: fr });
+    if (end && end.getTime() !== start.getTime()) {
+      const endStr = format(end, 'd MMM', { locale: fr });
+      return loc ? `Du ${startStr} au ${endStr} - ${loc}` : `Du ${startStr} au ${endStr}`;
+    }
+    return loc ? `${startStr} - ${loc}` : startStr;
+  };
+
+  const hasAny = eventsForStaff.length > 0 || legsForStaffCurrentYear.length > 0;
+
+  return (
+    <div className="mt-6 pt-4 border-t border-gray-200">
+      <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
+        <CalendarDaysIcon className="w-5 h-5 text-blue-600" />
+        Calendrier des déplacements
+      </h4>
+      {!hasAny ? (
+        <p className="text-sm text-gray-500 italic">Aucun déplacement ou événement assigné pour {currentYear}.</p>
+      ) : (
+        <div className="rounded-xl bg-slate-800 text-slate-100 p-4 overflow-hidden">
+          <p className="text-slate-300 text-sm mb-4">{currentYear}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((monthNum) => {
+              const monthDate = new Date(currentYear, monthNum - 1, 1);
+              const monthLabel = format(monthDate, 'MMMM yyyy', { locale: fr });
+              const monthEvents = eventsByMonth[monthNum] || [];
+              const monthLegs = legsForStaffCurrentYear.filter((leg) => {
+                if (!leg.departureDate) return false;
+                return new Date(leg.departureDate + 'T12:00:00Z').getMonth() + 1 === monthNum;
+              });
+              const isEmpty = monthEvents.length === 0 && monthLegs.length === 0;
+              return (
+                <div key={monthNum} className="flex flex-col">
+                  <h5 className="text-sm font-semibold text-slate-200 capitalize mb-2">{monthLabel}</h5>
+                  <div className="space-y-2">
+                    {isEmpty ? (
+                      <p className="text-slate-500 text-sm">Aucun événement</p>
+                    ) : (
+                      <>
+                        {monthEvents.map((e) => (
+                          <div
+                            key={e.id}
+                            className="rounded-lg bg-slate-700/80 backdrop-blur border border-slate-600/50 p-3 text-sm"
+                          >
+                            <p className="font-medium text-slate-100 truncate" title={e.name || ''}>
+                              {e.name || 'Sans nom'}
+                            </p>
+                            <p className="text-slate-400 text-xs mt-1">{formatEventDate(e)}</p>
+                          </div>
+                        ))}
+                        {monthLegs.map((leg) => (
+                          <div
+                            key={leg.id}
+                            className="rounded-lg bg-slate-700/80 backdrop-blur border border-slate-600/50 p-3 text-sm flex items-center gap-2"
+                          >
+                            <TruckIcon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-100 truncate">{getEventName(leg.eventId)}</p>
+                              <p className="text-slate-400 text-xs mt-0.5">
+                                {leg.departureDate ? format(new Date(leg.departureDate + 'T12:00:00Z'), 'd MMM', { locale: fr }) : '–'} — {leg.direction}
+                                {leg.driverId === staffMember.id && ' · Chauffeur'}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function StaffSection({ 
@@ -87,6 +224,7 @@ export default function StaffSection({
   // États pour la gestion des onglets
   const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives' | 'meetings'>('planning');
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
+  const [staffRoleFilter, setStaffRoleFilter] = useState<StaffRoleKeyString | ''>('');
   
   // États pour les modales
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -133,15 +271,37 @@ export default function StaffSection({
     try {
       const event = (raceEvents || []).find((e: any) => e.id === eventId);
       if (!event) return;
+      const staffMember = (staff || []).find((s: StaffMember) => s.id === staffId);
       const current = new Set<string>(event.selectedStaffIds || []);
-      if (status === 'SELECTIONNE' || status === 'PRE_SELECTION') {
+      const isAdding = status === 'SELECTIONNE' || status === 'PRE_SELECTION';
+
+      if (isAdding) {
         current.add(staffId);
       } else {
         current.delete(staffId);
       }
-      const updatedEvent = { ...event, selectedStaffIds: Array.from(current) };
+
+      const updatedEvent: Record<string, unknown> = { ...event, selectedStaffIds: Array.from(current) };
+
+      if (isAdding && staffMember) {
+        const eventRoleKey = getEventRoleKeyForStaff(staffMember.role);
+        if (eventRoleKey) {
+          const roleArr = Array.from((event as Record<string, unknown>)[eventRoleKey] as string[] || []);
+          if (!roleArr.includes(staffId)) {
+            (updatedEvent as Record<string, unknown>)[eventRoleKey] = [...roleArr, staffId];
+          }
+        }
+      } else if (!isAdding) {
+        EVENT_ROLE_KEYS.forEach((key) => {
+          const arr = (event as Record<string, unknown>)[key];
+          if (Array.isArray(arr) && arr.includes(staffId)) {
+            (updatedEvent as Record<string, unknown>)[key] = arr.filter((id: string) => id !== staffId);
+          }
+        });
+      }
+
       if (onSaveRaceEvent) {
-        onSaveRaceEvent(updatedEvent);
+        onSaveRaceEvent(updatedEvent as Partial<RaceEvent>);
       }
     } catch (e) {
       // Erreur silencieuse - l'assignation a échoué
@@ -467,7 +627,7 @@ export default function StaffSection({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {member.role ? member.role.toLowerCase() : 'staff'}
+                          {getStaffRoleDisplayLabel(member.role) || 'staff'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -552,21 +712,47 @@ export default function StaffSection({
 
   // Composant StaffListTab - Liste des membres du staff
   const StaffListTab = () => {
+    const filteredStaff = (activeStaff || []).filter((member) => {
+      if (!staffRoleFilter) return true;
+      const memberRoleKey = getStaffRoleKey(member.role);
+      return memberRoleKey === staffRoleFilter;
+    });
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
           <h3 className="text-lg font-semibold text-gray-900">
-            Liste du Staff - {activeStaff.length} membres
+            Liste du Staff - {filteredStaff.length} membre{filteredStaff.length !== 1 ? 's' : ''}
           </h3>
             </div>
             
         {/* Tableau du staff */}
         <div className="bg-white shadow rounded-lg overflow-hidden max-w-full">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900">Membres du Staff</h4>
-            <p className="text-sm text-gray-600">
-              Gestion des membres de l'équipe technique
-            </p>
+          <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900">Membres du Staff</h4>
+              <p className="text-sm text-gray-600">
+                Gestion des membres de l'équipe technique
+              </p>
+            </div>
+            <div className="flex items-center gap-2 min-w-0 sm:min-w-[220px]">
+              <label htmlFor="staff-role-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Poste :
+              </label>
+              <select
+                id="staff-role-filter"
+                value={staffRoleFilter}
+                onChange={(e) => setStaffRoleFilter((e.target.value || '') as StaffRoleKeyString | '')}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              >
+                <option value="">Tous les postes</option>
+                {STAFF_ROLE_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {getStaffRoleDisplayLabel(key)}
+                  </option>
+                ))}
+              </select>
+            </div>
             </div>
 
           <div className="overflow-x-auto max-w-full">
@@ -591,7 +777,7 @@ export default function StaffSection({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {(activeStaff || []).map((member) => {
+                {filteredStaff.map((member) => {
                   if (!member || !member.id) return null;
                   return (
                   <tr key={member.id} className="hover:bg-gray-50">
@@ -616,7 +802,7 @@ export default function StaffSection({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {member.role ? member.role.toLowerCase() : 'staff'}
+                        {getStaffRoleDisplayLabel(member.role) || 'staff'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -672,14 +858,18 @@ export default function StaffSection({
             </table>
       </div>
 
-          {(activeStaff || []).length === 0 && (
+          {filteredStaff.length === 0 && (
             <div className="text-center py-8">
               <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun membre du staff</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                {staffRoleFilter ? 'Aucun membre pour ce poste' : 'Aucun membre du staff'}
+              </h3>
               <p className="mt-1 text-sm text-gray-500">
-                Aucun membre du staff n'est disponible.
+                {staffRoleFilter
+                  ? `Aucun membre du staff avec le poste « ${getStaffRoleDisplayLabel(staffRoleFilter)} ». Essayez un autre filtre.`
+                  : 'Aucun membre du staff n\'est disponible.'}
               </p>
-                           </div>
+            </div>
           )}
                         </div>
                       </div>
@@ -883,7 +1073,6 @@ export default function StaffSection({
           await onSaveMeetingReport(reportToSave);
         } else {
           // Fallback: sauvegarder directement
-          const { saveData } = await import('../services/firebaseService');
           if (appState.activeTeamId) {
             await saveData(appState.activeTeamId, 'meetingReports', reportToSave);
           }
@@ -976,7 +1165,6 @@ export default function StaffSection({
           await onSaveMeetingReport(updatedReport);
         } else if (appState.activeTeamId) {
           // Fallback: sauvegarder directement
-          const { saveData } = await import('../services/firebaseService');
           await saveData(appState.activeTeamId, 'meetingReports', updatedReport);
         }
         
@@ -1382,7 +1570,7 @@ export default function StaffSection({
                           className="rounded border-gray-300"
                         />
                         <span className="text-sm text-gray-700">
-                          {member.firstName} {member.lastName} ({member.role})
+                          {member.firstName} {member.lastName} ({getStaffRoleDisplayLabel(member.role)})
                         </span>
                       </label>
                     ))}
@@ -1637,7 +1825,7 @@ export default function StaffSection({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Rôle</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.role ? selectedStaff.role.toLowerCase() : 'staff'}</p>
+                  <p className="text-sm text-gray-900">{getStaffRoleDisplayLabel(selectedStaff.role) || 'staff'}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Statut</label>
@@ -1692,7 +1880,19 @@ export default function StaffSection({
                 </div>
               </div>
             </div>
-            <div className="flex justify-end mt-6">
+
+            {/* Calendrier des déplacements prévus et effectués */}
+            <StaffMemberTravelCalendar
+              staffMember={selectedStaff}
+              raceEvents={raceEvents}
+              eventTransportLegs={eventTransportLegs || appState?.eventTransportLegs || []}
+              vehicles={vehicles}
+            />
+
+            <div className="flex justify-end gap-3 mt-6">
+              <ActionButton onClick={() => { setIsViewModalOpen(false); setActiveTab('planning'); }} variant="secondary" icon={<CalendarDaysIcon className="w-4 h-4" />}>
+                Voir le planning complet
+              </ActionButton>
               <ActionButton onClick={() => setIsViewModalOpen(false)} variant="secondary">
                 Fermer
               </ActionButton>

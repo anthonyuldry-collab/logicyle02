@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { RaceEvent, AppState, EventChecklistItem, StaffRole as StaffRoleEnum, ChecklistItemStatus, StaffRole, ChecklistRole, User, TeamRole } from '../../types';
+import { RaceEvent, AppState, EventChecklistItem, StaffRole as StaffRoleEnum, ChecklistItemStatus, StaffRole, ChecklistRole, User, TeamRole, ChecklistTiming } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
 import PlusCircleIcon from '../../components/icons/PlusCircleIcon';
@@ -7,6 +7,7 @@ import PencilIcon from '../../components/icons/PencilIcon';
 import TrashIcon from '../../components/icons/TrashIcon';
 import DownloadIcon from '../../components/icons/DownloadIcon';
 import MailIcon from '../../components/icons/MailIcon';
+import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
 
 interface EventChecklistTabProps {
   event: RaceEvent;
@@ -26,7 +27,11 @@ const initialChecklistItemFormStateFactory = (eventId: string): Omit<EventCheckl
   assignedRole: undefined,
   status: ChecklistItemStatus.A_FAIRE,
   notes: '',
+  timing: 'pendant',
 });
+
+const TIMING_ORDER: ChecklistTiming[] = ['avant', 'pendant', 'apres'];
+const TIMING_LABELS: Record<ChecklistTiming, string> = { avant: 'Avant', pendant: 'Pendant', apres: 'Après' };
 
 const mapStaffRoleToChecklistRole = (staffRole: StaffRoleEnum): ChecklistRole | null => {
     switch (staffRole) {
@@ -65,6 +70,15 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
     }
     return allItems;
   }, [appState.eventChecklistItems, eventId, isRider, riderName]);
+
+  const itemsGroupedByTiming = useMemo(() => {
+    const g: Record<ChecklistTiming, EventChecklistItem[]> = { avant: [], pendant: [], apres: [] };
+    checklistItemsForEvent.forEach(item => {
+      const t = item.timing || 'pendant';
+      if (g[t]) g[t].push(item);
+    });
+    return g;
+  }, [checklistItemsForEvent]);
 
   const isLogisticsValidated = event.isLogisticsValidated;
   const allTasksDone = useMemo(() => {
@@ -110,7 +124,9 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
     let newItems: EventChecklistItem[] = [];
 
     rolesPresent.forEach(role => {
-        const templateTasks = appState.checklistTemplates[role] || [];
+        const templateTasks = (appState.checklistTemplates[role] || []).filter(
+            t => !t.eventType || t.eventType === event.eventType
+        );
         templateTasks.forEach(taskTemplate => {
             if (!existingTaskNames.has(taskTemplate.name.toLowerCase())) {
                 newItems.push({
@@ -121,6 +137,9 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
                     status: ChecklistItemStatus.A_FAIRE,
                     responsiblePerson: '',
                     notes: '',
+                    templateKind: taskTemplate.kind,
+                    timing: taskTemplate.timing,
+                    timingLabel: taskTemplate.timingLabel,
                 });
             }
         });
@@ -218,7 +237,7 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
     staffForEvent.forEach(staffMember => {
         if (!staffMember.email) {
             console.warn(`⚠️ Membre du staff ${staffMember.firstName} ${staffMember.lastName} n'a pas d'email renseigné.`);
-            messages.push(`Alerte: ${staffMember.firstName} ${staffMember.lastName} (${staffMember.role}) n'a pas d'email.`);
+            messages.push(`Alerte: ${staffMember.firstName} ${staffMember.lastName} (${getStaffRoleDisplayLabel(staffMember.role)}) n'a pas d'email.`);
             return;
         }
 
@@ -240,7 +259,7 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
             console.log(`EMAIL À: ${staffMember.email}\nSUJET: Checklist pour ${event.name}\n\n${emailBody}\n----------------------------------`);
             messages.push(`Email (simulé) préparé pour ${staffMember.firstName} ${staffMember.lastName} (${staffMember.email}) avec ${tasksForStaff.length} tâche(s).`);
         } else {
-            messages.push(`Aucune tâche active assignée à ${staffMember.firstName} ${staffMember.lastName} (${staffMember.role}) pour cet événement.`);
+            messages.push(`Aucune tâche active assignée à ${staffMember.firstName} ${staffMember.lastName} (${getStaffRoleDisplayLabel(staffMember.role)}) pour cet événement.`);
         }
     });
     
@@ -328,7 +347,15 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
                             aria-label={`Marquer comme fait : ${item.itemName}`}
                         />
                       </td>
-                      <td className={`py-3 px-3 font-medium ${item.status === ChecklistItemStatus.FAIT ? 'line-through' : 'text-gray-800'}`}>{item.itemName}</td>
+                      <td className={`py-3 px-3 font-medium ${item.status === ChecklistItemStatus.FAIT ? 'line-through' : 'text-gray-800'}`}>
+                        {item.timing && (
+                          <span className="mr-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">{item.timingLabel || TIMING_LABELS[item.timing]}</span>
+                        )}
+                        {item.itemName}
+                        {item.templateKind === 'a_prevoir' && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Remarque</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3 whitespace-nowrap text-right space-x-1">
                         {item.responsiblePerson === riderName && (
                           <>
@@ -345,6 +372,7 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
             <table className="min-w-full bg-white text-sm">
                 <thead className="bg-gray-100">
                 <tr>
+                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Moment</th>
                     <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Élément</th>
                     <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle Assigné</th>
                     <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responsable (Nom)</th>
@@ -354,23 +382,44 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                {checklistItemsForEvent.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-3 whitespace-nowrap font-medium text-gray-800">{item.itemName}</td>
-                    <td className="py-3 px-3 whitespace-nowrap text-gray-700">{item.assignedRole || <span className="italic text-gray-400">Général</span>}</td>
-                    <td className="py-3 px-3 whitespace-nowrap text-gray-700">{item.responsiblePerson || '-'}</td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(item.status)}`}>
-                            {item.status}
-                        </span>
-                    </td>
-                    <td className="py-3 px-3 text-gray-700 max-w-xs truncate" title={item.notes || ''}>{item.notes || '-'}</td>
-                    <td className="py-3 px-3 whitespace-nowrap text-right space-x-1">
-                        <ActionButton onClick={() => openEditModal(item)} variant="secondary" size="sm" icon={<PencilIcon className="w-3 h-3"/>} disabled={isLogisticsValidated}><span className="sr-only">Modifier</span></ActionButton>
-                        <ActionButton onClick={() => handleDelete(item.id)} variant="danger" size="sm" icon={<TrashIcon className="w-3 h-3"/>} disabled={isLogisticsValidated}><span className="sr-only">Supprimer</span></ActionButton>
-                    </td>
-                    </tr>
-                ))}
+                {TIMING_ORDER.map(timing => {
+                  const items = itemsGroupedByTiming[timing];
+                  if (items.length === 0) return null;
+                  return (
+                    <React.Fragment key={timing}>
+                      <tr className="bg-emerald-50/70">
+                        <td colSpan={7} className="py-2 px-3 text-xs font-semibold text-emerald-800 uppercase tracking-wider">
+                          {TIMING_LABELS[timing]}
+                        </td>
+                      </tr>
+                      {items.map((item) => (
+                        <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">{item.timingLabel || TIMING_LABELS[item.timing || 'pendant']}</span>
+                          </td>
+                          <td className="py-3 px-3 font-medium text-gray-800">
+                            {item.itemName}
+                            {item.templateKind === 'a_prevoir' && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Remarque</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap text-gray-700">{item.assignedRole || <span className="italic text-gray-400">Général</span>}</td>
+                          <td className="py-3 px-3 whitespace-nowrap text-gray-700">{item.responsiblePerson || '-'}</td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(item.status)}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-gray-700 max-w-xs truncate" title={item.notes || ''}>{item.notes || '-'}</td>
+                          <td className="py-3 px-3 whitespace-nowrap text-right space-x-1">
+                            <ActionButton onClick={() => openEditModal(item)} variant="secondary" size="sm" icon={<PencilIcon className="w-3 h-3"/>} disabled={isLogisticsValidated}><span className="sr-only">Modifier</span></ActionButton>
+                            <ActionButton onClick={() => handleDelete(item.id)} variant="danger" size="sm" icon={<TrashIcon className="w-3 h-3"/>} disabled={isLogisticsValidated}><span className="sr-only">Supprimer</span></ActionButton>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
                 </tbody>
             </table>
           )}
@@ -385,6 +434,12 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
           </div>
           {!isRider && (
             <>
+                <div>
+                    <label htmlFor="timingModal" className="block text-sm font-medium text-gray-700">Moment</label>
+                    <select name="timing" id="timingModal" value={(currentItem as EventChecklistItem).timing || 'pendant'} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                      {TIMING_ORDER.map(t => <option key={t} value={t}>{TIMING_LABELS[t]}</option>)}
+                    </select>
+                </div>
                 <div>
                     <label htmlFor="assignedRoleModal" className="block text-sm font-medium text-gray-700">Assigner à un Rôle (optionnel)</label>
                     <select 

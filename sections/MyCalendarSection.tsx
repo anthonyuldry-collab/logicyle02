@@ -14,6 +14,7 @@ interface MyCalendarSectionProps {
   riderEventSelections: RiderEventSelection[];
   setRiderEventSelections: (updater: React.SetStateAction<RiderEventSelection[]>) => void;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  navigateTo?: (section: AppSection, eventId?: string) => void;
 }
 
 // Fonction utilitaire pour déterminer l'année de saison d'un événement
@@ -38,7 +39,8 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
   raceEvents,
   riderEventSelections,
   setRiderEventSelections,
-  effectivePermissions
+  effectivePermissions,
+  navigateTo
 }) => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [showAllEvents, setShowAllEvents] = useState(true);
@@ -210,7 +212,15 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                                           : 'bg-gray-50 border-gray-200'
                                   }`}>
                                       <div className="flex justify-between items-start mb-2">
-                                          <h5 className="font-medium text-gray-900 text-sm">{event.name}</h5>
+                                          <h5
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => navigateTo?.('eventDetail', event.id)}
+                                            onKeyDown={(e) => e.key === 'Enter' && navigateTo?.('eventDetail', event.id)}
+                                            className="font-medium text-gray-900 text-sm hover:text-blue-600 cursor-pointer underline-offset-2 hover:underline"
+                                          >
+                                            {event.name}
+                                          </h5>
                                           <span className={`px-2 py-1 text-xs rounded-full ${
                                               event.isSelected 
                                                   ? RIDER_EVENT_STATUS_COLORS[event.status] || 'bg-blue-100 text-blue-800'
@@ -361,7 +371,15 @@ const MyCalendarSection: React.FC<MyCalendarSectionProps> = ({
                       <div className="flex justify-between items-start mb-3">
                           <div>
                               <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-semibold text-gray-900">{event.name}</h4>
+                                  <h4
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => navigateTo?.('eventDetail', event.id)}
+                                    onKeyDown={(e) => e.key === 'Enter' && navigateTo?.('eventDetail', event.id)}
+                                    className="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer underline-offset-2 hover:underline"
+                                  >
+                                    {event.name}
+                                  </h4>
                                   <span className={`px-2 py-1 text-xs rounded-full ${SEASON_YEAR_COLORS[eventSeasonYear]}`}>
                                       {eventSeasonYear}
                                   </span>

@@ -13,6 +13,8 @@ import PerformanceProjectSynergyAnalyzer from '../components/PerformanceProjectS
 import WorkGroupManager from '../components/WorkGroupManager';
 import PerformanceOverviewEnhanced from '../components/PerformanceOverviewEnhanced';
 import PerformanceProjectDetails from '../components/PerformanceProjectDetails';
+import PerformanceInsightsAlerts from '../components/PerformanceInsightsAlerts';
+import Modal from '../components/Modal';
 
 interface PerformancePoleSectionProps {
   appState: AppState;
@@ -29,6 +31,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [performanceViewMode, setPerformanceViewMode] = useState<PerformanceViewMode>('overview');
+  const [categoryDetail, setCategoryDetail] = useState<{ type: 'age' | 'roster'; key: string; label: string; riders: Rider[] } | null>(null);
   // Protection contre appState null/undefined
   if (!appState) {
     return (
@@ -95,47 +98,65 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
         max: Math.max(...categoryAges)
       } : { average: 0, min: 0, max: 0 };
       
-      // Moyennes de puissance par catégorie
-      const powerAverages = {
-        cp: 0,
-        power20min: 0,
-        power12min: 0,
-        power5min: 0,
-        power1min: 0,
-        power30s: 0
-      };
+      // Moyennes de puissance par catégorie (W et W/kg)
+      const powerAverages = { cp: 0, power20min: 0, power12min: 0, power5min: 0, power1min: 0, power30s: 0, power5s: 0, power1s: 0 };
+      const powerAveragesWkg = { cp: 0, power20min: 0, power12min: 0, power5min: 0, power1min: 0, power30s: 0, power5s: 0, power1s: 0 };
       
       if (categoryRiders.length > 0) {
         const ridersWithPower = categoryRiders.filter(r => r.powerProfileFresh);
         if (ridersWithPower.length > 0) {
-          powerAverages.cp = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.criticalPower || 0), 0) / ridersWithPower.length
-          );
-          powerAverages.power20min = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.power20min || 0), 0) / ridersWithPower.length
-          );
-          powerAverages.power12min = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.power12min || 0), 0) / ridersWithPower.length
-          );
-          powerAverages.power5min = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.power5min || 0), 0) / ridersWithPower.length
-          );
-          powerAverages.power1min = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.power1min || 0), 0) / ridersWithPower.length
-          );
-          powerAverages.power30s = Math.round(
-            ridersWithPower.reduce((sum, r) => sum + (r.powerProfileFresh?.power30s || 0), 0) / ridersWithPower.length
-          );
+          const keys = ['criticalPower', 'power20min', 'power12min', 'power5min', 'power1min', 'power30s', 'power5s', 'power1s'] as const;
+          const avgKeys = ['cp', 'power20min', 'power12min', 'power5min', 'power1min', 'power30s', 'power5s', 'power1s'] as const;
+          keys.forEach((k, i) => {
+            const sumW = ridersWithPower.reduce((s, r) => s + ((r.powerProfileFresh as any)?.[k] || 0), 0);
+            powerAverages[avgKeys[i]] = Math.round(sumW / ridersWithPower.length);
+            const sumWkg = ridersWithPower.reduce((s, r) => {
+              const w = (r.powerProfileFresh as any)?.[k] || 0;
+              const kg = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
+              return s + w / kg;
+            }, 0);
+            powerAveragesWkg[avgKeys[i]] = Math.round((sumWkg / ridersWithPower.length) * 10) / 10;
+          });
         }
       }
       
       return {
         category,
         count: categoryRiders.length,
+        riders: categoryRiders,
         ageStats: categoryAgeStats,
-        powerAverages
+        powerAverages,
+        powerAveragesWkg
       };
     });
+
+    // Répartition par équipe (Première / Réserve)
+    const principalRiders = riders.filter(r => r.rosterRole !== 'reserve');
+    const reserveRiders = riders.filter(r => r.rosterRole === 'reserve');
+    const computeRosterAverages = (list: Rider[]) => {
+      const powerAverages = { cp: 0, power20min: 0, power12min: 0, power5min: 0, power1min: 0, power30s: 0, power5s: 0, power1s: 0 };
+      const powerAveragesWkg = { cp: 0, power20min: 0, power12min: 0, power5min: 0, power1min: 0, power30s: 0, power5s: 0, power1s: 0 };
+      const withPower = list.filter(r => r.powerProfileFresh);
+      if (withPower.length > 0) {
+        const keys = ['criticalPower', 'power20min', 'power12min', 'power5min', 'power1min', 'power30s', 'power5s', 'power1s'] as const;
+        const avgKeys = ['cp', 'power20min', 'power12min', 'power5min', 'power1min', 'power30s', 'power5s', 'power1s'] as const;
+        keys.forEach((k, i) => {
+          powerAverages[avgKeys[i]] = Math.round(withPower.reduce((s, r) => s + ((r.powerProfileFresh as any)?.[k] || 0), 0) / withPower.length);
+          powerAveragesWkg[avgKeys[i]] = Math.round((withPower.reduce((s, r) => {
+            const w = (r.powerProfileFresh as any)?.[k] || 0;
+            const kg = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
+            return s + w / kg;
+          }, 0) / withPower.length) * 10) / 10;
+        });
+      }
+      return { powerAverages, powerAveragesWkg };
+    };
+    const principalAvg = computeRosterAverages(principalRiders);
+    const reserveAvg = computeRosterAverages(reserveRiders);
+    const rosterDistribution = [
+      { role: 'principal' as const, label: 'Équipe première', count: principalRiders.length, riders: principalRiders, ...principalAvg },
+      { role: 'reserve' as const, label: 'Réserve', count: reserveRiders.length, riders: reserveRiders, ...reserveAvg }
+    ];
 
     // Coureurs avec profil de puissance
     const ridersWithPower = riders.filter(r => r.powerProfileFresh?.criticalPower).length;
@@ -199,6 +220,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       maleRiders,
       ageStats,
       ageDistribution,
+      rosterDistribution,
       ridersWithPower,
       upcomingEvents,
       averageCP,
@@ -215,8 +237,112 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
     }`;
 
+  const durationLabels: { key: string; label: string }[] = [
+    { key: 'power1s', label: '1s' },
+    { key: 'power5s', label: '5s' },
+    { key: 'power30s', label: '30s' },
+    { key: 'power1min', label: '1min' },
+    { key: 'power5min', label: '5min' },
+    { key: 'power12min', label: '12min' },
+    { key: 'power20min', label: '20min' },
+    { key: 'criticalPower', label: 'CP' }
+  ];
+  const fatigueProfiles = [
+    { key: 'powerProfileFresh', label: 'Frais' },
+    { key: 'powerProfile15KJ', label: '15 kJ/kg' },
+    { key: 'powerProfile30KJ', label: '30 kJ/kg' },
+    { key: 'powerProfile45KJ', label: '45 kJ/kg' }
+  ] as const;
+
+  const categoryStats = useMemo(() => {
+    if (!categoryDetail || categoryDetail.riders.length === 0) return null;
+    const riders = categoryDetail.riders;
+    const std = (arr: number[]) => {
+      if (arr.length === 0) return 0;
+      const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+      const variance = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+      return Math.sqrt(variance);
+    };
+    const result: Record<string, Record<string, { meanW: number; stdW: number; meanWkg: number; stdWkg: number; n: number }>> = {};
+    fatigueProfiles.forEach(({ key: profileKey }) => {
+      result[profileKey] = {};
+      durationLabels.forEach(({ key: durationKey }) => {
+        const valuesW: number[] = [];
+        const valuesWkg: number[] = [];
+        riders.forEach((r) => {
+          const profile = (r as any)[profileKey];
+          const raw = profile?.[durationKey] ?? 0;
+          if (raw <= 0) return;
+          const weight = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
+          valuesW.push(raw);
+          valuesWkg.push(raw / weight);
+        });
+        if (valuesW.length > 0) {
+          const meanW = valuesW.reduce((a, b) => a + b, 0) / valuesW.length;
+          const meanWkg = valuesWkg.reduce((a, b) => a + b, 0) / valuesWkg.length;
+          result[profileKey][durationKey] = {
+            meanW,
+            stdW: std(valuesW),
+            meanWkg,
+            stdWkg: std(valuesWkg),
+            n: valuesW.length
+          };
+        }
+      });
+    });
+    return result;
+  }, [categoryDetail]);
+
   return (
     <>
+      <Modal
+        isOpen={!!categoryDetail}
+        onClose={() => setCategoryDetail(null)}
+        title={categoryDetail ? `Détail · ${categoryDetail.label}` : ''}
+      >
+        {categoryDetail && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">{categoryDetail.riders.length} coureur(s) · Moyennes et écart-type</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-300">
+                    <th className="text-left py-2 pr-4 text-gray-700 font-semibold">Durée</th>
+                    {fatigueProfiles.map(({ key, label }) => (
+                      <th key={key} className="text-center py-2 px-2 text-gray-700 font-semibold">{label}</th>
+                    ))}
+                  </tr>
+                  <tr className="text-xs text-gray-500">
+                    <th className="text-left py-1 pr-4"></th>
+                    {fatigueProfiles.map(({ key }) => (
+                      <th key={key} className="text-center py-1 px-1">moy ± σ (W · W/kg)</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {durationLabels.map(({ key: durationKey, label }) => (
+                    <tr key={durationKey} className="border-b border-gray-200">
+                      <td className="py-2 pr-4 font-medium text-gray-700">{label}</td>
+                      {fatigueProfiles.map(({ key: profileKey }) => {
+                        const stat = categoryStats?.[profileKey]?.[durationKey];
+                        if (!stat) return <td key={profileKey} className="py-2 px-2 text-center text-gray-400">–</td>;
+                        const w = `${Math.round(stat.meanW)} ± ${Math.round(stat.stdW)}`;
+                        const wkg = `${stat.meanWkg.toFixed(1)} ± ${stat.stdWkg.toFixed(1)}`;
+                        return (
+                          <td key={profileKey} className="py-2 px-2 text-center text-gray-800">
+                            <span className="font-medium">{w}</span> W<br />
+                            <span className="text-blue-600 text-xs">{wkg}</span> W/kg
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
       <style jsx={true}>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
@@ -323,61 +449,121 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
 
         </div>
 
-        {/* Répartition par âge - Vue stratégique améliorée */}
+        {/* Répartition par catégorie d'âge (cliquable → détail + profils fatigue) */}
         <div className="bg-white p-6 rounded-lg shadow-lg">
           <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
             <TrophyIcon className="w-6 h-6 text-blue-600 mr-3" />
-            Répartition Stratégique par Catégorie
+            Répartition par catégorie d&apos;âge
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {strategicMetrics.ageDistribution.map(({ category, count, ageStats, powerAverages }) => (
-              <div key={category} className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border-2 border-blue-200">
+            {strategicMetrics.ageDistribution.map(({ category, count, ageStats, powerAverages, powerAveragesWkg, riders: categoryRiders }) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => setCategoryDetail({ type: 'age', key: category, label: category, riders: categoryRiders })}
+                className="text-left bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border-2 border-blue-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
+              >
                 <div className="text-center mb-4">
                   <div className="text-4xl font-bold text-blue-600 mb-2">{count}</div>
                   <div className="text-lg font-semibold text-gray-800">{category}</div>
                   <div className="text-sm text-gray-600">
-                    {strategicMetrics.totalRiders > 0 
-                      ? Math.round((count / strategicMetrics.totalRiders) * 100) 
-                      : 0}% de l'effectif
+                    {strategicMetrics.totalRiders > 0 ? Math.round((count / strategicMetrics.totalRiders) * 100) : 0}% de l&apos;effectif
                   </div>
                 </div>
-                
                 {count > 0 && powerAverages.cp > 0 && (
-                  <div className="bg-white p-3 rounded-lg border">
-                    <div className="text-sm font-medium text-gray-600 mb-2">Moyennes Puissance</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-gray-500">CP:</span>
-                        <span className="font-semibold ml-1">{powerAverages.cp}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">20min:</span>
-                        <span className="font-semibold ml-1">{powerAverages.power20min}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">12min:</span>
-                        <span className="font-semibold ml-1">{powerAverages.power12min}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">5min:</span>
-                        <span className="font-semibold ml-1">{powerAverages.power5min}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">1min:</span>
-                        <span className="font-semibold ml-1">{powerAverages.power1min}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">30s:</span>
-                        <span className="font-semibold ml-1">{powerAverages.power30s}W</span>
-                      </div>
+                  <div className="bg-white p-3 rounded-lg border space-y-2">
+                    <div className="text-xs text-gray-500 font-medium">Moyennes · W (brut)</div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAverages.cp}W</span></div>
+                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAverages.power20min}W</span></div>
+                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAverages.power12min}W</span></div>
+                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAverages.power5min}W</span></div>
+                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAverages.power1min}W</span></div>
+                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAverages.power30s}W</span></div>
+                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAverages.power5s}W</span></div>
+                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAverages.power1s}W</span></div>
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium pt-1 border-t">Moyennes · W/kg</div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAveragesWkg.cp} W/kg</span></div>
+                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAveragesWkg.power20min} W/kg</span></div>
+                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAveragesWkg.power12min} W/kg</span></div>
+                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAveragesWkg.power5min} W/kg</span></div>
+                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAveragesWkg.power1min} W/kg</span></div>
+                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAveragesWkg.power30s} W/kg</span></div>
+                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAveragesWkg.power5s} W/kg</span></div>
+                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAveragesWkg.power1s} W/kg</span></div>
                     </div>
                   </div>
                 )}
-              </div>
+                <p className="text-xs text-blue-600 mt-2">Cliquer pour voir le détail et les profils de fatigue</p>
+              </button>
             ))}
           </div>
         </div>
 
+        {/* Répartition par équipe (Première / Réserve) — W brut et W/kg, cliquable */}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+            <UsersIcon className="w-6 h-6 text-indigo-600 mr-3" />
+            Répartition par équipe
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {strategicMetrics.rosterDistribution.map(({ role, label, count, riders: rosterRiders, powerAverages, powerAveragesWkg }) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => setCategoryDetail({ type: 'roster', key: role, label, riders: rosterRiders })}
+                className="text-left bg-gradient-to-br from-indigo-50 to-purple-50 p-6 rounded-lg border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer"
+              >
+                <div className="text-center mb-4">
+                  <div className="text-4xl font-bold text-indigo-600 mb-2">{count}</div>
+                  <div className="text-lg font-semibold text-gray-800">{label}</div>
+                  <div className="text-sm text-gray-600">
+                    {strategicMetrics.totalRiders > 0 ? Math.round((count / strategicMetrics.totalRiders) * 100) : 0}% de l&apos;effectif
+                  </div>
+                </div>
+                {count > 0 && powerAverages.cp > 0 && (
+                  <div className="bg-white p-3 rounded-lg border space-y-2">
+                    <div className="text-xs text-gray-500 font-medium">Moyennes · W (brut)</div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAverages.cp}W</span></div>
+                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAverages.power20min}W</span></div>
+                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAverages.power12min}W</span></div>
+                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAverages.power5min}W</span></div>
+                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAverages.power1min}W</span></div>
+                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAverages.power30s}W</span></div>
+                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAverages.power5s}W</span></div>
+                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAverages.power1s}W</span></div>
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium pt-1 border-t">Moyennes · W/kg</div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAveragesWkg.cp} W/kg</span></div>
+                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAveragesWkg.power20min} W/kg</span></div>
+                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAveragesWkg.power12min} W/kg</span></div>
+                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAveragesWkg.power5min} W/kg</span></div>
+                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAveragesWkg.power1min} W/kg</span></div>
+                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAveragesWkg.power30s} W/kg</span></div>
+                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAveragesWkg.power5s} W/kg</span></div>
+                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAveragesWkg.power1s} W/kg</span></div>
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-indigo-600 mt-2">Cliquer pour voir le détail et les profils de fatigue</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Alertes et valeurs intéressantes (détection intelligente vs profils / moyennes) */}
+        <PerformanceInsightsAlerts
+          riders={riders}
+          scoutingProfiles={scoutingProfiles}
+          maxAlerts={5}
+          maxInsights={8}
+          showInsights
+          showAlerts
+        />
 
         {/* Derniers résultats de l'équipe */}
         {strategicMetrics.recentResults.length > 0 && (
