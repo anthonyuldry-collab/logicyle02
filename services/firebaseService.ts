@@ -353,7 +353,7 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
         const permissionsSnap = await getDocs(collection(db, 'permissions'));
         const permissionRolesSnap = await getDocs(collection(db, 'permissionRoles'));
     
-    const permissionsDoc = permissionsSnap.docs[0];
+    const permissionsDoc = permissionsSnap.empty ? undefined : permissionsSnap.docs[0];
     const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
     const permissionRoles = permissionRolesSnap.size > 0
         ? permissionRolesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))

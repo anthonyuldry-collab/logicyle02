@@ -1,10 +1,11 @@
 
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { RaceEvent, StaffMember, AppState, StaffRoleKey, StaffRole } from '../../types';
+import { RaceEvent, StaffMember, AppState, StaffRoleKey, StaffRole, RiderEventSelection, RiderEventStatus } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import { STAFF_ROLES_CONFIG } from '../../constants';
 import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
+import * as firebaseService from '../../services/firebaseService';
 
 const EVENT_ROLE_KEYS: StaffRoleKey[] = [
   'managerId', 'directeurSportifId', 'assistantId', 'mecanoId', 'kineId', 'medecinId',
@@ -64,9 +65,11 @@ interface EventParticipantsTabProps {
   event: RaceEvent;
   updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
   appState: AppState;
+  riderEventSelections?: RiderEventSelection[];
+  setRiderEventSelections?: React.Dispatch<React.SetStateAction<RiderEventSelection[]>>;
 }
 
-const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, updateEvent, appState }) => {
+const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, updateEvent, appState, riderEventSelections = [], setRiderEventSelections }) => {
   const [selectedRiderIds, setSelectedRiderIds] = useState<string[]>(event.selectedRiderIds || []);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>(event.selectedStaffIds || []);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>(event.selectedVehicleIds || []);
@@ -129,7 +132,7 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
     setStaffRoleInEvent(prev => ({ ...prev, [staffId]: roleKey }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const updatedEventData: Partial<RaceEvent> = {
       selectedRiderIds,
       selectedStaffIds,
@@ -141,6 +144,60 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
       );
     });
     updateEvent(updatedEventData);
+
+    // Synchroniser riderEventSelections : les coureurs sélectionnés dans l'événement sont des titulaires
+    if (setRiderEventSelections && appState.activeTeamId) {
+      const currentRiderIds = new Set(selectedRiderIds);
+      const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
+
+      // Retirer les sélections pour les coureurs qui ne sont plus dans selectedRiderIds
+      const toRemove = eventSelections.filter(sel => !currentRiderIds.has(sel.riderId));
+      for (const sel of toRemove) {
+        try {
+          await firebaseService.deleteData(appState.activeTeamId, 'riderEventSelections', sel.id);
+        } catch (e) {
+          console.warn('Erreur suppression sélection', sel.id, e);
+        }
+      }
+      if (toRemove.length > 0) {
+        setRiderEventSelections(prev =>
+          prev.filter(s => !(s.eventId === event.id && !currentRiderIds.has(s.riderId)))
+        );
+      }
+
+      // Ajouter ou conserver une sélection TITULAIRE pour chaque coureur dans selectedRiderIds
+      for (const riderId of currentRiderIds) {
+        const existing = eventSelections.find(s => s.riderId === riderId);
+        if (existing) {
+          if (existing.status !== RiderEventStatus.TITULAIRE) {
+            const updated = { ...existing, status: RiderEventStatus.TITULAIRE };
+            try {
+              await firebaseService.saveData(appState.activeTeamId, 'riderEventSelections', updated);
+              setRiderEventSelections(prev =>
+                prev.map(s => (s.eventId === event.id && s.riderId === riderId ? updated : s))
+              );
+            } catch (e) {
+              console.warn('Erreur mise à jour sélection', e);
+            }
+          }
+        } else {
+          const newSelection: RiderEventSelection = {
+            id: '',
+            eventId: event.id,
+            riderId,
+            status: RiderEventStatus.TITULAIRE,
+          };
+          try {
+            const savedId = await firebaseService.saveData(appState.activeTeamId, 'riderEventSelections', newSelection);
+            newSelection.id = savedId;
+            setRiderEventSelections(prev => [...prev, newSelection]);
+          } catch (e) {
+            console.warn('Erreur création sélection', e);
+          }
+        }
+      }
+    }
+
     setIsEditing(false);
   };
 

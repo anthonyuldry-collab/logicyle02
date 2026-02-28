@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { jsPDF } from 'jspdf';
 import { RaceEvent, OperationalLogisticsDay, OperationalTiming, AppState, EventTransportLeg, TransportDirection, TransportMode, MealDay, OperationalTimingCategory, Rider, StaffRole } from '../../types';
 import { MealDay as MealDayEnum } from '../../types'; // For dayName dropdown
 import ActionButton from '../../components/ActionButton';
+import Modal from '../../components/Modal';
 import TrashIcon from '../../components/icons/TrashIcon';
 import InformationCircleIcon from '../../components/icons/InformationCircleIcon';
 import PencilIcon from '../../components/icons/PencilIcon';
@@ -98,6 +100,446 @@ const categoryStyles: Record<OperationalTimingCategory, { icon: React.FC<any>; c
     [OperationalTimingCategory.MASSAGE]: { icon: HandRaisedIcon, color: 'text-teal-500' },
 };
 
+// Mapping jour français -> getDay() (0 = dimanche, 6 = samedi)
+const MEAL_DAY_TO_WEEKDAY: Record<string, number> = {
+    [MealDayEnum.DIMANCHE]: 0,
+    [MealDayEnum.LUNDI]: 1,
+    [MealDayEnum.MARDI]: 2,
+    [MealDayEnum.MERCREDI]: 3,
+    [MealDayEnum.JEUDI]: 4,
+    [MealDayEnum.VENDREDI]: 5,
+    [MealDayEnum.SAMEDI]: 6,
+};
+
+const formatDateForPlanning = (dateStr: string): string => {
+    try {
+        const d = new Date(dateStr + 'T12:00:00Z');
+        const day = d.getUTCDate();
+        const month = d.getUTCMonth() + 1;
+        return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
+    } catch {
+        return '—';
+    }
+};
+
+/** Supprime emoji et caractères non compatibles Helvetica pour un PDF lisible et professionnel. */
+const sanitizeTextForPdf = (text: string): string => {
+    if (!text) return '';
+    return text
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ') // contrôles et DEL
+        .replace(/[^\u0020-\u007E\u00A0-\u024F\n]/g, '') // garde ASCII + Latin-1 + Latin étendu (accents)
+        .replace(/\n{2,}/g, '\n')
+        .trim();
+};
+
+/** Retourne pour chaque jour (MealDay) la date dd/MM dans la plage event.date -> event.endDate. */
+const getDayLabelsForEvent = (event: RaceEvent): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const start = new Date(event.date + 'T12:00:00Z');
+    const endStr = event.endDate || event.date;
+    const end = new Date(endStr + 'T12:00:00Z');
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        const w = d.getUTCDay();
+        const key = Object.entries(MEAL_DAY_TO_WEEKDAY).find(([, v]) => v === w)?.[0];
+        if (key && out[key] === undefined) out[key] = formatDateForPlanning(d.toISOString().slice(0, 10));
+    }
+    return out;
+};
+
+/** Pour un trajet, retourne l'heure (minutes depuis minuit) du premier événement les jours où dateMatches(date) est vrai. */
+const getLegFirstTimeOnDates = (leg: EventTransportLeg, dateMatches: (dateStr: string | undefined) => boolean): number => {
+    let minMinutes = 9999;
+    const add = (date: string | undefined, time: string | undefined) => {
+        if (date && dateMatches(date) && time) {
+            const m = parseTimeOfDayToMinutes(time);
+            if (m !== null && m < minMinutes) minMinutes = m;
+        }
+    };
+    add(leg.departureDate, leg.departureTime);
+    add(leg.arrivalDate, leg.arrivalTime);
+    (leg.intermediateStops || []).forEach(stop => add(stop.date, stop.time));
+    return minMinutes;
+};
+
+/** Événement sur un trajet pour affichage "qui monte, où, quand". */
+interface LegDayEvent {
+    minutes: number;
+    timeStr: string;
+    line: string;
+}
+
+/** Construit la chronologie du jour pour un trajet : qui monte/descend, où, quand (triée par heure). */
+const getLegDayEvents = (
+    leg: EventTransportLeg,
+    dateMatches: (dateStr: string | undefined) => boolean,
+    getOccupantName: (id: string, type: 'rider' | 'staff') => string,
+    driverName: string
+): LegDayEvent[] => {
+    const events: LegDayEvent[] = [];
+    const add = (date: string | undefined, time: string | undefined, line: string) => {
+        if (!date || !dateMatches(date) || !time) return;
+        const m = parseTimeOfDayToMinutes(time);
+        if (m === null) return;
+        events.push({ minutes: m, timeStr: time, line });
+    };
+
+    const occupantsStr = (leg.occupants || []).map(o => getOccupantName(o.id, o.type)).join(', ') || '—';
+
+    if (leg.departureDate && dateMatches(leg.departureDate) && leg.departureTime) {
+        const lieu = leg.departureLocation || '—';
+        add(leg.departureDate, leg.departureTime, `Départ ${leg.departureTime} de ${lieu}. Conducteur : ${driverName}. À bord : ${occupantsStr}`);
+    }
+
+    (leg.intermediateStops || []).forEach(stop => {
+        if (!stop.date || !dateMatches(stop.date)) return;
+        const time = stop.time || '—';
+        const lieu = stop.location || '—';
+        const who = (stop.persons || []).map(p => getOccupantName(p.id, p.type)).join(', ');
+        const isPickup = String(stop.stopType).toLowerCase().includes('récupération') || String(stop.stopType).toLowerCase().includes('pickup');
+        if (isPickup) {
+            add(stop.date, stop.time, who ? `Récupération de ${who} à ${time} à ${lieu}` : `Récupération à ${time} à ${lieu}`);
+        } else {
+            add(stop.date, stop.time, who ? `Dépose de ${who} à ${time} à ${lieu}` : `Dépose à ${time} à ${lieu}`);
+        }
+    });
+
+    if (leg.arrivalDate && dateMatches(leg.arrivalDate) && leg.arrivalTime) {
+        const lieu = leg.arrivalLocation || '—';
+        add(leg.arrivalDate, leg.arrivalTime, `Arrivée ${leg.arrivalTime} à ${lieu}. À bord : ${occupantsStr}`);
+    }
+
+    events.sort((a, b) => a.minutes - b.minutes);
+    return events;
+};
+
+/** Normalise une date (YYYY-MM-DD ou DD/MM/YYYY) en YYYY-MM-DD pour comparaison. */
+const toIsoDate = (dateStr: string | undefined): string | null => {
+    if (!dateStr || !dateStr.trim()) return null;
+    const s = dateStr.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const ddmmyy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (ddmmyy) {
+        const [, day, month, year] = ddmmyy;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    try {
+        const d = new Date(s.includes('T') ? s : s + 'T12:00:00Z');
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    } catch {}
+    return null;
+};
+
+/** Même logique que les timings opérationnels : date → jour de la semaine (MealDay). */
+const dayMapPdf: Record<number, MealDay> = { 0: MealDayEnum.DIMANCHE, 1: MealDayEnum.LUNDI, 2: MealDayEnum.MARDI, 3: MealDayEnum.MERCREDI, 4: MealDayEnum.JEUDI, 5: MealDayEnum.VENDREDI, 6: MealDayEnum.SAMEDI };
+const getTargetMealDayForPdf = (dateStr: string | undefined): MealDay | null => {
+    const iso = toIsoDate(dateStr);
+    if (!iso) return null;
+    try {
+        const w = new Date(iso + 'T12:00:00Z').getUTCDay();
+        return dayMapPdf[w] ?? null;
+    } catch { return null; }
+};
+
+/** Retourne pour chaque MealDay la date ISO (YYYY-MM-DD) dans la plage de l'événement. */
+const getDayToIsoDateMap = (event: RaceEvent): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const start = new Date(event.date + 'T12:00:00Z');
+    const endStr = event.endDate || event.date;
+    const end = new Date(endStr + 'T12:00:00Z');
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        const w = d.getUTCDay();
+        const key = Object.entries(MEAL_DAY_TO_WEEKDAY).find(([, v]) => v === w)?.[0];
+        if (key && out[key] === undefined) out[key] = d.toISOString().slice(0, 10);
+    }
+    return out;
+};
+
+interface ExportPlanningOptions {
+    selectedDay?: MealDay | null;
+    includeVehicleLogistics?: boolean;
+}
+
+const exportPlanningToPdf = (
+    event: RaceEvent,
+    logistics: OperationalLogisticsDay[],
+    appState: AppState,
+    getOccupantName: (id: string, type: 'rider' | 'staff') => string,
+    getVehicleInfo: (vehicleId: string | undefined, leg?: EventTransportLeg) => string,
+    options: ExportPlanningOptions = {}
+): void => {
+    const { selectedDay = null, includeVehicleLogistics = false } = options;
+    const filteredLogistics = selectedDay
+        ? logistics.filter(d => d.dayName === selectedDay)
+        : logistics;
+    if (filteredLogistics.length === 0) {
+        alert(selectedDay ? 'Aucun timing pour ce jour.' : 'Aucun timing à exporter.');
+        return;
+    }
+    const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    const footerHeight = 12; // zone réservée en bas pour le pied de page
+    const contentBottomY = pageH - margin - footerHeight;
+    const contentW = pageW - 2 * margin;
+
+    const colorHeader = [30, 41, 59] as [number, number, number];
+    const colorBlockBg = [51, 65, 85] as [number, number, number];
+    const colorBorder = [100, 116, 139] as [number, number, number];
+    const colorTextOnDark = [241, 245, 249] as [number, number, number];
+    const colorTextOnLight = [30, 41, 59] as [number, number, number]; // texte lisible sur fond clair
+    const colorAccHeader = [15, 23, 42] as [number, number, number];
+    const colorTitle = [51, 65, 85] as [number, number, number];
+
+    const titleBlockH = 16;
+    const bodyStartY = margin + titleBlockH;
+    const spaceForGrid = Math.max(35, (contentBottomY - bodyStartY) * 0.5); // moitié pour la grille, le reste pour véhicules + hébergement
+
+    const numCols = Math.min(3, Math.max(1, filteredLogistics.length));
+    const gap = 2;
+    const colWidth = (contentW - (numCols - 1) * gap) / numCols;
+    const dayHeaderH = 6;
+    const blockPadding = 1;
+    const lineH = 3.2;
+    const numRows = Math.ceil(filteredLogistics.length / numCols);
+    const rowHeight = Math.min(spaceForGrid / Math.max(numRows, 1), 42);
+    const availableBodyH = rowHeight * numRows;
+
+    const formatTimingLine = (timing: OperationalTiming): string => {
+        let desc = (timing.time || '').trim();
+        let rest = timing.description || '';
+        if (timing.category === OperationalTimingCategory.MASSAGE && timing.personId) {
+            rest += (rest ? ' — ' : '') + getOccupantName(timing.personId, 'rider');
+            if (timing.masseurId) rest += ' par ' + getOccupantName(timing.masseurId, 'staff');
+        }
+        if (rest) desc += (desc ? ': ' : '') + rest;
+        return sanitizeTextForPdf(desc);
+    };
+
+    // Titre (compact)
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colorTitle);
+    doc.text(sanitizeTextForPdf(event.name), pageW / 2, margin + 5, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const dateRange = event.endDate && event.endDate !== event.date
+        ? `Du ${formatDateForPlanning(event.date)} au ${formatDateForPlanning(event.endDate)}`
+        : `Le ${formatDateForPlanning(event.date)}`;
+    doc.text(dateRange, pageW / 2, margin + 10, { align: 'center' });
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139); // slate 500
+    doc.text('Timing du déplacement', pageW / 2, margin + 14, { align: 'center' });
+    doc.setTextColor(...colorTitle);
+
+    filteredLogistics.forEach((day, dayIndex) => {
+        const col = dayIndex % numCols;
+        const row = Math.floor(dayIndex / numCols);
+        const x = margin + col * (colWidth + gap);
+        const y = bodyStartY + row * rowHeight;
+
+        const dayTitle = `${day.dayName.charAt(0).toLowerCase()}${day.dayName.slice(1)}`;
+        const isWeekend = day.dayName === MealDayEnum.SAMEDI || day.dayName === MealDayEnum.DIMANCHE;
+        const timings = day.keyTimings.length ? day.keyTimings : [];
+        const contentH = rowHeight - dayHeaderH;
+
+        doc.setFillColor(...colorHeader);
+        doc.setDrawColor(...colorBorder);
+        doc.rect(x, y, colWidth, dayHeaderH, 'FD');
+        doc.setTextColor(...colorTextOnDark);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        if (isWeekend) {
+            doc.text(dayTitle, x + colWidth / 2, y + 2.2, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6);
+            doc.setTextColor(203, 213, 225);
+            doc.text('Week-end', x + colWidth / 2, y + 4.5, { align: 'center' });
+            doc.setTextColor(...colorTextOnDark);
+            doc.setFontSize(7);
+        } else {
+            doc.text(dayTitle, x + colWidth / 2, y + dayHeaderH / 2 + 1.2, { align: 'center' });
+        }
+        doc.setFont('helvetica', 'normal');
+
+        doc.setFillColor(...colorBlockBg);
+        doc.setDrawColor(...colorBorder);
+        doc.rect(x, y + dayHeaderH, colWidth, contentH, 'FD');
+        doc.setFontSize(7);
+        doc.setTextColor(...colorTextOnDark);
+        let rowY = y + dayHeaderH + blockPadding + 1.5;
+        const maxLinesPerTiming = 2;
+        const lineW = colWidth - 2 * blockPadding - 2;
+        timings.forEach((timing) => {
+            if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
+            const line = formatTimingLine(timing);
+            if (!line) return;
+            const lines = doc.splitTextToSize(line, lineW);
+            lines.slice(0, maxLinesPerTiming).forEach((l: string) => {
+                if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
+                doc.text(l, x + blockPadding + 2, rowY + 2);
+                rowY += lineH;
+            });
+            rowY += 0.5;
+        });
+    });
+
+    let gridBottomY = bodyStartY + numRows * rowHeight;
+
+    // Section Logistique véhicules (qui monte, où, quand) — filtrée et triée par date/heure du jour exporté
+    if (includeVehicleLogistics && appState.eventTransportLegs) {
+        const dayToDate = getDayToIsoDateMap(event);
+        const datesToInclude = selectedDay && dayToDate[selectedDay]
+            ? [dayToDate[selectedDay]]
+            : Object.values(dayToDate).filter(Boolean);
+        const datesSet = new Set(datesToInclude);
+
+        // Même logique que les timings opérationnels : un trajet appartient au jour si sa date donne ce jour de la semaine
+        const dateMatchesDay = selectedDay
+            ? (dateStr: string | undefined) => getTargetMealDayForPdf(dateStr) === selectedDay
+            : (dateStr: string | undefined) => {
+                const iso = toIsoDate(dateStr);
+                return iso !== null && datesSet.has(iso);
+            };
+
+        // Attribuer les trajets au bon jour (aligné sur "ordres véhicules" / Transport) : Retour = jour d'arrivée, Aller / Jour J = jour de départ ou d'arrivée ou étape
+        const isRetourLeg = (leg: EventTransportLeg) =>
+            leg.direction === 'Retour' || leg.direction === TransportDirection.RETOUR;
+
+        const legsTouchingDays = appState.eventTransportLegs.filter(leg => {
+            if (leg.eventId !== event.id) return false;
+            const stopOnDay = (leg.intermediateStops || []).some(s => dateMatchesDay(s.date));
+            if (stopOnDay) return true;
+            if (isRetourLeg(leg)) {
+                return dateMatchesDay(leg.arrivalDate);
+            }
+            // Aller, Transport Jour J : même règle que les timings auto (départ/arrivée/étape ce jour)
+            if (dateMatchesDay(leg.departureDate)) return true;
+            if (dateMatchesDay(leg.arrivalDate)) return true;
+            return false;
+        });
+
+        // Trier : d'abord tous les Aller (et Jour J), puis les Retour ; dans chaque groupe par heure
+        const legsForExport = [...legsTouchingDays].sort((a, b) => {
+            const aRetour = isRetourLeg(a) ? 1 : 0;
+            const bRetour = isRetourLeg(b) ? 1 : 0;
+            if (aRetour !== bRetour) return aRetour - bRetour; // Aller (0) avant Retour (1)
+            return getLegFirstTimeOnDates(a, dateMatchesDay) - getLegFirstTimeOnDates(b, dateMatchesDay);
+        });
+
+        if (legsForExport.length > 0) {
+            gridBottomY += 4;
+            const vehHeaderH = 6;
+            doc.setFillColor(...colorAccHeader);
+            doc.setDrawColor(...colorBorder);
+            doc.rect(margin, gridBottomY, contentW, vehHeaderH, 'FD');
+            doc.setTextColor(...colorTextOnDark);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.text('Logistique véhicules — Qui monte, où et quand', margin + 3, gridBottomY + vehHeaderH / 2 + 1.2);
+            doc.setFont('helvetica', 'normal');
+            gridBottomY += vehHeaderH;
+            doc.setFontSize(7);
+            doc.setTextColor(...colorTextOnLight);
+
+            let lastDirection: string | null = null;
+            legsForExport.forEach(leg => {
+                const isRetour = isRetourLeg(leg);
+                const directionLabel = isRetour ? 'Retour' : 'Aller';
+                if (lastDirection !== directionLabel) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(8);
+                    doc.setTextColor(71, 85, 105);
+                    doc.text(directionLabel, margin + 2, gridBottomY + 2.5);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(...colorTextOnLight);
+                    gridBottomY += 3.5;
+                    lastDirection = directionLabel;
+                }
+
+                const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
+                const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+                const driverName = driver ? `${driver.firstName} ${driver.lastName}` : '—';
+                const dayEvents = getLegDayEvents(leg, dateMatchesDay, getOccupantName, driverName);
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(sanitizeTextForPdf(`${vehicleName} (${leg.direction})`), margin + 3, gridBottomY + 2.5);
+                doc.setFont('helvetica', 'normal');
+                gridBottomY += 3;
+
+                if (dayEvents.length === 0) {
+                    doc.text('Aucun horaire ce jour pour ce véhicule.', margin + 5, gridBottomY + 2.5);
+                    gridBottomY += 3;
+                } else {
+                    dayEvents.forEach(ev => {
+                        const fullLine = sanitizeTextForPdf(ev.line);
+                        const lines = doc.splitTextToSize(fullLine, contentW - margin - 10);
+                        lines.slice(0, 2).forEach((l: string) => {
+                            doc.text(l, margin + 5, gridBottomY + 2.5);
+                            gridBottomY += 2.8;
+                        });
+                        if (lines.length > 2) gridBottomY += (lines.length - 2) * 2.8;
+                        gridBottomY += 0.5;
+                    });
+                }
+                gridBottomY += 2.5;
+            });
+            gridBottomY += 3;
+        }
+    }
+
+    // Section hébergement (compact, tout sur une page)
+    const accommodations = appState.eventAccommodations.filter(a => a.eventId === event.id);
+    if (accommodations.length > 0) {
+        const accHeaderH = 6;
+        let y = gridBottomY + 4;
+        doc.setFillColor(...colorAccHeader);
+        doc.setDrawColor(...colorBorder);
+        doc.rect(margin, y, contentW, accHeaderH, 'FD');
+        doc.setTextColor(...colorTextOnDark);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('Hébergement', margin + 3, y + accHeaderH / 2 + 1.2);
+        doc.setFont('helvetica', 'normal');
+        y += accHeaderH;
+        doc.setFontSize(8);
+        doc.setTextColor(...colorTextOnLight);
+        accommodations.forEach(acc => {
+            if (acc.hotelName) {
+                doc.setFont('helvetica', 'bold');
+                doc.text(sanitizeTextForPdf(acc.hotelName), margin + 3, y + 2.8);
+                doc.setFont('helvetica', 'normal');
+                y += 4;
+            }
+            if (acc.address) {
+                doc.setFontSize(7);
+                doc.splitTextToSize(sanitizeTextForPdf(acc.address), contentW - 6).forEach((l: string) => {
+                    doc.text(l, margin + 3, y + 2.8);
+                    y += 3.2;
+                });
+                doc.setFontSize(8);
+            }
+            y += 2;
+        });
+    }
+
+    // Bas de page (footer) — une seule page
+    const footerY = pageH - margin;
+    doc.setDrawColor(...colorBorder);
+    doc.line(margin, footerY - 6, margin + contentW, footerY - 6);
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Timing du déplacement — Logicycle', pageW / 2, footerY - 3, { align: 'center' });
+
+    const baseName = event.name.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim().replace(/\s+/g, '_');
+    const daySuffix = selectedDay ? `_${selectedDay.charAt(0).toLowerCase()}${selectedDay.slice(1)}` : '';
+    doc.save(`Planning_${baseName}${daySuffix}.pdf`);
+};
+
 const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> = ({ 
   event, 
   updateEvent, 
@@ -110,6 +552,10 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
   const [isEditing, setIsEditing] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [deletedAutoTimings, setDeletedAutoTimings] = useState<Set<string>>(new Set());
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<'all' | 'day'>('all');
+  const [exportSelectedDay, setExportSelectedDay] = useState<MealDay | null>(null);
+  const [exportIncludeVehicles, setExportIncludeVehicles] = useState(false);
 
   useEffect(() => {
     setLogistics(structuredClone(event.operationalLogistics || []));
@@ -900,9 +1346,109 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
           )}
         </div>
         {!isEditing && viewMode === 'team' && (
-          <ActionButton onClick={() => setIsEditing(true)} variant="primary">
-            Modifier Timings
-          </ActionButton>
+          <div className="flex items-center gap-2">
+            <ActionButton
+              onClick={() => setIsExportModalOpen(true)}
+              variant="secondary"
+            >
+              Exporter le planning en PDF
+            </ActionButton>
+            <ActionButton onClick={() => setIsEditing(true)} variant="primary">
+              Modifier Timings
+            </ActionButton>
+          </div>
+        )}
+
+        {isExportModalOpen && viewMode === 'team' && (
+          <Modal
+            isOpen={isExportModalOpen}
+            onClose={() => setIsExportModalOpen(false)}
+            title="Exporter le planning"
+          >
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Périmètre</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      checked={exportScope === 'all'}
+                      onChange={() => setExportScope('all')}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Tous les jours</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      checked={exportScope === 'day'}
+                      onChange={() => setExportScope('day')}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Un jour seulement</span>
+                  </label>
+                  {exportScope === 'day' && (
+                    <select
+                      value={exportSelectedDay ?? ''}
+                      onChange={(e) => setExportSelectedDay((e.target.value || null) as MealDay | null)}
+                      className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                    >
+                      <option value="">Choisir un jour</option>
+                      {displayLogistics.map((d) => (
+                        <option key={d.id} value={d.dayName}>
+                          {d.dayName.charAt(0).toLowerCase() + d.dayName.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={exportIncludeVehicles}
+                    onChange={(e) => setExportIncludeVehicles(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Inclure la logistique véhicules (qui monte, où et quand)</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">
+                  Conducteur, départs/arrivées, personnes à bord et récupérations/déposes
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <ActionButton variant="secondary" onClick={() => setIsExportModalOpen(false)}>
+                  Annuler
+                </ActionButton>
+                <ActionButton
+                  variant="primary"
+                  onClick={() => {
+                    if (exportScope === 'day' && !exportSelectedDay) {
+                      alert('Veuillez choisir un jour.');
+                      return;
+                    }
+                    exportPlanningToPdf(
+                      event,
+                      displayLogistics,
+                      appState,
+                      getOccupantName,
+                      getVehicleInfo,
+                      {
+                        selectedDay: exportScope === 'day' ? exportSelectedDay : null,
+                        includeVehicleLogistics: exportIncludeVehicles,
+                      }
+                    );
+                    setIsExportModalOpen(false);
+                  }}
+                >
+                  Exporter en PDF
+                </ActionButton>
+              </div>
+            </div>
+          </Modal>
         )}
       </div>
 

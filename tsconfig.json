@@ -24,6 +24,7 @@
     }
   },
   "include": [
+    "index.tsx",
     "sections/**/*",
     "components/**/*",
     "types.ts",

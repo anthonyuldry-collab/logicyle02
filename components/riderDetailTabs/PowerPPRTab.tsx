@@ -2214,7 +2214,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                     <div className={`${containerClasses} p-4`}>
                         <h5 className={`${titleClasses} mb-3`}>Profil puissance · toutes durées</h5>
                         <p className={`text-xs mb-4 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
-                            Comparaison de l&apos;athlète à la moyenne équipe pour le profil de fatigue sélectionné.
+                            Comparaison de l&apos;athlète à la moyenne, min. et max. de son groupe ({(formData as Rider).rosterRole === 'reserve' ? 'Réserve' : 'Équipe 1'}) pour le profil de fatigue sélectionné.
+                            {(formData as Rider).rosterRole === 'reserve' && allRiders.some(r => (r.rosterRole ?? 'principal') !== 'reserve') ? ' Pour la réserve, comparaison à la moyenne de l\'équipe principale ci‑dessous.' : ''}
                         </p>
                         {/* Unité : W/kg ou watts bruts */}
                         <div className="flex flex-wrap gap-2 mb-3">
@@ -2264,10 +2265,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                             const riderAsRider = formData as Rider;
                             const mode = analyseUnit;
                             const getVal = (r: Rider, dk: PowerDurationKey) => (mode === 'watts' ? getRiderPowerWatts(r, dk, analyseFatigue) : getRiderPowerWkg(r, dk, analyseFatigue));
-                            const teamAvg = allRiders.length > 0 ? computeGroupAverages(allRiders, mode, analyseFatigue).team : {};
-                            /** Min, max et écart-type par durée pour l'équipe */
+                            /** Groupe de l'athlète : réserve ou équipe principale (équipe 1) */
+                            const riderRole = riderAsRider.rosterRole ?? 'principal';
+                            const groupRiders = allRiders.filter((r) => (r.rosterRole ?? 'principal') === riderRole);
+                            const mainTeamRiders = allRiders.filter((r) => (r.rosterRole ?? 'principal') !== 'reserve');
+                            const groupLabel = riderRole === 'reserve' ? 'Réserve' : 'Équipe 1';
+                            /** Moyenne, min, max du groupe auquel appartient l'athlète (pas les totaux) */
+                            const teamAvg = groupRiders.length > 0 ? computeGroupAverages(groupRiders, mode, analyseFatigue).team : {};
+                            /** Min, max et écart-type par durée pour le groupe */
                             const getTeamStats = (dk: PowerDurationKey) => {
-                                const values = allRiders.map((r) => getVal(r, dk)).filter((v) => v > 0);
+                                const values = groupRiders.map((r) => getVal(r, dk)).filter((v) => v > 0);
                                 if (values.length === 0) return { min: null as number | null, max: null as number | null, stdDev: null as number | null };
                                 const min = Math.min(...values);
                                 const max = Math.max(...values);
@@ -2275,17 +2282,22 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                 const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
                                 return { min, max, stdDev: Math.sqrt(variance) };
                             };
+                            const mainTeamAvg = riderRole === 'reserve' && mainTeamRiders.length > 0 ? computeGroupAverages(mainTeamRiders, mode, analyseFatigue).team : {};
                             const series = POWER_DURATION_KEYS.map((dk) => {
                                 const athlete = getVal(riderAsRider, dk);
                                 const team = teamAvg[dk];
-                                const stats = allRiders.length > 0 ? getTeamStats(dk) : { min: null as number | null, max: null as number | null, stdDev: null as number | null };
+                                const stats = groupRiders.length > 0 ? getTeamStats(dk) : { min: null as number | null, max: null as number | null, stdDev: null as number | null };
                                 const hasAthlete = athlete > 0;
                                 const hasTeam = team != null && team > 0;
                                 const percentDiff = hasTeam && team > 0 && hasAthlete ? Math.round(((athlete - team) / team) * 100) : null;
-                                return { durationKey: dk, label: DURATION_LABELS[dk], athlete, team: team ?? 0, hasAthlete, hasTeam, percentDiff, isAbove: percentDiff != null && percentDiff >= 0, teamMin: stats.min, teamMax: stats.max, teamStdDev: stats.stdDev };
+                                const mainTeam = mainTeamAvg[dk];
+                                const hasMainTeam = riderRole === 'reserve' && mainTeam != null && mainTeam > 0;
+                                const percentDiffVsMain = hasMainTeam && hasAthlete ? Math.round(((athlete - mainTeam) / mainTeam) * 100) : null;
+                                return { durationKey: dk, label: DURATION_LABELS[dk], athlete, team: team ?? 0, hasAthlete, hasTeam, percentDiff, isAbove: percentDiff != null && percentDiff >= 0, teamMin: stats.min, teamMax: stats.max, teamStdDev: stats.stdDev, mainTeam: mainTeam ?? 0, hasMainTeam, percentDiffVsMain };
                             }).filter((s) => s.hasAthlete || s.hasTeam);
-                            const maxVal = series.length > 0 ? Math.max(...series.flatMap((s) => [s.athlete, s.team])) * 1.15 || 1 : 1;
-                            const hasComparison = allRiders.length > 0;
+                            const maxVal = series.length > 0 ? Math.max(...series.flatMap((s) => [s.athlete, s.team, s.hasMainTeam ? s.mainTeam : 0])) * 1.15 || 1 : 1;
+                            const hasComparison = groupRiders.length > 0;
+                            const showVsMainTeam = riderRole === 'reserve' && mainTeamRiders.length > 0;
                             const unitLabel = mode === 'watts' ? 'W' : 'W/kg';
                             const formatVal = (v: number) => (mode === 'watts' ? Math.round(v).toString() : v.toFixed(1));
                             return (
@@ -2307,7 +2319,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                                     <div
                                                                         className="absolute inset-y-0 left-0 rounded bg-slate-200 dark:bg-slate-600"
                                                                         style={{ width: `${Math.min(100, (s.team / maxVal) * 100)}%` }}
-                                                                        title={`Moy. équipe ${formatVal(s.team)} ${unitLabel}`}
+                                                                        title={`Moy. groupe (${groupLabel}) ${formatVal(s.team)} ${unitLabel}`}
                                                                     />
                                                                 )}
                                                                 {s.hasAthlete && (
@@ -2327,7 +2339,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                                 </span>
                                                             )}
                                                             {hasComparison && s.hasTeam && (
-                                                                <span className={`w-12 shrink-0 text-right text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`} title="Moy. équipe">
+                                                                <span className={`w-12 shrink-0 text-right text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`} title={`Moy. groupe (${groupLabel})`}>
                                                                     {formatVal(s.team)}
                                                                 </span>
                                                             )}
@@ -2341,8 +2353,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                 ))}
                                             </div>
                                             {hasComparison && (
-                                                <div className={`flex gap-4 mb-3 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>
-                                                    <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-slate-200" /> Moy. équipe</span>
+                                                <div className={`flex flex-wrap gap-4 mb-3 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>
+                                                    <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-slate-200" /> Moy. groupe ({groupLabel})</span>
                                                     <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-emerald-500" /> Au-dessus</span>
                                                     <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-amber-500" /> En dessous</span>
                                                 </div>
@@ -2355,10 +2367,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                             <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Athlète ({unitLabel})</th>
                                                             {hasComparison && (
                                                                 <>
-                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Moy. équipe</th>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`} title={`Moyenne du groupe ${groupLabel}`}>Moy. groupe</th>
                                                                     <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Écart type</th>
                                                                     <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Min</th>
                                                                     <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Max</th>
+                                                                </>
+                                                            )}
+                                                            {showVsMainTeam && (
+                                                                <>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Moy. équ. princ.</th>
+                                                                    <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Écart vs équ. princ.</th>
                                                                 </>
                                                             )}
                                                             <th className={`text-right py-2 px-3 font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Écart</th>
@@ -2377,6 +2395,14 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                                         <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-500' : 'text-slate-500'}`}>{s.teamMax != null ? formatVal(s.teamMax) : '–'}</td>
                                                                     </>
                                                                 )}
+                                                                {showVsMainTeam && (
+                                                                    <>
+                                                                        <td className={`py-2 px-3 text-right ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>{s.hasMainTeam ? formatVal(s.mainTeam) : '–'}</td>
+                                                                        <td className={`py-2 px-3 text-right font-semibold ${s.percentDiffVsMain != null ? (s.percentDiffVsMain >= 0 ? 'text-emerald-600' : 'text-amber-600') : theme === 'light' ? 'text-gray-400' : 'text-slate-500'}`}>
+                                                                            {s.percentDiffVsMain != null ? `${s.percentDiffVsMain >= 0 ? '+' : ''}${s.percentDiffVsMain}%` : '–'}
+                                                                        </td>
+                                                                    </>
+                                                                )}
                                                                 <td className={`py-2 px-3 text-right font-semibold ${s.isAbove ? 'text-emerald-600' : 'text-amber-600'}`}>
                                                                     {s.percentDiff != null ? `${s.percentDiff >= 0 ? '+' : ''}${s.percentDiff}%` : '–'}
                                                                 </td>
@@ -2387,7 +2413,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                             </div>
                                             {!hasComparison && (
                                                 <p className={`mt-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
-                                                    Comparaison équipe non disponible (ouvrir la fiche depuis la liste de l&apos;équipe pour afficher la moyenne équipe).
+                                                    Comparaison groupe non disponible (ouvrir la fiche depuis la liste de l&apos;équipe pour afficher la moyenne, min. et max. du groupe).
                                                 </p>
                                             )}
                                         </>

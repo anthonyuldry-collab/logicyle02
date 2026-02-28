@@ -724,9 +724,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       const date = new Date(`${dateString}T${timeString || "00:00:00"}`);
       if (isNaN(date.getTime())) return "Date invalide";
       const options: Intl.DateTimeFormatOptions = {
-        weekday: "short",
+        weekday: "long",
         day: "numeric",
-        month: "short",
+        month: "long",
       };
       let formatted = date.toLocaleDateString("fr-FR", options);
       if (timeString) {

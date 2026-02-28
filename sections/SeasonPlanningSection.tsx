@@ -474,12 +474,18 @@ export default function SeasonPlanningSection({
   };
 
 
-  // Fonction pour obtenir le nombre d'athlètes sélectionnés pour un événement
+  // Fonction pour obtenir le nombre d'athlètes sélectionnés pour un événement (riderEventSelections + event.selectedRiderIds)
   const getSelectedRidersCount = (eventId: string) => {
-    return riderEventSelections.filter(sel => 
-      sel.eventId === eventId && 
+    const event = raceEvents.find(e => e.id === eventId);
+    const fromSelections = riderEventSelections.filter(sel =>
+      sel.eventId === eventId &&
       (sel.status === RiderEventStatus.TITULAIRE || sel.status === RiderEventStatus.PRE_SELECTION)
     ).length;
+    const riderIdsInSelections = new Set(
+      riderEventSelections.filter(sel => sel.eventId === eventId).map(s => s.riderId)
+    );
+    const fromEventOnly = (event?.selectedRiderIds || []).filter(id => !riderIdsInSelections.has(id)).length;
+    return fromSelections + fromEventOnly;
   };
 
   // Fonction pour vérifier si les limites sont respectées
@@ -592,9 +598,15 @@ export default function SeasonPlanningSection({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayEvents.map(event => {
               const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
-              const titulaires = eventSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
+              const titulairesFromSelections = eventSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
+              // Inclure les coureurs sélectionnés dans l'événement (onglet Participants) qui n'ont pas encore d'entrée dans riderEventSelections
+              const selectedRiderIds = event.selectedRiderIds || [];
+              const riderIdsInSelections = new Set(eventSelections.map(s => s.riderId));
+              const titulairesFromEventOnlyCount = selectedRiderIds.filter(id => !riderIdsInSelections.has(id)).length;
+              const titulairesCount = titulairesFromSelections.length + titulairesFromEventOnlyCount;
               const preselections = eventSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
               const remplacants = eventSelections.filter(sel => sel.status === RiderEventStatus.REMPLACANT);
+              const totalSelected = titulairesCount + preselections.length + remplacants.length;
               
               return (
                 <div
@@ -625,7 +637,7 @@ export default function SeasonPlanningSection({
                         <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                         <span className="text-sm text-gray-700">Titulaires</span>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{titulaires.length}</span>
+                      <span className="text-sm font-medium text-gray-900">{titulairesCount}</span>
                     </div>
                     
                     <div className="flex items-center justify-between">
@@ -648,7 +660,7 @@ export default function SeasonPlanningSection({
                   <div className="mt-4 pt-3 border-t border-gray-100">
                     <div className="text-center">
                       <span className="text-2xl font-light text-blue-600">
-                        {titulaires.length + preselections.length + remplacants.length}
+                        {totalSelected}
                       </span>
                       <div className="text-xs text-gray-500">sélectionnés</div>
                     </div>
@@ -724,17 +736,25 @@ export default function SeasonPlanningSection({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredRiders.map(rider => {
-              const riderSelections = riderEventSelections.filter(sel => 
+              const riderSelections = riderEventSelections.filter(sel =>
                 sel.riderId === rider.id && displayEvents.some(event => event.id === sel.eventId)
               );
+              // Inclure les événements où l'athlète est dans selectedRiderIds mais pas encore dans riderEventSelections (sélections faites dans l'onglet Participants)
+              const eventsFromSelectedIds = displayEvents.filter(
+                event => (event.selectedRiderIds || []).includes(rider.id) && !riderSelections.some(s => s.eventId === event.id)
+              );
+              type RiderEventEntry = { event: RaceEvent; status: RiderEventStatus; selection?: typeof riderSelections[0] };
+              const riderEventEntries: RiderEventEntry[] = [
+                ...riderSelections.map(sel => {
+                  const ev = displayEvents.find(e => e.id === sel.eventId);
+                  return ev ? { event: ev, status: sel.status, selection: sel } : null;
+                }).filter((x): x is RiderEventEntry => x !== null),
+                ...eventsFromSelectedIds.map(event => ({ event, status: RiderEventStatus.TITULAIRE, selection: undefined })),
+              ].sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
               const isExpanded = expandedRiderIds.has(rider.id);
-              const titulaire = riderSelections.filter(sel => sel.status === RiderEventStatus.TITULAIRE);
-              const preselection = riderSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
-              const nextEvents = riderSelections
-                .map(sel => ({ sel, event: displayEvents.find(e => e.id === sel.eventId) }))
-                .filter(x => !!x.event)
-                .sort((a,b) => new Date(a.event!.date).getTime() - new Date(b.event!.date).getTime())
-                .slice(0, 3);
+              const titulaireCount = riderEventEntries.filter(e => e.status === RiderEventStatus.TITULAIRE).length;
+              const preselectionCount = riderEventEntries.filter(e => e.status === RiderEventStatus.PRE_SELECTION).length;
+              const nextEvents = riderEventEntries.slice(0, 3);
 
               const toggle = () => {
                 setExpandedRiderIds(prev => {
@@ -767,21 +787,21 @@ export default function SeasonPlanningSection({
                     <td className="px-4 py-3 text-sm text-gray-700">{getAge(rider.birthDate)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        {nextEvents.length > 0 ? nextEvents.map(({ sel, event }) => (
-                          <span key={sel.id} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            sel.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
-                            sel.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
+                        {nextEvents.length > 0 ? nextEvents.map((entry, idx) => (
+                          <span key={entry.event.id + rider.id + idx} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            entry.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
+                            entry.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
                             'bg-yellow-100 text-yellow-800'
-                          }`} title={event!.name}>
-                            {event!.name}
+                          }`} title={entry.event.name}>
+                            {entry.event.name}
                           </span>
                         )) : (
                           <span className="text-xs text-gray-500">Aucun à venir</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{titulaire.length}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{preselection.length}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{titulaireCount}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{preselectionCount}</td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => openRiderCalendar(rider)} className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded hover:bg-purple-100">
                         <CalendarDaysIcon className="w-4 h-4 mr-1" /> Calendrier
@@ -791,39 +811,35 @@ export default function SeasonPlanningSection({
                   {isExpanded && (
                     <tr className="bg-gray-50">
                       <td className="px-4 py-3" colSpan={6}>
-                        {riderSelections.length > 0 ? (
+                        {riderEventEntries.length > 0 ? (
                           <div className="space-y-2">
-                            {riderSelections.map(selection => {
-                              const event = displayEvents.find(e => e.id === selection.eventId);
-                              if (!event) return null;
-                              return (
-                                <div key={selection.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-md bg-white">
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-medium text-gray-900 truncate">{event.name}</div>
-                                    <div className="text-xs text-gray-500">{formatEventDateRange(event)} • {event.location}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      selection.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
-                                      selection.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
-                                      'bg-yellow-100 text-yellow-800'
-                                    }`}>
-                                      {selection.status === RiderEventStatus.TITULAIRE ? 'Titulaire' : selection.status === RiderEventStatus.PRE_SELECTION ? 'Pré-sél.' : 'Rempl.'}
-                                    </span>
-                                    {selection.riderPreference && (
-                                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800' :
-                                        selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800' :
-                                        selection.riderPreference === RiderEventPreference.ABSENT || selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800' :
-                                        'bg-gray-100 text-gray-800'
-                                      }`}>
-                                        {selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? '👍' : selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯' : selection.riderPreference === RiderEventPreference.ABSENT ? '❌' : selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? '🚫' : '⏳'}
-                                      </span>
-                                    )}
-                                  </div>
+                            {riderEventEntries.map((entry, idx) => (
+                              <div key={entry.event.id + rider.id + idx} className="flex items-center justify-between p-3 border border-gray-200 rounded-md bg-white">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">{entry.event.name}</div>
+                                  <div className="text-xs text-gray-500">{formatEventDateRange(entry.event)} • {entry.event.location}</div>
                                 </div>
-                              );
-                            })}
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    entry.status === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
+                                    entry.status === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {entry.status === RiderEventStatus.TITULAIRE ? 'Titulaire' : entry.status === RiderEventStatus.PRE_SELECTION ? 'Pré-sél.' : 'Rempl.'}
+                                  </span>
+                                  {entry.selection?.riderPreference && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      entry.selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800' :
+                                      entry.selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800' :
+                                      entry.selection.riderPreference === RiderEventPreference.ABSENT || entry.selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {entry.selection.riderPreference === RiderEventPreference.VEUT_PARTICIPER ? '👍' : entry.selection.riderPreference === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯' : entry.selection.riderPreference === RiderEventPreference.ABSENT ? '❌' : entry.selection.riderPreference === RiderEventPreference.NE_VEUT_PAS ? '🚫' : '⏳'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="text-xs text-gray-500">Aucun événement pour cet athlète</div>
@@ -1344,15 +1360,23 @@ export default function SeasonPlanningSection({
                   const eventSelections = riderEventSelections.filter(sel => sel.eventId === event.id);
                   const selectedCount = getSelectedRidersCount(event.id);
                   const withinLimits = isWithinLimits(event.id);
-                  
-                  // Obtenir les titulaires pour cet événement
-                  const titulaires = eventSelections
+                  const riderIdsInSelections = new Set(eventSelections.map(s => s.riderId));
+                  // Titulaires : depuis riderEventSelections + coureurs dans event.selectedRiderIds sans entrée sélection
+                  const titulairesFromSelections = eventSelections
                     .filter(sel => sel.status === RiderEventStatus.TITULAIRE)
                     .map(sel => {
                       const rider = riders.find(r => r.id === sel.riderId);
                       return rider ? `${rider.firstName} ${rider.lastName}` : null;
                     })
-                    .filter(name => name !== null);
+                    .filter((name): name is string => name !== null);
+                  const titulairesFromEventOnly = (event.selectedRiderIds || [])
+                    .filter(id => !riderIdsInSelections.has(id))
+                    .map(riderId => {
+                      const rider = riders.find(r => r.id === riderId);
+                      return rider ? `${rider.firstName} ${rider.lastName}` : null;
+                    })
+                    .filter((name): name is string => name !== null);
+                  const titulaires = [...titulairesFromSelections, ...titulairesFromEventOnly];
                   
                   return (
                     <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[240px] border-l border-gray-200">

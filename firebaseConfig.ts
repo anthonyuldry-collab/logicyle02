@@ -3,15 +3,15 @@ import { getAuth } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// Your web app's Firebase configuration, using hardcoded values
+// Configuration Firebase : variables d'environnement (VITE_*) avec repli sur valeurs par défaut
 const firebaseConfig = {
-  apiKey: "AIzaSyBDHmsIdstWYdi4yHMW0PE7rSsCnvnkm7k",
-  authDomain: "logicycle01.firebaseapp.com",
-  projectId: "logicycle01",
-  storageBucket: "logicycle01.appspot.com",
-  messagingSenderId: "373355040435",
-  appId: "1:373355040435:web:c85b13e61c6fa10d0eeac6",
-  measurementId: "G-03X2FB0F0B"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "AIzaSyBDHmsIdstWYdi4yHMW0PE7rSsCnvnkm7k",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "logicycle01.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "logicycle01",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "logicycle01.appspot.com",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "373355040435",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "1:373355040435:web:c85b13e61c6fa10d0eeac6",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? "G-03X2FB0F0B"
 };
 
 // Initialize Firebase

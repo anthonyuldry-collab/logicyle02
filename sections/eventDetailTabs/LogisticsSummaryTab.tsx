@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AppState, RaceEvent, TransportDirection, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, StaffRole, AppSection, PermissionLevel } from '../../types';
+import { jsPDF } from 'jspdf';
+import { AppState, RaceEvent, TransportDirection, TransportMode, TransportStopType, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, StaffRole, AppSection, PermissionLevel } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
 import UsersIcon from '../../components/icons/UsersIcon';
@@ -9,6 +10,477 @@ import BuildingOfficeIcon from '../../components/icons/BuildingOfficeIcon';
 import ClockIcon from '../../components/icons/ClockIcon';
 import { STAFF_ROLES_CONFIG } from '../../constants';
 import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
+
+const PDF_PAGE_WIDTH = 210;
+const PDF_PAGE_HEIGHT = 297;
+const PDF_CONTENT_WIDTH = 160;
+const PDF_MARGIN = (PDF_PAGE_WIDTH - PDF_CONTENT_WIDTH) / 2;
+const PDF_MAX_WIDTH = PDF_CONTENT_WIDTH;
+const PDF_LINE_HEIGHT = 5.5;
+const PDF_LINE_HEIGHT_SECTION = 6.5;
+const PDF_HEADER_HEIGHT = 28;
+const PDF_TITLE_GRAY = [31, 41, 55] as [number, number, number];
+const PDF_SUBTITLE_GRAY = [107, 114, 128] as [number, number, number];
+const PDF_SECTION_GRAY = [75, 85, 99] as [number, number, number];
+const PDF_LINE_GRAY = [229, 231, 235] as [number, number, number];
+const PDF_BOX_BG = [248, 250, 252] as [number, number, number];
+const PDF_BOX_BORDER = [226, 232, 240] as [number, number, number];
+const PDF_LABEL_WIDTH = 24;
+
+const PDF_COMPACT_LINE = 4;
+const PDF_COMPACT_SECTION_GAP = 2;
+const PDF_COMPACT_HEADER_HEIGHT = 22;
+
+const drawPdfHeader = (doc: jsPDF, event: RaceEvent, formatDateFn: (d?: string) => string, compact = false): void => {
+    const titleY = compact ? 12 : 14;
+    const dateY = compact ? 18 : 22;
+    doc.setTextColor(...PDF_TITLE_GRAY);
+    doc.setFontSize(compact ? 16 : 18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(event.name, PDF_PAGE_WIDTH / 2, titleY, { align: 'center' });
+    doc.setFontSize(compact ? 9 : 10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...PDF_SUBTITLE_GRAY);
+    const dateRange = `Du ${formatDateFn(event.date)} au ${formatDateFn(event.endDate || event.date)}`;
+    doc.text(dateRange, PDF_PAGE_WIDTH / 2, dateY, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+};
+
+const drawPdfSectionTitle = (doc: jsPDF, title: string, y: number, compact = false): number => {
+    const lineX2 = PDF_MARGIN + PDF_CONTENT_WIDTH;
+    doc.setDrawColor(...PDF_LINE_GRAY);
+    doc.line(PDF_MARGIN, y, lineX2, y);
+    const lineGap = compact ? 3 : 4;
+    let nextY = y + lineGap;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(compact ? 9 : 10);
+    doc.setTextColor(...PDF_SECTION_GRAY);
+    doc.text(title, PDF_MARGIN, nextY + (compact ? 3.5 : 4));
+    nextY += (compact ? PDF_COMPACT_LINE + 4 : PDF_LINE_HEIGHT_SECTION + 2);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(compact ? 9 : 11);
+    return nextY;
+};
+
+const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamState, formatDateFn: (d?: string) => string): void => {
+    const lineH = PDF_COMPACT_LINE;
+    const gap = PDF_COMPACT_SECTION_GAP;
+    let y = PDF_COMPACT_HEADER_HEIGHT + 4;
+    const colWidth = (PDF_MAX_WIDTH - 8) / 2;
+
+    const allRiders = appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id));
+    y = drawPdfSectionTitle(doc, 'PARTICIPANTS', y, true);
+    const participantNames = allRiders.map(r => `${r.firstName} ${r.lastName}`);
+    const half = Math.ceil(participantNames.length / 2);
+    for (let i = 0; i < half; i++) {
+        const left = `• ${participantNames[i]}`;
+        const right = i + half < participantNames.length ? `• ${participantNames[i + half]}` : '';
+        doc.text(left, PDF_MARGIN, y);
+        if (right) doc.text(right, PDF_MARGIN + colWidth + 8, y);
+        y += lineH;
+    }
+    y += gap;
+
+    y = drawPdfSectionTitle(doc, 'ENCADREMENT', y, true);
+    const dirNames = getStaffNames('directeurSportifId', event, appState);
+    const asstNames = getStaffNames('assistantId', event, appState);
+    const mecanoNames = getStaffNames('mecanoId', event, appState);
+    const kineNames = getStaffNamesForConvocation('kineId', event, appState);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Directeur(s) Sportif(s):', PDF_MARGIN, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dirNames, PDF_MARGIN + 52, y);
+    y += lineH;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assistant(s):', PDF_MARGIN, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(asstNames, PDF_MARGIN + 52, y);
+    y += lineH;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Mécanicien(s):', PDF_MARGIN, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(mecanoNames, PDF_MARGIN + 52, y);
+    y += lineH;
+    if (kineNames) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Kiné(s):', PDF_MARGIN, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(kineNames, PDF_MARGIN + 52, y);
+        y += lineH;
+    }
+    y += gap;
+
+    const allTransportLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isConvocationTransportLeg(leg)
+    );
+    if (allTransportLegs.length > 0) {
+        y = drawPdfSectionTitle(doc, 'TRANSPORT', y, true);
+        const boxX = PDF_MARGIN;
+        const boxW = PDF_MAX_WIDTH;
+        const boxY = y;
+        const colW = (boxW - 4) / 2;
+        const xLeft = boxX + 2;
+        const xRight = boxX + 2 + colW + 2;
+
+        const allerLegs = allTransportLegs.filter(leg => leg.direction === 'Aller');
+        const retourLegs = allTransportLegs.filter(leg => leg.direction === 'Retour');
+
+        const VOITURE_PERSO_KEY = '(Voiture Personnelle)';
+        const allKeys = Array.from(new Set([
+            ...allerLegs.map(l => getLegSortKey(l, appState)),
+            ...retourLegs.map(l => getLegSortKey(l, appState)),
+        ])).sort((a, b) => {
+            if (a === VOITURE_PERSO_KEY && b !== VOITURE_PERSO_KEY) return -1;
+            if (b === VOITURE_PERSO_KEY && a !== VOITURE_PERSO_KEY) return 1;
+            return a.localeCompare(b);
+        });
+        type Row = { aller: EventTransportLeg | null; retour: EventTransportLeg | null };
+        const rows: Row[] = allKeys.map(key => ({
+            aller: allerLegs.find(l => getLegSortKey(l, appState) === key) || null,
+            retour: retourLegs.find(l => getLegSortKey(l, appState) === key) || null,
+        }));
+
+        const estimateLegHeight = (leg: EventTransportLeg | null) => {
+            if (!leg) return 0;
+            let h = lineH * 1.5 + 0.5;
+            if (leg.departureDate || leg.departureTime || leg.departureLocation) h += lineH + 1;
+            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) h += lineH + 1;
+            if (leg.assignedVehicleId && leg.driverId) h += lineH + 1;
+            if ((leg.occupants || []).length > 0) h += lineH + 1;
+            const pdLines = getLegPickupDropoffLines(leg, appState);
+            if (pdLines.length > 0) h += 3 + lineH * 2 + pdLines.length * lineH * 2;
+            return h + 2;
+        };
+        const headerH = lineH + 4;
+        const rowHeights = rows.map((row, idx) => (idx > 0 ? 3 : 0) + Math.max(estimateLegHeight(row.aller), estimateLegHeight(row.retour)));
+        const boxH = headerH + 4 + rowHeights.reduce((a, b) => a + b, 0) + 6;
+
+        doc.setFillColor(...PDF_BOX_BG);
+        doc.setDrawColor(...PDF_BOX_BORDER);
+        doc.rect(boxX, boxY, boxW, boxH, 'FD');
+        doc.setDrawColor(...PDF_LINE_GRAY);
+        doc.line(boxX + boxW / 2, boxY, boxX + boxW / 2, boxY + boxH);
+        doc.line(boxX, boxY + headerH, boxX + boxW, boxY + headerH);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...PDF_SECTION_GRAY);
+        doc.text('DÉPART (Aller)', boxX + colW / 2, boxY + headerH / 2 + 1, { align: 'center' });
+        doc.text('RETOUR', boxX + boxW / 2 + colW / 2, boxY + headerH / 2 + 1, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+
+        const drawLegInColumn = (leg: EventTransportLeg, x: number, width: number, startY: number): number => {
+            let cy = startY;
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+            const occupants = (leg.occupants || []).map(o => {
+                const p = o.type === 'rider' ? appState.riders.find(r => r.id === o.id) : appState.staff.find(s => s.id === o.id);
+                return p ? `${p.firstName[0]}.${p.lastName}` : '';
+            }).join(', ');
+            const modeLabel = getTransportLegLabel(leg, vehicle?.name);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(...PDF_SECTION_GRAY);
+            const title = `${leg.personName || 'Trajet'}${modeLabel ? ` ${modeLabel}` : ''}`;
+            const titleWrapped = doc.splitTextToSize(title, width - 2);
+            titleWrapped.forEach((w: string) => { doc.text(w, x, cy + 2.5); cy += lineH; });
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            cy += 1;
+            if (leg.departureDate || leg.departureTime || leg.departureLocation) {
+                const depDayOnly = leg.departureDate ? formatDateFn(leg.departureDate) : '';
+                doc.setFont('helvetica', 'bold');
+                doc.text('Départ:', x, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                const depStr = depDayOnly ? `${depDayOnly} à ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}` : `${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
+                doc.splitTextToSize(depStr, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+                cy += 1;
+            }
+            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
+                const arrDayOnly = leg.arrivalDate ? formatDateFn(leg.arrivalDate) : '';
+                doc.setFont('helvetica', 'bold');
+                doc.text('Arrivée:', x, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                const arrStr = [arrDayOnly, leg.arrivalTime, leg.arrivalLocation || '—'].filter(Boolean).join(' à ');
+                doc.splitTextToSize(arrStr, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+                cy += 1;
+            }
+            if (vehicle && driver) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Véhicule:', x, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.splitTextToSize(`${vehicle.name} (${driver.firstName})`, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+                cy += 1;
+            }
+            if (occupants) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Occupants:', x, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.splitTextToSize(occupants, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+                cy += 1;
+            }
+            const pickupDropoffLines = getLegPickupDropoffLines(leg, appState);
+            if (pickupDropoffLines.length > 0) {
+                cy += 2;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.setTextColor(0, 0, 0);
+                doc.text('Récup. / déposes:', x, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                cy += lineH + 1;
+                pickupDropoffLines.forEach(line => {
+                    doc.splitTextToSize(line, width - 6).forEach((w: string) => { doc.text(w, x + 4, cy + 2.5); cy += lineH; });
+                });
+            }
+            return cy + 2;
+        };
+
+        let rowY = boxY + headerH + 2;
+        rows.forEach((row, idx) => {
+            if (idx > 0) {
+                doc.setDrawColor(...PDF_LINE_GRAY);
+                doc.line(xLeft, rowY + 1, xLeft + colW - 2, rowY + 1);
+                doc.line(xRight, rowY + 1, xRight + colW - 2, rowY + 1);
+                rowY += 3;
+            }
+            const startY = rowY;
+            const cyLeft = row.aller ? drawLegInColumn(row.aller, xLeft, colW - 2, rowY) : rowY;
+            const cyRight = row.retour ? drawLegInColumn(row.retour, xRight, colW - 2, rowY) : rowY;
+            rowY = Math.max(cyLeft, cyRight);
+        });
+
+        y = rowY + 4;
+    }
+
+    // Logistique véhicules Jour J (au jour le jour)
+    const jourJLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg)
+    );
+    if (jourJLegs.length > 0) {
+        if (y > PDF_PAGE_HEIGHT - 55) {
+            doc.addPage();
+            y = PDF_MARGIN;
+        }
+        y = drawPdfSectionTitle(doc, 'LOGISTIQUE VÉHICULES JOUR J', y, true);
+        const boxX = PDF_MARGIN;
+        const boxW = PDF_MAX_WIDTH;
+        jourJLegs.forEach((leg, idx) => {
+            if (y > PDF_PAGE_HEIGHT - 45) {
+                doc.addPage();
+                y = PDF_MARGIN;
+            }
+            const boxY = y;
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+            const occupants = (leg.occupants || []).map(o => {
+                const p = o.type === 'rider' ? appState.riders.find(r => r.id === o.id) : appState.staff.find(s => s.id === o.id);
+                return p ? `${p.firstName[0]}.${p.lastName}` : '';
+            }).join(', ');
+            let legH = lineH * 1.5 + 2;
+            if (leg.departureTime || leg.departureLocation) legH += lineH + 1;
+            if (leg.arrivalTime || leg.arrivalLocation) legH += lineH + 1;
+            if (vehicle && driver) legH += lineH + 1;
+            if (occupants) legH += lineH + 1;
+            legH += 4;
+            doc.setFillColor(...PDF_BOX_BG);
+            doc.setDrawColor(...PDF_BOX_BORDER);
+            doc.rect(boxX, boxY, boxW, legH, 'FD');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            let cy = boxY + 3;
+            const modeLabel = getTransportLegLabel(leg, vehicle?.name);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(...PDF_SECTION_GRAY);
+            doc.text(`Jour J ${modeLabel ? modeLabel : 'Transport'}`, boxX + 2, cy + 2.5);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            cy += lineH + 1;
+            if (leg.departureTime || leg.departureLocation) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Départ:', boxX + 2, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`, boxX + PDF_LABEL_WIDTH + 2, cy + 2.5);
+                cy += lineH + 1;
+            }
+            if (leg.arrivalTime || leg.arrivalLocation) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Arrivée:', boxX + 2, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}`, boxX + PDF_LABEL_WIDTH + 2, cy + 2.5);
+                cy += lineH + 1;
+            }
+            if (vehicle && driver) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Véhicule:', boxX + 2, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${vehicle.name} (${driver.firstName})`, boxX + PDF_LABEL_WIDTH + 2, cy + 2.5);
+                cy += lineH + 1;
+            }
+            if (occupants) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Passagers:', boxX + 2, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.splitTextToSize(occupants, boxW - PDF_LABEL_WIDTH - 6).forEach((w: string) => { doc.text(w, boxX + PDF_LABEL_WIDTH + 2, cy + 2.5); cy += lineH; });
+                cy += 1;
+            }
+            y = cy + 3;
+        });
+        y += 4;
+    }
+
+    if (y > PDF_PAGE_HEIGHT - 45) {
+        doc.addPage();
+        y = PDF_MARGIN;
+    }
+    y = drawPdfSectionTitle(doc, 'HÉBERGEMENT', y, true);
+    const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover)
+        || appState.eventAccommodations.find(acc => acc.eventId === event.id);
+    if (accommodation?.hotelName || accommodation?.address) {
+        if (accommodation.hotelName) {
+            doc.text(`Hôtel: ${accommodation.hotelName}`, PDF_MARGIN, y);
+            y += lineH;
+        }
+        if (accommodation.address) {
+            const addrLines = doc.splitTextToSize(`Adresse: ${accommodation.address}`, PDF_CONTENT_WIDTH - 4);
+            addrLines.forEach((line: string) => {
+                doc.text(line, PDF_MARGIN, y);
+                y += lineH;
+            });
+        }
+    } else {
+        doc.text('Non renseigné', PDF_MARGIN, y);
+        y += lineH;
+    }
+    y += gap;
+
+    if (y < PDF_PAGE_HEIGHT - 22) {
+        doc.setDrawColor(...PDF_LINE_GRAY);
+        doc.line(PDF_MARGIN, PDF_PAGE_HEIGHT - 18, PDF_MARGIN + PDF_CONTENT_WIDTH, PDF_PAGE_HEIGHT - 18);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text('Convocation — Logicycle', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+    }
+};
+
+const addConvocationTextToPdf = (doc: jsPDF, text: string, options: { startY: number; skipIntroLines: boolean }): void => {
+    const lines = text.split('\n');
+    let y = options.startY;
+    let skipIntro = options.skipIntroLines;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+
+    for (const line of lines) {
+        const trimmed = line.trimEnd();
+        if (skipIntro) {
+            if (/^Objet:/.test(trimmed) || /^(ÉVÉNEMENT|DATE|LIEU|RÔLE)\s*:/.test(trimmed) || trimmed === '') {
+                continue;
+            }
+            skipIntro = false;
+        }
+
+        const isSectionHeader = /^[A-ZÉÈÊËÀÂÄÔÙÛÜÇ\s\-]+$/.test(trimmed) && trimmed.length > 0 && trimmed.length < 50
+            && !/^(ALLER|RETOUR)$/.test(trimmed)
+            || trimmed.startsWith('Objet:')
+            || /^(ÉVÉNEMENT|DATE|LIEU|RÔLE)\s*:/.test(trimmed);
+        const isSeparatorLine = /^-{4,}$/.test(trimmed);
+        const isSubsection = /^(ALLER|RETOUR)$/.test(trimmed);
+        const isBulletLine = /^\s*[•\-]\s/.test(line) || (line.startsWith('  • ') || line.startsWith('    - '));
+
+        if (y > PDF_PAGE_HEIGHT - PDF_MARGIN) {
+            doc.addPage();
+            y = PDF_MARGIN;
+            doc.setDrawColor(...PDF_LINE_GRAY);
+            doc.line(PDF_MARGIN, y, PDF_MARGIN + PDF_CONTENT_WIDTH, y);
+            y += 4;
+        }
+
+        if (isSeparatorLine) {
+            doc.setDrawColor(...PDF_LINE_GRAY);
+            doc.line(PDF_MARGIN, y, PDF_MARGIN + PDF_CONTENT_WIDTH, y);
+            y += PDF_LINE_HEIGHT;
+        } else if (isSectionHeader && !isSeparatorLine) {
+            y += 2;
+            doc.setDrawColor(...PDF_LINE_GRAY);
+            doc.line(PDF_MARGIN, y - 2, PDF_MARGIN + PDF_CONTENT_WIDTH, y - 2);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(...PDF_SECTION_GRAY);
+            const wrapped = doc.splitTextToSize(trimmed, PDF_MAX_WIDTH);
+            for (const w of wrapped) {
+                if (y > PDF_PAGE_HEIGHT - PDF_MARGIN) { doc.addPage(); y = PDF_MARGIN + 4; }
+                doc.text(w, PDF_MARGIN, y);
+                y += PDF_LINE_HEIGHT_SECTION;
+            }
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(11);
+            y += 2;
+        } else if (isSubsection) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(...PDF_SECTION_GRAY);
+            doc.text(trimmed, PDF_MARGIN, y);
+            y += PDF_LINE_HEIGHT_SECTION;
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+        } else if (trimmed) {
+            const indent = isBulletLine ? 5 : 0;
+            const wrapped = doc.splitTextToSize(trimmed, PDF_MAX_WIDTH - indent);
+            for (const w of wrapped) {
+                if (y > PDF_PAGE_HEIGHT - PDF_MARGIN) { doc.addPage(); y = PDF_MARGIN + 4; }
+                doc.text(w, PDF_MARGIN + indent, y);
+                y += PDF_LINE_HEIGHT;
+            }
+        } else {
+            y += PDF_LINE_HEIGHT * 0.5;
+        }
+    }
+    if (y < PDF_PAGE_HEIGHT - 22) {
+        doc.setDrawColor(...PDF_LINE_GRAY);
+        doc.line(PDF_MARGIN, PDF_PAGE_HEIGHT - 18, PDF_MARGIN + PDF_CONTENT_WIDTH, PDF_PAGE_HEIGHT - 18);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text('Convocation — Logicycle', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+    }
+};
+
+const generateConvocationPdf = (
+    mode: 'athlete' | 'staff' | 'general',
+    participantId: string | null,
+    event: RaceEvent,
+    appState: TeamState
+): void => {
+    let text = '';
+    let filename = `Convocation_${event.name.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim().replace(/\s+/g, '_')}`;
+    if (mode === 'athlete' && participantId) {
+        text = generateIndividualConvocationText(participantId, event, appState);
+        const rider = appState.riders.find(r => r.id === participantId);
+        if (rider) filename += `_${rider.firstName}_${rider.lastName}`;
+    } else if (mode === 'staff' && participantId) {
+        text = generateStaffConvocationText(participantId, event, appState);
+        const staff = appState.staff.find(s => s.id === participantId);
+        if (staff) filename += `_${staff.firstName}_${staff.lastName}`;
+    } else if (mode === 'general') {
+        filename += '_Generale';
+    }
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    drawPdfHeader(doc, event, formatDate, mode === 'general');
+    if (mode === 'general') {
+        drawGeneralConvocationPdf(doc, event, appState, formatDate);
+    } else if (text) {
+        addConvocationTextToPdf(doc, text, { startY: PDF_HEADER_HEIGHT + 10, skipIntroLines: true });
+    }
+    doc.save(`${filename}.pdf`);
+};
 
 interface LogisticsSummaryTabProps {
   event: RaceEvent;
@@ -49,6 +521,117 @@ const formatDate = (dateStr?: string) => {
     return new Date(dateStr + "T12:00:00Z").toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
+const isConvocationTransportLeg = (leg: EventTransportLeg) =>
+    leg.direction !== 'Transport Jour J';
+
+/** Trajets du jour J (logistique véhicules au jour le jour). */
+const isJourJTransportLeg = (leg: EventTransportLeg) =>
+    leg.direction === 'Transport Jour J';
+
+const getTransportLegLabel = (leg: EventTransportLeg, vehicleName?: string | null): string => {
+    if (leg.mode === TransportMode.VOITURE_PERSO || leg.mode === 'Voiture Personnelle') return '(Voiture Personnelle)';
+    if (vehicleName && vehicleName.trim()) return vehicleName.trim();
+    if (leg.mode === TransportMode.AUTRE || leg.mode === 'Autre') return 'Véhicule d\'équipe';
+    return (leg.mode || '').trim() ? `(${leg.mode})` : '';
+};
+
+/** Clé pour aligner le même véhicule aller/retour sur la même ligne du tableau PDF. */
+const getLegSortKey = (leg: EventTransportLeg, appState: TeamState): string => {
+    const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+    const label = getTransportLegLabel(leg, vehicle?.name);
+    return label || leg.personName || leg.id || '';
+};
+
+const isPickupType = (stopType: TransportStopType | string) =>
+    typeof stopType === 'string' ? stopType.includes('Récupération') : [TransportStopType.PICKUP, TransportStopType.HOME_PICKUP, TransportStopType.HOTEL_PICKUP, TransportStopType.TRAIN_PICKUP, TransportStopType.AIRPORT_PICKUP, TransportStopType.AIRPORT_ARRIVAL].includes(stopType as TransportStopType);
+const isDropoffType = (stopType: TransportStopType | string) =>
+    typeof stopType === 'string' ? stopType.includes('Dépose') : [TransportStopType.DROPOFF, TransportStopType.HOME_DROPOFF, TransportStopType.HOTEL_DROPOFF, TransportStopType.TRAIN_DROPOFF, TransportStopType.AIRPORT_DROPOFF].includes(stopType as TransportStopType);
+
+/** Si useDirectionForLabel est true, le libellé est déduit du sens du trajet : Aller → Récupération, Retour → Dépose. */
+const getLegPickupDropoffLines = (leg: EventTransportLeg, appState: TeamState, useDirectionForLabel = true): string[] => {
+    const lines: string[] = [];
+    if (!leg.intermediateStops?.length) return lines;
+    const defaultLabelFromDirection = leg.direction === 'Aller' ? 'Récupération' : leg.direction === 'Retour' ? 'Dépose' : null;
+    leg.intermediateStops.forEach(stop => {
+        if (!stop.persons?.length) return;
+        const label = useDirectionForLabel && defaultLabelFromDirection
+            ? defaultLabelFromDirection
+            : (isPickupType(stop.stopType) ? 'Récupération' : isDropoffType(stop.stopType) ? 'Dépose' : null);
+        if (!label) return;
+        const timeLoc = [stop.time, stop.location].filter(Boolean).join(' à ');
+        const names = stop.persons.map(p => {
+            const person = p.type === 'rider' ? appState.riders.find(r => r.id === p.id) : appState.staff.find(s => s.id === p.id);
+            return person ? `${person.firstName[0]}.${person.lastName}` : '';
+        }).filter(Boolean).join(', ');
+        if (timeLoc && names) lines.push(`${label} à ${timeLoc}: ${names}`);
+    });
+    return lines;
+};
+
+const getOccupantPickupDropoffLines = (leg: EventTransportLeg, personId: string, personType: 'rider' | 'staff', appState: TeamState): string[] => {
+    const lines: string[] = [];
+    if (!leg.intermediateStops?.length) return lines;
+    leg.intermediateStops.forEach(stop => {
+        if (!stop.persons?.some(p => p.id === personId && p.type === personType)) return;
+        const label = isPickupType(stop.stopType) ? 'Récupération' : isDropoffType(stop.stopType) ? 'Dépose' : null;
+        if (!label) return;
+        const timeLoc = [stop.time, stop.location].filter(Boolean).join(' à ');
+        if (timeLoc) lines.push(`${label} à ${timeLoc}`);
+    });
+    return lines;
+};
+
+const isPersonInLeg = (leg: EventTransportLeg, personId: string, personType: 'rider' | 'staff'): boolean =>
+    (leg.occupants || []).some(occ => occ.id === personId && occ.type === personType) ||
+    (leg.intermediateStops || []).some(stop => stop.persons?.some(p => p.id === personId && p.type === personType));
+
+const getOccupantPickupDropoffLinesForRider = (leg: EventTransportLeg, personId: string, appState: TeamState): string[] => {
+    const lines: string[] = [];
+    if (!leg.intermediateStops?.length) return lines;
+    leg.intermediateStops.forEach(stop => {
+        if (!stop.persons?.some(p => p.id === personId && p.type === 'rider')) return;
+        const isPickup = isPickupType(stop.stopType);
+        const isDropoff = isDropoffType(stop.stopType);
+        if (!isPickup && !isDropoff) return;
+        const timeLoc = [stop.time, stop.location].filter(Boolean).join(' à ');
+        if (timeLoc) lines.push(isPickup ? `Tu es récupéré(e) à ${timeLoc}` : `Tu es déposé(e) à ${timeLoc}`);
+    });
+    return lines;
+};
+
+type RiderLegDepartureArrival = {
+    departureTime: string;
+    departureLocation: string;
+    departureDate?: string;
+    arrivalTime: string;
+    arrivalLocation: string;
+    arrivalDate?: string;
+};
+
+const getRiderDepartureArrivalForLeg = (leg: EventTransportLeg, riderId: string): RiderLegDepartureArrival => {
+    const defaultDep = { departureTime: leg.departureTime || '—', departureLocation: leg.departureLocation || '—', departureDate: leg.departureDate };
+    const defaultArr = { arrivalTime: leg.arrivalTime || '—', arrivalLocation: leg.arrivalLocation || '—', arrivalDate: leg.arrivalDate };
+    if (!leg.intermediateStops?.length) return { ...defaultDep, ...defaultArr };
+    let pickupStop: { time: string; location: string; date?: string } | null = null;
+    let dropoffStop: { time: string; location: string; date?: string } | null = null;
+    leg.intermediateStops.forEach(stop => {
+        if (!stop.persons?.some(p => p.id === riderId && p.type === 'rider')) return;
+        const time = stop.time || '';
+        const location = stop.location || '';
+        const date = stop.date;
+        if (isPickupType(stop.stopType) && !pickupStop) pickupStop = { time, location, date };
+        if (isDropoffType(stop.stopType)) dropoffStop = { time, location, date };
+    });
+    return {
+        departureTime: pickupStop?.time || defaultDep.departureTime,
+        departureLocation: pickupStop?.location || defaultDep.departureLocation,
+        departureDate: pickupStop?.date || defaultDep.departureDate,
+        arrivalTime: dropoffStop?.time || defaultArr.arrivalTime,
+        arrivalLocation: dropoffStop?.location || defaultArr.arrivalLocation,
+        arrivalDate: dropoffStop?.date || defaultArr.arrivalDate,
+    };
+};
+
 const generateIndividualConvocationText = (riderId: string, event: RaceEvent, appState: TeamState): string => {
     const rider = appState.riders.find(r => r.id === riderId);
     if (!rider) return "Erreur: Coureur non trouvé.";
@@ -70,22 +653,47 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     }
     text += `\n`;
     
-    const myTransportLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id && (leg.occupants || []).some(occ => occ.id === rider.id));
+    const myTransportLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isConvocationTransportLeg(leg) && isPersonInLeg(leg, rider.id, 'rider')
+    );
     if (myTransportLegs.length > 0) {
         text += `TRANSPORT PERSONNEL\n--------------------\n`;
         myTransportLegs.forEach(leg => {
-            text += `  • ${leg.direction} (${leg.mode})\n`;
-            text += `    - Départ : ${formatDate(leg.departureDate)} à ${leg.departureTime} de ${leg.departureLocation}\n`;
-            text += `    - Arrivée : ${formatDate(leg.arrivalDate)} à ${leg.arrivalTime} à ${leg.arrivalLocation}\n`;
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const label = getTransportLegLabel(leg, vehicle?.name);
+            const da = getRiderDepartureArrivalForLeg(leg, rider.id);
+            text += `  • ${leg.direction}${label ? ` ${label}` : ''}\n`;
+            text += `    - Départ : ${da.departureDate ? formatDate(da.departureDate) + ' à ' : ''}${da.departureTime} de ${da.departureLocation}\n`;
+            text += `    - Arrivée : ${da.arrivalDate ? formatDate(da.arrivalDate) + ' à ' : ''}${da.arrivalTime} à ${da.arrivalLocation}\n`;
             if (leg.driverId) {
                 const driver = appState.staff.find(s => s.id === leg.driverId);
                 if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
             }
             if (leg.assignedVehicleId) {
-                const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
-                if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
+                const v = appState.vehicles.find(ve => ve.id === leg.assignedVehicleId);
+                if (v) text += `    - Véhicule : ${v.name}\n`;
             }
             if (leg.details) text += `    - Détails : ${leg.details}\n`;
+        });
+        text += `\n`;
+    }
+
+    const myJourJLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg) && isPersonInLeg(leg, rider.id, 'rider')
+    );
+    if (myJourJLegs.length > 0) {
+        text += `LOGISTIQUE VÉHICULES JOUR J\n--------------------\n`;
+        myJourJLegs.forEach(leg => {
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const label = getTransportLegLabel(leg, vehicle?.name);
+            text += `  • Jour J${label ? ` ${label}` : ''}\n`;
+            text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+            text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            if (leg.driverId) {
+                const driver = appState.staff.find(s => s.id === leg.driverId);
+                if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
+            }
+            if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
         });
         text += `\n`;
     }
@@ -121,7 +729,9 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     text += `RÔLE : ${roleInEvent}\n`;
     text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n\n`;
 
-    const drivingLegs = appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.driverId === staff.id);
+    const drivingLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && leg.driverId === staff.id && isConvocationTransportLeg(leg)
+    );
     if (drivingLegs.length > 0) {
         text += `VÉHICULES À CONDUIRE\n--------------------\n`;
         drivingLegs.forEach(leg => {
@@ -142,26 +752,65 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
         });
         text += `\n`;
     }
+
+    const drivingJourJLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && leg.driverId === staff.id && isJourJTransportLeg(leg)
+    );
+    if (drivingJourJLegs.length > 0) {
+        text += `VÉHICULES À CONDUIRE (JOUR J)\n--------------------\n`;
+        drivingJourJLegs.forEach(leg => {
+            const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+            text += `  • Véhicule : ${vehicle?.name || 'N/A'} (Jour J)\n`;
+            if (leg.departureLocation || leg.arrivalLocation) {
+                text += `    - Trajet : De ${leg.departureLocation || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            }
+            if (leg.departureTime || leg.arrivalTime) {
+                text += `    - Horaire : Départ ${leg.departureTime || '—'}, Arrivée ${leg.arrivalTime || '—'}\n`;
+            }
+            const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
+            text += `    - Passagers : ${occupants || 'Aucun'}\n`;
+        });
+        text += `\n`;
+    }
     
     const myTransportLegs = appState.eventTransportLegs.filter(leg =>
-        leg.eventId === event.id && ((leg.occupants || []).some(occ => occ.id === staff.id) || leg.driverId === staff.id)
+        leg.eventId === event.id && isConvocationTransportLeg(leg) && (leg.driverId === staff.id || isPersonInLeg(leg, staff.id, 'staff'))
     );
     if (myTransportLegs.length > 0) {
         text += `MES TRAJETS PERSONNELS\n--------------------\n`;
         myTransportLegs.forEach(leg => {
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const label = getTransportLegLabel(leg, vehicle?.name);
             const asDriver = leg.driverId === staff.id;
-            text += `  • ${leg.direction} (${leg.mode})${asDriver ? ' [conducteur]' : ' [passager]'}\n`;
+            text += `  • ${leg.direction}${label ? ` ${label}` : ''}${asDriver ? ' [conducteur]' : ' [passager]'}\n`;
             if (leg.departureDate || leg.departureTime || leg.departureLocation) {
                 text += `    - Départ : ${leg.departureDate ? formatDate(leg.departureDate) : ''}${leg.departureTime ? ` à ${leg.departureTime}` : ''}${leg.departureLocation ? ` de ${leg.departureLocation}` : ''}\n`;
             }
             if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
                 text += `    - Arrivée : ${leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}${leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}${leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}\n`;
             }
+            getOccupantPickupDropoffLines(leg, staff.id, 'staff', appState).forEach(l => { text += `    - ${l}\n`; });
+        });
+        text += `\n`;
+    }
+
+    const myJourJLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg) && (leg.driverId === staff.id || isPersonInLeg(leg, staff.id, 'staff'))
+    );
+    if (myJourJLegs.length > 0) {
+        text += `MES TRAJETS JOUR J\n--------------------\n`;
+        myJourJLegs.forEach(leg => {
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const label = getTransportLegLabel(leg, vehicle?.name);
+            const asDriver = leg.driverId === staff.id;
+            text += `  • Jour J${label ? ` ${label}` : ''}${asDriver ? ' [conducteur]' : ' [passager]'}\n`;
+            text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+            text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
         });
         text += `\n`;
     }
     
-    // Common sections
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
     if (accommodation) { text += `HÉBERGEMENT\n--------------------\n- Hôtel : ${accommodation.hotelName}\n- Adresse : ${accommodation.address}\n\n`; }
 
@@ -191,53 +840,107 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
     }
     text += `\n`;
     
-    // Filtrer les transports (exclure le jour J) et les grouper par direction
-    const allTransportLegs = appState.eventTransportLegs.filter(leg => 
-        leg.eventId === event.id && leg.direction !== 'Transport Jour J'
+    const allTransportLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isConvocationTransportLeg(leg)
     );
     
     if (allTransportLegs.length > 0) {
         text += `PLAN DE TRANSPORT\n--------------------\n`;
         
-        // Grouper d'abord tous les allers
         const allerLegs = allTransportLegs.filter(leg => leg.direction === 'Aller');
         if (allerLegs.length > 0) {
-            text += `ALLER\n`;
-            allerLegs.forEach(leg => {
-                text += `  • ${leg.personName} (${leg.mode})\n`;
+            text += `ALLER\n\n`;
+            allerLegs.forEach((leg, idx) => {
+                if (idx > 0) text += `\n`;
+                const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+                const label = getTransportLegLabel(leg, vehicle?.name);
+                text += `  • ${leg.personName}${label ? ` ${label}` : ''}\n`;
+                if (leg.departureDate || leg.departureTime || leg.departureLocation) {
+                    const depDay = leg.departureDate ? formatDate(leg.departureDate) + ' à ' : '';
+                    text += `    Départ: ${depDay}${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+                }
+                if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
+                    const arrDay = leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : '';
+                    text += `    Arrivée: ${arrDay}${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+                }
                 const occupants = (leg.occupants || []).map(o => {
                     const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
                     return p ? `${p.firstName[0]}.${p.lastName}` : '';
                 }).join(', ');
-                if(occupants) text += `    - Passagers: ${occupants}\n`;
+                if(occupants) text += `    Passagers: ${occupants}\n`;
                 if (leg.assignedVehicleId && leg.driverId) {
-                    const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                    const v = appState.vehicles.find(ve => ve.id === leg.assignedVehicleId);
                     const driver = appState.staff.find(s => s.id === leg.driverId);
-                    if (vehicle && driver) text += `    - Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                    if (v && driver) text += `    Véhicule: ${v.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                }
+                const pdLines = getLegPickupDropoffLines(leg, appState);
+                if (pdLines.length > 0) {
+                    text += `    Récupérations / déposes:\n`;
+                    pdLines.forEach(l => { text += `      - ${l}\n`; });
                 }
             });
             text += `\n`;
         }
         
-        // Puis tous les retours
         const retourLegs = allTransportLegs.filter(leg => leg.direction === 'Retour');
         if (retourLegs.length > 0) {
-            text += `RETOUR\n`;
-            retourLegs.forEach(leg => {
-                text += `  • ${leg.personName} (${leg.mode})\n`;
+            text += `RETOUR\n\n`;
+            retourLegs.forEach((leg, idx) => {
+                if (idx > 0) text += `\n`;
+                const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+                const label = getTransportLegLabel(leg, vehicle?.name);
+                text += `  • ${leg.personName}${label ? ` ${label}` : ''}\n`;
+                if (leg.departureDate || leg.departureTime || leg.departureLocation) {
+                    const depDay = leg.departureDate ? formatDate(leg.departureDate) + ' à ' : '';
+                    text += `    Départ: ${depDay}${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+                }
+                if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
+                    const arrDay = leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : '';
+                    text += `    Arrivée: ${arrDay}${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+                }
                 const occupants = (leg.occupants || []).map(o => {
                     const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
                     return p ? `${p.firstName[0]}.${p.lastName}` : '';
                 }).join(', ');
-                if(occupants) text += `    - Passagers: ${occupants}\n`;
+                if(occupants) text += `    Passagers: ${occupants}\n`;
                 if (leg.assignedVehicleId && leg.driverId) {
-                    const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                    const v = appState.vehicles.find(ve => ve.id === leg.assignedVehicleId);
                     const driver = appState.staff.find(s => s.id === leg.driverId);
-                    if (vehicle && driver) text += `    - Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                    if (v && driver) text += `    Véhicule: ${v.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+                }
+                const pdLines = getLegPickupDropoffLines(leg, appState);
+                if (pdLines.length > 0) {
+                    text += `    Récupérations / déposes:\n`;
+                    pdLines.forEach(l => { text += `      - ${l}\n`; });
                 }
             });
             text += `\n`;
         }
+    }
+
+    const jourJLegsGeneral = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg)
+    );
+    if (jourJLegsGeneral.length > 0) {
+        text += `LOGISTIQUE VÉHICULES JOUR J\n--------------------\n`;
+        jourJLegsGeneral.forEach((leg, idx) => {
+            if (idx > 0) text += `\n`;
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const label = getTransportLegLabel(leg, vehicle?.name);
+            text += `  • Jour J${label ? ` ${label}` : ''}\n`;
+            text += `    Départ: ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+            text += `    Arrivée: ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            const occupants = (leg.occupants || []).map(o => {
+                const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
+                return p ? `${p.firstName[0]}.${p.lastName}` : '';
+            }).join(', ');
+            if (occupants) text += `    Passagers: ${occupants}\n`;
+            if (vehicle && leg.driverId) {
+                const driver = appState.staff.find(s => s.id === leg.driverId);
+                if (driver) text += `    Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
+            }
+        });
+        text += `\n`;
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
@@ -263,13 +966,25 @@ const ConvocationPreview: React.FC<{
     const allRiders = appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id));
     // Mes trajets personnels = tous les trajets où la personne est passagère OU conducteur (pour le staff, inclut donc les véhicules à conduire)
     const myTransportLegs = participant ? appState.eventTransportLegs.filter(leg =>
-        leg.eventId === event.id &&
-        (leg.occupants?.some(occ => occ.id === participant.id) || leg.driverId === participant.id)
+        leg.eventId === event.id && isConvocationTransportLeg(leg) &&
+        (leg.driverId === participant.id || isPersonInLeg(leg, participant.id, mode === 'athlete' ? 'rider' : 'staff'))
     ) : [];
-    const drivingLegs = (mode === 'staff' && participant) ? appState.eventTransportLegs.filter(leg => leg.eventId === event.id && leg.driverId === participant.id) : [];
-    const allTransportLegs = appState.eventTransportLegs.filter(leg => 
-        leg.eventId === event.id && leg.direction !== 'Transport Jour J'
+    const drivingLegs = (mode === 'staff' && participant) ? appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && leg.driverId === participant.id && isConvocationTransportLeg(leg)
+    ) : [];
+    const drivingJourJLegs = (mode === 'staff' && participant) ? appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && leg.driverId === participant.id && isJourJTransportLeg(leg)
+    ) : [];
+    const allTransportLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isConvocationTransportLeg(leg)
     );
+    const allJourJLegs = appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg)
+    );
+    const myJourJLegs = participant ? appState.eventTransportLegs.filter(leg =>
+        leg.eventId === event.id && isJourJTransportLeg(leg) &&
+        (leg.driverId === participant.id || isPersonInLeg(leg, participant.id, mode === 'athlete' ? 'rider' : 'staff'))
+    ) : [];
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
 
     const Section: React.FC<{ title: string; icon: React.ElementType; children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
@@ -326,8 +1041,25 @@ const ConvocationPreview: React.FC<{
                 </Section>
             )}
 
+            {drivingJourJLegs.length > 0 && (
+                <Section title="Véhicules à Conduire (Jour J)" icon={TruckIcon}>
+                    <div className="space-y-3">{drivingJourJLegs.map(leg => (
+                         <div key={leg.id} className="p-2 border rounded bg-green-50">
+                             <p className="font-semibold">{appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (Jour J)</p>
+                             {(leg.departureTime || leg.departureLocation) && (
+                                 <p className="text-xs text-gray-600"><strong>Départ:</strong> {leg.departureTime || '—'}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>
+                             )}
+                             {(leg.arrivalTime || leg.arrivalLocation) && (
+                                 <p className="text-xs text-gray-600"><strong>Arrivée:</strong> {leg.arrivalTime || '—'}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>
+                             )}
+                             <p className="text-xs text-gray-600"><strong>Passagers:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                         </div>
+                    ))}</div>
+                </Section>
+            )}
+
             <Section title={mode === 'staff' ? 'Mes Trajets Personnels' : 'Transport'} icon={TruckIcon}>
-                {(mode === 'general' ? allTransportLegs : myTransportLegs).length > 0 ? (
+                {(mode === 'general' ? allTransportLegs.length > 0 : (myTransportLegs.length > 0 || myJourJLegs.length > 0)) ? (
                     <div className="space-y-3">
                         {mode === 'general' ? (
                             <>
@@ -335,49 +1067,92 @@ const ConvocationPreview: React.FC<{
                                 {allTransportLegs.filter(leg => leg.direction === 'Aller').length > 0 && (
                                     <div className="mb-4">
                                         <h4 className="font-semibold text-gray-800 mb-2">ALLER</h4>
-                                        {allTransportLegs.filter(leg => leg.direction === 'Aller').map(leg => (
+                                        {allTransportLegs.filter(leg => leg.direction === 'Aller').map(leg => {
+                                            const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                                            const label = getTransportLegLabel(leg, vehicle?.name);
+                                            return (
                                             <div key={leg.id} className="p-2 border rounded bg-white mb-2">
-                                                <p className="font-semibold">{leg.personName} ({leg.mode})</p>
-                                                <p><strong>Départ:</strong> {leg.departureTime} de {leg.departureLocation}</p>
-                                                <p><strong>Arrivée:</strong> {leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                <p className="font-semibold">{leg.personName}{label ? ` ${label}` : ''}</p>
+                                                <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) + ' à ' : ''}{leg.departureTime} de {leg.departureLocation}</p>
+                                                <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : ''}{leg.arrivalTime} à {leg.arrivalLocation}</p>
                                                 {leg.assignedVehicleId && leg.driverId && (
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
                                                 <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                                {(() => { const pd = getLegPickupDropoffLines(leg, appState); return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Récupérations / Déposes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null; })()}
                                             </div>
-                                        ))}
+                                        );})}
                                     </div>
                                 )}
                                 
-                                {/* Puis tous les retours */}
                                 {allTransportLegs.filter(leg => leg.direction === 'Retour').length > 0 && (
-                                    <div>
+                                    <div className="mb-4">
                                         <h4 className="font-semibold text-gray-800 mb-2">RETOUR</h4>
-                                        {allTransportLegs.filter(leg => leg.direction === 'Retour').map(leg => (
+                                        {allTransportLegs.filter(leg => leg.direction === 'Retour').map(leg => {
+                                            const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                                            const label = getTransportLegLabel(leg, vehicle?.name);
+                                            return (
                                             <div key={leg.id} className="p-2 border rounded bg-white mb-2">
-                                                <p className="font-semibold">{leg.personName} ({leg.mode})</p>
-                                                <p><strong>Départ:</strong> {leg.departureTime} de {leg.departureLocation}</p>
-                                                <p><strong>Arrivée:</strong> {leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                <p className="font-semibold">{leg.personName}{label ? ` ${label}` : ''}</p>
+                                                <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) + ' à ' : ''}{leg.departureTime} de {leg.departureLocation}</p>
+                                                <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : ''}{leg.arrivalTime} à {leg.arrivalLocation}</p>
                                                 {leg.assignedVehicleId && leg.driverId && (
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
                                                 <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                                {(() => { const pd = getLegPickupDropoffLines(leg, appState); return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Récupérations / Déposes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null; })()}
                                             </div>
-                                        ))}
+                                        );})}
+                                    </div>
+                                )}
+
+                                {allJourJLegs.length > 0 && (
+                                    <div>
+                                        <h4 className="font-semibold text-gray-800 mb-2">LOGISTIQUE VÉHICULES JOUR J</h4>
+                                        {allJourJLegs.map(leg => {
+                                            const vehicle = appState.vehicles.find(v => v.id === leg.assignedVehicleId);
+                                            const label = getTransportLegLabel(leg, vehicle?.name);
+                                            return (
+                                            <div key={leg.id} className="p-2 border rounded bg-green-50 mb-2">
+                                                <p className="font-semibold">Jour J{label ? ` ${label}` : ''}</p>
+                                                <p><strong>Départ:</strong> {leg.departureTime || '—'} de {leg.departureLocation || '—'}</p>
+                                                <p><strong>Arrivée:</strong> {leg.arrivalTime || '—'} à {leg.arrivalLocation || '—'}</p>
+                                                {leg.assignedVehicleId && leg.driverId && (
+                                                    <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
+                                                )}
+                                                <p className="text-xs text-gray-600"><strong>Passagers:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                            </div>
+                                        );})}
                                     </div>
                                 )}
                             </>
                         ) : (
                             /* Affichage normal pour les autres modes (athlète ou staff : tous les trajets personnels) */
                             myTransportLegs.map(leg => {
+                                const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+                                const label = getTransportLegLabel(leg, vehicle?.name);
                                 const isDriver = mode === 'staff' && participant && leg.driverId === participant.id;
                                 const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+                                const da = mode === 'athlete' && participant ? getRiderDepartureArrivalForLeg(leg, participant.id) : null;
                                 return (
                                 <div key={leg.id} className="p-2 border rounded bg-white">
-                                    <p className="font-semibold">{leg.direction} ({leg.mode}){isDriver && <span className="ml-1 text-xs font-normal text-amber-700">(conducteur)</span>}</p>
-                                    {(leg.departureDate || leg.departureTime) && <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) : ''}{leg.departureTime ? ` à ${leg.departureTime}` : ''}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>}
-                                    {(leg.arrivalDate || leg.arrivalTime) && <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}{leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>}
-                                    {(!leg.departureDate && !leg.departureTime && !leg.arrivalDate && !leg.arrivalTime) && <p className="text-xs text-amber-600 italic">Horaires non renseignés</p>}
+                                    <p className="font-semibold">{leg.direction}{label ? ` ${label}` : ''}{isDriver && <span className="ml-1 text-xs font-normal text-amber-700">(conducteur)</span>}</p>
+                                    {mode === 'athlete' && da ? (
+                                        <>
+                                            <p><strong>Départ:</strong> {da.departureDate ? formatDate(da.departureDate) + ' à ' : ''}{da.departureTime} de {da.departureLocation}</p>
+                                            <p><strong>Arrivée:</strong> {da.arrivalDate ? formatDate(da.arrivalDate) + ' à ' : ''}{da.arrivalTime} à {da.arrivalLocation}</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {(leg.departureDate || leg.departureTime) && <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) : ''}{leg.departureTime ? ` à ${leg.departureTime}` : ''}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>}
+                                            {(leg.arrivalDate || leg.arrivalTime) && <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}{leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>}
+                                            {participant && (() => {
+                                                const pd = getOccupantPickupDropoffLines(leg, participant.id, 'staff', appState);
+                                                return pd.length > 0 ? <p className="text-xs text-gray-600"><strong>Récupération / Dépose:</strong> {pd.join(' — ')}</p> : null;
+                                            })()}
+                                        </>
+                                    )}
+                                    {mode !== 'athlete' && (!leg.departureDate && !leg.departureTime && !leg.arrivalDate && !leg.arrivalTime) && <p className="text-xs text-amber-600 italic">Horaires non renseignés</p>}
                                     <p className="text-sm text-gray-700"><strong>Chauffeur:</strong> {driver ? `${driver.firstName} ${driver.lastName}` : <span className="italic text-amber-600">Non renseigné</span>}</p>
                                     {leg.assignedVehicleId && (
                                         <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name}</p>
@@ -385,6 +1160,26 @@ const ConvocationPreview: React.FC<{
                                 </div>
                                 );
                             })
+                        )}
+                        {mode !== 'general' && myJourJLegs.length > 0 && (
+                            <>
+                                <h4 className="font-semibold text-gray-800 mb-2 mt-4">Logistique véhicules Jour J</h4>
+                                {myJourJLegs.map(leg => {
+                                    const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+                                    const label = getTransportLegLabel(leg, vehicle?.name);
+                                    const isDriver = mode === 'staff' && participant && leg.driverId === participant.id;
+                                    const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+                                    return (
+                                    <div key={leg.id} className="p-2 border rounded bg-green-50">
+                                        <p className="font-semibold">Jour J{label ? ` ${label}` : ''}{isDriver && <span className="ml-1 text-xs font-normal text-amber-700">(conducteur)</span>}</p>
+                                        <p><strong>Départ:</strong> {leg.departureTime || '—'} de {leg.departureLocation || '—'}</p>
+                                        <p><strong>Arrivée:</strong> {leg.arrivalTime || '—'} à {leg.arrivalLocation || '—'}</p>
+                                        <p className="text-sm text-gray-700"><strong>Chauffeur:</strong> {driver ? `${driver.firstName} ${driver.lastName}` : <span className="italic text-amber-600">Non renseigné</span>}</p>
+                                        {vehicle && <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {vehicle.name}</p>}
+                                    </div>
+                                    );
+                                })}
+                            </>
                         )}
                     </div>
                 ) : <p className="italic">Aucun transport planifié.</p>}
@@ -522,6 +1317,11 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
     });
   };
 
+  const handleDownloadPdf = () => {
+    const participantId = convocationMode === 'athlete' ? selectedRiderId : convocationMode === 'staff' ? selectedStaffId : null;
+    generateConvocationPdf(convocationMode, participantId, event, appState);
+  };
+
 
   return (
     <div className="space-y-6">
@@ -582,9 +1382,10 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
                     appState={appState}
                 />
 
-                <div className="flex justify-end items-center space-x-4">
+                <div className="flex justify-end items-center gap-3 flex-wrap">
                     {copySuccess && <span className="text-sm text-green-400 font-semibold">{copySuccess}</span>}
                     <ActionButton onClick={handleCopyToClipboard}>Copier le texte</ActionButton>
+                    <ActionButton onClick={handleDownloadPdf} variant="secondary">Télécharger le PDF</ActionButton>
                 </div>
             </div>
         </div>

@@ -479,6 +479,8 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
       if (!dataToSave.id) {
         throw new Error('Identifiant du coureur manquant.');
       }
+      // Pour les nouveaux profils : sauvegarder d'abord le coureur (crée le document), puis mettre à jour les PPR
+      await onSaveRider(dataToSave);
       // Sauvegarde directe des PPR et de l'historique dans Firebase (garantit la persistance)
       const pprData = {
         powerProfileFresh: dataToSave.powerProfileFresh,
@@ -492,7 +494,6 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         powerProfileHistory: dataToSave.powerProfileHistory,
       };
       await updateRiderPowerProfiles(appState.activeTeamId, dataToSave.id, pprData);
-      await onSaveRider(dataToSave);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
       alert('Erreur lors de la sauvegarde : ' + (error instanceof Error ? error.message : 'Veuillez réessayer.'));

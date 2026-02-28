@@ -254,6 +254,8 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
     { key: 'powerProfile45KJ', label: '45 kJ/kg' }
   ] as const;
 
+  const getRiderName = (r: Rider) => `${(r.firstName || '').trim()} ${(r.lastName || '').trim()}`.trim() || '–';
+
   const categoryStats = useMemo(() => {
     if (!categoryDetail || categoryDetail.riders.length === 0) return null;
     const riders = categoryDetail.riders;
@@ -263,29 +265,50 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       const variance = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
       return Math.sqrt(variance);
     };
-    const result: Record<string, Record<string, { meanW: number; stdW: number; meanWkg: number; stdWkg: number; n: number }>> = {};
+    type CellStat = {
+      meanW: number; stdW: number; meanWkg: number; stdWkg: number; n: number;
+      minW: number; maxW: number; minWkg: number; maxWkg: number;
+      minWRiderName: string; maxWRiderName: string; minWkgRiderName: string; maxWkgRiderName: string;
+    };
+    const result: Record<string, Record<string, CellStat>> = {};
     fatigueProfiles.forEach(({ key: profileKey }) => {
       result[profileKey] = {};
       durationLabels.forEach(({ key: durationKey }) => {
-        const valuesW: number[] = [];
-        const valuesWkg: number[] = [];
+        const entries: { w: number; wkg: number; rider: Rider }[] = [];
         riders.forEach((r) => {
           const profile = (r as any)[profileKey];
           const raw = profile?.[durationKey] ?? 0;
           if (raw <= 0) return;
           const weight = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
-          valuesW.push(raw);
-          valuesWkg.push(raw / weight);
+          entries.push({ w: raw, wkg: raw / weight, rider: r });
         });
-        if (valuesW.length > 0) {
+        if (entries.length > 0) {
+          const valuesW = entries.map((e) => e.w);
+          const valuesWkg = entries.map((e) => e.wkg);
           const meanW = valuesW.reduce((a, b) => a + b, 0) / valuesW.length;
           const meanWkg = valuesWkg.reduce((a, b) => a + b, 0) / valuesWkg.length;
+          const minW = Math.min(...valuesW);
+          const maxW = Math.max(...valuesW);
+          const minWkg = Math.min(...valuesWkg);
+          const maxWkg = Math.max(...valuesWkg);
+          const minWRider = entries.find((e) => e.w === minW);
+          const maxWRider = entries.find((e) => e.w === maxW);
+          const minWkgRider = entries.find((e) => e.wkg === minWkg);
+          const maxWkgRider = entries.find((e) => e.wkg === maxWkg);
           result[profileKey][durationKey] = {
             meanW,
             stdW: std(valuesW),
             meanWkg,
             stdWkg: std(valuesWkg),
-            n: valuesW.length
+            n: entries.length,
+            minW,
+            maxW,
+            minWkg,
+            maxWkg,
+            minWRiderName: minWRider ? getRiderName(minWRider.rider) : '–',
+            maxWRiderName: maxWRider ? getRiderName(maxWRider.rider) : '–',
+            minWkgRiderName: minWkgRider ? getRiderName(minWkgRider.rider) : '–',
+            maxWkgRiderName: maxWkgRider ? getRiderName(maxWkgRider.rider) : '–'
           };
         }
       });
@@ -302,7 +325,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       >
         {categoryDetail && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">{categoryDetail.riders.length} coureur(s) · Moyennes et écart-type</p>
+            <p className="text-sm text-gray-600">{categoryDetail.riders.length} coureur(s) · Moyennes, écart-type, min et max (avec noms)</p>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -329,9 +352,15 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                         const w = `${Math.round(stat.meanW)} ± ${Math.round(stat.stdW)}`;
                         const wkg = `${stat.meanWkg.toFixed(1)} ± ${stat.stdWkg.toFixed(1)}`;
                         return (
-                          <td key={profileKey} className="py-2 px-2 text-center text-gray-800">
+                          <td key={profileKey} className="py-2 px-2 text-center text-gray-800 align-top">
                             <span className="font-medium">{w}</span> W<br />
                             <span className="text-blue-600 text-xs">{wkg}</span> W/kg
+                            <div className="mt-1.5 pt-1.5 border-t border-gray-200 text-xs text-gray-500 text-left">
+                              <div>Min: {Math.round(stat.minW)} W · <span className="font-medium text-gray-700">{stat.minWRiderName}</span></div>
+                              <div>Max: {Math.round(stat.maxW)} W · <span className="font-medium text-gray-700">{stat.maxWRiderName}</span></div>
+                              <div>Min: {stat.minWkg.toFixed(1)} W/kg · <span className="font-medium text-gray-700">{stat.minWkgRiderName}</span></div>
+                              <div>Max: {stat.maxWkg.toFixed(1)} W/kg · <span className="font-medium text-gray-700">{stat.maxWkgRiderName}</span></div>
+                            </div>
                           </td>
                         );
                       })}
@@ -1606,7 +1635,14 @@ interface PowerAnalysisSubSectionProps {
 
 const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ riders, scoutingProfiles }) => {
   const [subTab, setSubTab] = useState<PowerAnalysisSubTab>('powers');
-  
+  const [roleFilter, setRoleFilter] = useState<'both' | 'team1' | 'reserve'>('both');
+
+  // Riders filtrés par effectif (Équipe 1 / Réserve) pour les deux sous-onglets
+  const filteredRidersByRole = useMemo(() => {
+    if (roleFilter === 'both') return riders;
+    return riders.filter(r => (r.rosterRole ?? 'principal') === (roleFilter === 'team1' ? 'principal' : 'reserve'));
+  }, [riders, roleFilter]);
+
   // Configuration des durées de puissance
   const powerDurations = [
     { key: '1s', label: '1s', field: 'power1s' },
@@ -1697,10 +1733,9 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
     return drop < -20; // Régression de plus de 20%
   };
 
-  // Filtrage et tri des données pour la vue durabilité
+  // Filtrage et tri des données pour la vue durabilité (utilise déjà le filtre Effectif via filteredRidersByRole)
   const filteredDurabilityData = useMemo(() => {
-    // Exclure les scouts - seulement les riders de l'équipe
-    const allData = [...riders];
+    const allData = [...filteredRidersByRole];
     let filtered = allData.filter(item => {
       // Filtre par sexe
       if (durabilityGenderFilter !== 'all' && item.sex !== durabilityGenderFilter) return false;
@@ -1730,7 +1765,7 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
     }
 
     return filtered;
-  }, [riders, durabilityGenderFilter, durabilityCategoryFilter, durabilitySortColumn, durabilitySortDirection, durabilityKjFilter]);
+  }, [filteredRidersByRole, durabilityGenderFilter, durabilityCategoryFilter, durabilitySortColumn, durabilitySortDirection, durabilityKjFilter]);
 
   // Durées affichées selon le filtre
   const visibleDurations = powerDurations.filter(d => durabilityDurationFilter.includes(d.key));
@@ -1762,11 +1797,31 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
             📊 Indicateurs de Durabilité
           </button>
         </nav>
+        {/* Filtre Équipe 1 / Réserve */}
+        <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-700">Effectif :</span>
+          <div className="flex rounded-md overflow-hidden border border-gray-300">
+            {(['both', 'team1', 'reserve'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRoleFilter(value)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  roleFilter === value
+                    ? 'bg-slate-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {value === 'both' ? 'Tous' : value === 'team1' ? 'Équipe 1' : 'Réserve'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Contenu du sous-onglet actif */}
       {subTab === 'powers' && (
-        <PowerAnalysisTable riders={riders} scoutingProfiles={scoutingProfiles} />
+        <PowerAnalysisTable riders={filteredRidersByRole} scoutingProfiles={scoutingProfiles} />
       )}
 
       {subTab === 'durability' && (
@@ -1880,6 +1935,9 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Profil
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Effectif
+                  </th>
                   {visibleDurations.map(duration => {
                     const colSpan = durabilityKjFilter === 'all' ? 3 : 1;
                     const isSortable = durabilityKjFilter !== 'all'; // Triable uniquement si un kJ est sélectionné
@@ -1908,6 +1966,7 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
                 </tr>
                 <tr className="bg-gray-50">
                   <th className="sticky left-0 bg-gray-50 px-4 py-2 text-left text-xs font-medium text-gray-500 z-10"></th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500"></th>
                   <th className="px-4 py-2 text-center text-xs font-medium text-gray-500"></th>
                   {visibleDurations.map(duration => {
                     if (durabilityKjFilter === 'all') {
@@ -1973,6 +2032,13 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
                             'bg-gray-100 text-gray-600'
                         }`}>
                           {item.qualitativeProfile || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        item.rosterRole === 'reserve' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800'
+                      }`}>
+                        {item.rosterRole === 'reserve' ? 'Réserve' : 'Équipe 1'}
                       </span>
                     </td>
                     {visibleDurations.map(duration => {

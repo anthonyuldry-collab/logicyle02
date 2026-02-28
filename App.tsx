@@ -64,6 +64,7 @@ import * as firebaseService from "./services/firebaseService";
 
 
 import Sidebar from "./components/Sidebar";
+import { SectionErrorBoundary } from "./components/SectionErrorBoundary";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import EventDetailView from "./EventDetailView";
 import { useTranslations } from "./hooks/useTranslations";
@@ -256,19 +257,24 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
-    "login" | "signup" | "app" | "pending" | "no_team"
+    "login" | "signup" | "app" | "pending" | "no_team" | "load_error"
   >("login");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
   const pendingSignupDataRef = useRef<SignupData | null>(null); // Référence pour éviter les problèmes de closure
+  const isMountedRef = useRef(true);
 
   const [language, setLanguageState] = useState<"fr" | "en">("fr");
 
   const { t } = useTranslations();
 
   const loadDataForUser = useCallback(async (user: User) => {
+    if (!isMountedRef.current) return;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const globalData = await firebaseService.getGlobalData();
+      if (!isMountedRef.current) return;
       const userMemberships = (globalData.teamMemberships || []).filter(
         (m) => m.userId === user.id
       );
@@ -290,6 +296,7 @@ const App: React.FC = () => {
 
       if (finalActiveTeamId) {
         teamData = await firebaseService.getTeamData(finalActiveTeamId);
+        if (!isMountedRef.current) return;
         setView("app");
       } else if (
         userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
@@ -309,16 +316,28 @@ const App: React.FC = () => {
       });
 
       setLanguageState(teamData.language || "fr");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Erreur lors du chargement des données utilisateur:", error);
-      setView("no_team");
+      const message = error instanceof Error ? error.message : "Erreur de chargement. Vérifiez votre connexion et réessayez.";
+      if (isMountedRef.current) {
+        setLoadError(message);
+        setView("load_error");
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
+      if (!isMountedRef.current) return;
       if (firebaseUser) {
         setIsLoading(true);
         let userProfile = await firebaseService.getUserProfile(
@@ -402,7 +421,7 @@ const App: React.FC = () => {
         if (userProfile) {
           setCurrentUser(userProfile);
           await loadDataForUser(userProfile); // This will set loading to false
-          
+          if (!isMountedRef.current) return;
           // Redirection automatique vers le tableau de bord administrateur pour les admins
           if (userProfile.permissionRole === TeamRole.ADMIN || userProfile.userRole === UserRole.MANAGER) {
             setCurrentSection("myDashboard"); // myDashboard affichera automatiquement AdminDashboardSection
@@ -412,6 +431,7 @@ const App: React.FC = () => {
           signOut(auth); // Log out to prevent inconsistent state
         }
       } else {
+        if (!isMountedRef.current) return;
         setCurrentUser(null);
         setAppState({
           ...getInitialGlobalState(),
@@ -1351,6 +1371,35 @@ const App: React.FC = () => {
     if (view === "pending") {
       return <PendingApprovalView onLogout={handleLogout} />;
     }
+    if (view === "load_error" && currentUser) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-lg border p-6 text-center">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Erreur de chargement</h2>
+            <p className="text-gray-600 mb-4">{loadError ?? "Impossible de charger les données. Vérifiez votre connexion."}</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError(null);
+                  loadDataForUser(currentUser);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Réessayer
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Se déconnecter
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     if (view === "no_team" && currentUser) {
       return (
         <NoTeamView
@@ -1439,8 +1488,10 @@ const App: React.FC = () => {
               />
             )}
             <main className="main-content p-6 bg-gray-100 min-h-screen ml-72">
-
-              
+              <SectionErrorBoundary
+                sectionName="le contenu principal"
+                onRetry={() => navigateTo("myDashboard")}
+              >
               {activeEvent ? (
                 <EventDetailView
                   event={activeEvent}
@@ -1481,6 +1532,8 @@ const App: React.FC = () => {
                   setPeerRatings={createBatchSetHandler<PeerRating>(
                     "peerRatings"
                   )}
+                  riderEventSelections={appState.riderEventSelections}
+                  setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                   onSavePerformanceEntry={onSavePerformanceEntry}
                 />
               ) : (
@@ -2513,6 +2566,7 @@ const App: React.FC = () => {
                   )}
                 </div>
               )}
+              </SectionErrorBoundary>
             </main>
           </div>
         </LanguageProvider>

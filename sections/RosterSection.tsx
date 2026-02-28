@@ -944,15 +944,6 @@ export default function RosterSection({
     setLocalRiderEventSelections(appState.riderEventSelections || []);
   }, [appState.raceEvents, appState.riderEventSelections]);
 
-  // Synchronisation automatique au chargement
-  useEffect(() => {
-    if (localRaceEvents.length > 0 && localRiderEventSelections.length > 0) {
-      console.log('🔄 Synchronisation automatique au chargement...');
-      // Synchroniser les sélections depuis les événements vers le planning
-      // Note: Les fonctions de synchronisation sont définies plus bas dans le composant
-    }
-  }, [localRaceEvents.length, localRiderEventSelections.length]);
-  
   // États pour la gestion des modales
   const [selectedRider, setSelectedRider] = useState<Rider | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);

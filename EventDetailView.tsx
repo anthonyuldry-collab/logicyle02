@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
   RaceEvent, 
+  RiderEventSelection,
   EventTransportLeg, EventAccommodation, EventRaceDocument, 
   EventRadioEquipment, EventRadioAssignment, 
   EventBudgetItem, EventChecklistItem, PerformanceEntry as AppPerformanceEntry, AppSection, User, TeamState, GlobalState, PeerRating
@@ -47,6 +48,8 @@ interface EventDetailViewProps {
   setEventChecklistItems: React.Dispatch<React.SetStateAction<EventChecklistItem[]>>;
   setPerformanceEntries: React.Dispatch<React.SetStateAction<AppPerformanceEntry[]>>;
   setPeerRatings: React.Dispatch<React.SetStateAction<PeerRating[]>>;
+  riderEventSelections: RiderEventSelection[];
+  setRiderEventSelections: React.Dispatch<React.SetStateAction<RiderEventSelection[]>>;
   
   // Firebase save functions
   onSavePerformanceEntry: (item: AppPerformanceEntry) => Promise<void>;
@@ -79,6 +82,8 @@ function EventDetailView({
   setEventChecklistItems,
   setPerformanceEntries,
   setPeerRatings,
+  riderEventSelections,
+  setRiderEventSelections,
   onSavePerformanceEntry,
   onSaveRaceEvent,
 }: EventDetailViewProps) {
@@ -186,7 +191,9 @@ function EventDetailView({
     event: currentEvent,
     eventId,
     appState: appState,
-    updateEvent: updateEventDetails
+    updateEvent: updateEventDetails,
+    riderEventSelections,
+    setRiderEventSelections,
   };
 
   return (

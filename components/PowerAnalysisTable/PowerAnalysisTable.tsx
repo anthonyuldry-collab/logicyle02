@@ -281,6 +281,9 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Type
               </th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Effectif
+              </th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Catégorie
               </th>
@@ -352,6 +355,17 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
                     }`}>
                       {getItemType(item)}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                    {!isScout ? (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        (item as Rider).rosterRole === 'reserve' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800'
+                      }`}>
+                        {(item as Rider).rosterRole === 'reserve' ? 'Réserve' : 'Équipe 1'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                     {getItemAgeCategory(item)}
