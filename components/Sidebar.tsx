@@ -184,6 +184,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                         return true;
                     }
                     
+                    // Toujours afficher l'historique hébergements pour Admin/Manager
+                    if (section.id === 'accommodationHistory') {
+                        return true;
+                    }
+                    
                     // Pour les administrateurs, masquer adminDashboard car myDashboard affiche déjà l'admin
                     if (section.id === 'adminDashboard') return false;
                     

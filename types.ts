@@ -345,6 +345,7 @@ export enum LanguageProficiency {
 export type AppSection = 
   | 'events' | 'roster' | 'season-planning' | 'staff' | 'vehicles' | 'equipment'
   | 'stocks'
+  | 'accommodationHistory'
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
@@ -703,6 +704,9 @@ export interface EventAccommodation {
   distanceFromStartKm?: number;
   travelTimeToStart?: string;
   isStopover?: boolean;
+  /** Retour d'expérience (pour retrouver d'une année sur l'autre) */
+  reviewOutcome?: 'good' | 'neutral' | 'bad';
+  reviewNote?: string;
 }
 
 export interface EventRaceDocument {
@@ -1274,6 +1278,13 @@ export interface ScoutingProfile {
   phone?: string;
   currentTeam?: string;
   uciId?: string;
+  /** Numéro de licence (souvent connu pour les athlètes, parfois inconnu pour les recrues) */
+  licenseNumber?: string;
+
+  /** Références externes (liens/IDs) pour faciliter la recherche de résultats */
+  pcsUrl?: string;
+  directVeloUrl?: string;
+
   status: ScoutingStatus;
   potentialRating: number; // 1-5
   discipline: DisciplinePracticed;
@@ -1293,6 +1304,11 @@ export interface ScoutingProfile {
   generalPerformanceScore?: number;
   fatigueResistanceScore?: number;
   
+  // Career / Résultats (optionnel pour un prospect)
+  favoriteRaces?: FavoriteRace[];
+  resultsHistory?: ResultItem[];
+  teamsHistory?: TeamHistory[];
+
   // Performance Project
   performanceGoals?: string;
   physiquePerformanceProject?: PerformanceFactorDetail;

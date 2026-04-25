@@ -226,6 +226,7 @@ export const translations = {
   eventTabOpLogistics: { fr: 'Timing Op.', en: 'Op. Timing' },
   eventTabTransport: { fr: 'Transport', en: 'Transport' },
   eventTabAccommodation: { fr: 'Hébergement', en: 'Accommodation' },
+  eventTabAccommodationHistory: { fr: 'Historique hébergement', en: 'Accommodation History' },
   eventTabDocuments: { fr: 'Documents', en: 'Documents' },
   eventTabBudget: { fr: 'Budget', en: 'Budget' },
   eventTabChecklist: { fr: 'Checklist', en: 'Checklist' },

@@ -149,7 +149,11 @@ const getDayLabelsForEvent = (event: RaceEvent): Record<string, string> => {
 };
 
 /** Pour un trajet, retourne l'heure (minutes depuis minuit) du premier événement les jours où dateMatches(date) est vrai. */
-const getLegFirstTimeOnDates = (leg: EventTransportLeg, dateMatches: (dateStr: string | undefined) => boolean): number => {
+const getLegFirstTimeOnDates = (
+    leg: EventTransportLeg,
+    dateMatches: (dateStr: string | undefined) => boolean,
+    fallbackDate?: string
+): number => {
     let minMinutes = 9999;
     const add = (date: string | undefined, time: string | undefined) => {
         if (date && dateMatches(date) && time) {
@@ -157,9 +161,11 @@ const getLegFirstTimeOnDates = (leg: EventTransportLeg, dateMatches: (dateStr: s
             if (m !== null && m < minMinutes) minMinutes = m;
         }
     };
-    add(leg.departureDate, leg.departureTime);
-    add(leg.arrivalDate, leg.arrivalTime);
-    (leg.intermediateStops || []).forEach(stop => add(stop.date, stop.time));
+    const effectiveDepartureDate = leg.departureDate || fallbackDate;
+    const effectiveArrivalDate = leg.arrivalDate || effectiveDepartureDate;
+    add(effectiveDepartureDate, leg.departureTime);
+    add(effectiveArrivalDate, leg.arrivalTime);
+    (leg.intermediateStops || []).forEach(stop => add(stop.date || effectiveDepartureDate, stop.time));
     return minMinutes;
 };
 
@@ -175,7 +181,8 @@ const getLegDayEvents = (
     leg: EventTransportLeg,
     dateMatches: (dateStr: string | undefined) => boolean,
     getOccupantName: (id: string, type: 'rider' | 'staff') => string,
-    driverName: string
+    driverName: string,
+    fallbackDate?: string
 ): LegDayEvent[] => {
     const events: LegDayEvent[] = [];
     const add = (date: string | undefined, time: string | undefined, line: string) => {
@@ -186,28 +193,31 @@ const getLegDayEvents = (
     };
 
     const occupantsStr = (leg.occupants || []).map(o => getOccupantName(o.id, o.type)).join(', ') || '—';
+    const effectiveDepartureDate = leg.departureDate || fallbackDate;
+    const effectiveArrivalDate = leg.arrivalDate || effectiveDepartureDate;
 
-    if (leg.departureDate && dateMatches(leg.departureDate) && leg.departureTime) {
+    if (effectiveDepartureDate && dateMatches(effectiveDepartureDate) && leg.departureTime) {
         const lieu = leg.departureLocation || '—';
-        add(leg.departureDate, leg.departureTime, `Départ ${leg.departureTime} de ${lieu}. Conducteur : ${driverName}. À bord : ${occupantsStr}`);
+        add(effectiveDepartureDate, leg.departureTime, `Départ ${leg.departureTime} de ${lieu}. Conducteur : ${driverName}. À bord : ${occupantsStr}`);
     }
 
     (leg.intermediateStops || []).forEach(stop => {
-        if (!stop.date || !dateMatches(stop.date)) return;
+        const stopDate = stop.date || effectiveDepartureDate;
+        if (!stopDate || !dateMatches(stopDate)) return;
         const time = stop.time || '—';
         const lieu = stop.location || '—';
         const who = (stop.persons || []).map(p => getOccupantName(p.id, p.type)).join(', ');
         const isPickup = String(stop.stopType).toLowerCase().includes('récupération') || String(stop.stopType).toLowerCase().includes('pickup');
         if (isPickup) {
-            add(stop.date, stop.time, who ? `Récupération de ${who} à ${time} à ${lieu}` : `Récupération à ${time} à ${lieu}`);
+            add(stopDate, stop.time, who ? `Récupération de ${who} à ${time} à ${lieu}` : `Récupération à ${time} à ${lieu}`);
         } else {
-            add(stop.date, stop.time, who ? `Dépose de ${who} à ${time} à ${lieu}` : `Dépose à ${time} à ${lieu}`);
+            add(stopDate, stop.time, who ? `Dépose de ${who} à ${time} à ${lieu}` : `Dépose à ${time} à ${lieu}`);
         }
     });
 
-    if (leg.arrivalDate && dateMatches(leg.arrivalDate) && leg.arrivalTime) {
+    if (effectiveArrivalDate && dateMatches(effectiveArrivalDate) && leg.arrivalTime) {
         const lieu = leg.arrivalLocation || '—';
-        add(leg.arrivalDate, leg.arrivalTime, `Arrivée ${leg.arrivalTime} à ${lieu}. À bord : ${occupantsStr}`);
+        add(effectiveArrivalDate, leg.arrivalTime, `Arrivée ${leg.arrivalTime} à ${lieu}. À bord : ${occupantsStr}`);
     }
 
     events.sort((a, b) => a.minutes - b.minutes);
@@ -304,7 +314,9 @@ const exportPlanningToPdf = (
     const blockPadding = 1;
     const lineH = 3.2;
     const numRows = Math.ceil(filteredLogistics.length / numCols);
-    const rowHeight = Math.min(spaceForGrid / Math.max(numRows, 1), 42);
+    // Utiliser toute la hauteur disponible pour éviter de tronquer les timings
+    // (ex: un seul jour "Samedi" avec beaucoup d'éléments).
+    const rowHeight = Math.max(spaceForGrid / Math.max(numRows, 1), 42);
     const availableBodyH = rowHeight * numRows;
 
     const formatTimingLine = (timing: OperationalTiming): string => {
@@ -370,14 +382,13 @@ const exportPlanningToPdf = (
         doc.setFontSize(7);
         doc.setTextColor(...colorTextOnDark);
         let rowY = y + dayHeaderH + blockPadding + 1.5;
-        const maxLinesPerTiming = 2;
         const lineW = colWidth - 2 * blockPadding - 2;
         timings.forEach((timing) => {
             if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
             const line = formatTimingLine(timing);
             if (!line) return;
             const lines = doc.splitTextToSize(line, lineW);
-            lines.slice(0, maxLinesPerTiming).forEach((l: string) => {
+            lines.forEach((l: string) => {
                 if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
                 doc.text(l, x + blockPadding + 2, rowY + 2);
                 rowY += lineH;
@@ -410,14 +421,17 @@ const exportPlanningToPdf = (
 
         const legsTouchingDays = appState.eventTransportLegs.filter(leg => {
             if (leg.eventId !== event.id) return false;
-            const stopOnDay = (leg.intermediateStops || []).some(s => dateMatchesDay(s.date));
+            const fallbackDate = leg.direction === TransportDirection.JOUR_J ? event.date : undefined;
+            const effectiveDepartureDate = leg.departureDate || fallbackDate;
+            const effectiveArrivalDate = leg.arrivalDate || effectiveDepartureDate;
+            const stopOnDay = (leg.intermediateStops || []).some(s => dateMatchesDay(s.date || effectiveDepartureDate));
             if (stopOnDay) return true;
             if (isRetourLeg(leg)) {
-                return dateMatchesDay(leg.arrivalDate);
+                return dateMatchesDay(effectiveArrivalDate);
             }
             // Aller, Transport Jour J : même règle que les timings auto (départ/arrivée/étape ce jour)
-            if (dateMatchesDay(leg.departureDate)) return true;
-            if (dateMatchesDay(leg.arrivalDate)) return true;
+            if (dateMatchesDay(effectiveDepartureDate)) return true;
+            if (dateMatchesDay(effectiveArrivalDate)) return true;
             return false;
         });
 
@@ -426,7 +440,9 @@ const exportPlanningToPdf = (
             const aRetour = isRetourLeg(a) ? 1 : 0;
             const bRetour = isRetourLeg(b) ? 1 : 0;
             if (aRetour !== bRetour) return aRetour - bRetour; // Aller (0) avant Retour (1)
-            return getLegFirstTimeOnDates(a, dateMatchesDay) - getLegFirstTimeOnDates(b, dateMatchesDay);
+            const aFallback = a.direction === TransportDirection.JOUR_J ? event.date : undefined;
+            const bFallback = b.direction === TransportDirection.JOUR_J ? event.date : undefined;
+            return getLegFirstTimeOnDates(a, dateMatchesDay, aFallback) - getLegFirstTimeOnDates(b, dateMatchesDay, bFallback);
         });
 
         if (legsForExport.length > 0) {
@@ -438,54 +454,162 @@ const exportPlanningToPdf = (
             doc.setTextColor(...colorTextOnDark);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(8);
-            doc.text('Logistique véhicules — Qui monte, où et quand', margin + 3, gridBottomY + vehHeaderH / 2 + 1.2);
+            doc.text('Logistique véhicules', margin + 3, gridBottomY + vehHeaderH / 2 + 1.2);
             doc.setFont('helvetica', 'normal');
             gridBottomY += vehHeaderH;
             doc.setFontSize(7);
             doc.setTextColor(...colorTextOnLight);
 
-            let lastDirection: string | null = null;
-            legsForExport.forEach(leg => {
-                const isRetour = isRetourLeg(leg);
-                const directionLabel = isRetour ? 'Retour' : 'Aller';
-                if (lastDirection !== directionLabel) {
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(8);
-                    doc.setTextColor(71, 85, 105);
-                    doc.text(directionLabel, margin + 2, gridBottomY + 2.5);
+            type VehicleCellSummary = {
+                driverName: string;
+                occupants: string;
+                pickups: string[];
+                hasDropoff: boolean;
+                hasData: boolean;
+            };
+            const emptyCellSummary = (): VehicleCellSummary => ({
+                driverName: '—',
+                occupants: '—',
+                pickups: [],
+                hasDropoff: false,
+                hasData: false,
+            });
+
+            const vehicleRows = new Map<string, { vehicleName: string; aller: VehicleCellSummary; retour: VehicleCellSummary }>();
+            legsForExport.forEach((leg) => {
+                const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
+                const existing = vehicleRows.get(vehicleName) || {
+                    vehicleName,
+                    aller: emptyCellSummary(),
+                    retour: emptyCellSummary(),
+                };
+                const driver = leg.driverId ? appState.staff.find((s) => s.id === leg.driverId) : null;
+                const driverName = driver ? `${driver.firstName} ${driver.lastName}` : '—';
+                const occupantsStr = (leg.occupants || []).map((o) => getOccupantName(o.id, o.type)).join(', ') || '—';
+
+                const fallbackDate = leg.direction === TransportDirection.JOUR_J ? event.date : undefined;
+                const effectiveDepartureDate = leg.departureDate || fallbackDate;
+                const stopsOnDay = (leg.intermediateStops || []).filter((s) => dateMatchesDay(s.date || effectiveDepartureDate));
+
+                const pickupNames = Array.from(new Set(
+                    stopsOnDay
+                        .filter((s) => {
+                            const kind = String(s.stopType || '').toLowerCase();
+                            return kind.includes('récupération') || kind.includes('pickup');
+                        })
+                        .flatMap((s) => (s.persons || []).map((p) => getOccupantName(p.id, p.type)))
+                ));
+
+                const hasDropoff = stopsOnDay.some((s) => {
+                    const kind = String(s.stopType || '').toLowerCase();
+                    return kind.includes('dépose') || kind.includes('dropoff');
+                });
+
+                const routeSummary: VehicleCellSummary = {
+                    driverName,
+                    occupants: occupantsStr,
+                    pickups: pickupNames,
+                    hasDropoff,
+                    hasData: true,
+                };
+                if (isRetourLeg(leg)) {
+                    existing.retour = routeSummary;
+                } else {
+                    existing.aller = routeSummary;
+                }
+                vehicleRows.set(vehicleName, existing);
+            });
+
+            const rows = Array.from(vehicleRows.values());
+            const colGap = 1;
+            const colW = (contentW - colGap) / 2;
+
+            // En-têtes de colonnes
+            doc.setFillColor(226, 232, 240);
+            doc.rect(margin, gridBottomY, colW, 5, 'FD');
+            doc.rect(margin + colW + colGap, gridBottomY, colW, 5, 'FD');
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(51, 65, 85);
+            doc.text('Aller / Jour J', margin + 2, gridBottomY + 3.2);
+            doc.text('Retour', margin + colW + colGap + 2, gridBottomY + 3.2);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...colorTextOnLight);
+            gridBottomY += 5;
+
+            const drawCellSummary = (
+                x: number,
+                y: number,
+                summary: VehicleCellSummary
+            ) => {
+                const lineH = 2.8;
+                if (!summary.hasData) {
                     doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(7);
-                    doc.setTextColor(...colorTextOnLight);
-                    gridBottomY += 3.5;
-                    lastDirection = directionLabel;
+                    doc.text('—', x, y + 3);
+                    return;
                 }
 
-                const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
-                const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
-                const driverName = driver ? `${driver.firstName} ${driver.lastName}` : '—';
-                const dayEvents = getLegDayEvents(leg, dateMatchesDay, getOccupantName, driverName);
+                let currentY = y + 3;
 
-                doc.setFont('helvetica', 'bold');
-                doc.text(sanitizeTextForPdf(`${vehicleName} (${leg.direction})`), margin + 3, gridBottomY + 2.5);
+                // Conducteur : nom en gras pour une lecture immédiate
                 doc.setFont('helvetica', 'normal');
-                gridBottomY += 3;
+                doc.text('Conducteur: ', x, currentY);
+                const driverLabelWidth = doc.getTextWidth('Conducteur: ');
+                doc.setFont('helvetica', 'bold');
+                doc.text(sanitizeTextForPdf(summary.driverName), x + driverLabelWidth, currentY);
+                doc.setFont('helvetica', 'normal');
+                currentY += lineH;
 
-                if (dayEvents.length === 0) {
-                    doc.text('Aucun horaire ce jour pour ce véhicule.', margin + 5, gridBottomY + 2.5);
-                    gridBottomY += 3;
-                } else {
-                    dayEvents.forEach(ev => {
-                        const fullLine = sanitizeTextForPdf(ev.line);
-                        const lines = doc.splitTextToSize(fullLine, contentW - margin - 10);
-                        lines.slice(0, 2).forEach((l: string) => {
-                            doc.text(l, margin + 5, gridBottomY + 2.5);
-                            gridBottomY += 2.8;
-                        });
-                        if (lines.length > 2) gridBottomY += (lines.length - 2) * 2.8;
-                        gridBottomY += 0.5;
+                const aboardLines = doc.splitTextToSize(`À bord: ${sanitizeTextForPdf(summary.occupants)}`, colW - 3);
+                aboardLines.forEach((line: string) => {
+                    doc.text(line, x, currentY);
+                    currentY += lineH;
+                });
+
+                if (summary.pickups.length > 0) {
+                    const pickupText = sanitizeTextForPdf(summary.pickups.join(', '));
+                    const pickupLines = doc.splitTextToSize(`Qui monte: ${pickupText}`, colW - 3);
+                    pickupLines.forEach((line: string) => {
+                        doc.text(line, x, currentY);
+                        currentY += lineH;
                     });
                 }
-                gridBottomY += 2.5;
+
+                if (summary.hasDropoff) {
+                    doc.text('Dépose: Oui', x, currentY);
+                }
+            };
+
+            rows.forEach((row) => {
+                const getSummaryLinesCount = (summary: VehicleCellSummary): number => {
+                    if (!summary.hasData) return 1;
+                    let count = 2; // Conducteur + au moins une ligne À bord
+                    count += Math.max(1, doc.splitTextToSize(`À bord: ${sanitizeTextForPdf(summary.occupants)}`, colW - 3).length) - 1;
+                    if (summary.pickups.length > 0) {
+                        count += doc.splitTextToSize(`Qui monte: ${sanitizeTextForPdf(summary.pickups.join(', '))}`, colW - 3).length;
+                    }
+                    if (summary.hasDropoff) count += 1;
+                    return count;
+                };
+
+                const vehicleTitle = sanitizeTextForPdf(row.vehicleName);
+                const leftLinesCount = getSummaryLinesCount(row.aller);
+                const rightLinesCount = getSummaryLinesCount(row.retour);
+                const nbLines = Math.max(leftLinesCount, rightLinesCount, 2);
+                const lineHeight = 2.8;
+                const rowH = Math.max(8, (nbLines + 1) * lineHeight + 1.5);
+
+                doc.setDrawColor(...colorBorder);
+                doc.rect(margin, gridBottomY, colW, rowH, 'S');
+                doc.rect(margin + colW + colGap, gridBottomY, colW, rowH, 'S');
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(vehicleTitle, margin + 1.5, gridBottomY + 3);
+                doc.setFont('helvetica', 'normal');
+
+                drawCellSummary(margin + 1.5, gridBottomY + 3.2, row.aller);
+                drawCellSummary(margin + colW + colGap + 1.5, gridBottomY + 3.2, row.retour);
+
+                gridBottomY += rowH;
             });
             gridBottomY += 3;
         }
@@ -528,8 +652,6 @@ const exportPlanningToPdf = (
 
     // Bas de page (footer) — une seule page
     const footerY = pageH - margin;
-    doc.setDrawColor(...colorBorder);
-    doc.line(margin, footerY - 6, margin + contentW, footerY - 6);
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
@@ -652,12 +774,16 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
         const isIndividual = isIndividualTrip(leg);
         
                 // Afficher les départs de véhicules (sauf véhicules personnels)
-        if (leg.departureDate && leg.departureTime) {
+        const fallbackDate = leg.direction === TransportDirection.JOUR_J ? event.date : undefined;
+        const effectiveDepartureDate = leg.departureDate || fallbackDate;
+        const effectiveArrivalDate = leg.arrivalDate || effectiveDepartureDate;
+
+        if (effectiveDepartureDate && leg.departureTime) {
             const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
             
             // Ne pas afficher les départs des véhicules personnels
             if (leg.assignedVehicleId !== 'perso') {
-                const targetDay = getTargetMealDay(leg.departureDate);
+                const targetDay = getTargetMealDay(effectiveDepartureDate);
                 if (targetDay) {
                     const description = `Départ du ${vehicleName}`;
                     timings.push({
@@ -672,8 +798,8 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
             }
         }
                 // Afficher toutes les arrivées de véhicules (collectifs et individuels)
-        if (leg.arrivalDate && leg.arrivalTime) {
-            const targetDay = getTargetMealDay(leg.arrivalDate);
+        if (effectiveArrivalDate && leg.arrivalTime) {
+            const targetDay = getTargetMealDay(effectiveArrivalDate);
             if (targetDay) {
                 // Créer une description détaillée pour le jour J
                 let description = '';
@@ -699,7 +825,7 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
         // Add intermediate stops to the timeline
         if (leg.intermediateStops && leg.intermediateStops.length > 0) {
             leg.intermediateStops.forEach(stop => {
-                const targetDay = getTargetMealDay(stop.date);
+                const targetDay = getTargetMealDay(stop.date || effectiveDepartureDate);
                 if (targetDay && stop.time) {
                     // Informations sur le véhicule pour cette étape
                     const vehicleInfo = getVehicleInfo(leg.assignedVehicleId);
@@ -1076,8 +1202,21 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
         return { ...day, keyTimings: newKeyTimings };
     });
 
-    return groupedDays.sort((a, b) => Object.values(MealDayEnum).indexOf(a.dayName) - Object.values(MealDayEnum).indexOf(b.dayName));
-  }, [logistics, autoGeneratedTimings]);
+    // Trier par dates réelles de l'événement (et non l'ordre de l'enum),
+    // sinon un événement Thu→Sun affiche "Jeudi" après "Dimanche".
+    const dayToIso = getDayToIsoDateMap(event);
+    const fallbackIndex = (d: MealDayEnum) => Object.values(MealDayEnum).indexOf(d);
+
+    return groupedDays.sort((a, b) => {
+      const aIso = dayToIso[a.dayName];
+      const bIso = dayToIso[b.dayName];
+
+      if (aIso && bIso) return aIso.localeCompare(bIso);
+      if (aIso && !bIso) return -1;
+      if (!aIso && bIso) return 1;
+      return fallbackIndex(a.dayName) - fallbackIndex(b.dayName);
+    });
+  }, [logistics, autoGeneratedTimings, deletedAutoTimings, viewMode, event.date, event.endDate]);
   
   const handleTimingChange = (dayId: string, dayNameForCreation: MealDay, timing: OperationalTiming, field: keyof OperationalTiming, value: any) => {
     setLogistics(currentLogistics => {

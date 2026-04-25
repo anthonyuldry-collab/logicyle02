@@ -67,7 +67,7 @@ export const getStaffWorkDays = (staffId: string, staffEventSelections: StaffEve
   return staffEventSelections.filter(sel => 
     sel.staffId === staffId && 
     futureEvents.some(event => event.id === sel.eventId) &&
-    (sel.status === StaffEventStatus.SELECTIONNE || sel.status === StaffEventStatus.PRE_SELECTION)
+    (sel.status === StaffEventStatus.SELECTIONNE)
   ).length;
 };
 
@@ -107,7 +107,7 @@ export const getStaffEventAvailability = (eventId: string, staffId: string, staf
 export const addStaffToEvent = (
   eventId: string, 
   staffId: string, 
-  status: StaffEventStatus = StaffEventStatus.PRE_SELECTION,
+  status: StaffEventStatus = StaffEventStatus.SELECTIONNE,
   staffEventSelections: StaffEventSelection[],
   setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void
 ) => {
@@ -305,8 +305,6 @@ export const getStaffStatusColor = (status: StaffEventStatus | null) => {
   switch (status) {
     case StaffEventStatus.SELECTIONNE:
       return 'bg-green-100 text-green-800';
-    case StaffEventStatus.PRE_SELECTION:
-      return 'bg-blue-100 text-blue-800';
     case StaffEventStatus.EN_ATTENTE:
       return 'bg-yellow-100 text-yellow-800';
     case StaffEventStatus.NON_SELECTIONNE:

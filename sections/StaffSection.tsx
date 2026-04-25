@@ -273,7 +273,7 @@ export default function StaffSection({
       if (!event) return;
       const staffMember = (staff || []).find((s: StaffMember) => s.id === staffId);
       const current = new Set<string>(event.selectedStaffIds || []);
-      const isAdding = status === 'SELECTIONNE' || status === 'PRE_SELECTION';
+      const isAdding = status === 'SELECTIONNE';
 
       if (isAdding) {
         current.add(staffId);

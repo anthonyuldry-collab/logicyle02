@@ -12,7 +12,8 @@ import {
   ClockIcon,
   StarIcon,
   TrophyIcon,
-  TableCellsIcon
+  TableCellsIcon,
+  EllipsisHorizontalIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -105,11 +106,14 @@ export default function SeasonPlanningSection({
   const [searchTerm, setSearchTerm] = useState('');
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [ageCategoryFilter, setAgeCategoryFilter] = useState<string>('all');
+  const [teamRosterFilter, setTeamRosterFilter] = useState<'principal' | 'reserve'>('principal');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [preferenceFilter, setPreferenceFilter] = useState<'all' | 'wants' | 'objectives' | 'unavailable' | 'waiting'>('all');
   const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'uci' | 'championnat' | 'coupe-france' | 'federal'>('all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [hidePastEvents, setHidePastEvents] = useState(true);
+  const [showActions, setShowActions] = useState(false);
+  const [compactTable, setCompactTable] = useState(true);
 
   // Déterminer le type de course à partir de l'eligibleCategory
   const getRaceType = (eligibleCategory: string): string => {
@@ -296,6 +300,8 @@ export default function SeasonPlanningSection({
       const ageCategory = getAgeCategory(rider.birthDate);
       const matchesAgeCategory = ageCategoryFilter === 'all' || 
         ageCategory.category === ageCategoryFilter;
+      const riderRosterRole = rider.rosterRole ?? 'principal';
+      const matchesRosterRole = riderRosterRole === teamRosterFilter;
       const levelCategory = getLevelCategory(rider);
       const matchesLevel = levelFilter === 'all' || 
         levelCategory === levelFilter;
@@ -321,12 +327,12 @@ export default function SeasonPlanningSection({
         });
       }
       
-      return matchesSearch && matchesGender && matchesAgeCategory && matchesLevel && matchesPreference;
+      return matchesSearch && matchesGender && matchesAgeCategory && matchesRosterRole && matchesLevel && matchesPreference;
     });
     
     // Appliquer le tri
     return sortRiders(filtered);
-  }, [riders, searchTerm, genderFilter, ageCategoryFilter, levelFilter, preferenceFilter, riderEventSelections, sortField, sortDirection]);
+  }, [riders, searchTerm, genderFilter, ageCategoryFilter, teamRosterFilter, levelFilter, preferenceFilter, riderEventSelections, sortField, sortDirection]);
 
   // Fonction pour obtenir le statut d'un athlète pour un événement
   const getRiderEventStatus = (eventId: string, riderId: string): RiderEventStatus | null => {
@@ -988,36 +994,58 @@ export default function SeasonPlanningSection({
 
   // Rendu de la vue d'ensemble
   const renderOverviewView = () => (
-    <div className="space-y-6">
-      {/* En-tête simplifié avec contrôles principaux */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-          <div className="mb-4 lg:mb-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">📅 Planning de Saison</h2>
-            <p className="text-gray-600">
-              Pilotage des sélections et souhaits des athlètes
+    <div className="space-y-4">
+      {/* Barre d’outils compacte */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Planning de Saison</h2>
+            <p className="text-sm text-gray-600">
+              {filteredRiders.length} athlètes • {displayEvents.length} événements
             </p>
           </div>
-          
-          {/* Contrôles principaux */}
-          <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-center">
-            {/* Sélecteur d'année */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">Année :</label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Mini-onglets Équipe 1 / Réserve */}
+            <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200">
+              <button
+                onClick={() => setTeamRosterFilter('principal')}
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                  teamRosterFilter === 'principal'
+                    ? 'bg-gray-900 text-white shadow-sm'
+                    : 'text-gray-700 hover:text-gray-900'
+                }`}
               >
-                <option value="all">Toutes</option>
-                {availableYears.map(year => (
-                  <option key={year} value={year}>
-                    {year === 2026 ? `📅 ${year} (Planification)` : year}
-                  </option>
-                ))}
-              </select>
+                Équipe 1
+              </button>
+              <button
+                onClick={() => setTeamRosterFilter('reserve')}
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                  teamRosterFilter === 'reserve'
+                    ? 'bg-gray-900 text-white shadow-sm'
+                    : 'text-gray-700 hover:text-gray-900'
+                }`}
+              >
+                Réserve
+              </button>
             </div>
-            
+
+            {/* Année */}
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+              aria-label="Année"
+            >
+              <option value="all">Toutes les années</option>
+              {availableYears.map(year => (
+                <option key={year} value={year}>
+                  {year === 2026 ? `${year} (Planification)` : year}
+                </option>
+              ))}
+            </select>
+
+            {/* Passés */}
             <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-lg border border-gray-200">
               <input
                 type="checkbox"
@@ -1025,60 +1053,162 @@ export default function SeasonPlanningSection({
                 onChange={(e) => setHidePastEvents(e.target.checked)}
                 className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
-              <span className="text-sm font-medium text-gray-700">Masquer les événements passés</span>
+              <span className="text-sm font-medium text-gray-700">Masquer passés</span>
             </label>
-            
-            {/* Sélecteur de vue */}
-            <div className="flex bg-white rounded-lg p-1 border border-gray-200">
+
+            {/* Vue */}
+            <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200">
               <button
                 onClick={() => setViewMode('table')}
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                   viewMode === 'table'
-                    ? 'bg-blue-500 text-white shadow-sm'
+                    ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
+                title="Vue tableau"
               >
-                <TableCellsIcon className="w-4 h-4 mr-1 inline" />
-                Tableau
+                <TableCellsIcon className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('calendar')}
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                   viewMode === 'calendar'
-                    ? 'bg-blue-500 text-white shadow-sm'
+                    ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
+                title="Vue calendrier"
               >
-                <CalendarDaysIcon className="w-4 h-4 mr-1 inline" />
-                Calendrier
+                <CalendarDaysIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Densité tableau */}
+            <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-lg border border-gray-200">
+              <input
+                type="checkbox"
+                checked={compactTable}
+                onChange={(e) => setCompactTable(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Compact</span>
+            </label>
+
+            {/* Actions (repliées) */}
+            <button
+              type="button"
+              onClick={() => setShowActions(v => !v)}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                showActions ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+              aria-expanded={showActions}
+            >
+              <EllipsisHorizontalIcon className="w-5 h-5" />
+              Actions
+            </button>
+          </div>
+        </div>
+
+        {showActions && (
+          <div className="px-4 pb-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  filteredRiders.forEach(rider => {
+                    displayEvents.forEach(event => {
+                      const selection = riderEventSelections.find(sel => 
+                        sel.riderId === rider.id && sel.eventId === event.id
+                      );
+                      if (selection?.riderPreference === RiderEventPreference.VEUT_PARTICIPER) {
+                        addRiderToEvent(event.id, rider.id, RiderEventStatus.PRE_SELECTION);
+                      }
+                    });
+                  });
+                }}
+                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
+                ✓ Auto-sélection
+              </button>
+              
+              <button
+                onClick={() => {
+                  filteredRiders.forEach(rider => {
+                    displayEvents.forEach(event => {
+                      const selection = riderEventSelections.find(sel => 
+                        sel.riderId === rider.id && sel.eventId === event.id
+                      );
+                      if (!selection?.riderPreference) {
+                        updateRiderPreference(event.id, rider.id, RiderEventPreference.EN_ATTENTE);
+                      }
+                    });
+                  });
+                }}
+                className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
+              >
+                ⏳ Marquer en attente
+              </button>
+              
+              <button
+                onClick={() => setPreferenceFilter('wants')}
+                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                👁️ Voir préférences
+              </button>
+              
+              <button
+                onClick={() => {
+                  const data = {
+                    riders: filteredRiders.map(rider => ({
+                      nom: `${rider.firstName} ${rider.lastName}`,
+                      selections: displayEvents.map(event => {
+                        const selection = riderEventSelections.find(sel => 
+                          sel.riderId === rider.id && sel.eventId === event.id
+                        );
+                        return {
+                          evenement: event.name,
+                          preference: selection?.riderPreference || 'Aucune',
+                          statut: selection?.status || 'Non sélectionné'
+                        };
+                      })
+                    }))
+                  };
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `selections-${new Date().toISOString().split('T')[0]}.json`;
+                  a.click();
+                }}
+                className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+              >
+                📥 Exporter
               </button>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Section de filtres et recherche */}
-      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center">
             <FunnelIcon className="w-5 h-5 mr-2 text-blue-500" />
-            Filtres et Recherche
+            Filtres
           </h3>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center px-3 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
           >
             {showFilters ? <ChevronUpIcon className="w-4 h-4 mr-1" /> : <ChevronDownIcon className="w-4 h-4 mr-1" />}
-            {showFilters ? 'Masquer' : 'Afficher'} les filtres
+            {showFilters ? 'Masquer' : 'Afficher'}
           </button>
         </div>
         
         {showFilters && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {/* Première ligne: Recherche */}
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Recherche</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Recherche</label>
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -1086,21 +1216,21 @@ export default function SeasonPlanningSection({
                     placeholder="Nom de l'athlète..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
                 </div>
               </div>
             </div>
             
             {/* Deuxième ligne: Filtres */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Filtre par genre */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Genre</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Genre</label>
                 <select
                   value={genderFilter}
                   onChange={(e) => setGenderFilter(e.target.value as 'all' | 'male' | 'female')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="all">Tous</option>
                   <option value="male">Hommes</option>
@@ -1110,11 +1240,11 @@ export default function SeasonPlanningSection({
               
               {/* Filtre par catégorie d'âge */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Catégorie</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Catégorie</label>
                 <select
                   value={ageCategoryFilter}
                   onChange={(e) => setAgeCategoryFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="all">Toutes</option>
                   <option value="U23">U23</option>
@@ -1125,11 +1255,11 @@ export default function SeasonPlanningSection({
               
               {/* Filtre par type de course */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Type de course</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Course</label>
                 <select
                   value={raceTypeFilter}
                   onChange={(e) => setRaceTypeFilter(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="all">Tous les types</option>
                   <option value="uci">🌍 UCI</option>
@@ -1141,11 +1271,11 @@ export default function SeasonPlanningSection({
               
               {/* Filtre par préférence */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Préférence</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Préférence</label>
                 <select
                   value={preferenceFilter}
                   onChange={(e) => setPreferenceFilter(e.target.value as 'all' | 'wants' | 'objectives' | 'unavailable' | 'waiting')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="all">Toutes</option>
                   <option value="wants">Veut participer</option>
@@ -1159,110 +1289,10 @@ export default function SeasonPlanningSection({
         )}
       </div>
 
-        {/* Statistiques essentielles - Version simplifiée */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Athlètes</p>
-                <p className="text-2xl font-bold text-blue-600">{filteredRiders.length}</p>
-              </div>
-              <UserGroupIcon className="w-8 h-8 text-blue-500" />
-            </div>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Événements</p>
-                <p className="text-2xl font-bold text-green-600">{displayEvents.length}</p>
-              </div>
-              <CalendarDaysIcon className="w-8 h-8 text-green-500" />
-            </div>
-          </div>
-        </div>
-
-        {/* Actions rapides - Version compacte */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                filteredRiders.forEach(rider => {
-                  displayEvents.forEach(event => {
-                    const selection = riderEventSelections.find(sel => 
-                      sel.riderId === rider.id && sel.eventId === event.id
-                    );
-                    if (selection?.riderPreference === RiderEventPreference.VEUT_PARTICIPER) {
-                      addRiderToEvent(event.id, rider.id, RiderEventStatus.PRE_SELECTION);
-                    }
-                  });
-                });
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-            >
-              ✓ Auto-sélection
-            </button>
-            
-            <button
-              onClick={() => {
-                filteredRiders.forEach(rider => {
-                  displayEvents.forEach(event => {
-                    const selection = riderEventSelections.find(sel => 
-                      sel.riderId === rider.id && sel.eventId === event.id
-                    );
-                    if (!selection?.riderPreference) {
-                      updateRiderPreference(event.id, rider.id, RiderEventPreference.EN_ATTENTE);
-                    }
-                  });
-                });
-              }}
-              className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
-            >
-              ⏳ Marquer en attente
-            </button>
-            
-            <button
-              onClick={() => setPreferenceFilter('wants')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              👁️ Voir préférences
-            </button>
-            
-            <button
-              onClick={() => {
-                const data = {
-                  riders: filteredRiders.map(rider => ({
-                    nom: `${rider.firstName} ${rider.lastName}`,
-                    selections: displayEvents.map(event => {
-                      const selection = riderEventSelections.find(sel => 
-                        sel.riderId === rider.id && sel.eventId === event.id
-                      );
-                      return {
-                        evenement: event.name,
-                        preference: selection?.riderPreference || 'Aucune',
-                        statut: selection?.status || 'Non sélectionné'
-                      };
-                    })
-                  }))
-                };
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `selections-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-              }}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-            >
-              📥 Exporter
-            </button>
-          </div>
-        </div>
-
 
       {/* Tableau principal - Focus sur l'essentiel */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-w-full">
-        <div className="px-6 py-4 border-b border-gray-200 bg-blue-600 text-white">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-900 text-white">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold flex items-center">
@@ -1281,7 +1311,7 @@ export default function SeasonPlanningSection({
             <thead className="bg-gray-50">
               <tr>
                 {/* Colonne Athlète avec tri */}
-                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
+                <th className={`px-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200 ${compactTable ? 'py-3' : 'py-4'}`}>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <UserGroupIcon className="h-4 w-4" />
@@ -1379,40 +1409,39 @@ export default function SeasonPlanningSection({
                   const titulaires = [...titulairesFromSelections, ...titulairesFromEventOnly];
                   
                   return (
-                    <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[240px] border-l border-gray-200">
-                      <div className="flex flex-col items-center space-y-2">
-                        <div className={`font-bold text-sm ${isPlanningYear ? 'text-blue-600' : 'text-gray-700'}`}>
-                          {isPlanningYear && '📅 '}{event.name}
+                    <th
+                      key={event.id}
+                      className={`px-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-200 ${
+                        compactTable ? 'py-3 min-w-[200px]' : 'py-4 min-w-[240px]'
+                      }`}
+                    >
+                      <div className={`flex flex-col items-center ${compactTable ? 'gap-1.5' : 'space-y-2'}`}>
+                        <div className={`font-bold ${compactTable ? 'text-xs' : 'text-sm'} ${isPlanningYear ? 'text-blue-600' : 'text-gray-700'}`}>
+                          {event.name}
                         </div>
                         <div className="text-xs text-gray-500 font-medium">
                           {formatEventDateRange(event)}
                         </div>
-                        
-                        {/* Limites de sélection */}
-                        <div className="flex items-center space-x-2">
+
+                        <div className="flex items-center gap-2 flex-wrap justify-center">
                           {event.minRiders || event.maxRiders ? (
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                               withinLimits ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                             }`}>
-                              {event.minRiders || 0}-{event.maxRiders || '∞'} coureurs
+                              {event.minRiders || 0}-{event.maxRiders || '∞'}
                             </span>
                           ) : (
-                            <span className="text-xs text-gray-400">Aucune limite</span>
+                            <span className="text-xs text-gray-400">—</span>
                           )}
-                        </div>
-                        
-                        {/* Compteur de sélections */}
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-400">Sélections</span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             withinLimits ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
                           }`}>
                             {selectedCount}
                           </span>
                         </div>
-                        
-                        {/* Liste des titulaires */}
-                        {titulaires.length > 0 && (
+
+                        {!compactTable && titulaires.length > 0 && (
                           <div className="w-full mt-2 pt-2 border-t border-gray-200">
                             <div className="text-xs font-semibold text-green-700 mb-1">
                               Titulaires ({titulaires.length})
@@ -1438,14 +1467,14 @@ export default function SeasonPlanningSection({
                 return (
                   <tr key={rider.id} className={`hover:bg-gray-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                     {/* Colonnes fixes pour les informations de base */}
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">
+                    <td className={`px-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200 ${compactTable ? 'py-2.5' : 'py-4'}`}>
                       <div className="flex items-center space-x-3">
-                        <div className="flex-shrink-0 h-12 w-12">
+                        <div className={`flex-shrink-0 ${compactTable ? 'h-10 w-10' : 'h-12 w-12'}`}>
                           {rider.photoUrl ? (
-                            <img className="h-12 w-12 rounded-full ring-2 ring-gray-200" src={rider.photoUrl} alt="" />
+                            <img className={`${compactTable ? 'h-10 w-10' : 'h-12 w-12'} rounded-full ring-2 ring-gray-200`} src={rider.photoUrl} alt="" />
                           ) : (
-                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center ring-2 ring-gray-200">
-                              <span className="text-white font-semibold text-sm">
+                            <div className={`${compactTable ? 'h-10 w-10' : 'h-12 w-12'} rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center ring-2 ring-gray-200`}>
+                              <span className={`text-white font-semibold ${compactTable ? 'text-xs' : 'text-sm'}`}>
                                 {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
                               </span>
                             </div>
@@ -1475,7 +1504,7 @@ export default function SeasonPlanningSection({
                               </button>
                             </span>
                           </div>
-                          <div className="space-y-1 mt-1">
+                          <div className={`${compactTable ? 'space-y-0.5 mt-0.5' : 'space-y-1 mt-1'}`}>
                             {/* Ligne 1: Âge et profil qualitatif */}
                             <div className="flex items-center space-x-2">
                               <span className="text-xs text-gray-500">
@@ -1535,33 +1564,17 @@ export default function SeasonPlanningSection({
                       const isRemplacant = riderStatus === RiderEventStatus.REMPLACANT;
                       
                       return (
-                        <td key={event.id} className={`px-2 py-3 text-center text-sm border-l border-gray-200 min-w-[140px] ${
+                        <td key={event.id} className={`px-2 text-center text-sm border-l border-gray-200 ${
+                          compactTable ? 'py-2 min-w-[120px]' : 'py-3 min-w-[140px]'
+                        } ${
                           !withinLimits ? 'bg-red-50' : 'bg-white'
                         }`}>
-                          <div className="space-y-2">
-                            
-                            {/* Indicateurs compacts en une ligne */}
-                            <div className="space-y-1">
-                              {/* Préférence */}
-                              <div className="flex justify-center">
-                                <span className="text-gray-400 text-xs"></span>
-                              </div>
-                              
-                              {/* Disponibilité */}
-                              <div className="flex justify-center">
-                                <span className="text-gray-400 text-xs"></span>
-                              </div>
-                              
-                              {/* Statut */}
-                              <div className="flex justify-center">
-                                <span className="text-gray-400 text-xs"></span>
-                              </div>
-                            </div>
+                          <div className={compactTable ? 'space-y-1.5' : 'space-y-2'}>
                             
                             {/* Interface simplifiée pour les sélections */}
                             <div className="space-y-2">
                               {/* Statut actuel */}
-                              {riderStatus && (
+                              {!compactTable && riderStatus && (
                                 <div className={`text-xs px-2 py-1 rounded text-center font-medium ${
                                   riderStatus === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
                                   riderStatus === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
@@ -1599,7 +1612,7 @@ export default function SeasonPlanningSection({
                               </select>
                               
                               {/* Indicateur de limite */}
-                              {maxRiders && (
+                              {!compactTable && maxRiders && (
                                 <div className="text-xs text-gray-500">
                                   {selectedCount}/{maxRiders} coureurs
                                 </div>

@@ -619,6 +619,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formData={formData}
             setFormData={setFormDataForChild}
             formFieldsEnabled={isEditMode}
+            showSimulatePcs={true}
           />
         );
       case 'calendar':

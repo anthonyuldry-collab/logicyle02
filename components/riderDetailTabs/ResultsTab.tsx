@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Rider, ResultItem, DisciplinePracticed } from '../../types';
+import { ResultItem, DisciplinePracticed } from '../../types';
 import ActionButton from '../ActionButton';
 import SearchIcon from '../icons/SearchIcon';
 import PlusCircleIcon from '../icons/PlusCircleIcon';
@@ -11,9 +11,11 @@ import PencilIcon from '../icons/PencilIcon';
 import TrashIcon from '../icons/TrashIcon';
 
 interface ResultsTabProps {
-    formData: Rider | Omit<Rider, 'id'>;
+    formData: { resultsHistory?: ResultItem[] };
     formFieldsEnabled: boolean;
-    setFormData: React.Dispatch<React.SetStateAction<Rider | Omit<Rider, 'id'>>>;
+    setFormData: React.Dispatch<React.SetStateAction<any>>;
+    /** Affiche le bouton de démo qui injecte des résultats simulés. */
+    showSimulatePcs?: boolean;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -26,7 +28,8 @@ const getCategoryLabel = (id: string = ''): string => {
 export const ResultsTab: React.FC<ResultsTabProps> = ({
     formData,
     formFieldsEnabled,
-    setFormData
+    setFormData,
+    showSimulatePcs = false,
 }) => {
     const [isResultModalOpen, setIsResultModalOpen] = useState(false);
     const [editingResult, setEditingResult] = useState<ResultItem | null>(null);
@@ -58,9 +61,7 @@ export const ResultsTab: React.FC<ResultsTabProps> = ({
     }, [formData.resultsHistory]);
 
     const handleSimulatePcsSearch = () => {
-        if (!window.confirm("Ceci est une simulation de recherche sur Pro Cycling Stats et remplacera l'historique de résultats existant. Continuer ?")) {
-            return;
-        }
+        if (!window.confirm("Démo : ceci ajoute des résultats simulés (ne lit pas PCS). Continuer ?")) return;
         const simulatedResults: ResultItem[] = [
             { id: generateId(), date: '2024-05-25', eventName: 'GP de Plumelec-Morbihan', category: 'uci.pro', rank: 1, team: 'Team LogiCycle', discipline: DisciplinePracticed.ROUTE },
             { id: generateId(), date: '2024-03-17', eventName: 'Trofeo Alfredo Binda', category: 'uci.w.wwt', rank: 3, team: 'Team LogiCycle', discipline: DisciplinePracticed.ROUTE },
@@ -71,7 +72,8 @@ export const ResultsTab: React.FC<ResultsTabProps> = ({
         
         setFormData(prev => ({
             ...prev,
-            resultsHistory: simulatedResults,
+            // Démo: on ajoute sans écraser l'existant
+            resultsHistory: [...(prev.resultsHistory || []), ...simulatedResults],
         }));
     };
     
@@ -151,7 +153,19 @@ export const ResultsTab: React.FC<ResultsTabProps> = ({
                             <option value="all">Toutes Disciplines</option>
                             {Object.values(DisciplinePracticed).map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
-                        <ActionButton type="button" onClick={handleSimulatePcsSearch} variant="secondary" size="sm" icon={<SearchIcon className="w-3 h-3"/>} className="text-xs" disabled={!formFieldsEnabled}>Simu. PCS</ActionButton>
+                        {showSimulatePcs && (
+                          <ActionButton
+                            type="button"
+                            onClick={handleSimulatePcsSearch}
+                            variant="secondary"
+                            size="sm"
+                            icon={<SearchIcon className="w-3 h-3" />}
+                            className="text-xs"
+                            disabled={!formFieldsEnabled}
+                          >
+                            Démo import PCS
+                          </ActionButton>
+                        )}
                         <ActionButton type="button" onClick={openAddResultModal} icon={<PlusCircleIcon className="w-4 h-4" />} size="sm" disabled={!formFieldsEnabled}>Ajouter Résultat</ActionButton>
                     </div>
                 </div>

@@ -317,6 +317,7 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     { id: 'equipment', labels: { fr: 'Matériel', en: 'Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     { id: 'vehicles', labels: { fr: 'Véhicules', en: 'Vehicles' }, icon: 'TruckIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'accommodationHistory', labels: { fr: 'Hist. Hébergements', en: 'Accommodation History' }, icon: 'BuildingOfficeIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     
     // Administration - Fonctions administratives avancées
@@ -470,6 +471,13 @@ export const initialScoutingProfileFormState: Omit<ScoutingProfile, 'id'> = {
     discipline: DisciplinePracticed.ROUTE,
     categories: [],
     allergies: [],
+
+    // Résultats / références externes
+    licenseNumber: '',
+    pcsUrl: '',
+    directVeloUrl: '',
+    favoriteRaces: [],
+    resultsHistory: [],
     
     // Performance Project
     performanceGoals: '',
@@ -742,6 +750,8 @@ export const emptyEventAccommodation = (eventId: string, id: string): EventAccom
     status: AccommodationStatus.A_RESERVER,
     confirmationDetails: '',
     numberOfNights: 1,
+    reviewOutcome: undefined,
+    reviewNote: '',
 });
 
 export const RIDER_LEVEL_CATEGORIES: string[] = ["Elite", "Pro", "Open 1", "Open 2", "Open 3", "Handisport"];

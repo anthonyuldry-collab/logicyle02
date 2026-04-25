@@ -16,6 +16,7 @@ import { RiderDetailModal } from '../components/RiderDetailModal';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 import { getRiderCharacteristicSafe } from '../utils/riderUtils';
 import StarIcon from '../components/icons/StarIcon';
+import { ResultsTab } from '../components/riderDetailTabs/ResultsTab';
 
 interface ScoutingSectionProps {
   scoutingProfiles: ScoutingProfile[];
@@ -157,7 +158,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<ScoutingProfile, 'id'> | ScoutingProfile>(initialScoutingProfileFormState);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeModalTab, setActiveModalTab] = useState<'info' | 'power' | 'project' | 'interview'>('info');
+  const [activeModalTab, setActiveModalTab] = useState<'info' | 'power' | 'project' | 'interview' | 'results'>('info');
   const [confirmAction, setConfirmAction] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<ScoutingProfile | null>(null);
   
@@ -172,6 +173,12 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   });
   
   const [selectedProfileIdsForAnalysis, setSelectedProfileIdsForAnalysis] = useState<string[]>([]);
+  const [analysisSubTab, setAnalysisSubTab] = useState<'synthese' | 'fatigue'>('synthese');
+  const [fatigueKjTab, setFatigueKjTab] = useState<'15' | '30' | '45'>('15');
+  const [analysisSearch, setAnalysisSearch] = useState<string>('');
+  const [analysisTypeFilter, setAnalysisTypeFilter] = useState<'all' | 'scoot' | 'n1' | 'reserve'>('all');
+  const [analysisSelectedFirst, setAnalysisSelectedFirst] = useState<boolean>(true);
+  const [analysisProfileFilter, setAnalysisProfileFilter] = useState<'all' | 'sprinteur' | 'puncheur' | 'grimpeur' | 'rouleur'>('all');
 
   const filteredProfiles = useMemo(() => {
     if (!scoutingProfiles) return [];
@@ -258,6 +265,28 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
           ...calculateRiderCharacteristics(newFormData),
         };
     });
+  };
+
+  const openExternal = (url: string) => {
+    if (!url) return;
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      console.error('Impossible d’ouvrir le lien:', e);
+    }
+  };
+
+  const buildPcsSearchUrl = (firstName?: string, lastName?: string) => {
+    const term = `${firstName ?? ''} ${lastName ?? ''}`.trim();
+    if (!term) return 'https://www.procyclingstats.com/';
+    return `https://www.procyclingstats.com/search.php?term=${encodeURIComponent(term)}`;
+  };
+
+  const buildDirectVeloSearchUrl = (firstName?: string, lastName?: string) => {
+    const term = `${firstName ?? ''} ${lastName ?? ''}`.trim();
+    if (!term) return 'https://www.directvelo.com/';
+    // DirectVélo n’expose pas d’URL de recherche stable : fallback via Google (semi-auto).
+    return `https://www.google.com/search?q=${encodeURIComponent(`site:directvelo.com ${term}`)}`;
   };
 
   const handleSaveProfile = () => {
@@ -363,11 +392,77 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   
   const allProfilesForAnalysis = useMemo(() => {
     const combined = [
-        ...scoutingProfiles.map(s => ({ ...s, id: s.id, name: `${s.firstName} ${s.lastName}`, type: 'Prospect' })),
-        ...riders.map(r => ({ ...r, id: r.id, name: `${r.firstName} ${r.lastName}`, type: 'Membre équipe' }))
+        ...scoutingProfiles.map(s => ({ ...s, id: s.id, name: `${s.firstName} ${s.lastName}`, type: 'Scoot' })),
+        ...riders.map(r => {
+            const rosterRole = (r as Rider).rosterRole ?? 'principal';
+            const roleLabel = rosterRole === 'reserve' ? 'Réserve' : 'N1';
+            return ({ ...r, id: r.id, name: `${r.firstName} ${r.lastName}`, type: `Équipe (${roleLabel})` });
+        })
     ];
     return combined.sort((a, b) => a.name.localeCompare(b.name));
   }, [scoutingProfiles, riders]);
+
+  const normalizedAnalysisSearch = analysisSearch.trim().toLowerCase();
+  const filteredProfilesForPicker = useMemo(() => {
+    const dominantProfile = (p: any): 'sprinteur' | 'puncheur' | 'grimpeur' | 'rouleur' => {
+      const sprint = getRiderCharacteristicSafe(p, 'charSprint');
+      const anaer = getRiderCharacteristicSafe(p, 'charAnaerobic');
+      const punch = getRiderCharacteristicSafe(p, 'charPuncher');
+      const climb = getRiderCharacteristicSafe(p, 'charClimbing');
+      const roul = getRiderCharacteristicSafe(p, 'charRouleur');
+
+      // Heuristique simple: le "sprinteur" combine sprint + anaérobie
+      const sprinteurScore = sprint + anaer * 0.7;
+      const puncheurScore = punch + anaer * 0.4;
+      const grimpeurScore = climb;
+      const rouleurScore = roul;
+
+      const scores: Array<{ id: 'sprinteur' | 'puncheur' | 'grimpeur' | 'rouleur'; v: number }> = [
+        { id: 'sprinteur', v: sprinteurScore },
+        { id: 'puncheur', v: puncheurScore },
+        { id: 'grimpeur', v: grimpeurScore },
+        { id: 'rouleur', v: rouleurScore },
+      ];
+      scores.sort((a, b) => b.v - a.v);
+      return scores[0]?.id ?? 'rouleur';
+    };
+
+    const matchesType = (p: any) => {
+      if (analysisTypeFilter === 'all') return true;
+      if (analysisTypeFilter === 'scoot') return p.type === 'Scoot';
+      if (analysisTypeFilter === 'reserve') return typeof p.type === 'string' && p.type.includes('Réserve');
+      if (analysisTypeFilter === 'n1') return typeof p.type === 'string' && p.type.includes('N1');
+      return true;
+    };
+
+    const matchesProfile = (p: any) => {
+      if (analysisProfileFilter === 'all') return true;
+      return dominantProfile(p) === analysisProfileFilter;
+    };
+
+    const matchesSearch = (p: any) => {
+      if (!normalizedAnalysisSearch) return true;
+      const hay = `${p.name ?? ''} ${p.type ?? ''}`.toLowerCase();
+      return hay.includes(normalizedAnalysisSearch);
+    };
+
+    const base = allProfilesForAnalysis.filter((p) => matchesType(p) && matchesProfile(p) && matchesSearch(p));
+    if (!analysisSelectedFirst) return base;
+
+    return [...base].sort((a, b) => {
+      const aSel = selectedProfileIdsForAnalysis.includes(a.id) ? 0 : 1;
+      const bSel = selectedProfileIdsForAnalysis.includes(b.id) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+    });
+  }, [
+    allProfilesForAnalysis,
+    analysisTypeFilter,
+    analysisProfileFilter,
+    normalizedAnalysisSearch,
+    analysisSelectedFirst,
+    selectedProfileIdsForAnalysis,
+  ]);
 
   const handleProfileSelectionForAnalysis = (profileId: string) => {
     setSelectedProfileIdsForAnalysis(prev => {
@@ -523,7 +618,23 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   
   const renderAnalysisTab = () => {
     const selectedProfiles = allProfilesForAnalysis.filter(p => selectedProfileIdsForAnalysis.includes(p.id));
-    const analysisMetrics = [
+    const getWkg = (p: any, profileKey: string, powerKey: string): number | null => {
+        const weight = typeof p?.weightKg === 'number' && !Number.isNaN(p.weightKg) && p.weightKg > 0 ? p.weightKg : null;
+        if (!weight) return null;
+        const profile = p?.[profileKey] ?? (profileKey === 'powerProfileFresh' ? p?.powerProfile : undefined);
+        const power = profile?.[powerKey];
+        if (typeof power !== 'number' || Number.isNaN(power) || power <= 0) return null;
+        return power / weight;
+    };
+
+    const getDeltaPct = (p: any, fatiguedProfileKey: string, powerKey: string): number | null => {
+        const fresh = getWkg(p, 'powerProfileFresh', powerKey);
+        const fatigued = getWkg(p, fatiguedProfileKey, powerKey);
+        if (fresh == null || fresh <= 0 || fatigued == null) return null;
+        return ((fatigued - fresh) / fresh) * 100;
+    };
+
+    const baseMetrics = [
         { key: 'age', label: 'Âge', invertColor: true, format: (v: number) => v.toFixed(0) },
         { key: 'potentialRating', label: 'Potentiel ★', format: (v: number) => v.toFixed(1) },
         { key: 'generalPerformanceScore', label: 'Note Générale', format: (v: number) => v.toFixed(0) },
@@ -533,6 +644,43 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
         { key: 'powerProfileFresh.power5min', label: 'PMax 5min (W/kg)', format: (v: number) => v.toFixed(1) },
         { key: 'powerProfileFresh.criticalPower', label: 'FTP (W/kg)', format: (v: number) => v.toFixed(1) }
     ];
+
+    const fatiguePowerKeys: Array<{ key: keyof PowerProfile; label: string }> = [
+        { key: 'power5s', label: 'PMax 5s' },
+        { key: 'power1min', label: 'PMax 1min' },
+        { key: 'power5min', label: 'PMax 5min' },
+        { key: 'criticalPower', label: 'FTP' },
+    ];
+
+    const fatigueProfiles: Array<{ profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ'; label: string }> = [
+        { profileKey: 'powerProfile15KJ', label: '15 kJ/kg' },
+        { profileKey: 'powerProfile30KJ', label: '30 kJ/kg' },
+        { profileKey: 'powerProfile45KJ', label: '45 kJ/kg' },
+    ];
+
+    const fatigueProfileForTab = (tab: typeof fatigueKjTab): { profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ'; label: string } => {
+        if (tab === '30') return { profileKey: 'powerProfile30KJ', label: '30 kJ/kg' };
+        if (tab === '45') return { profileKey: 'powerProfile45KJ', label: '45 kJ/kg' };
+        return { profileKey: 'powerProfile15KJ', label: '15 kJ/kg' };
+    };
+    const selectedFatigueProfile = fatigueProfileForTab(fatigueKjTab);
+
+    const fatigueMetrics = [
+        ...fatiguePowerKeys.flatMap(({ key, label }) => ([
+            {
+                key: `${selectedFatigueProfile.profileKey}.${String(key)}`,
+                label: `${label} (${selectedFatigueProfile.label}) (W/kg)`,
+                format: (v: number) => v.toFixed(1),
+            },
+            {
+                key: `deltaPct.${selectedFatigueProfile.profileKey}.${String(key)}`,
+                label: `${label} Δ% (${selectedFatigueProfile.label})`,
+                format: (v: number) => `${Math.round(v)}%`,
+            },
+        ])),
+    ];
+
+    const analysisMetrics = (analysisSubTab === 'fatigue' ? fatigueMetrics : baseMetrics) as Array<any>;
 
     const getHeatmapColor = (value: number, min: number, max: number, invert: boolean = false): string => {
         if (min === max || isNaN(value)) return 'bg-slate-700/50 text-slate-200';
@@ -551,7 +699,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     return (
       <div className="space-y-4">
         <div className="space-y-4">
-            <div className="bg-slate-700 p-4 rounded-lg">
+            <div className="bg-slate-700 p-3 rounded-lg">
                 <div className="flex justify-between items-center mb-3">
                     <span className="text-slate-200 font-medium">Sélectionner les profils à comparer ({selectedProfileIdsForAnalysis.length} / 6)</span>
                     <div className="text-xs text-slate-400">
@@ -565,10 +713,109 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                         )}
                     </div>
                 </div>
+
+                <div className="space-y-1.5 mb-2">
+                  <div className="flex flex-col md:flex-row md:items-center gap-1.5">
+                    <div className="relative w-full md:flex-1">
+                      <input
+                        type="text"
+                        value={analysisSearch}
+                        onChange={(e) => setAnalysisSearch(e.target.value)}
+                        placeholder="Rechercher un nom…"
+                        className="input-field-sm w-full pr-9 py-1.5 text-xs"
+                      />
+                      {analysisSearch.trim().length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAnalysisSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white"
+                          title="Effacer la recherche"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileIdsForAnalysis([])}
+                        disabled={selectedProfileIdsForAnalysis.length === 0}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
+                          selectedProfileIdsForAnalysis.length === 0
+                            ? 'bg-slate-700/30 text-slate-500 border-slate-700 cursor-not-allowed'
+                            : 'bg-slate-800 text-white border-red-500 hover:bg-slate-900'
+                        }`}
+                        title="Tout décocher"
+                      >
+                        Aucun
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAnalysisSelectedFirst(v => !v)}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
+                          analysisSelectedFirst
+                            ? 'bg-slate-800 text-white border-emerald-500'
+                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                        }`}
+                        title="Mettre les sélectionnés en haut"
+                      >
+                        Sélectionnés ↑
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      { id: 'all', label: 'Tous profils' },
+                      { id: 'sprinteur', label: 'Sprinteur' },
+                      { id: 'puncheur', label: 'Puncheur' },
+                      { id: 'grimpeur', label: 'Grimpeur' },
+                      { id: 'rouleur', label: 'Rouleur' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setAnalysisProfileFilter(opt.id as any)}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
+                          analysisProfileFilter === opt.id
+                            ? 'bg-slate-800 text-white border-blue-500'
+                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                        }`}
+                        title="Filtrer par profil dominant"
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      { id: 'all', label: 'Tous' },
+                      { id: 'scoot', label: 'Scoot' },
+                      { id: 'n1', label: 'N1' },
+                      { id: 'reserve', label: 'Réserve' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setAnalysisTypeFilter(opt.id)}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
+                          analysisTypeFilter === opt.id
+                            ? 'bg-slate-800 text-white border-emerald-500'
+                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                    {allProfilesForAnalysis.map(p => (
-                        <div key={p.id} className={`flex items-center p-2 rounded border transition-colors ${
+                    {filteredProfilesForPicker.map(p => (
+                        <div key={p.id} className={`flex items-center p-1.5 rounded border transition-colors ${
                             selectedProfileIdsForAnalysis.includes(p.id) 
                                 ? 'bg-blue-600/20 border-blue-500' 
                                 : 'bg-slate-600/50 border-slate-500 hover:bg-slate-600'
@@ -582,9 +829,9 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                                 className="h-4 w-4 rounded border-slate-500 bg-slate-800 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
                             />
                             <label htmlFor={`analysis-select-${p.id}`} className="ml-3 flex-1 cursor-pointer">
-                                <div className="text-slate-200 font-medium">{p.name}</div>
+                                <div className="text-slate-200 font-medium text-sm leading-4">{p.name}</div>
                                 <div className={`text-xs ${
-                                    p.type === 'Prospect' ? 'text-yellow-400' : 'text-green-400'
+                                    p.type === 'Scoot' ? 'text-yellow-400' : 'text-green-400'
                                 }`}>
                                     {p.type}
                                 </div>
@@ -593,16 +840,80 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                     ))}
                 </div>
                 
-                {allProfilesForAnalysis.length === 0 && (
+                {filteredProfilesForPicker.length === 0 && (
                     <div className="text-center py-4 text-slate-400">
-                        Aucun profil disponible pour la comparaison
+                        Aucun profil ne correspond aux filtres
                     </div>
                 )}
             </div>
         </div>
 
         {selectedProfiles.length > 0 && (
-          <div className="overflow-x-auto">
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAnalysisSubTab('synthese')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                  analysisSubTab === 'synthese'
+                    ? 'bg-slate-800 text-white border-blue-500'
+                    : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                }`}
+              >
+                Synthèse
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnalysisSubTab('fatigue')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                  analysisSubTab === 'fatigue'
+                    ? 'bg-slate-800 text-white border-blue-500'
+                    : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                }`}
+              >
+                Fatigue & % pertes
+              </button>
+            </div>
+
+            {analysisSubTab === 'fatigue' && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFatigueKjTab('15')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                    fatigueKjTab === '15'
+                      ? 'bg-slate-800 text-white border-emerald-500'
+                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  15 kJ/kg
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFatigueKjTab('30')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                    fatigueKjTab === '30'
+                      ? 'bg-slate-800 text-white border-emerald-500'
+                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  30 kJ/kg
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFatigueKjTab('45')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                    fatigueKjTab === '45'
+                      ? 'bg-slate-800 text-white border-emerald-500'
+                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  45 kJ/kg
+                </button>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-center border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-800">
@@ -622,10 +933,14 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                       if (metric.key === 'potentialRating') return 'potentialRating' in p ? p.potentialRating || 0 : 0;
                       if (metric.key === 'generalPerformanceScore') return p.generalPerformanceScore || 0;
                       if (metric.key === 'fatigueResistanceScore') return p.fatigueResistanceScore || 0;
+                      if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
+                          const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
+                          return getDeltaPct(p, profileKey, powerKey) ?? 0;
+                      }
                       if (metric.key.startsWith('powerProfile')) {
                           const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
-                          const power = (p[profileKey] as PowerProfile)?.[powerKey];
-                          return (power && p.weightKg) ? power / p.weightKg : 0;
+                          const wkg = getWkg(p, String(profileKey), String(powerKey));
+                          return wkg ?? 0;
                       }
                       return 0;
                   }).filter(v => v > 0);
@@ -650,14 +965,13 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                               } else if (metric.key === 'fatigueResistanceScore') {
                                 const score = p.fatigueResistanceScore;
                                 value = typeof score === 'number' && !isNaN(score) ? score : null;
+                              } else if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
+                                const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
+                                const d = getDeltaPct(p, profileKey, powerKey);
+                                value = typeof d === 'number' && !Number.isNaN(d) ? d : null;
                               } else if (metric.key.startsWith('powerProfile')) {
                                 const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
-                                const power = (p[profileKey] as PowerProfile)?.[powerKey];
-                                if (typeof power === 'number' && !isNaN(power) && typeof p.weightKg === 'number' && !isNaN(p.weightKg) && p.weightKg > 0) {
-                                  value = power / p.weightKg;
-                                } else {
-                                  value = null;
-                                }
+                                value = getWkg(p, String(profileKey), String(powerKey));
                               }
                               
                               return (
@@ -671,6 +985,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
@@ -742,13 +1057,14 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
           calculateWkg={() => ''}
       />
       
-       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditing ? "Modifier Prospect" : "Nouveau Prospect"}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditing ? "Modifier Prospect" : "Nouveau Prospect"}>
         <div className="bg-slate-800 p-4 -m-6 rounded-lg">
             <nav className="flex space-x-1 border-b border-slate-600 mb-4 overflow-x-auto">
                 <button onClick={() => setActiveModalTab('info')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'info' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Infos</button>
                 <button onClick={() => setActiveModalTab('power')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'power' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Puissance</button>
                 <button onClick={() => setActiveModalTab('project')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'project' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Projet Perf.</button>
                 <button onClick={() => setActiveModalTab('interview')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'interview' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Entretiens</button>
+                <button onClick={() => setActiveModalTab('results')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'results' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Résultats</button>
             </nav>
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                 {activeModalTab === 'info' && (
@@ -1311,6 +1627,117 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Onglet Résultats (liens + historique) */}
+                {activeModalTab === 'results' && (
+                  <div className="space-y-4">
+                    <div className="bg-slate-700 p-4 rounded-lg space-y-3">
+                      <h3 className="text-lg font-semibold text-white">Références externes</h3>
+                      <p className="text-xs text-slate-300">
+                        Objectif : lier une page ProCyclingStats/DirectVélo une seule fois pour retrouver facilement les résultats. L’import automatique complet nécessiterait une intégration dédiée.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-300">ProCyclingStats (URL profil)</label>
+                          <input
+                            name="pcsUrl"
+                            value={(currentItem as any).pcsUrl || ''}
+                            onChange={handleInputChange}
+                            placeholder="https://www.procyclingstats.com/rider/..."
+                            className="input-field-sm"
+                          />
+                          <div className="flex gap-2">
+                            <ActionButton
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openExternal(buildPcsSearchUrl(currentItem.firstName, currentItem.lastName))}
+                              icon={<SearchIcon className="w-3 h-3" />}
+                            >
+                              Rechercher PCS
+                            </ActionButton>
+                            {(currentItem as any).pcsUrl && (
+                              <ActionButton
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openExternal(String((currentItem as any).pcsUrl))}
+                              >
+                                Ouvrir
+                              </ActionButton>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-300">DirectVélo (URL profil)</label>
+                          <input
+                            name="directVeloUrl"
+                            value={(currentItem as any).directVeloUrl || ''}
+                            onChange={handleInputChange}
+                            placeholder="https://www.directvelo.com/..."
+                            className="input-field-sm"
+                          />
+                          <div className="flex gap-2">
+                            <ActionButton
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openExternal(buildDirectVeloSearchUrl(currentItem.firstName, currentItem.lastName))}
+                              icon={<SearchIcon className="w-3 h-3" />}
+                            >
+                              Rechercher DirectVélo
+                            </ActionButton>
+                            {(currentItem as any).directVeloUrl && (
+                              <ActionButton
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openExternal(String((currentItem as any).directVeloUrl))}
+                              >
+                                Ouvrir
+                              </ActionButton>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-300">Numéro de licence (si connu)</label>
+                          <input
+                            name="licenseNumber"
+                            value={(currentItem as any).licenseNumber || ''}
+                            onChange={handleInputChange}
+                            placeholder="Ex: FFC..."
+                            className="input-field-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-300">UCI ID (si connu)</label>
+                          <input
+                            name="uciId"
+                            value={(currentItem as any).uciId || ''}
+                            onChange={handleInputChange}
+                            placeholder="UCI ID"
+                            className="input-field-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-700 p-4 rounded-lg">
+                      <h3 className="text-lg font-semibold text-white mb-2">Historique des résultats</h3>
+                      <ResultsTab
+                        formData={currentItem as any}
+                        setFormData={setCurrentItem as any}
+                        formFieldsEnabled={true}
+                        showSimulatePcs={false}
+                      />
+                    </div>
+                  </div>
                 )}
             </div>
             <div className="flex justify-end space-x-2 mt-4 pt-3 border-t border-slate-700">

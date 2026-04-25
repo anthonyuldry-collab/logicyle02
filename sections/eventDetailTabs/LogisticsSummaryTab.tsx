@@ -142,19 +142,74 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
             retour: retourLegs.find(l => getLegSortKey(l, appState) === key) || null,
         }));
 
-        const estimateLegHeight = (leg: EventTransportLeg | null) => {
+        // Mesure plus fiable: tient compte du wrapping réel (splitTextToSize)
+        // afin que l'encadré gris ne soit jamais trop court.
+        const measureLegHeight = (leg: EventTransportLeg | null, width: number): number => {
             if (!leg) return 0;
-            let h = lineH * 1.5 + 0.5;
-            if (leg.departureDate || leg.departureTime || leg.departureLocation) h += lineH + 1;
-            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) h += lineH + 1;
-            if (leg.assignedVehicleId && leg.driverId) h += lineH + 1;
-            if ((leg.occupants || []).length > 0) h += lineH + 1;
-            const pdLines = getLegPickupDropoffLines(leg, appState);
-            if (pdLines.length > 0) h += 3 + lineH * 2 + pdLines.length * lineH * 2;
-            return h + 2;
+            let cy = 0;
+            const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
+            const modeLabel = getTransportLegLabel(leg, vehicle?.name);
+            const title = `${leg.personName || 'Trajet'}${modeLabel ? ` ${modeLabel}` : ''}`;
+            const titleWrapped = doc.splitTextToSize(title, width - 2);
+            cy += titleWrapped.length * lineH;
+            cy += 1; // petit espace après le titre
+
+            if (leg.departureDate || leg.departureTime || leg.departureLocation) {
+                const depDayOnly = leg.departureDate ? formatDateFn(leg.departureDate) : '';
+                const depStr = depDayOnly
+                    ? `${depDayOnly} à ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`
+                    : `${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
+                const depWrapped = doc.splitTextToSize(depStr, width - PDF_LABEL_WIDTH);
+                cy += Math.max(1, depWrapped.length) * lineH;
+                cy += 1;
+            }
+
+            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
+                const arrDayOnly = leg.arrivalDate ? formatDateFn(leg.arrivalDate) : '';
+                const arrStr = [arrDayOnly, leg.arrivalTime, leg.arrivalLocation || '—'].filter(Boolean).join(' à ');
+                const arrWrapped = doc.splitTextToSize(arrStr, width - PDF_LABEL_WIDTH);
+                cy += Math.max(1, arrWrapped.length) * lineH;
+                cy += 1;
+            }
+
+            const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
+            if (vehicle && driver) {
+                const vehStr = `${vehicle.name} (${driver.firstName})`;
+                const vehWrapped = doc.splitTextToSize(vehStr, width - PDF_LABEL_WIDTH);
+                cy += Math.max(1, vehWrapped.length) * lineH;
+                cy += 1;
+            }
+
+            const occupants = (leg.occupants || []).map(o => {
+                const p = o.type === 'rider' ? appState.riders.find(r => r.id === o.id) : appState.staff.find(s => s.id === o.id);
+                return p ? `${p.firstName[0]}.${p.lastName}` : '';
+            }).filter(Boolean).join(', ');
+            if (occupants) {
+                const occWrapped = doc.splitTextToSize(occupants, width - PDF_LABEL_WIDTH);
+                cy += Math.max(1, occWrapped.length) * lineH;
+                cy += 1;
+            }
+
+            const pickupDropoffLines = getLegPickupDropoffLines(leg, appState);
+            if (pickupDropoffLines.length > 0) {
+                cy += 2;
+                cy += lineH + 1; // ligne "Récup. / déposes:"
+                // le PDF dessine en taille 8 avec marge x+4 ; on garde une marge similaire
+                pickupDropoffLines.forEach(line => {
+                    const wrapped = doc.splitTextToSize(line, width - 6);
+                    cy += Math.max(1, wrapped.length) * lineH;
+                });
+            }
+
+            // marges internes bas/haut similaires à drawLegInColumn
+            return cy + 4;
         };
         const headerH = lineH + 4;
-        const rowHeights = rows.map((row, idx) => (idx > 0 ? 3 : 0) + Math.max(estimateLegHeight(row.aller), estimateLegHeight(row.retour)));
+        const colInnerWidth = colW - 2;
+        const rowHeights = rows.map((row, idx) => (idx > 0 ? 3 : 0) + Math.max(
+            measureLegHeight(row.aller, colInnerWidth),
+            measureLegHeight(row.retour, colInnerWidth)
+        ));
         const boxH = headerH + 4 + rowHeights.reduce((a, b) => a + b, 0) + 6;
 
         doc.setFillColor(...PDF_BOX_BG);
@@ -335,30 +390,28 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
         y += 4;
     }
 
-    if (y > PDF_PAGE_HEIGHT - 45) {
-        doc.addPage();
-        y = PDF_MARGIN;
-    }
-    y = drawPdfSectionTitle(doc, 'HÉBERGEMENT', y, true);
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover)
         || appState.eventAccommodations.find(acc => acc.eventId === event.id);
-    if (accommodation?.hotelName || accommodation?.address) {
-        if (accommodation.hotelName) {
-            doc.text(`Hôtel: ${accommodation.hotelName}`, PDF_MARGIN, y);
+    const hasAccommodationInfo = Boolean(accommodation?.hotelName?.trim() || accommodation?.address?.trim());
+    if (hasAccommodationInfo) {
+        if (y > PDF_PAGE_HEIGHT - 45) {
+            doc.addPage();
+            y = PDF_MARGIN;
+        }
+        y = drawPdfSectionTitle(doc, 'HÉBERGEMENT', y, true);
+        if (accommodation?.hotelName?.trim()) {
+            doc.text(`Hôtel: ${accommodation.hotelName.trim()}`, PDF_MARGIN, y);
             y += lineH;
         }
-        if (accommodation.address) {
-            const addrLines = doc.splitTextToSize(`Adresse: ${accommodation.address}`, PDF_CONTENT_WIDTH - 4);
+        if (accommodation?.address?.trim()) {
+            const addrLines = doc.splitTextToSize(`Adresse: ${accommodation.address.trim()}`, PDF_CONTENT_WIDTH - 4);
             addrLines.forEach((line: string) => {
                 doc.text(line, PDF_MARGIN, y);
                 y += lineH;
             });
         }
-    } else {
-        doc.text('Non renseigné', PDF_MARGIN, y);
-        y += lineH;
+        y += gap;
     }
-    y += gap;
 
     if (y < PDF_PAGE_HEIGHT - 22) {
         doc.setDrawColor(...PDF_LINE_GRAY);
@@ -699,10 +752,13 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    if (accommodation) {
+    const hotelName = accommodation?.hotelName?.trim() || '';
+    const address = accommodation?.address?.trim() || '';
+    if (hotelName || address) {
         text += `HÉBERGEMENT\n--------------------\n`;
-        text += `- Hôtel : ${accommodation.hotelName}\n`;
-        text += `- Adresse : ${accommodation.address}\n\n`;
+        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
+        if (address) text += `- Adresse : ${address}\n`;
+        text += `\n`;
     }
 
 
@@ -812,7 +868,14 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     }
     
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    if (accommodation) { text += `HÉBERGEMENT\n--------------------\n- Hôtel : ${accommodation.hotelName}\n- Adresse : ${accommodation.address}\n\n`; }
+    const hotelName = accommodation?.hotelName?.trim() || '';
+    const address = accommodation?.address?.trim() || '';
+    if (hotelName || address) {
+        text += `HÉBERGEMENT\n--------------------\n`;
+        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
+        if (address) text += `- Adresse : ${address}\n`;
+        text += `\n`;
+    }
 
 
     text += `Merci de confirmer ta présence.\n\nLe Manager`;
@@ -944,10 +1007,13 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    if (accommodation) {
+    const hotelName = accommodation?.hotelName?.trim() || '';
+    const address = accommodation?.address?.trim() || '';
+    if (hotelName || address) {
         text += `HÉBERGEMENT\n--------------------\n`;
-        text += `- Hôtel : ${accommodation.hotelName}\n`;
-        text += `- Adresse : ${accommodation.address}\n\n`;
+        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
+        if (address) text += `- Adresse : ${address}\n`;
+        text += `\n`;
     }
     
     return text;
@@ -986,6 +1052,9 @@ const ConvocationPreview: React.FC<{
         (leg.driverId === participant.id || isPersonInLeg(leg, participant.id, mode === 'athlete' ? 'rider' : 'staff'))
     ) : [];
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
+    const accommodationHotelName = accommodation?.hotelName?.trim() || '';
+    const accommodationAddress = accommodation?.address?.trim() || '';
+    const hasAccommodationInfo = Boolean(accommodationHotelName || accommodationAddress);
 
     const Section: React.FC<{ title: string; icon: React.ElementType; children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
         <div className="mb-4">
@@ -1185,10 +1254,10 @@ const ConvocationPreview: React.FC<{
                 ) : <p className="italic">Aucun transport planifié.</p>}
             </Section>
 
-            {accommodation && (
+            {hasAccommodationInfo && (
                 <Section title="Hébergement" icon={BuildingOfficeIcon}>
-                    <p><strong>Hôtel:</strong> {accommodation.hotelName}</p>
-                    <p><strong>Adresse:</strong> {accommodation.address}</p>
+                    {accommodationHotelName && <p><strong>Hôtel:</strong> {accommodationHotelName}</p>}
+                    {accommodationAddress && <p><strong>Adresse:</strong> {accommodationAddress}</p>}
                 </Section>
             )}
 

@@ -78,6 +78,7 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
         vehicles: ['view'],
         equipment: ['view'],
         stocks: ['view'],
+        accommodationHistory: ['view'],
         scouting: ['view'],
         
         // Accès limité au staff (lecture seule)
@@ -94,6 +95,7 @@ const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
         vehicles: ['view', 'edit'],
         equipment: ['view', 'edit'],
         stocks: ['view', 'edit'],
+        accommodationHistory: ['view', 'edit'],
         scouting: ['view', 'edit'],
         checklist: ['view', 'edit'],
         

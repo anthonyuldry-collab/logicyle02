@@ -93,7 +93,8 @@ const checkVehicleAvailability = (
   checkStartDate: string | undefined,
   checkEndDate: string | undefined,
   allGlobalTransportLegs: EventTransportLeg[],
-  currentLegIdToExclude?: string
+  currentLegIdToExclude?: string,
+  currentLegContext?: Pick<EventTransportLeg, "eventId" | "direction">
 ): { status: "available" | "maintenance" | "assigned"; reason: string } => {
   if (!checkStartDate) return { status: "available", reason: "" };
 
@@ -115,6 +116,16 @@ const checkVehicleAvailability = (
   for (const leg of allGlobalTransportLegs) {
     if (leg.id === currentLegIdToExclude) continue;
     if (leg.assignedVehicleId === vehicle.id) {
+      // Autoriser explicitement le même véhicule sur Aller + Retour du MÊME événement.
+      // Cas typique : aller/retour dans la journée (ou même déplacement multi-jours),
+      // où le véhicule doit être sélectionnable sur les deux trajets.
+      if (
+        currentLegContext &&
+        leg.eventId === currentLegContext.eventId &&
+        leg.direction !== currentLegContext.direction
+      ) {
+        continue;
+      }
       if (
         datesOverlap(
           checkStartDate,
@@ -1548,7 +1559,11 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                     (currentTransportLeg as EventTransportLeg).departureDate,
                     (currentTransportLeg as EventTransportLeg).arrivalDate,
                     appState.eventTransportLegs,
-                    (currentTransportLeg as EventTransportLeg).id
+                    (currentTransportLeg as EventTransportLeg).id,
+                    {
+                      eventId: eventId,
+                      direction: (currentTransportLeg as EventTransportLeg).direction,
+                    }
                   );
                   return (
                     <option

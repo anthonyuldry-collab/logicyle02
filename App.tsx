@@ -96,6 +96,7 @@ import SettingsSection from "./sections/SettingsSection";
 import SignupView, { SignupData } from "./sections/SignupView";
 import StaffSection from "./sections/StaffSection";
 import StocksSection from "./sections/StocksSection";
+import { AccommodationHistorySection } from "./sections/AccommodationHistorySection";
 import UserManagementSection from "./sections/UserManagementSection";
 import UserSettingsSection from "./sections/UserSettingsSection";
 import VehiclesSection from "./sections/VehiclesSection";
@@ -1440,6 +1441,7 @@ const App: React.FC = () => {
           vehicles: ['view', 'edit'],
           equipment: ['view', 'edit'],
           stocks: ['view', 'edit'],
+          accommodationHistory: ['view', 'edit'],
           scouting: ['view', 'edit'],
           userManagement: ['view', 'edit'],
           permissions: ['view', 'edit'],
@@ -1700,6 +1702,16 @@ const App: React.FC = () => {
                       effectivePermissions={effectivePermissions}
                       equipmentStockItems={appState.equipmentStockItems}
                       currentUser={currentUser}
+                    />
+                  )}
+                  {currentSection === "accommodationHistory" && (
+                    <AccommodationHistorySection
+                      appState={appState}
+                      setEventAccommodations={createBatchSetHandler<EventAccommodation>(
+                        "eventAccommodations"
+                      )}
+                      currentUser={currentUser}
+                      navigateTo={navigateTo}
                     />
                   )}
                   {currentSection === "performance" && appState.riders && currentUser && (

@@ -20,6 +20,7 @@ import EventParticipantsTab from './sections/eventDetailTabs/EventParticipantsTa
 import EventOperationalLogisticsTab from './sections/eventDetailTabs/EventOperationalLogisticsTab'; 
 import { EventTransportTab } from './sections/eventDetailTabs/EventTransportTab'; 
 import EventAccommodationTab from './sections/eventDetailTabs/EventAccommodationTab'; 
+import EventAccommodationHistoryTab from './sections/eventDetailTabs/EventAccommodationHistoryTab';
 import EventDocumentsTab from './sections/eventDetailTabs/EventDocumentsTab'; 
 import EventBudgetTab from './sections/eventDetailTabs/EventBudgetTab'; 
 import EventChecklistTab from './sections/eventDetailTabs/EventChecklistTab'; 
@@ -59,6 +60,7 @@ interface EventDetailViewProps {
 type EventDetailTab = 
   | 'logisticsSummary'
   | 'info' | 'participants' | 'opLogistics' | 'transport' | 'accommodation' 
+  | 'accommodationHistory'
   | 'documents' 
   | 'budget' 
   | 'checklist' 
@@ -177,6 +179,7 @@ function EventDetailView({
     { id: 'opLogistics', label: t('eventTabOpLogistics') },
     { id: 'transport', label: t('eventTabTransport') },
     { id: 'accommodation', label: t('eventTabAccommodation') },
+    { id: 'accommodationHistory', label: t('eventTabAccommodationHistory') },
     { id: 'documents', label: t('eventTabDocuments') },
     { id: 'budget', label: t('eventTabBudget') },
     { id: 'checklist', label: t('eventTabChecklist') },
@@ -262,6 +265,14 @@ function EventDetailView({
                 {...eventDetailProps}
                 setEventAccommodations={setEventAccommodations}
                 setEventBudgetItems={setEventBudgetItems}
+                currentUser={currentUser}
+                effectivePermissions={appState.effectivePermissions}
+            />
+        </div>
+        <div style={{ display: activeTab === 'accommodationHistory' ? 'block' : 'none' }}>
+            <EventAccommodationHistoryTab
+                {...eventDetailProps}
+                setEventAccommodations={setEventAccommodations}
                 currentUser={currentUser}
                 effectivePermissions={appState.effectivePermissions}
             />
