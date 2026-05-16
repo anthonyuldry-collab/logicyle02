@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { RaceEvent, RaceInformation, EventRadioEquipment, EventRadioAssignment, EventType, Discipline, AppState } from '../../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { RaceEvent, RaceInformation, EventRadioEquipment, EventRadioAssignment, EventType, Discipline, AppState, StageDayLogistics, Rider } from '../../types';
 import { saveData, deleteData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal'; 
 import PlusCircleIcon from '../../components/icons/PlusCircleIcon';
 import PencilIcon from '../../components/icons/PencilIcon';
 import TrashIcon from '../../components/icons/TrashIcon';
-import { emptyEventRadioEquipment, ELIGIBLE_CATEGORIES_CONFIG } from '../../constants'; 
+import { emptyEventRadioEquipment, ELIGIBLE_CATEGORIES_CONFIG } from '../../constants';
+import { formatEventDateRange } from '../../utils/dateUtils';
+import { ensureStageRaceLogistics, formatStageDateLabel, isStageRace, syncRiderStartTimes } from '../../utils/stageRaceUtils';
+import { stageDayLocationFields, getVisibleStageDayRaceFields } from './stageRaceFields';
+import StageRaceSubTabs from './StageRaceSubTabs';
+import StageTimeTrialDepartures from './StageTimeTrialDepartures'; 
 
 interface EventInfoTabProps {
   event: RaceEvent;
@@ -43,6 +48,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
 }) => {
   const [formData, setFormData] = useState<RaceEvent>(event);
   const [isEditing, setIsEditing] = useState(false);
+  const [activeStageTab, setActiveStageTab] = useState(0);
 
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [currentAssignment, setCurrentAssignment] = useState<Omit<EventRadioAssignment, 'id'> | EventRadioAssignment>(initialAssignmentFormStateFactory(eventId));
@@ -54,11 +60,14 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   );
 
   useEffect(() => {
-    setFormData(event);
-    // If initialRadioEquipment prop changes (e.g., loaded from global state), update local state
-    // Ensure it's initialized if undefined.
+    setFormData(isStageRace(event) ? ensureStageRaceLogistics(event) : event);
     setLocalRadioEquipment(initialRadioEquipment || emptyEventRadioEquipment(eventId, `${eventId}_radioequip_info_effect`));
   }, [event, initialRadioEquipment, eventId]);
+
+  const applyStageRaceSync = useCallback((data: RaceEvent): RaceEvent => {
+    if (!isStageRace(data)) return data;
+    return ensureStageRaceLogistics(data);
+  }, []);
 
   const handleMainFormInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>, section?: keyof RaceEvent) => {
     const { name, value } = e.target;
@@ -80,11 +89,15 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             };
         });
     } else if (name === 'minRiders' || name === 'maxRiders') {
-        // Gestion spéciale pour les champs numériques des limites d'athlètes
         const numValue = value === '' ? undefined : parseInt(value);
         setFormData(prev => ({
             ...prev,
             [name]: numValue,
+        }));
+    } else if (name === 'date' || name === 'endDate') {
+        setFormData(prev => applyStageRaceSync({
+            ...prev,
+            [name]: value,
         }));
     } else {
         setFormData(prev => ({
@@ -92,6 +105,126 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             [name]: value,
         }));
     }
+  };
+
+  const handleStageDayChange = (
+    stageId: string,
+    field: keyof StageDayLogistics,
+    value: string | number | boolean,
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      raceInfo: {
+        ...prev.raceInfo,
+        stageDays: (prev.raceInfo.stageDays || []).map(day =>
+          day.id === stageId ? { ...day, [field]: value } : day,
+        ),
+      },
+    }));
+  };
+
+  const eventRiders = useMemo((): Rider[] => {
+    const ids = new Set(formData.selectedRiderIds || []);
+    return appState.riders
+      .filter(r => ids.has(r.id))
+      .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'fr'));
+  }, [appState.riders, formData.selectedRiderIds]);
+
+  const handleStageTimeTrialToggle = (stageId: string, checked: boolean) => {
+    setFormData(prev => {
+      const riderIds = prev.selectedRiderIds || [];
+      return {
+        ...prev,
+        raceInfo: {
+          ...prev.raceInfo,
+          stageDays: (prev.raceInfo.stageDays || []).map(day => {
+            if (day.id !== stageId) return day;
+            return {
+              ...day,
+              isTimeTrial: checked,
+              premierDepartTime: checked ? day.premierDepartTime : '',
+              departFictifTime: checked ? '' : day.departFictifTime,
+              departReelTime: checked ? '' : day.departReelTime,
+              riderStartTimes: checked
+                ? syncRiderStartTimes(day.riderStartTimes, riderIds)
+                : day.riderStartTimes,
+            };
+          }),
+        },
+      };
+    });
+  };
+
+  const handleStagePremierDepartTimeChange = (stageId: string, premierDepartTime: string) => {
+    setFormData(prev => ({
+      ...prev,
+      raceInfo: {
+        ...prev.raceInfo,
+        stageDays: (prev.raceInfo.stageDays || []).map(day =>
+          day.id === stageId ? { ...day, premierDepartTime } : day,
+        ),
+      },
+    }));
+  };
+
+  const handleStageRiderDepartTimeChange = (
+    stageId: string,
+    riderId: string,
+    departTime: string,
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      raceInfo: {
+        ...prev.raceInfo,
+        stageDays: (prev.raceInfo.stageDays || []).map(day => {
+          if (day.id !== stageId) return day;
+          return {
+            ...day,
+            riderStartTimes: (day.riderStartTimes || []).map(rst =>
+              rst.riderId === riderId ? { ...rst, departTime } : rst,
+            ),
+          };
+        }),
+      },
+    }));
+  };
+
+  const handleRaceInfoTimeTrialToggle = (checked: boolean) => {
+    setFormData(prev => {
+      const riderIds = prev.selectedRiderIds || [];
+      return {
+        ...prev,
+        raceInfo: {
+          ...prev.raceInfo,
+          isTimeTrial: checked,
+          premierDepartTime: checked ? prev.raceInfo.premierDepartTime : '',
+          departFictifTime: checked ? '' : prev.raceInfo.departFictifTime,
+          departReelTime: checked ? '' : prev.raceInfo.departReelTime,
+          riderStartTimes: checked
+            ? syncRiderStartTimes(prev.raceInfo.riderStartTimes, riderIds)
+            : prev.raceInfo.riderStartTimes,
+        },
+      };
+    });
+  };
+
+  const handleRaceInfoPremierDepartTimeChange = (premierDepartTime: string) => {
+    setFormData(prev => ({
+      ...prev,
+      raceInfo: { ...prev.raceInfo, premierDepartTime },
+    }));
+  };
+
+  const handleRaceInfoRiderDepartTimeChange = (riderId: string, departTime: string) => {
+    setFormData(prev => ({
+      ...prev,
+      raceInfo: {
+        ...prev.raceInfo,
+        riderStartTimes: (prev.raceInfo.riderStartTimes || []).map(rst =>
+          rst.riderId === riderId ? { ...rst, departTime } : rst,
+        ),
+      },
+    }));
   };
 
   const handleRadioEquipmentChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -216,12 +349,12 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
 
   const handleSaveAll = async () => {
     try {
-      // Sauvegarder les informations de course dans Firebase si on a un teamId
+      const eventToSave = applyStageRaceSync({
+        ...formData,
+        id: eventId,
+      });
+
       if (appState.activeTeamId) {
-        const eventToSave = {
-          ...formData,
-          id: eventId
-        };
         await saveData(
           appState.activeTeamId,
           "raceEvents",
@@ -232,8 +365,8 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
         console.warn('⚠️ Aucun teamId actif, sauvegarde locale uniquement');
       }
 
-      // Mettre à jour l'état local APRÈS la sauvegarde réussie
-      updateEvent(formData); 
+      updateEvent(eventToSave);
+      setFormData(eventToSave); 
       // Radio equipment is already saved by its own handler.
       // Radio assignments are saved by their modal.
       setIsEditing(false);
@@ -263,7 +396,136 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     { key: 'radioFrequency', label: 'Fréquence Radio', type: 'text' },
   ];
 
+  const getVisibleRaceInfoFields = (isTimeTrial?: boolean) =>
+    raceInfoFields.filter(f => {
+      if (isTimeTrial && (f.key === 'departFictifTime' || f.key === 'departReelTime')) return false;
+      return true;
+    });
+
   const lightInputClass = "mt-1 block w-full px-3 py-2 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500";
+
+  const stageRace = isStageRace(formData);
+  const stageDays = formData.raceInfo?.stageDays || [];
+  const transfers = formData.raceInfo?.transfers || [];
+
+  useEffect(() => {
+    if (activeStageTab >= stageDays.length && stageDays.length > 0) {
+      setActiveStageTab(stageDays.length - 1);
+    }
+  }, [stageDays.length, activeStageTab]);
+
+  const renderStageFieldValue = (value: string | number | undefined, type: 'text' | 'number' | 'date') => {
+    if (value === undefined || value === '' || value === 0) return 'N/A';
+    if (type === 'date' && typeof value === 'string') {
+      return new Date(value + 'T12:00:00Z').toLocaleDateString('fr-FR');
+    }
+    return String(value);
+  };
+
+  const renderStageDayFormFields = (stage: StageDayLogistics) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+      {stageDayLocationFields.map(({ key, label, type }) => (
+        <div key={key} className={key === 'stageLabel' ? 'md:col-span-2' : ''}>
+          <label className="block text-sm font-medium text-gray-700">{label}</label>
+          <input
+            type={type}
+            value={(stage[key] as string) || ''}
+            onChange={e => handleStageDayChange(stage.id, key, e.target.value)}
+            className={lightInputClass}
+          />
+        </div>
+      ))}
+      {getVisibleStageDayRaceFields(Boolean(stage.isTimeTrial)).map(({ key, label, type }) => (
+        <div key={key} className={key === 'permanenceAddress' ? 'md:col-span-2' : ''}>
+          <label className="block text-sm font-medium text-gray-700">{label}</label>
+          <input
+            type={type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+            value={(stage[key] as string | number) ?? ''}
+            onChange={e => handleStageDayChange(
+              stage.id,
+              key,
+              type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value,
+            )}
+            className={lightInputClass}
+            step={type === 'number' ? 'any' : undefined}
+          />
+        </div>
+      ))}
+      <StageTimeTrialDepartures
+        isTimeTrial={Boolean(stage.isTimeTrial)}
+        premierDepartTime={stage.premierDepartTime || ''}
+        riderStartTimes={stage.riderStartTimes || []}
+        riders={eventRiders}
+        isEditing={isEditing}
+        inputClassName={lightInputClass}
+        onTimeTrialChange={checked => handleStageTimeTrialToggle(stage.id, checked)}
+        onPremierDepartTimeChange={time => handleStagePremierDepartTimeChange(stage.id, time)}
+        onRiderDepartTimeChange={(riderId, time) =>
+          handleStageRiderDepartTimeChange(stage.id, riderId, time)
+        }
+      />
+    </div>
+  );
+
+  const renderStageTabPanelEdit = (stage: StageDayLogistics) => (
+    <section>
+      <h4 className="text-sm font-semibold text-amber-900 uppercase tracking-wide mb-3">Logistique course</h4>
+      {renderStageDayFormFields(stage)}
+    </section>
+  );
+
+  const renderStageTabPanelView = (stage: StageDayLogistics) => (
+    <section>
+      <h4 className="text-sm font-semibold text-amber-900 uppercase tracking-wide mb-3">Logistique course</h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-700">
+        {stageDayLocationFields.map(({ key, label, type }) => (
+          <div key={key} className={key === 'stageLabel' ? 'md:col-span-2' : ''}>
+            <p><strong>{label}:</strong> {renderStageFieldValue(stage[key] as string, type)}</p>
+          </div>
+        ))}
+        {getVisibleStageDayRaceFields(Boolean(stage.isTimeTrial)).map(({ key, label, type }) => (
+          <div key={key} className={key === 'permanenceAddress' ? 'md:col-span-2' : ''}>
+            <p><strong>{label}:</strong> {renderStageFieldValue(stage[key] as string | number, type)}</p>
+          </div>
+        ))}
+        <StageTimeTrialDepartures
+          isTimeTrial={Boolean(stage.isTimeTrial)}
+          premierDepartTime={stage.premierDepartTime || ''}
+          riderStartTimes={stage.riderStartTimes || []}
+          riders={eventRiders}
+          isEditing={false}
+          inputClassName={lightInputClass}
+          onTimeTrialChange={() => {}}
+          onPremierDepartTimeChange={() => {}}
+          onRiderDepartTimeChange={() => {}}
+        />
+      </div>
+    </section>
+  );
+
+  const renderStageRaceSection = (mode: 'edit' | 'view') => (
+    <div className="space-y-3">
+      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        Course à étapes : {stageDays.length} jour{stageDays.length > 1 ? 's' : ''} ({formatEventDateRange(formData)}).
+        {mode === 'edit'
+          ? ' Renseignez la logistique course de chaque étape. Les transferts se gèrent dans Transport → chaque étape → Retours.'
+          : ' Consultez chaque étape ci-dessous. Les transferts sont dans Transport → Retours de chaque étape.'}
+      </p>
+      <StageRaceSubTabs
+        stageDays={stageDays}
+        transfers={transfers}
+        activeIndex={activeStageTab}
+        onSelectTab={setActiveStageTab}
+      >
+        {(stage) =>
+          mode === 'edit'
+            ? renderStageTabPanelEdit(stage)
+            : renderStageTabPanelView(stage)
+        }
+      </StageRaceSubTabs>
+    </div>
+  );
+
 
 
   return (
@@ -271,7 +533,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-semibold text-gray-700">Informations Générales, Course & Radio</h3>
         {!isEditing && (
-          <ActionButton onClick={() => setIsEditing(true)} variant="primary">
+          <ActionButton onClick={() => { setFormData(prev => applyStageRaceSync(prev)); setIsEditing(true); }} variant="primary">
             Modifier les Informations
           </ActionButton>
         )}
@@ -287,11 +549,16 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 <input type="text" name="name" id="name" value={formData.name} onChange={handleMainFormInputChange} required className={lightInputClass} />
               </div>
               <div>
-                <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date de début</label>
                 <input type="date" name="date" id="date" value={formData.date} onChange={handleMainFormInputChange} required className={lightInputClass} />
               </div>
               <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700">Lieu</label>
+                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">Date de fin (course à étapes)</label>
+                <input type="date" name="endDate" id="endDate" value={formData.endDate || ''} onChange={handleMainFormInputChange} min={formData.date} className={lightInputClass} />
+                <p className="mt-1 text-xs text-gray-500">Date de fin différente du début pour activer la logistique par étape.</p>
+              </div>
+              <div>
+                <label htmlFor="location" className="block text-sm font-medium text-gray-700">Lieu (référence / ville hôte)</label>
                 <input type="text" name="location" id="location" value={formData.location} onChange={handleMainFormInputChange} required className={lightInputClass} />
               </div>
                <div>
@@ -359,25 +626,38 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             </div>
           </fieldset>
           
-          <fieldset className="border p-4 rounded-md">
-            <legend className="text-lg font-medium text-gray-700 px-1">Informations Spécifiques Course</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                {raceInfoFields.map(({ key, label, type }) => (
-                    <div key={key} className={['permanenceAddress'].includes(String(key)) ? 'md:col-span-2' : ''}>
-                        <label htmlFor={key} className="block text-sm font-medium text-gray-700">{label}</label>
-                        <input 
-                            type={type === 'date' ? 'date' : (type === 'number' ? 'number' : 'text')} 
-                            name={key} 
-                            id={key} 
-                            value={(formData.raceInfo as any)[key] || ''} 
-                            onChange={(e) => handleMainFormInputChange(e, 'raceInfo')} 
-                            className={lightInputClass}
-                            step={type === 'number' ? "any" : undefined}
-                        />
-                    </div>
-                ))}
-            </div>
-          </fieldset>
+          {stageRace ? renderStageRaceSection('edit') : (
+            <fieldset className="border p-4 rounded-md">
+              <legend className="text-lg font-medium text-gray-700 px-1">Informations Spécifiques Course</legend>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                  {getVisibleRaceInfoFields(formData.raceInfo.isTimeTrial).map(({ key, label, type }) => (
+                      <div key={key} className={['permanenceAddress'].includes(String(key)) ? 'md:col-span-2' : ''}>
+                          <label htmlFor={key} className="block text-sm font-medium text-gray-700">{label}</label>
+                          <input 
+                              type={type === 'date' ? 'date' : (type === 'number' ? 'number' : 'text')} 
+                              name={key} 
+                              id={key} 
+                              value={(formData.raceInfo as any)[key] || ''} 
+                              onChange={(e) => handleMainFormInputChange(e, 'raceInfo')} 
+                              className={lightInputClass}
+                              step={type === 'number' ? "any" : undefined}
+                          />
+                      </div>
+                  ))}
+                  <StageTimeTrialDepartures
+                    isTimeTrial={Boolean(formData.raceInfo.isTimeTrial)}
+                    premierDepartTime={formData.raceInfo.premierDepartTime || ''}
+                    riderStartTimes={formData.raceInfo.riderStartTimes || []}
+                    riders={eventRiders}
+                    isEditing={isEditing}
+                    inputClassName={lightInputClass}
+                    onTimeTrialChange={handleRaceInfoTimeTrialToggle}
+                    onPremierDepartTimeChange={handleRaceInfoPremierDepartTimeChange}
+                    onRiderDepartTimeChange={handleRaceInfoRiderDepartTimeChange}
+                  />
+              </div>
+            </fieldset>
+          )}
 
           <fieldset className="border p-4 rounded-md">
             <legend className="text-lg font-medium text-gray-700 px-1">Communication Radio</legend>
@@ -459,7 +739,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 <legend className="text-md font-semibold text-gray-600 px-1">Détails Événement</legend>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm text-gray-700">
                     <div><p><strong>Nom:</strong> {formData.name}</p></div>
-                    <div><p><strong>Date:</strong> {new Date(formData.date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}</p></div>
+                    <div><p><strong>Date:</strong> {formatEventDateRange(formData)}</p></div>
                     <div className="lg:col-span-1"><p><strong>Lieu:</strong> {formData.location}</p></div>
                     <div><p><strong>Discipline:</strong> {formData.discipline || 'N/A'}</p></div>
                     <div><p><strong>Type:</strong> {formData.eventType}</p></div>
@@ -491,16 +771,29 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                  </div>
             </fieldset>
             
-            <fieldset className="border p-4 rounded-md bg-gray-50">
-                <legend className="text-md font-semibold text-gray-600 px-1">Informations Spécifiques Course</legend>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-700">
-                    {raceInfoFields.map(({ key, label, type }) => (
-                         <div key={key} className={['permanenceAddress'].includes(String(key)) ? 'md:col-span-2' : ''}>
-                             <p><strong>{label}:</strong> {(formData.raceInfo as any)[key] ? (type === 'date' ? new Date((formData.raceInfo as any)[key] + 'T12:00:00Z').toLocaleDateString('fr-FR') : (formData.raceInfo as any)[key]) : 'N/A'}</p>
-                        </div>
-                    ))}
-                </div>
-            </fieldset>
+            {stageRace ? renderStageRaceSection('view') : (
+              <fieldset className="border p-4 rounded-md bg-gray-50">
+                  <legend className="text-md font-semibold text-gray-600 px-1">Informations Spécifiques Course</legend>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-700">
+                      {getVisibleRaceInfoFields(formData.raceInfo.isTimeTrial).map(({ key, label, type }) => (
+                           <div key={key} className={['permanenceAddress'].includes(String(key)) ? 'md:col-span-2' : ''}>
+                               <p><strong>{label}:</strong> {(formData.raceInfo as any)[key] ? (type === 'date' ? new Date((formData.raceInfo as any)[key] + 'T12:00:00Z').toLocaleDateString('fr-FR') : (formData.raceInfo as any)[key]) : 'N/A'}</p>
+                          </div>
+                      ))}
+                      <StageTimeTrialDepartures
+                        isTimeTrial={Boolean(formData.raceInfo.isTimeTrial)}
+                        premierDepartTime={formData.raceInfo.premierDepartTime || ''}
+                        riderStartTimes={formData.raceInfo.riderStartTimes || []}
+                        riders={eventRiders}
+                        isEditing={false}
+                        inputClassName={lightInputClass}
+                        onTimeTrialChange={() => {}}
+                        onPremierDepartTimeChange={() => {}}
+                        onRiderDepartTimeChange={() => {}}
+                      />
+                  </div>
+              </fieldset>
+            )}
 
             <fieldset className="border p-4 rounded-md bg-gray-50">
                 <legend className="text-md font-semibold text-gray-600 px-1">Communication Radio</legend>

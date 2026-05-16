@@ -63,6 +63,7 @@ export enum TransportDirection {
 export enum TransportMode {
   VOL = "Vol",
   MINIBUS = "Minibus",
+  VOITURE_EQUIPE = "Voiture équipes",
   VOITURE_PERSO = "Voiture Personnelle",
   TRAIN = "Train",
   AUTRE = "Autre",
@@ -503,6 +504,77 @@ export interface OperationalLogisticsDay {
     keyTimings: OperationalTiming[];
 }
 
+/** Départ individuel (contre-la-montre) pour une coureuse. */
+export interface StageRiderStartTime {
+    riderId: string;
+    departTime: string;
+    startOrder?: number;
+}
+
+/** Logistique course pour une journée d'étape (départ / arrivée peuvent être à des lieux différents). */
+export interface StageDayLogistics {
+    id: string;
+    date: string;
+    stageNumber: number;
+    stageLabel?: string;
+    departLocation: string;
+    arriveeLocation: string;
+    permanenceAddress: string;
+    permanenceTime: string;
+    permanenceDate: string;
+    reunionDSTime: string;
+    reunionDSDate?: string;
+    presentationTime: string;
+    departFictifTime: string;
+    departReelTime: string;
+    arriveePrevueTime: string;
+    distanceKm: number;
+    radioFrequency: string;
+    /** Contre-la-montre : départs échelonnés, pas de départ fictif. */
+    isTimeTrial?: boolean;
+    /** Heure du premier départ (chrono) — sert au calcul d'arrivée sur site (1h30 avant). */
+    premierDepartTime?: string;
+    riderStartTimes?: StageRiderStartTime[];
+}
+
+/** Hébergement prévu pour une nuit d'étape. */
+export interface StageDayAccommodation {
+    id: string;
+    /** Jour de course (étape). */
+    stageDate: string;
+    /** Nuit d'hébergement (veille avant l'étape). */
+    nightDate: string;
+    /** @deprecated Utiliser stageDate / nightDate — conservé pour données existantes. */
+    date?: string;
+    stageNumber: number;
+    hotelName: string;
+    address: string;
+    numberOfNights: number;
+    numberOfPeople?: number;
+    status: AccommodationStatus;
+    estimatedCost?: number;
+    distanceFromStartKm?: number;
+    travelTimeToStart?: string;
+    reservationConfirmed: boolean;
+    confirmationDetails: string;
+    notes?: string;
+    isStopover?: boolean;
+}
+
+/** Transfert entre deux étapes consécutives. */
+export interface StageTransferLogistics {
+    id: string;
+    fromDate: string;
+    toDate: string;
+    departLocation: string;
+    arriveeLocation: string;
+    departTime: string;
+    arriveePrevueTime: string;
+    distanceKm?: number;
+    duration?: string;
+    notes: string;
+}
+
 export interface RaceInformation {
     permanenceAddress: string;
     permanenceTime: string;
@@ -515,6 +587,16 @@ export interface RaceInformation {
     arriveePrevueTime: string;
     distanceKm: number;
     radioFrequency: string;
+    isTimeTrial?: boolean;
+    /** Heure du premier départ (chrono) — sert au calcul d'arrivée sur site (1h30 avant). */
+    premierDepartTime?: string;
+    riderStartTimes?: StageRiderStartTime[];
+    /** Renseigné pour les courses à étapes (plusieurs jours). */
+    stageDays?: StageDayLogistics[];
+    /** Transferts entre étapes (N-1 transferts pour N étapes). */
+    transfers?: StageTransferLogistics[];
+    /** Hébergement par nuit d'étape. */
+    stageAccommodations?: StageDayAccommodation[];
 }
 
 export interface EligibleCategory {
@@ -675,6 +757,8 @@ export interface EventTransportLeg {
   eventId: string;
   direction: TransportDirection;
   mode: TransportMode;
+  /** Date de l'étape concernée (course à étapes, transports jour J). */
+  stageDate?: string;
   departureDate?: string;
   departureTime?: string;
   arrivalDate?: string;

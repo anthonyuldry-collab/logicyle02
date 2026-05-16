@@ -134,6 +134,7 @@ const TransportDebug: React.FC<TransportDebugProps> = ({
                   className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                 >
                   <option value={TransportMode.MINIBUS}>Minibus</option>
+                  <option value={TransportMode.VOITURE_EQUIPE}>Voiture équipes</option>
                   <option value={TransportMode.VOITURE_PERSO}>Voiture Personnelle</option>
                   <option value={TransportMode.TRAIN}>Train</option>
                   <option value={TransportMode.VOL}>Vol</option>

@@ -631,7 +631,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
             if (event) {
                 const eventDate = new Date(event.date + "T00:00:00Z");
                 if (eventDate >= today && eventDate <= twoWeeksFromNow) {
-                    if (!leg.assignedVehicleId && leg.mode !== TransportMode.VOITURE_PERSO && leg.mode !== TransportMode.TRAIN && leg.mode !== TransportMode.VOL) {
+                    if (!leg.assignedVehicleId && leg.mode !== TransportMode.VOITURE_PERSO && leg.mode !== TransportMode.VOITURE_EQUIPE && leg.mode !== TransportMode.TRAIN && leg.mode !== TransportMode.VOL) {
                         alertsList.push({ id: `alert-transport-${leg.id}`, text: `Véhicule non assigné pour ${event.name}`, eventId: event.id });
                     }
                 }

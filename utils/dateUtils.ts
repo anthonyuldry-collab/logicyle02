@@ -122,6 +122,10 @@ export const formatEventDate = (
   return parseEventDate(dateString).toLocaleDateString('fr-FR', options);
 };
 
+/** Course sur plusieurs jours (date de fin différente du début). */
+export const isStageRace = (event: { date: string; endDate?: string }): boolean =>
+  Boolean(event.endDate && event.endDate !== event.date);
+
 /**
  * Formate les dates d'un événement pour l'affichage, en gérant les courses à étapes
  * @param event - Événement avec date et endDate optionnelle

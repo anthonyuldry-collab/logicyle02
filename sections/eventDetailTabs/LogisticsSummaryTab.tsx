@@ -584,6 +584,20 @@ const isJourJTransportLeg = (leg: EventTransportLeg) =>
 const getTransportLegLabel = (leg: EventTransportLeg, vehicleName?: string | null): string => {
     if (leg.mode === TransportMode.VOITURE_PERSO || leg.mode === 'Voiture Personnelle') return '(Voiture Personnelle)';
     if (vehicleName && vehicleName.trim()) return vehicleName.trim();
+    if (
+      leg.mode === TransportMode.VOITURE_EQUIPE
+      || leg.mode === 'Voiture équipes'
+      || leg.mode === 'Voiture Équipe'
+    ) {
+      return 'Véhicule d\'équipe';
+    }
+    if (
+      leg.assignedVehicleId
+      && leg.assignedVehicleId !== 'perso'
+      && (leg.mode === TransportMode.MINIBUS || leg.mode === TransportMode.AUTRE)
+    ) {
+      return 'Véhicule d\'équipe';
+    }
     if (leg.mode === TransportMode.AUTRE || leg.mode === 'Autre') return 'Véhicule d\'équipe';
     return (leg.mode || '').trim() ? `(${leg.mode})` : '';
 };

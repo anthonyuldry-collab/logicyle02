@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { RaceEvent, AppState, EventAccommodation, AccommodationStatus, EventBudgetItem, BudgetItemCategory, User, AppSection, PermissionLevel } from '../../types';
+import { isStageRace } from '../../utils/stageRaceUtils';
+import StageAccommodationEditor from './StageAccommodationEditor';
 import { emptyEventAccommodation } from '../../constants';
 import { saveData, deleteData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
@@ -12,6 +14,7 @@ import TrashIcon from '../../components/icons/TrashIcon';
 interface EventAccommodationTabProps {
   event: RaceEvent;
   eventId: string;
+  updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
   setEventAccommodations: React.Dispatch<React.SetStateAction<EventAccommodation[]>>;
   setEventBudgetItems: React.Dispatch<React.SetStateAction<EventBudgetItem[]>>;
   appState: AppState;
@@ -21,7 +24,8 @@ interface EventAccommodationTabProps {
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
-const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, eventId, appState, setEventAccommodations, setEventBudgetItems, currentUser, effectivePermissions }) => {
+const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, eventId, updateEvent, appState, setEventAccommodations, setEventBudgetItems, currentUser, effectivePermissions }) => {
+  const stageRace = isStageRace(event);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<EventAccommodation, 'id'> | EventAccommodation>(emptyEventAccommodation(eventId, ''));
@@ -159,8 +163,20 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, ev
 
   return (
     <div>
+      {stageRace && (
+        <StageAccommodationEditor
+          event={event}
+          eventId={eventId}
+          updateEvent={updateEvent}
+          appState={appState}
+          canViewFinancialInfo={canViewFinancialInfo}
+        />
+      )}
+
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-semibold text-gray-700">Hébergement pour {event.name}</h3>
+        <h3 className="text-xl font-semibold text-gray-700">
+          {stageRace ? 'Hébergements complémentaires' : `Hébergement pour ${event.name}`}
+        </h3>
         <ActionButton onClick={openAddModal} icon={<PlusCircleIcon className="w-5 h-5"/>}>
             Ajouter Hébergement
         </ActionButton>

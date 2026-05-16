@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import Modal from "../../components/Modal";
 import ChevronDownIcon from "../../components/icons/ChevronDownIcon";
@@ -19,6 +19,7 @@ import {
   TransportMode,
   TransportStop,
   TransportStopType,
+  StageDayLogistics,
   Vehicle,
   VehicleType,
   User,
@@ -27,9 +28,18 @@ import {
 } from "../../types";
 import { Sex } from "../../types";
 
+import StageTransferEditor from './StageTransferEditor';
+import {
+  ensureStageRaceLogistics,
+  formatStageDateLabel,
+  formatStageTitle,
+  isStageRace,
+} from '../../utils/stageRaceUtils';
+
 interface EventTransportTabProps {
   event: RaceEvent;
   eventId: string;
+  updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
   appState: AppState;
   setEventTransportLegs: React.Dispatch<
     React.SetStateAction<EventTransportLeg[]>
@@ -144,6 +154,7 @@ const checkVehicleAvailability = (
 export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   event,
   eventId,
+  updateEvent,
   appState,
   setEventTransportLegs,
   setEventBudgetItems,
@@ -156,7 +167,36 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   >(initialTransportFormStateFactory(eventId));
   const [isEditing, setIsEditing] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [activeSubTab, setActiveSubTab] = useState<'aller' | 'jourj' | 'retour'>('aller');
+  const [modalStageContext, setModalStageContext] = useState<{
+    stageDate: string;
+    stageNumber: number;
+    lockDirection: boolean;
+  } | null>(null);
+  type TransportSubTabId = 'aller' | 'jourj' | 'retour' | 'transferts' | `etape-${number}`;
+  const [activeSubTab, setActiveSubTab] = useState<TransportSubTabId>('aller');
+  type StageInnerTabId = 'aller-course' | 'retour';
+  const [activeStageInnerTab, setActiveStageInnerTab] = useState<Record<number, StageInnerTabId>>({});
+  const stageRace = isStageRace(event);
+  const stageDays = useMemo(
+    () => (stageRace ? ensureStageRaceLogistics(event).raceInfo.stageDays ?? [] : []),
+    [event, stageRace],
+  );
+
+  const parseEtapeIndex = (tab: TransportSubTabId): number | null => {
+    if (typeof tab === 'string' && tab.startsWith('etape-')) {
+      const n = parseInt(tab.slice('etape-'.length), 10);
+      return Number.isNaN(n) ? null : n;
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (stageRace && stageDays.length > 0) {
+      if (activeSubTab === 'jourj' || activeSubTab === 'transferts') {
+        setActiveSubTab('etape-0');
+      }
+    }
+  }, [stageRace, stageDays.length, activeSubTab]);
 
   // Vérification des permissions pour l'accès aux informations financières
   const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
@@ -411,15 +451,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       if (vehicleId === "perso") {
         newMode = TransportMode.VOITURE_PERSO;
       } else if (vehicle) {
-        if (
-          [VehicleType.MINIBUS, VehicleType.VOITURE, VehicleType.BUS].includes(
-            vehicle.vehicleType
-          )
-        ) {
-          newMode = TransportMode.MINIBUS;
-        } else {
-          newMode = TransportMode.AUTRE;
-        }
+        newMode = TransportMode.VOITURE_EQUIPE;
       }
 
       // Vérifier la capacité du nouveau véhicule
@@ -478,10 +510,33 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       return;
     }
 
+    if (name === 'direction' && value === TransportDirection.JOUR_J && stageRace && stageDays.length > 0) {
+      setCurrentTransportLeg(prev => {
+        const current = prev as EventTransportLeg;
+        if (current.stageDate || current.departureDate) return { ...current, direction: TransportDirection.JOUR_J };
+        const etapeIdx = parseEtapeIndex(activeSubTab);
+        const stage = etapeIdx !== null ? stageDays[etapeIdx] : stageDays[0];
+        return stage ? applyStageToTransportLeg(current, stage.date) : { ...current, direction: TransportDirection.JOUR_J };
+      });
+      return;
+    }
+
     setCurrentTransportLeg((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
+  };
+
+  const handleModalStageChange = (stageDate: string) => {
+    setCurrentTransportLeg(prev => applyStageToTransportLeg(prev as EventTransportLeg, stageDate));
+    const stage = stageDays.find(s => s.date === stageDate);
+    if (stage) {
+      setModalStageContext({
+        stageDate,
+        stageNumber: stage.stageNumber,
+        lockDirection: modalStageContext?.lockDirection ?? false,
+      });
+    }
   };
 
   const handleOccupantChange = (
@@ -621,6 +676,35 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     // Ensure empty dates are undefined
     if (legData.departureDate === "") legData.departureDate = undefined;
     if (legData.arrivalDate === "") legData.arrivalDate = undefined;
+    if ((legData as EventTransportLeg).stageDate === '') {
+      (legData as EventTransportLeg).stageDate = undefined;
+    }
+
+    if (stageRace) {
+      const direction = (legData as EventTransportLeg).direction;
+      const needsStage =
+        direction === TransportDirection.JOUR_J
+        || direction === TransportDirection.ALLER
+        || direction === TransportDirection.RETOUR;
+      if (needsStage) {
+        const stageDate =
+          (legData as EventTransportLeg).stageDate
+          || legData.departureDate
+          || legData.arrivalDate;
+        if (stageDate && !stageDays.some(s => s.date === stageDate)) {
+          alert('Veuillez sélectionner l\'étape concernée par ce transport.');
+          return;
+        }
+        if (direction === TransportDirection.JOUR_J && stageDate) {
+          legData = applyStageToTransportLeg(legData as EventTransportLeg, stageDate);
+        } else if (stageDate) {
+          legData = {
+            ...(legData as EventTransportLeg),
+            stageDate,
+          };
+        }
+      }
+    }
 
     const legToSave: EventTransportLeg = {
       ...(legData as Omit<EventTransportLeg, "id">),
@@ -666,21 +750,122 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         await updateCostsForEvent(updatedLegsForEvent);
       }, 0);
 
-    setIsModalOpen(false);
+    closeTransportModal();
     } catch (error) {
       console.error('❌ Erreur lors de la sauvegarde du trajet:', error);
       alert('Erreur lors de la sauvegarde du trajet. Veuillez réessayer.');
     }
   };
 
-  const openAddModal = () => {
-    setCurrentTransportLeg(initialTransportFormStateFactory(eventId));
+  const openAddModal = (
+    defaults?: Partial<Omit<EventTransportLeg, 'id'>>,
+    stageContext?: { stageDate: string; stageNumber: number; lockDirection?: boolean },
+  ) => {
+    const base = {
+      ...initialTransportFormStateFactory(eventId),
+      ...defaults,
+    };
+    if (stageContext) {
+      setModalStageContext({
+        stageDate: stageContext.stageDate,
+        stageNumber: stageContext.stageNumber,
+        lockDirection: stageContext.lockDirection ?? true,
+      });
+      if (defaults?.direction === TransportDirection.JOUR_J) {
+        setCurrentTransportLeg(applyStageToTransportLeg(base, stageContext.stageDate));
+      } else {
+        setCurrentTransportLeg({
+          ...base,
+          stageDate: stageContext.stageDate,
+        });
+      }
+    } else {
+      setModalStageContext(null);
+      setCurrentTransportLeg(base);
+    }
     setIsEditing(false);
     setIsModalOpen(true);
   };
 
+  const openAddModalForActiveTab = () => {
+    const etapeIdx = parseEtapeIndex(activeSubTab);
+    if (stageRace && etapeIdx !== null && stageDays[etapeIdx]) {
+      const stage = stageDays[etapeIdx];
+      const innerTab = getStageInnerTab(etapeIdx);
+      if (innerTab === 'retour') {
+        openAddModal(
+          {
+            direction: TransportDirection.RETOUR,
+            stageDate: stage.date,
+            departureDate: stage.date,
+          },
+          { stageDate: stage.date, stageNumber: stage.stageNumber, lockDirection: false },
+        );
+      } else {
+        openAddModal(
+          {
+            direction: TransportDirection.JOUR_J,
+            departureDate: stage.date,
+            arrivalDate: stage.date,
+            stageDate: stage.date,
+          },
+          { stageDate: stage.date, stageNumber: stage.stageNumber, lockDirection: true },
+        );
+      }
+      return;
+    }
+    if (activeSubTab === 'retour') {
+      const lastStage = stageRace && stageDays.length > 0 ? stageDays[stageDays.length - 1] : null;
+      if (lastStage) {
+        openAddModal(
+          {
+            direction: TransportDirection.RETOUR,
+            stageDate: lastStage.date,
+            departureDate: lastStage.date,
+          },
+          { stageDate: lastStage.date, stageNumber: lastStage.stageNumber, lockDirection: false },
+        );
+      } else {
+        openAddModal({ direction: TransportDirection.RETOUR });
+      }
+      return;
+    }
+    if (activeSubTab === 'aller') {
+      openAddModal({ direction: TransportDirection.ALLER });
+      return;
+    }
+    if (activeSubTab === 'jourj' && !stageRace) {
+      openAddModal({ direction: TransportDirection.JOUR_J });
+      return;
+    }
+    openAddModal();
+  };
+
   const openEditModal = (leg: EventTransportLeg) => {
     setCurrentTransportLeg(structuredClone(leg));
+    if (stageRace) {
+      const stageDate = leg.stageDate || leg.departureDate || leg.arrivalDate;
+      const stage = stageDays.find(s => s.date === stageDate);
+      if (
+        stage
+        && stageDate
+        && (
+          leg.direction === TransportDirection.JOUR_J
+          || leg.direction === TransportDirection.ALLER
+          || leg.direction === TransportDirection.RETOUR
+        )
+      ) {
+        setModalStageContext({
+          stageDate,
+          stageNumber: stage.stageNumber,
+          lockDirection: leg.direction === TransportDirection.JOUR_J,
+        });
+      } else {
+        setModalStageContext(null);
+      }
+    } else {
+      setModalStageContext(null);
+    }
     setIsEditing(true);
     setIsModalOpen(true);
   };
@@ -838,7 +1023,51 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     return [...unassignedRiders, ...unassignedStaff];
   };
 
-  const getUnassignedPeopleForTab = (tabType: 'aller' | 'jourj' | 'retour') => {
+  const getJourJLegsForStageDate = (stageDate: string, allJourJLegs: EventTransportLeg[]) =>
+    allJourJLegs.filter(leg => {
+      if (leg.stageDate) return leg.stageDate === stageDate;
+      const legDate = leg.departureDate || leg.arrivalDate;
+      if (legDate) return legDate === stageDate;
+      return stageDate === event.date;
+    });
+
+  const legMatchesStageDate = (leg: EventTransportLeg, stageDate: string): boolean => {
+    if (leg.stageDate) return leg.stageDate === stageDate;
+    const legDate = leg.departureDate || leg.arrivalDate;
+    return legDate ? legDate === stageDate : false;
+  };
+
+  const getStageRetourLegs = (stageDate: string) =>
+    retourLegs.filter(leg => legMatchesStageDate(leg, stageDate));
+
+  const getStageAllerCourseLegs = (stageDate: string) => [
+    ...allerLegs.filter(leg => legMatchesStageDate(leg, stageDate)),
+    ...getJourJLegsForStageDate(stageDate, jourJLegs),
+  ];
+
+  const getStageInnerTab = (etapeIdx: number): StageInnerTabId =>
+    activeStageInnerTab[etapeIdx] ?? 'aller-course';
+
+    const applyStageToTransportLeg = (
+    leg: Omit<EventTransportLeg, 'id'> | EventTransportLeg,
+    stageDate: string,
+  ): typeof leg => ({
+    ...leg,
+    direction: TransportDirection.JOUR_J,
+    stageDate,
+    departureDate: stageDate,
+    arrivalDate: stageDate,
+  });
+
+  const closeTransportModal = () => {
+    setIsModalOpen(false);
+    setModalStageContext(null);
+  };
+
+  const getUnassignedPeopleForTab = (
+    tabType: 'aller' | 'jourj' | 'retour',
+    jourJLegsForTab?: EventTransportLeg[],
+  ) => {
     const eventParticipantIds = new Set([
       ...(event.selectedRiderIds || []),
       ...(event.selectedStaffIds || []),
@@ -855,7 +1084,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         });
       });
     } else if (tabType === 'jourj') {
-      jourJLegs.forEach(leg => {
+      (jourJLegsForTab ?? jourJLegs).forEach(leg => {
         leg.occupants.forEach(occ => assignedPeople.add(`${occ.id}-${occ.type}`));
         leg.intermediateStops?.forEach(stop => {
           stop.persons?.forEach(person => assignedPeople.add(`${person.id}-${person.type}`));
@@ -881,14 +1110,17 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     return [...unassignedRiders, ...unassignedStaff];
   };
 
-  const renderUnassignedAlert = (tabType: 'aller' | 'jourj' | 'retour') => {
-    const unassignedPeople = getUnassignedPeopleForTab(tabType);
+  const renderUnassignedAlert = (
+    tabType: 'aller' | 'jourj' | 'retour',
+    options?: { jourJLegsForTab?: EventTransportLeg[]; label?: string },
+  ) => {
+    const unassignedPeople = getUnassignedPeopleForTab(tabType, options?.jourJLegsForTab);
     
     if (unassignedPeople.length === 0) return null;
 
     const tabLabels = {
       'aller': 'trajets aller',
-      'jourj': 'trajets du jour J',
+      'jourj': options?.label ?? 'trajets du jour J',
       'retour': 'trajets retour'
     };
 
@@ -925,12 +1157,178 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     );
   };
 
+  const renderStageInnerSubTabs = (stage: StageDayLogistics, etapeIdx: number) => {
+    const innerTab = getStageInnerTab(etapeIdx);
+    const allerCount = getStageAllerCourseLegs(stage.date).length;
+    const retourCount = getStageRetourLegs(stage.date).length;
+    return (
+      <nav className="flex flex-wrap gap-2 mb-5 border-b border-gray-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveStageInnerTab(prev => ({ ...prev, [etapeIdx]: 'aller-course' }))}
+          className={`px-4 py-2 text-sm font-medium rounded-t-md border-b-2 -mb-px transition-colors ${
+            innerTab === 'aller-course'
+              ? 'border-green-500 text-green-700 bg-green-50'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Aller sur la course
+          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+            innerTab === 'aller-course' ? 'bg-green-200 text-green-800' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {allerCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveStageInnerTab(prev => ({ ...prev, [etapeIdx]: 'retour' }))}
+          className={`px-4 py-2 text-sm font-medium rounded-t-md border-b-2 -mb-px transition-colors ${
+            innerTab === 'retour'
+              ? 'border-orange-500 text-orange-700 bg-orange-50'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Retours
+          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+            innerTab === 'retour' ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {retourCount}
+          </span>
+        </button>
+      </nav>
+    );
+  };
+
+  const renderStageAllerLegsForStage = (stage: StageDayLogistics) => {
+    const allerOnly = allerLegs.filter(leg => legMatchesStageDate(leg, stage.date));
+    if (allerOnly.length === 0) return null;
+    return (
+      <div className="mb-6">
+        <h4 className="text-sm font-semibold text-blue-800 mb-3">Arrivée sur l&apos;étape (trajets aller)</h4>
+        <div className="space-y-3">
+          {allerOnly.map(leg => (
+            <div
+              key={leg.id}
+              className="border border-blue-200 rounded-lg p-4 bg-blue-50/50 flex justify-between items-start gap-4"
+            >
+              <div>
+                <p className="font-medium text-gray-800">
+                  {leg.mode === TransportMode.VOL ? '✈️ Vol' : '🚗'} {leg.departureLocation || '—'} → {leg.arrivalLocation || '—'}
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {formatDate(leg.departureDate, leg.departureTime, leg.departureLocation)}
+                  {leg.arrivalDate ? ` → ${formatDate(leg.arrivalDate, leg.arrivalTime)}` : ''}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <ActionButton onClick={() => openEditModal(leg)} variant="secondary" size="sm" icon={<PencilIcon className="w-4 h-4" />} />
+                <ActionButton onClick={() => handleDelete(leg.id)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4" />} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderStageEtapePanel = (stage: StageDayLogistics, etapeIdx: number) => {
+    const innerTab = getStageInnerTab(etapeIdx);
+    const stageDate = stage.date;
+    const jourJForStage = getJourJLegsForStageDate(stageDate, jourJLegs);
+
+    return (
+      <div>
+        {renderStageInnerSubTabs(stage, etapeIdx)}
+        {innerTab === 'aller-course' ? (
+          <>
+            {renderUnassignedAlert('jourj', {
+              jourJLegsForTab: [...allerLegs.filter(l => legMatchesStageDate(l, stageDate)), ...jourJForStage],
+              label: `trajets aller sur la course — étape ${stage.stageNumber}`,
+            })}
+            {renderStageAllerLegsForStage(stage)}
+            {renderJourJTab(stageDate, stage.stageNumber)}
+          </>
+        ) : (
+          <>
+            {renderUnassignedAlert('retour', {
+              jourJLegsForTab: getStageRetourLegs(stageDate),
+              label: `retours — étape ${stage.stageNumber}`,
+            })}
+            {etapeIdx < (event.raceInfo?.transfers?.length ?? 0) && (
+              <StageTransferEditor
+                event={event}
+                eventId={eventId}
+                updateEvent={updateEvent}
+                appState={appState}
+                transferIndex={etapeIdx}
+                embedded
+              />
+            )}
+            {renderRetourTab({
+              legs: getStageRetourLegs(stageDate),
+              emptyTitle: `Aucun trajet retour pour l'étape ${stage.stageNumber}`,
+              emptyDescription:
+                etapeIdx < (event.raceInfo?.transfers?.length ?? 0)
+                  ? 'Complétez le transfert ci-dessus ou ajoutez un véhicule de retour.'
+                  : 'Ajoutez les véhicules de retour après cette étape (dernière étape : onglet Trajets Retour).',
+              onAdd: () => openAddModal(
+                {
+                  direction: TransportDirection.RETOUR,
+                  stageDate,
+                  departureDate: stageDate,
+                },
+                { stageDate, stageNumber: stage.stageNumber, lockDirection: false },
+              ),
+              addButtonLabel: `Ajouter un retour — Étape ${stage.stageNumber}`,
+            })}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderSubTabs = () => {
-    const tabs = [
-      { id: 'aller' as const, label: 'Trajets Aller', icon: '✈️', count: allerLegs.length, color: 'blue' },
-      { id: 'jourj' as const, label: 'Jour J', icon: '🏁', count: jourJLegs.length, color: 'green' },
-      { id: 'retour' as const, label: 'Trajets Retour', icon: '🏠', count: retourLegs.length, color: 'orange' }
+    const lastStage = stageRace && stageDays.length > 0 ? stageDays[stageDays.length - 1] : null;
+    const finalRetourCount = lastStage
+      ? retourLegs.filter(leg => legMatchesStageDate(leg, lastStage.date)).length
+      : retourLegs.length;
+    const tabs: {
+      id: TransportSubTabId;
+      label: string;
+      icon: string;
+      count: number;
+      color: string;
+    }[] = [
+      { id: 'aller', label: 'Trajets Aller', icon: '✈️', count: allerLegs.length, color: 'blue' },
     ];
+
+    if (stageRace && stageDays.length > 0) {
+      stageDays.forEach((stage, index) => {
+        tabs.push({
+          id: `etape-${index}`,
+          label: `Étape ${stage.stageNumber}`,
+          icon: '🏁',
+          count: getStageAllerCourseLegs(stage.date).length + getStageRetourLegs(stage.date).length,
+          color: 'green',
+        });
+      });
+    } else {
+      tabs.push({
+        id: 'jourj',
+        label: 'Jour J',
+        icon: '🏁',
+        count: jourJLegs.length,
+        color: 'green',
+      });
+    }
+
+    tabs.push({
+      id: 'retour',
+      label: 'Retour',
+      icon: '🏠',
+      count: finalRetourCount,
+      color: 'orange',
+    });
 
                 return (
       <div className="border-b border-gray-200 mb-6">
@@ -969,7 +1367,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun trajet aller planifié</h3>
           <p className="text-gray-500 mb-6">Ajoutez des trajets pour organiser les départs vers l'événement</p>
           <ActionButton
-            onClick={openAddModal}
+            onClick={() => openAddModal()}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
             Ajouter un Trajet Aller
@@ -1126,23 +1524,72 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     </div>
   );
 
-  const renderJourJTab = () => (
+  const renderJourJTab = (stageDate?: string, stageNumber?: number) => {
+    const legs = stageDate
+      ? getJourJLegsForStageDate(stageDate, jourJLegs)
+      : jourJLegs;
+    const stageLabel = stageNumber
+      ? `l'étape ${stageNumber}${stageDate ? ` (${formatStageDateLabel(stageDate)})` : ''}`
+      : 'le jour J';
+
+    return (
     <div className="space-y-4">
-      {jourJLegs.length === 0 ? (
+      {legs.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <span className="text-6xl mb-4 block">🏁</span>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun transport jour J planifié</h3>
-          <p className="text-gray-500 mb-6">Ajoutez des trajets pour organiser les déplacements du jour de l'événement</p>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            Aucun transport planifié pour {stageLabel}
+          </h3>
+          <p className="text-gray-500 mb-6">
+            Ajoutez des trajets pour organiser les déplacements de cette journée
+          </p>
           <ActionButton
-            onClick={openAddModal}
+            onClick={() => {
+              if (stageDate && stageNumber) {
+                openAddModal(
+                  {
+                    direction: TransportDirection.JOUR_J,
+                    departureDate: stageDate,
+                    arrivalDate: stageDate,
+                    stageDate,
+                  },
+                  { stageDate, stageNumber, lockDirection: true },
+                );
+              } else {
+                openAddModal({ direction: TransportDirection.JOUR_J });
+              }
+            }}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
-            Ajouter un Transport Jour J
+            {stageNumber ? `Ajouter un transport — Étape ${stageNumber}` : 'Ajouter un Transport Jour J'}
           </ActionButton>
         </div>
       ) : (
         <div className="space-y-4">
-          {jourJLegs.map((leg) => (
+          <div className="flex justify-end">
+            <ActionButton
+              onClick={() => {
+                if (stageDate && stageNumber) {
+                  openAddModal(
+                    {
+                      direction: TransportDirection.JOUR_J,
+                      departureDate: stageDate,
+                      arrivalDate: stageDate,
+                      stageDate,
+                    },
+                    { stageDate, stageNumber, lockDirection: true },
+                  );
+                } else {
+                  openAddModal({ direction: TransportDirection.JOUR_J });
+                }
+              }}
+              icon={<PlusCircleIcon className="w-5 h-5" />}
+              size="sm"
+            >
+              {stageNumber ? `Ajouter — Étape ${stageNumber}` : 'Ajouter un transport'}
+            </ActionButton>
+          </div>
+          {legs.map((leg) => (
             <div key={leg.id} className="border border-green-200 rounded-lg p-6 hover:shadow-md transition-shadow bg-white">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -1258,25 +1705,34 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
-  const renderRetourTab = () => (
+  const renderRetourTab = (options?: {
+    legs?: EventTransportLeg[];
+    emptyTitle?: string;
+    emptyDescription?: string;
+    onAdd?: () => void;
+    addButtonLabel?: string;
+  }) => {
+    const legs = options?.legs ?? retourLegs;
+    return (
     <div className="space-y-4">
-      {retourLegs.length === 0 ? (
+      {legs.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <span className="text-6xl mb-4 block">🏠</span>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun trajet retour planifié</h3>
-          <p className="text-gray-500 mb-6">Ajoutez des trajets pour organiser les retours après l'événement</p>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">{options?.emptyTitle ?? 'Aucun trajet retour planifié'}</h3>
+          <p className="text-gray-500 mb-6">{options?.emptyDescription ?? "Ajoutez des trajets pour organiser les retours après l'événement"}</p>
           <ActionButton
-            onClick={openAddModal}
+            onClick={() => (options?.onAdd ? options.onAdd() : openAddModal({ direction: TransportDirection.RETOUR }))}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
-            Ajouter un Trajet Retour
+            {options?.addButtonLabel ?? 'Ajouter un Trajet Retour'}
           </ActionButton>
         </div>
       ) : (
         <div className="space-y-4">
-          {retourLegs.map((leg) => (
+          {legs.map((leg) => (
             <div key={leg.id} className="border border-orange-200 rounded-lg p-6 hover:shadow-md transition-shadow bg-white">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -1423,7 +1879,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const allerLegs = transportLegsForEvent
     .filter((leg) => leg.direction === TransportDirection.ALLER)
@@ -1450,7 +1907,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <p className="text-gray-600">Organisation des déplacements pour {event.name}</p>
                   </div>
         <ActionButton
-          onClick={openAddModal}
+          onClick={openAddModalForActiveTab}
           icon={<PlusCircleIcon className="w-5 h-5" />}
         >
           Ajouter un Trajet
@@ -1470,24 +1927,73 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             {renderAllerTab()}
           </>
         )}
-        {activeSubTab === 'jourj' && (
+        {activeSubTab === 'jourj' && !stageRace && (
           <>
             {renderUnassignedAlert('jourj')}
             {renderJourJTab()}
           </>
         )}
-        {activeSubTab === 'retour' && (
-          <>
-            {renderUnassignedAlert('retour')}
-            {renderRetourTab()}
-          </>
-        )}
+        {stageRace && parseEtapeIndex(activeSubTab) !== null && (() => {
+          const etapeIdx = parseEtapeIndex(activeSubTab)!;
+          const stage = stageDays[etapeIdx];
+          if (!stage) return null;
+          return renderStageEtapePanel(stage, etapeIdx);
+        })()}
+        {activeSubTab === 'retour' && (() => {
+          const lastStage = stageRace && stageDays.length > 0 ? stageDays[stageDays.length - 1] : null;
+          const finalRetourLegs = lastStage
+            ? getStageRetourLegs(lastStage.date)
+            : retourLegs;
+          return (
+            <>
+              {stageRace && lastStage && (
+                <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mb-4">
+                  Retour général après la dernière étape ({formatStageDateLabel(lastStage.date)}
+                  {lastStage.stageLabel ? ` — ${lastStage.stageLabel}` : ''}). Les transferts entre étapes
+                  se gèrent dans l&apos;onglet Retours de chaque étape.
+                </p>
+              )}
+              {renderUnassignedAlert('retour', {
+                jourJLegsForTab: finalRetourLegs,
+                label: lastStage ? `retour final — étape ${lastStage.stageNumber}` : 'trajets retour',
+              })}
+              {renderRetourTab({
+                legs: finalRetourLegs,
+                emptyTitle: lastStage
+                  ? `Aucun retour final après l'étape ${lastStage.stageNumber}`
+                  : 'Aucun trajet retour planifié',
+                emptyDescription: 'Ajoutez le trajet de retour à la maison après la dernière étape.',
+                onAdd: () => {
+                  if (lastStage) {
+                    openAddModal(
+                      {
+                        direction: TransportDirection.RETOUR,
+                        stageDate: lastStage.date,
+                        departureDate: lastStage.date,
+                      },
+                      {
+                        stageDate: lastStage.date,
+                        stageNumber: lastStage.stageNumber,
+                        lockDirection: false,
+                      },
+                    );
+                  } else {
+                    openAddModal({ direction: TransportDirection.RETOUR });
+                  }
+                },
+                addButtonLabel: lastStage
+                  ? `Ajouter le retour final — Étape ${lastStage.stageNumber}`
+                  : 'Ajouter un Trajet Retour',
+              })}
+            </>
+          );
+        })()}
       </div>
 
       {isModalOpen && (
         <Modal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={closeTransportModal}
           title={isEditing ? "Modifier Trajet" : "Ajouter un Trajet"}
         >
           <form
@@ -1505,6 +2011,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   id="direction"
                   value={(currentTransportLeg as EventTransportLeg).direction}
                   onChange={handleInputChange}
+                  disabled={modalStageContext?.lockDirection}
                   className={lightSelectClasses}
                 >
                   {(Object.values(TransportDirection) as TransportDirection[]).map((dir) => (
@@ -1514,6 +2021,51 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   ))}
                 </select>
               </div>
+
+
+            {stageRace
+              && stageDays.length > 0
+              && (
+                (currentTransportLeg as EventTransportLeg).direction === TransportDirection.JOUR_J
+                || (currentTransportLeg as EventTransportLeg).direction === TransportDirection.ALLER
+                || (currentTransportLeg as EventTransportLeg).direction === TransportDirection.RETOUR
+              ) && (
+              <div className="md:col-span-2">
+                <label htmlFor="modalStageDate" className="block text-sm font-medium text-gray-700">
+                  Étape concernée
+                </label>
+                <select
+                  id="modalStageDate"
+                  value={
+                    (currentTransportLeg as EventTransportLeg).stageDate
+                    || (currentTransportLeg as EventTransportLeg).departureDate
+                    || ''
+                  }
+                  onChange={e => handleModalStageChange(e.target.value)}
+                  className={lightSelectClasses}
+                  required
+                >
+                  <option value="">Sélectionner l&apos;étape…</option>
+                  {stageDays.map(stage => (
+                    <option key={stage.id} value={stage.date}>
+                      {formatStageTitle(stage)} ({formatStageDateLabel(stage.date)})
+                    </option>
+                  ))}
+                </select>
+                {modalStageContext && (
+                  <p className="mt-1 text-xs text-green-700">
+                    Transport rattaché à l&apos;étape {modalStageContext.stageNumber}
+                    {stageDays.find(s => s.date === modalStageContext.stageDate)?.stageLabel
+                      ? ` : ${stageDays.find(s => s.date === modalStageContext.stageDate)?.stageLabel}`
+                      : ''}
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  Les transports aller / jour J et retours sont regroupés dans l&apos;onglet Étape
+                  correspondant (sous-onglets « Aller sur la course » et « Retours »).
+                </p>
+              </div>
+            )}
 
               {/* Mode de transport */}
               <div>
@@ -1527,11 +2079,23 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   onChange={handleInputChange}
                   className={lightSelectClasses}
                 >
-                  {(Object.values(TransportMode) as TransportMode[]).map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
+                  {(() => {
+                    const leg = currentTransportLeg as EventTransportLeg;
+                    const hasTeamVehicle =
+                      Boolean(leg.assignedVehicleId) && leg.assignedVehicleId !== 'perso';
+                    const modes = Object.values(TransportMode) as TransportMode[];
+                    const ordered = hasTeamVehicle
+                      ? [
+                          TransportMode.VOITURE_EQUIPE,
+                          ...modes.filter(m => m !== TransportMode.VOITURE_EQUIPE),
+                        ]
+                      : modes;
+                    return ordered.map(mode => (
+                      <option key={mode} value={mode}>
+                        {mode}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
             </div>

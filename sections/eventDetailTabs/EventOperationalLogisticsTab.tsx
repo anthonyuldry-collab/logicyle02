@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
-import { RaceEvent, OperationalLogisticsDay, OperationalTiming, AppState, EventTransportLeg, TransportDirection, TransportMode, MealDay, OperationalTimingCategory, Rider, StaffRole } from '../../types';
+import { RaceEvent, OperationalLogisticsDay, OperationalTiming, AppState, EventTransportLeg, TransportDirection, TransportMode, MealDay, OperationalTimingCategory, Rider, StaffRole, TransportStopType, StageDayLogistics, RaceInformation, StageRiderStartTime, StageDayAccommodation } from '../../types';
+import {
+  getStageTitleByMealDay,
+  getTimeTrialFirstDepartTime,
+  isStageRace,
+  stripStageTitleFromTimingDescription,
+  TIME_TRIAL_TEAM_ARRIVAL_LEAD_MINUTES,
+} from '../../utils/stageRaceUtils';
 import { MealDay as MealDayEnum } from '../../types'; // For dayName dropdown
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
@@ -16,12 +23,12 @@ import HandRaisedIcon from '../../components/icons/HandRaisedIcon';
 
 // --- TIME PARSING UTILITIES ---
 
-// Parses a time-of-day string (e.g., "14h30", "8:15") into minutes from midnight.
-const parseTimeOfDayToMinutes = (timeStr: string): number | null => {
+// Parses a single time-of-day string (e.g., "14h30", "8:15") into minutes from midnight.
+const parseSingleTimeOfDayToMinutes = (timeStr: string): number | null => {
     if (!timeStr) return null;
     const cleanedTime = timeStr.trim().split('-')[0].trim();
-    const parts = cleanedTime.replace('h', ':').split(':');
-    
+    const parts = cleanedTime.replace(/h/g, ':').split(':');
+
     if (parts.length > 0) {
         const hours = parseInt(parts[0], 10);
         const minutes = (parts.length > 1 && parts[1]) ? parseInt(parts[1], 10) : 0;
@@ -30,6 +37,190 @@ const parseTimeOfDayToMinutes = (timeStr: string): number | null => {
         }
     }
     return null;
+};
+
+// Parses a time-of-day string or range (e.g., "14h30", "9h/12h") into minutes from midnight.
+const parseTimeOfDayToMinutes = (timeStr: string): number | null => {
+    if (!timeStr) return null;
+    const normalized = timeStr.trim();
+    const slashRangeMatch = normalized.match(/^(.+?)\s*\/\s*(.+)$/);
+    if (slashRangeMatch) {
+        const startMinutes = parseSingleTimeOfDayToMinutes(slashRangeMatch[1]);
+        const endMinutes = parseSingleTimeOfDayToMinutes(slashRangeMatch[2]);
+        if (startMinutes !== null && endMinutes !== null) {
+            return startMinutes;
+        }
+    }
+
+    const hyphenRangeMatch = normalized.match(/^(\d{1,2}(?:[:h]\d{2})?)\s*-\s*(\d{1,2}(?:[:h]\d{2})?)$/i);
+    if (hyphenRangeMatch) {
+        const startMinutes = parseSingleTimeOfDayToMinutes(hyphenRangeMatch[1]);
+        const endMinutes = parseSingleTimeOfDayToMinutes(hyphenRangeMatch[2]);
+        if (startMinutes !== null && endMinutes !== null) {
+            return startMinutes;
+        }
+    }
+
+    return parseSingleTimeOfDayToMinutes(normalized);
+};
+
+const arePlanningTimesEqual = (leftTime?: string, rightTime?: string): boolean => {
+    const normalizedLeft = (leftTime || '').trim();
+    const normalizedRight = (rightTime || '').trim();
+    if (normalizedLeft === normalizedRight) return true;
+
+    const leftIsRange = /[\/-]/.test(normalizedLeft);
+    const rightIsRange = /[\/-]/.test(normalizedRight);
+    if (leftIsRange !== rightIsRange) return false;
+
+    const leftMinutes = parseTimeOfDayToMinutes(leftTime || '');
+    const rightMinutes = parseTimeOfDayToMinutes(rightTime || '');
+    if (leftMinutes !== null && rightMinutes !== null) return leftMinutes === rightMinutes;
+    return false;
+};
+
+const parseTransportStopDescription = (description: string) => {
+    const match = description.match(/ - (Récupération|Dépose) (.+) par (.+)$/);
+    if (!match) return null;
+    return {
+        location: description.slice(0, description.length - match[0].length),
+        action: match[1],
+        people: match[2],
+        vehicle: match[3],
+    };
+};
+
+const GROUPED_VEHICLE_DEPARTURE_PATTERN = /^Départ des véhicules \((.+)\)$/;
+const SINGLE_VEHICLE_DEPARTURE_PATTERN = /^Départ du (.+)$/;
+
+const looksLikeVehicleDepartureDescription = (description: string): boolean =>
+    /^Départ (du|des)\b/.test(description.trim());
+
+const isVehicleDepartureDescription = (description: string): boolean => {
+    const trimmed = description.trim();
+    return GROUPED_VEHICLE_DEPARTURE_PATTERN.test(trimmed) || SINGLE_VEHICLE_DEPARTURE_PATTERN.test(trimmed);
+};
+
+const salvageVehicleNamesFromDepartureDescription = (description: string): string[] => {
+    const trimmed = description.trim();
+    if (!looksLikeVehicleDepartureDescription(trimmed)) return [];
+
+    const structuredVehicles = extractVehicleNamesFromDepartureDescription(trimmed);
+    if (structuredVehicles.length > 0) {
+        return structuredVehicles.filter(vehicle => !looksLikeVehicleDepartureDescription(vehicle));
+    }
+
+    const vehicles = new Set<string>();
+    const singleMatches = trimmed.matchAll(/\bDépart du ([^·,(]+)/g);
+    for (const match of singleMatches) {
+        const vehicleName = match[1].trim();
+        if (vehicleName && !looksLikeVehicleDepartureDescription(vehicleName)) {
+            vehicles.add(vehicleName);
+        }
+    }
+
+    const groupedMatches = trimmed.matchAll(/Départ des véhicules \(([^)]+)\)/g);
+    for (const match of groupedMatches) {
+        match[1].split(',').forEach(part => {
+            const vehicleName = part.trim().replace(/^Départ du /, '').trim();
+            if (vehicleName && !looksLikeVehicleDepartureDescription(vehicleName)) {
+                vehicles.add(vehicleName);
+            }
+        });
+    }
+
+    return Array.from(vehicles);
+};
+
+const normalizeVehicleDepartureDescription = (description: string): string => {
+    if (!looksLikeVehicleDepartureDescription(description)) return description;
+    const vehicles = salvageVehicleNamesFromDepartureDescription(description);
+    if (vehicles.length === 0) return description;
+    return formatVehicleDepartureDescription(vehicles);
+};
+
+const extractVehicleNamesFromDepartureDescription = (description: string): string[] => {
+    const trimmed = description.trim();
+    const groupedMatch = trimmed.match(GROUPED_VEHICLE_DEPARTURE_PATTERN);
+    if (groupedMatch) {
+        return groupedMatch[1].split(',').map(vehicle => vehicle.trim()).filter(Boolean);
+    }
+
+    const singleMatch = trimmed.match(SINGLE_VEHICLE_DEPARTURE_PATTERN);
+    if (singleMatch) {
+        return [singleMatch[1].trim()].filter(Boolean);
+    }
+
+    return [];
+};
+
+const formatVehicleDepartureDescription = (vehicles: string[]): string => {
+    const uniqueVehicles = Array.from(new Set(vehicles.map(vehicle => vehicle.trim()).filter(Boolean)));
+    if (uniqueVehicles.length === 0) return 'Départ des véhicules';
+    if (uniqueVehicles.length === 1) return `Départ du ${uniqueVehicles[0]}`;
+    return `Départ des véhicules (${uniqueVehicles.join(', ')})`;
+};
+
+const mergeSameTimeDescriptions = (descriptions: string[]): string => {
+    const uniqueDescriptions = Array.from(new Set(descriptions.map(description => description.trim()).filter(Boolean)));
+    if (uniqueDescriptions.length <= 1) return uniqueDescriptions[0] || '';
+
+    if (uniqueDescriptions.every(looksLikeVehicleDepartureDescription)) {
+        const vehicles = uniqueDescriptions.flatMap(salvageVehicleNamesFromDepartureDescription);
+        if (vehicles.length > 0) {
+            return formatVehicleDepartureDescription(vehicles);
+        }
+    }
+
+    const parsedDescriptions = uniqueDescriptions.map(parseTransportStopDescription);
+    if (parsedDescriptions.every(Boolean)) {
+        const first = parsedDescriptions[0]!;
+        const sameTransportStop = parsedDescriptions.every(
+            parsed => parsed!.action === first.action
+                && parsed!.vehicle === first.vehicle
+                && parsed!.location === first.location
+        );
+        if (sameTransportStop) {
+            const people = parsedDescriptions.flatMap(
+                parsed => parsed!.people.split(',').map(person => person.trim())
+            ).filter(Boolean);
+            return `${first.location} - ${first.action} ${people.join(', ')} par ${first.vehicle}`;
+        }
+    }
+
+    return uniqueDescriptions.join(' · ');
+};
+
+const groupPlanningTimingsByTime = (timings: OperationalTiming[]): OperationalTiming[] => {
+    if (timings.length <= 1) return timings;
+
+    const groupedTimings: OperationalTiming[] = [];
+    let index = 0;
+
+    while (index < timings.length) {
+        const currentTiming = timings[index];
+        const sameTimeTimings = [currentTiming];
+        let nextIndex = index + 1;
+
+        while (nextIndex < timings.length && arePlanningTimesEqual(currentTiming.time, timings[nextIndex].time)) {
+            sameTimeTimings.push(timings[nextIndex]);
+            nextIndex += 1;
+        }
+
+        if (sameTimeTimings.length === 1) {
+            groupedTimings.push(currentTiming);
+        } else {
+            groupedTimings.push({
+                ...currentTiming,
+                description: mergeSameTimeDescriptions(sameTimeTimings.map(timing => timing.description || '')),
+                category: sameTimeTimings.find(timing => timing.category)?.category || currentTiming.category,
+            });
+        }
+
+        index = nextIndex;
+    }
+
+    return groupedTimings;
 };
 
 // Parses a duration string (e.g., "1h30", "45min") into total minutes.
@@ -111,6 +302,35 @@ const MEAL_DAY_TO_WEEKDAY: Record<string, number> = {
     [MealDayEnum.SAMEDI]: 6,
 };
 
+const isTransportPickupStopType = (stopType: TransportStopType | string | undefined): boolean => {
+    if (!stopType) return false;
+    const value = String(stopType);
+    return value.includes('Récupération') || value.toLowerCase().includes('pickup');
+};
+
+const isTransportDropoffStopType = (stopType: TransportStopType | string | undefined): boolean => {
+    if (!stopType) return false;
+    const value = String(stopType);
+    return value.includes('Dépose') || value.toLowerCase().includes('dropoff');
+};
+
+const isRetourTransportLeg = (leg: EventTransportLeg): boolean =>
+    leg.direction === TransportDirection.RETOUR || leg.direction === 'Retour';
+
+const isAllerTransportLeg = (leg: EventTransportLeg): boolean =>
+    leg.direction === TransportDirection.ALLER || leg.direction === 'Aller';
+
+const getTransportStopActionLabel = (
+    leg: EventTransportLeg,
+    stopType?: TransportStopType | string,
+): string | null => {
+    if (isAllerTransportLeg(leg)) return 'Récupération';
+    if (isRetourTransportLeg(leg)) return 'Dépose';
+    if (isTransportDropoffStopType(stopType)) return 'Dépose';
+    if (isTransportPickupStopType(stopType)) return 'Récupération';
+    return null;
+};
+
 const formatDateForPlanning = (dateStr: string): string => {
     try {
         const d = new Date(dateStr + 'T12:00:00Z');
@@ -134,17 +354,70 @@ const sanitizeTextForPdf = (text: string): string => {
         .trim();
 };
 
-/** Retourne pour chaque jour (MealDay) la date dd/MM dans la plage event.date -> event.endDate. */
-const getDayLabelsForEvent = (event: RaceEvent): Record<string, string> => {
-    const out: Record<string, string> = {};
-    const start = new Date(event.date + 'T12:00:00Z');
-    const endStr = event.endDate || event.date;
-    const end = new Date(endStr + 'T12:00:00Z');
-    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-        const w = d.getUTCDay();
-        const key = Object.entries(MEAL_DAY_TO_WEEKDAY).find(([, v]) => v === w)?.[0];
-        if (key && out[key] === undefined) out[key] = formatDateForPlanning(d.toISOString().slice(0, 10));
+/** Associe chaque jour présent dans le planning à une date ISO, y compris hors plage stricte de l'événement. */
+const getCompleteDayToIsoDateMap = (event: RaceEvent, dayNames: MealDay[]): Record<string, string> => {
+    const out = getDayToIsoDateMap(event);
+    const endIso = toIsoDate(event.endDate || event.date);
+    if (!endIso) return out;
+
+    const end = new Date(endIso + 'T12:00:00Z');
+    const startIso = toIsoDate(event.date) || endIso;
+    const start = new Date(startIso + 'T12:00:00Z');
+    const needed = new Set(dayNames.filter(dayName => dayName !== MealDayEnum.AUTRE));
+    const missing = [...needed].filter(dayName => !out[dayName]);
+    if (missing.length === 0) return out;
+
+    const searchStart = new Date(end);
+    searchStart.setUTCDate(searchStart.getUTCDate() - 6);
+    const effectiveStart = start < searchStart ? new Date(start) : searchStart;
+
+    for (let d = new Date(effectiveStart); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        const weekday = d.getUTCDay();
+        const key = Object.entries(MEAL_DAY_TO_WEEKDAY).find(([, value]) => value === weekday)?.[0];
+        if (key && out[key] === undefined) out[key] = d.toISOString().slice(0, 10);
     }
+
+    const stillMissing = [...needed].filter(dayName => !out[dayName]);
+    if (stillMissing.length > 0) {
+        const searchEnd = new Date(end);
+        searchEnd.setUTCDate(searchEnd.getUTCDate() + 6);
+        for (let d = new Date(end); d <= searchEnd; d.setUTCDate(d.getUTCDate() + 1)) {
+            const weekday = d.getUTCDay();
+            const key = Object.entries(MEAL_DAY_TO_WEEKDAY).find(([, value]) => value === weekday)?.[0];
+            if (key && out[key] === undefined) out[key] = d.toISOString().slice(0, 10);
+        }
+    }
+
+    return out;
+};
+
+const sortOperationalLogisticsDays = (
+    event: RaceEvent,
+    days: OperationalLogisticsDay[],
+): OperationalLogisticsDay[] => {
+    const dayToIso = getCompleteDayToIsoDateMap(event, days.map(day => day.dayName));
+    const fallbackIndex = (dayName: MealDay) => Object.values(MealDayEnum).indexOf(dayName);
+
+    return [...days].sort((a, b) => {
+        const aIso = dayToIso[a.dayName];
+        const bIso = dayToIso[b.dayName];
+
+        if (aIso && bIso) return aIso.localeCompare(bIso);
+        if (aIso && !bIso) return -1;
+        if (!aIso && bIso) return 1;
+        return fallbackIndex(a.dayName) - fallbackIndex(b.dayName);
+    });
+};
+
+/** Retourne pour chaque jour (MealDay) la date dd/MM dans la plage event.date -> event.endDate. */
+const getDayLabelsForEvent = (event: RaceEvent, dayNames: MealDay[] = []): Record<string, string> => {
+    const isoMap = dayNames.length > 0
+        ? getCompleteDayToIsoDateMap(event, dayNames)
+        : getDayToIsoDateMap(event);
+    const out: Record<string, string> = {};
+    Object.entries(isoMap).forEach(([dayName, isoDate]) => {
+        out[dayName] = formatDateForPlanning(isoDate);
+    });
     return out;
 };
 
@@ -207,11 +480,13 @@ const getLegDayEvents = (
         const time = stop.time || '—';
         const lieu = stop.location || '—';
         const who = (stop.persons || []).map(p => getOccupantName(p.id, p.type)).join(', ');
-        const isPickup = String(stop.stopType).toLowerCase().includes('récupération') || String(stop.stopType).toLowerCase().includes('pickup');
-        if (isPickup) {
+        const actionLabel = getTransportStopActionLabel(leg, stop.stopType);
+        if (actionLabel === 'Récupération') {
             add(stopDate, stop.time, who ? `Récupération de ${who} à ${time} à ${lieu}` : `Récupération à ${time} à ${lieu}`);
-        } else {
+        } else if (actionLabel === 'Dépose') {
             add(stopDate, stop.time, who ? `Dépose de ${who} à ${time} à ${lieu}` : `Dépose à ${time} à ${lieu}`);
+        } else {
+            add(stopDate, stop.time, who ? `Étape : ${who} à ${time} à ${lieu}` : `Étape à ${time} à ${lieu}`);
         }
     });
 
@@ -266,6 +541,13 @@ const getDayToIsoDateMap = (event: RaceEvent): Record<string, string> => {
     return out;
 };
 
+const getPlanningExportColumnCount = (dayCount: number): number => {
+    if (dayCount <= 1) return 1;
+    if (dayCount === 2) return 2;
+    if (dayCount <= 4) return dayCount;
+    return 3;
+};
+
 interface ExportPlanningOptions {
     selectedDay?: MealDay | null;
     includeVehicleLogistics?: boolean;
@@ -280,9 +562,10 @@ const exportPlanningToPdf = (
     options: ExportPlanningOptions = {}
 ): void => {
     const { selectedDay = null, includeVehicleLogistics = false } = options;
+    const sortedLogistics = sortOperationalLogisticsDays(event, logistics);
     const filteredLogistics = selectedDay
-        ? logistics.filter(d => d.dayName === selectedDay)
-        : logistics;
+        ? sortedLogistics.filter(d => d.dayName === selectedDay)
+        : sortedLogistics;
     if (filteredLogistics.length === 0) {
         alert(selectedDay ? 'Aucun timing pour ce jour.' : 'Aucun timing à exporter.');
         return;
@@ -290,114 +573,241 @@ const exportPlanningToPdf = (
     const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const margin = 10;
-    const footerHeight = 12; // zone réservée en bas pour le pied de page
+    const margin = 12;
+    const footerHeight = 10;
     const contentBottomY = pageH - margin - footerHeight;
     const contentW = pageW - 2 * margin;
+    const rowGap = 3;
+    const colGap = 3;
 
-    const colorHeader = [30, 41, 59] as [number, number, number];
-    const colorBlockBg = [51, 65, 85] as [number, number, number];
-    const colorBorder = [100, 116, 139] as [number, number, number];
+    const colorCardHeader = [241, 245, 249] as [number, number, number];
+    const colorCardBody = [255, 255, 255] as [number, number, number];
+    const colorCardStripe = [248, 250, 252] as [number, number, number];
+    const colorBorder = [203, 213, 225] as [number, number, number];
+    const colorTextPrimary = [15, 23, 42] as [number, number, number];
+    const colorTextMuted = [100, 116, 139] as [number, number, number];
     const colorTextOnDark = [241, 245, 249] as [number, number, number];
-    const colorTextOnLight = [30, 41, 59] as [number, number, number]; // texte lisible sur fond clair
-    const colorAccHeader = [15, 23, 42] as [number, number, number];
-    const colorTitle = [51, 65, 85] as [number, number, number];
+    const colorTextOnLight = [30, 41, 59] as [number, number, number];
+    const colorAccHeader = [30, 41, 59] as [number, number, number];
+    const colorTitle = [15, 23, 42] as [number, number, number];
+    const colorRaceDay = [220, 38, 38] as [number, number, number];
+    const dayLabels = getDayLabelsForEvent(event, filteredLogistics.map(day => day.dayName));
+    const stageTitleByMealDay = getStageTitleByMealDay(event);
+    const mainEventDayName = event.date
+        ? dayMapPdf[new Date(`${event.date}T12:00:00Z`).getUTCDay()]
+        : null;
 
-    const titleBlockH = 16;
-    const bodyStartY = margin + titleBlockH;
-    const spaceForGrid = Math.max(35, (contentBottomY - bodyStartY) * 0.5); // moitié pour la grille, le reste pour véhicules + hébergement
+    const titleBlockH = 18;
+    const dayHeaderH = 9;
+    const blockPadding = 2;
+    const lineH = 3.4;
+    const timeColW = 14;
 
-    const numCols = Math.min(3, Math.max(1, filteredLogistics.length));
-    const gap = 2;
-    const colWidth = (contentW - (numCols - 1) * gap) / numCols;
-    const dayHeaderH = 6;
-    const blockPadding = 1;
-    const lineH = 3.2;
-    const numRows = Math.ceil(filteredLogistics.length / numCols);
-    // Utiliser toute la hauteur disponible pour éviter de tronquer les timings
-    // (ex: un seul jour "Samedi" avec beaucoup d'éléments).
-    const rowHeight = Math.max(spaceForGrid / Math.max(numRows, 1), 42);
-    const availableBodyH = rowHeight * numRows;
-
-    const formatTimingLine = (timing: OperationalTiming): string => {
-        let desc = (timing.time || '').trim();
-        let rest = timing.description || '';
-        if (timing.category === OperationalTimingCategory.MASSAGE && timing.personId) {
-            rest += (rest ? ' — ' : '') + getOccupantName(timing.personId, 'rider');
-            if (timing.masseurId) rest += ' par ' + getOccupantName(timing.masseurId, 'staff');
+    const formatTimingParts = (
+        timing: OperationalTiming,
+        day: OperationalLogisticsDay,
+    ): { time: string; description: string } => {
+        let description = timing.description || '';
+        const stageTitle = stageTitleByMealDay[day.dayName];
+        if (stageTitle) {
+            description = stripStageTitleFromTimingDescription(description, stageTitle);
         }
-        if (rest) desc += (desc ? ': ' : '') + rest;
-        return sanitizeTextForPdf(desc);
+        if (timing.category === OperationalTimingCategory.MASSAGE && timing.personId) {
+            description += (description ? ' — ' : '') + getOccupantName(timing.personId, 'rider');
+            if (timing.masseurId) description += ' par ' + getOccupantName(timing.masseurId, 'staff');
+        }
+        return {
+            time: sanitizeTextForPdf((timing.time || '').trim() || '—'),
+            description: sanitizeTextForPdf(description),
+        };
     };
 
-    // Titre (compact)
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colorTitle);
-    doc.text(sanitizeTextForPdf(event.name), pageW / 2, margin + 5, { align: 'center' });
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    const dateRange = event.endDate && event.endDate !== event.date
-        ? `Du ${formatDateForPlanning(event.date)} au ${formatDateForPlanning(event.endDate)}`
-        : `Le ${formatDateForPlanning(event.date)}`;
-    doc.text(dateRange, pageW / 2, margin + 10, { align: 'center' });
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139); // slate 500
-    doc.text('Timing du déplacement', pageW / 2, margin + 14, { align: 'center' });
-    doc.setTextColor(...colorTitle);
+    const getSortedTimings = (day: OperationalLogisticsDay): OperationalTiming[] =>
+        [...day.keyTimings].sort(
+            (a, b) => (parseTimeOfDayToMinutes(a.time) ?? 9999) - (parseTimeOfDayToMinutes(b.time) ?? 9999)
+        );
 
-    filteredLogistics.forEach((day, dayIndex) => {
-        const col = dayIndex % numCols;
-        const row = Math.floor(dayIndex / numCols);
-        const x = margin + col * (colWidth + gap);
-        const y = bodyStartY + row * rowHeight;
+    const getDescriptionWidth = (currentColWidth: number) =>
+        currentColWidth - 2 * blockPadding - timeColW - 2;
 
-        const dayTitle = `${day.dayName.charAt(0).toLowerCase()}${day.dayName.slice(1)}`;
+    const measureTimingHeight = (
+        timing: OperationalTiming,
+        day: OperationalLogisticsDay,
+        currentColWidth: number,
+    ): number => {
+        const { description } = formatTimingParts(timing, day);
+        const descriptionLines = description
+            ? doc.splitTextToSize(description, getDescriptionWidth(currentColWidth))
+            : [''];
+        return Math.max(descriptionLines.length, 1) * lineH + 0.8;
+    };
+
+    const measureDayCardHeight = (day: OperationalLogisticsDay, currentColWidth: number): number => {
+        const timings = getSortedTimings(day);
+        if (timings.length === 0) return dayHeaderH + 10;
+        const bodyHeight = timings.reduce(
+            (total, timing) => total + measureTimingHeight(timing, day, currentColWidth),
+            blockPadding * 2
+        );
+        return dayHeaderH + Math.max(bodyHeight, 10);
+    };
+
+    let numCols = getPlanningExportColumnCount(filteredLogistics.length);
+    let colWidth = (contentW - (numCols - 1) * colGap) / numCols;
+    const estimateRowHeight = (columns: number) => {
+        const width = (contentW - (columns - 1) * colGap) / columns;
+        const rowDays = filteredLogistics.slice(0, columns);
+        return Math.max(...rowDays.map(day => measureDayCardHeight(day, width))) + 1;
+    };
+
+    if (filteredLogistics.length > 2 && estimateRowHeight(numCols) > contentBottomY - margin - titleBlockH) {
+        numCols = Math.min(2, filteredLogistics.length);
+        colWidth = (contentW - (numCols - 1) * colGap) / numCols;
+    }
+
+    const drawPlanningHeader = (y: number, compact = false): number => {
+        const headerHeight = compact ? 10 : titleBlockH;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, y, contentW, headerHeight, 'F');
+        doc.setDrawColor(...colorBorder);
+        doc.line(margin, y + headerHeight, margin + contentW, y + headerHeight);
+
+        doc.setFontSize(compact ? 11 : 14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...colorTitle);
+        doc.text(sanitizeTextForPdf(event.name), pageW / 2, y + (compact ? 4 : 5), { align: 'center' });
+
+        if (!compact) {
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const dateRange = event.endDate && event.endDate !== event.date
+                ? `Du ${formatDateForPlanning(event.date)} au ${formatDateForPlanning(event.endDate)}`
+                : `Le ${formatDateForPlanning(event.date)}`;
+            doc.text(dateRange, pageW / 2, y + 10, { align: 'center' });
+            doc.setFontSize(8);
+            doc.setTextColor(...colorTextMuted);
+            doc.text('Timing du déplacement', pageW / 2, y + 14.5, { align: 'center' });
+        }
+
+        return y + headerHeight;
+    };
+
+    const drawPlanningFooter = () => {
+        doc.setFontSize(7);
+        doc.setTextColor(...colorTextMuted);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Timing du déplacement — Logicycle', pageW / 2, pageH - margin + 1, { align: 'center' });
+    };
+
+    const drawDayCard = (
+        day: OperationalLogisticsDay,
+        x: number,
+        y: number,
+        cardHeight: number,
+    ) => {
+        const stageTitle = stageTitleByMealDay[day.dayName];
+        const dayTitleBase = `${day.dayName.charAt(0).toLowerCase()}${day.dayName.slice(1)}`;
+        const dayTitle = stageTitle ? `${dayTitleBase} — ${stageTitle}` : dayTitleBase;
+        const dayDateLabel = dayLabels[day.dayName];
         const isWeekend = day.dayName === MealDayEnum.SAMEDI || day.dayName === MealDayEnum.DIMANCHE;
-        const timings = day.keyTimings.length ? day.keyTimings : [];
-        const contentH = rowHeight - dayHeaderH;
+        const isRaceDay = day.dayName === mainEventDayName;
+        const timings = getSortedTimings(day);
 
-        doc.setFillColor(...colorHeader);
+        doc.setFillColor(...colorCardHeader);
         doc.setDrawColor(...colorBorder);
         doc.rect(x, y, colWidth, dayHeaderH, 'FD');
-        doc.setTextColor(...colorTextOnDark);
+
+        if (isRaceDay) {
+            doc.setFillColor(...colorRaceDay);
+            doc.rect(x, y, 1.2, dayHeaderH, 'F');
+        }
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
-        if (isWeekend) {
-            doc.text(dayTitle, x + colWidth / 2, y + 2.2, { align: 'center' });
+        doc.setTextColor(...colorTextPrimary);
+        doc.text(dayTitle, x + blockPadding + (isRaceDay ? 1.5 : 0), y + 4.2);
+
+        if (dayDateLabel) {
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6);
-            doc.setTextColor(203, 213, 225);
-            doc.text('Week-end', x + colWidth / 2, y + 4.5, { align: 'center' });
-            doc.setTextColor(...colorTextOnDark);
             doc.setFontSize(7);
-        } else {
-            doc.text(dayTitle, x + colWidth / 2, y + dayHeaderH / 2 + 1.2, { align: 'center' });
+            doc.setTextColor(...colorTextMuted);
+            doc.text(dayDateLabel, x + colWidth - blockPadding, y + 4.2, { align: 'right' });
         }
-        doc.setFont('helvetica', 'normal');
 
-        doc.setFillColor(...colorBlockBg);
+        if (isWeekend) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6);
+            doc.setTextColor(...colorTextMuted);
+            doc.text('Week-end', x + blockPadding + (isRaceDay ? 1.5 : 0), y + 7.2);
+        }
+
+        if (isRaceDay) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6.5);
+            doc.setTextColor(...colorRaceDay);
+            doc.text('JOUR J', x + colWidth - blockPadding, y + 7.2, { align: 'right' });
+        }
+
+        doc.setFillColor(...colorCardBody);
         doc.setDrawColor(...colorBorder);
-        doc.rect(x, y + dayHeaderH, colWidth, contentH, 'FD');
-        doc.setFontSize(7);
-        doc.setTextColor(...colorTextOnDark);
-        let rowY = y + dayHeaderH + blockPadding + 1.5;
-        const lineW = colWidth - 2 * blockPadding - 2;
-        timings.forEach((timing) => {
-            if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
-            const line = formatTimingLine(timing);
-            if (!line) return;
-            const lines = doc.splitTextToSize(line, lineW);
-            lines.forEach((l: string) => {
-                if (rowY + lineH > y + dayHeaderH + contentH - 1) return;
-                doc.text(l, x + blockPadding + 2, rowY + 2);
-                rowY += lineH;
-            });
-            rowY += 0.5;
-        });
-    });
+        doc.rect(x, y + dayHeaderH, colWidth, cardHeight - dayHeaderH, 'FD');
 
-    let gridBottomY = bodyStartY + numRows * rowHeight;
+        doc.setFontSize(7);
+        let rowY = y + dayHeaderH + blockPadding + 1.5;
+        const descriptionW = getDescriptionWidth(colWidth);
+        const contentBottom = y + cardHeight - blockPadding;
+
+        timings.forEach((timing, timingIndex) => {
+            const { time, description } = formatTimingParts(timing, day);
+            if (!time && !description) return;
+
+            const descriptionLines = description
+                ? doc.splitTextToSize(description, descriptionW)
+                : [''];
+            const blockLines = Math.max(descriptionLines.length, 1);
+            const blockHeight = blockLines * lineH + 0.8;
+            if (rowY + blockHeight > contentBottom) return;
+
+            if (timingIndex % 2 === 0) {
+                doc.setFillColor(...colorCardStripe);
+                doc.rect(x + 0.4, rowY - 0.8, colWidth - 0.8, blockHeight, 'F');
+            }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...colorTextPrimary);
+            doc.text(time, x + blockPadding + 1, rowY + 2);
+            doc.setFont('helvetica', 'normal');
+            descriptionLines.forEach((line: string, lineIndex: number) => {
+                doc.text(line, x + blockPadding + 1 + timeColW, rowY + 2 + lineIndex * lineH);
+            });
+            rowY += blockHeight;
+        });
+    };
+
+    let bodyStartY = drawPlanningHeader(margin);
+    let gridBottomY = bodyStartY;
+    const numRows = Math.ceil(filteredLogistics.length / numCols);
+
+    for (let rowIndex = 0; rowIndex < numRows; rowIndex += 1) {
+        const rowDays = filteredLogistics.slice(rowIndex * numCols, rowIndex * numCols + numCols);
+        const rowHeight = Math.max(...rowDays.map(day => measureDayCardHeight(day, colWidth))) + 1;
+
+        if (gridBottomY + rowHeight > contentBottomY) {
+            if (rowIndex > 0) {
+                drawPlanningFooter();
+                doc.addPage();
+                bodyStartY = drawPlanningHeader(margin, true);
+                gridBottomY = bodyStartY;
+            }
+        }
+
+        rowDays.forEach((day, colIndex) => {
+            const x = margin + colIndex * (colWidth + colGap);
+            drawDayCard(day, x, gridBottomY, rowHeight);
+        });
+
+        gridBottomY += rowHeight + rowGap;
+    }
 
     // Section Logistique véhicules (qui monte, où, quand) — filtrée et triée par date/heure du jour exporté
     if (includeVehicleLogistics && appState.eventTransportLegs) {
@@ -447,11 +857,11 @@ const exportPlanningToPdf = (
 
         if (legsForExport.length > 0) {
             gridBottomY += 4;
-            const vehHeaderH = 6;
-            doc.setFillColor(...colorAccHeader);
+            const vehHeaderH = 7;
+            doc.setFillColor(...colorCardHeader);
             doc.setDrawColor(...colorBorder);
             doc.rect(margin, gridBottomY, contentW, vehHeaderH, 'FD');
-            doc.setTextColor(...colorTextOnDark);
+            doc.setTextColor(...colorTextPrimary);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(8);
             doc.text('Logistique véhicules', margin + 3, gridBottomY + vehHeaderH / 2 + 1.2);
@@ -463,15 +873,15 @@ const exportPlanningToPdf = (
             type VehicleCellSummary = {
                 driverName: string;
                 occupants: string;
-                pickups: string[];
-                hasDropoff: boolean;
+                passengersAtStops: string[];
+                passengersActionLabel: 'Qui monte' | 'Dépose';
                 hasData: boolean;
             };
             const emptyCellSummary = (): VehicleCellSummary => ({
                 driverName: '—',
                 occupants: '—',
-                pickups: [],
-                hasDropoff: false,
+                passengersAtStops: [],
+                passengersActionLabel: 'Qui monte',
                 hasData: false,
             });
 
@@ -491,25 +901,17 @@ const exportPlanningToPdf = (
                 const effectiveDepartureDate = leg.departureDate || fallbackDate;
                 const stopsOnDay = (leg.intermediateStops || []).filter((s) => dateMatchesDay(s.date || effectiveDepartureDate));
 
-                const pickupNames = Array.from(new Set(
+                const passengersAtStops = Array.from(new Set(
                     stopsOnDay
-                        .filter((s) => {
-                            const kind = String(s.stopType || '').toLowerCase();
-                            return kind.includes('récupération') || kind.includes('pickup');
-                        })
-                        .flatMap((s) => (s.persons || []).map((p) => getOccupantName(p.id, p.type)))
+                        .filter((stop) => (stop.persons || []).length > 0)
+                        .flatMap((stop) => (stop.persons || []).map((person) => getOccupantName(person.id, person.type)))
                 ));
-
-                const hasDropoff = stopsOnDay.some((s) => {
-                    const kind = String(s.stopType || '').toLowerCase();
-                    return kind.includes('dépose') || kind.includes('dropoff');
-                });
 
                 const routeSummary: VehicleCellSummary = {
                     driverName,
                     occupants: occupantsStr,
-                    pickups: pickupNames,
-                    hasDropoff,
+                    passengersAtStops,
+                    passengersActionLabel: isRetourLeg(leg) ? 'Dépose' : 'Qui monte',
                     hasData: true,
                 };
                 if (isRetourLeg(leg)) {
@@ -565,17 +967,13 @@ const exportPlanningToPdf = (
                     currentY += lineH;
                 });
 
-                if (summary.pickups.length > 0) {
-                    const pickupText = sanitizeTextForPdf(summary.pickups.join(', '));
-                    const pickupLines = doc.splitTextToSize(`Qui monte: ${pickupText}`, colW - 3);
-                    pickupLines.forEach((line: string) => {
+                if (summary.passengersAtStops.length > 0) {
+                    const passengerText = sanitizeTextForPdf(summary.passengersAtStops.join(', '));
+                    const passengerLines = doc.splitTextToSize(`${summary.passengersActionLabel}: ${passengerText}`, colW - 3);
+                    passengerLines.forEach((line: string) => {
                         doc.text(line, x, currentY);
                         currentY += lineH;
                     });
-                }
-
-                if (summary.hasDropoff) {
-                    doc.text('Dépose: Oui', x, currentY);
                 }
             };
 
@@ -584,10 +982,12 @@ const exportPlanningToPdf = (
                     if (!summary.hasData) return 1;
                     let count = 2; // Conducteur + au moins une ligne À bord
                     count += Math.max(1, doc.splitTextToSize(`À bord: ${sanitizeTextForPdf(summary.occupants)}`, colW - 3).length) - 1;
-                    if (summary.pickups.length > 0) {
-                        count += doc.splitTextToSize(`Qui monte: ${sanitizeTextForPdf(summary.pickups.join(', '))}`, colW - 3).length;
+                    if (summary.passengersAtStops.length > 0) {
+                        count += doc.splitTextToSize(
+                            `${summary.passengersActionLabel}: ${sanitizeTextForPdf(summary.passengersAtStops.join(', '))}`,
+                            colW - 3
+                        ).length;
                     }
-                    if (summary.hasDropoff) count += 1;
                     return count;
                 };
 
@@ -615,47 +1015,54 @@ const exportPlanningToPdf = (
         }
     }
 
-    // Section hébergement (compact, tout sur une page)
     const accommodations = appState.eventAccommodations.filter(a => a.eventId === event.id);
     if (accommodations.length > 0) {
-        const accHeaderH = 6;
+        const accHeaderH = 7;
         let y = gridBottomY + 4;
-        doc.setFillColor(...colorAccHeader);
+        doc.setFillColor(...colorCardHeader);
         doc.setDrawColor(...colorBorder);
         doc.rect(margin, y, contentW, accHeaderH, 'FD');
-        doc.setTextColor(...colorTextOnDark);
+        doc.setTextColor(...colorTextPrimary);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         doc.text('Hébergement', margin + 3, y + accHeaderH / 2 + 1.2);
         doc.setFont('helvetica', 'normal');
         y += accHeaderH;
+        doc.setFillColor(...colorCardBody);
         doc.setFontSize(8);
-        doc.setTextColor(...colorTextOnLight);
+        doc.setTextColor(...colorTextPrimary);
+        let accBodyHeight = 4;
+        accommodations.forEach(acc => {
+            if (acc.hotelName) accBodyHeight += 4.5;
+            if (acc.address) {
+                accBodyHeight += doc.splitTextToSize(sanitizeTextForPdf(acc.address), contentW - 8).length * 3.2;
+            }
+            accBodyHeight += 2;
+        });
+        doc.rect(margin, y, contentW, accBodyHeight, 'FD');
+        let contentY = y + 3;
         accommodations.forEach(acc => {
             if (acc.hotelName) {
                 doc.setFont('helvetica', 'bold');
-                doc.text(sanitizeTextForPdf(acc.hotelName), margin + 3, y + 2.8);
+                doc.text(sanitizeTextForPdf(acc.hotelName), margin + 3, contentY);
                 doc.setFont('helvetica', 'normal');
-                y += 4;
+                contentY += 4.5;
             }
             if (acc.address) {
                 doc.setFontSize(7);
-                doc.splitTextToSize(sanitizeTextForPdf(acc.address), contentW - 6).forEach((l: string) => {
-                    doc.text(l, margin + 3, y + 2.8);
-                    y += 3.2;
+                doc.setTextColor(...colorTextMuted);
+                doc.splitTextToSize(sanitizeTextForPdf(acc.address), contentW - 8).forEach((line: string) => {
+                    doc.text(line, margin + 3, contentY);
+                    contentY += 3.2;
                 });
                 doc.setFontSize(8);
+                doc.setTextColor(...colorTextPrimary);
             }
-            y += 2;
+            contentY += 2;
         });
     }
 
-    // Bas de page (footer) — une seule page
-    const footerY = pageH - margin;
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Timing du déplacement — Logicycle', pageW / 2, footerY - 3, { align: 'center' });
+    drawPlanningFooter();
 
     const baseName = event.name.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim().replace(/\s+/g, '_');
     const daySuffix = selectedDay ? `_${selectedDay.charAt(0).toLowerCase()}${selectedDay.slice(1)}` : '';
@@ -875,11 +1282,14 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
 
                     const personsConcerned = stop.persons.map(p => getOccupantName(p.id, p.type)).join(', ');
                     let description = '';
-                    
-                                        // Format simple pour toutes les étapes
-                    if (personsConcerned) {
+                    const actionLabel = getTransportStopActionLabel(leg, stop.stopType);
+
+                    if (personsConcerned && actionLabel) {
                         const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
-                        description = `${stop.location} - Récupération ${personsConcerned} par ${vehicleName}`;
+                        description = `${stop.location} - ${actionLabel} ${personsConcerned} par ${vehicleName}`;
+                    } else if (personsConcerned) {
+                        const vehicleName = getVehicleInfo(leg.assignedVehicleId, leg);
+                        description = `${stop.location} - ${personsConcerned} par ${vehicleName}`;
                     } else {
                         description = `${stop.location}`;
                     }
@@ -898,7 +1308,223 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
     });
 
     const { raceInfo } = event;
-    if (raceInfo) {
+    const stageDaysList = raceInfo?.stageDays?.filter(d => d.date) ?? [];
+
+    const locationSuffix = (depart?: string, arrivee?: string) => {
+      const parts: string[] = [];
+      if (depart?.trim()) parts.push(`départ: ${depart.trim()}`);
+      if (arrivee?.trim()) parts.push(`arrivée: ${arrivee.trim()}`);
+      return parts.length ? ` (${parts.join(' · ')})` : '';
+    };
+
+    const getRiderDisplayName = (riderId: string) => {
+      const rider = appState.riders.find(r => r.id === riderId);
+      return rider ? `${rider.firstName} ${rider.lastName}` : 'Coureuse';
+    };
+
+    const appendTimeTrialArrivalOnSite = (
+      premierDepartTime: string | undefined,
+      riderStartTimes: StageRiderStartTime[] | undefined,
+      timingId: string,
+      suffix: string,
+      mainEventDay: MealDay,
+    ) => {
+      const firstDepart = getTimeTrialFirstDepartTime(premierDepartTime, riderStartTimes);
+      if (!firstDepart) return;
+      const arrivalOnSiteTime = subtractDurationFromTimeOfDay(
+        firstDepart,
+        TIME_TRIAL_TEAM_ARRIVAL_LEAD_MINUTES,
+      );
+      if (!arrivalOnSiteTime) return;
+      timings.push({
+        id: timingId,
+        time: arrivalOnSiteTime,
+        description: `📍 Arrivée sur site (1h30 avant 1er départ)${suffix}`,
+        isAutoGenerated: true,
+        targetMealDay: mainEventDay,
+        category: OperationalTimingCategory.COURSE,
+      });
+    };
+
+    const appendRiderDepartureTimings = (
+      riderStartTimes: StageRiderStartTime[] | undefined,
+      idPrefix: string,
+      suffix: string,
+      mainEventDay: MealDay,
+    ) => {
+      const sorted = [...(riderStartTimes || [])]
+        .filter(rst => rst.departTime?.trim())
+        .sort((a, b) => {
+          const orderA = a.startOrder ?? 999;
+          const orderB = b.startOrder ?? 999;
+          if (orderA !== orderB) return orderA - orderB;
+          return getRiderDisplayName(a.riderId).localeCompare(getRiderDisplayName(b.riderId), 'fr');
+        });
+      sorted.forEach(rst => {
+        timings.push({
+          id: `${idPrefix}-${rst.riderId}`,
+          time: rst.departTime,
+          description: `🏁 Départ ${getRiderDisplayName(rst.riderId)}${suffix}`,
+          isAutoGenerated: true,
+          targetMealDay: mainEventDay,
+          category: OperationalTimingCategory.COURSE,
+        });
+      });
+    };
+
+    const appendStageDayTimings = (stage: StageDayLogistics) => {
+      const mainEventDay = getTargetMealDay(stage.date);
+      if (!mainEventDay) return;
+      const suffix = locationSuffix(stage.departLocation, stage.arriveeLocation);
+
+      if (stage.permanenceTime) {
+        const targetDay = getTargetMealDay(stage.permanenceDate) || mainEventDay;
+        if (targetDay) {
+          timings.push({
+            id: `auto-permanence-${stage.id}`,
+            time: stage.permanenceTime,
+            description: `📋 Permanence${suffix}`,
+            isAutoGenerated: true,
+            targetMealDay: targetDay,
+            category: OperationalTimingCategory.COURSE,
+          });
+        }
+      }
+
+      if (stage.reunionDSTime) {
+        const targetDay = getTargetMealDay(stage.reunionDSDate) || getTargetMealDay(stage.permanenceDate) || mainEventDay;
+        if (targetDay) {
+          timings.push({
+            id: `auto-reunionDS-${stage.id}`,
+            time: stage.reunionDSTime,
+            description: '👥 Réunion Directeurs Sportifs',
+            isAutoGenerated: true,
+            targetMealDay: targetDay,
+            category: OperationalTimingCategory.COURSE,
+          });
+        }
+      }
+
+      if (stage.isTimeTrial) {
+        appendRiderDepartureTimings(
+          stage.riderStartTimes,
+          `auto-depart-rider-${stage.id}`,
+          suffix,
+          mainEventDay,
+        );
+        appendTimeTrialArrivalOnSite(
+          stage.premierDepartTime,
+          stage.riderStartTimes,
+          `auto-arriveeSite-${stage.id}`,
+          suffix,
+          mainEventDay,
+        );
+      } else {
+        if (stage.departReelTime) {
+          timings.push({
+            id: `auto-departReel-${stage.id}`,
+            time: stage.departReelTime,
+            description: `🏁 Départ Réel${suffix}`,
+            isAutoGenerated: true,
+            targetMealDay: mainEventDay,
+            category: OperationalTimingCategory.COURSE,
+          });
+          const mealTime = subtractDurationFromTimeOfDay(stage.departReelTime, 180);
+          if (mealTime) {
+            timings.push({
+              id: `auto-repas-${stage.id}`,
+              time: mealTime,
+              description: '🍽️ Repas',
+              isAutoGenerated: true,
+              targetMealDay: mainEventDay,
+              category: OperationalTimingCategory.REPAS,
+            });
+          }
+        }
+
+        if (stage.departFictifTime) {
+          timings.push({
+            id: `auto-departFictif-${stage.id}`,
+            time: stage.departFictifTime,
+            description: `🚩 Départ Fictif${suffix}`,
+            isAutoGenerated: true,
+            targetMealDay: mainEventDay,
+            category: OperationalTimingCategory.COURSE,
+          });
+        }
+      }
+
+      if (stage.presentationTime) {
+        timings.push({
+          id: `auto-presentation-${stage.id}`,
+          time: stage.presentationTime,
+          description: '🎤 Présentation des équipes',
+          isAutoGenerated: true,
+          targetMealDay: mainEventDay,
+          category: OperationalTimingCategory.COURSE,
+        });
+        if (!stage.isTimeTrial) {
+          const arrivalOnSiteTime = subtractDurationFromTimeOfDay(stage.presentationTime, 30);
+          if (arrivalOnSiteTime) {
+            timings.push({
+              id: `auto-arriveeSite-${stage.id}`,
+              time: arrivalOnSiteTime,
+              description: '📍 Arrivée sur site',
+              isAutoGenerated: true,
+              targetMealDay: mainEventDay,
+              category: OperationalTimingCategory.COURSE,
+            });
+          }
+        }
+      }
+
+      if (stage.arriveePrevueTime) {
+        timings.push({
+          id: `auto-arrivee-${stage.id}`,
+          time: stage.arriveePrevueTime,
+          description: `🏆 Arrivée Prévue${suffix}`,
+          isAutoGenerated: true,
+          targetMealDay: mainEventDay,
+          category: OperationalTimingCategory.COURSE,
+        });
+      }
+    };
+
+    const appendTransferTimings = (info: RaceInformation) => {
+      info.transfers?.forEach((transfer, index) => {
+        const targetDay = getTargetMealDay(transfer.fromDate) || getTargetMealDay(transfer.toDate);
+        if (!targetDay) return;
+        const locNote = [transfer.departLocation, transfer.arriveeLocation].filter(Boolean).join(' → ');
+        const locSuffix = locNote ? ` (${locNote})` : '';
+
+        if (transfer.departTime) {
+          timings.push({
+            id: `auto-transfer-depart-${transfer.id}`,
+            time: transfer.departTime,
+            description: `🚌 Départ transfert après étape ${index + 1}${locSuffix}`,
+            isAutoGenerated: true,
+            targetMealDay: targetDay,
+            category: OperationalTimingCategory.TRANSPORT,
+          });
+        }
+        if (transfer.arriveePrevueTime) {
+          const arrivalDay = getTargetMealDay(transfer.toDate) || targetDay;
+          timings.push({
+            id: `auto-transfer-arrivee-${transfer.id}`,
+            time: transfer.arriveePrevueTime,
+            description: `🏁 Arrivée transfert (étape ${index + 2})${locSuffix}`,
+            isAutoGenerated: true,
+            targetMealDay: arrivalDay,
+            category: OperationalTimingCategory.TRANSPORT,
+          });
+        }
+      });
+    };
+
+    if (raceInfo && isStageRace(event) && stageDaysList.length > 0) {
+      stageDaysList.forEach(appendStageDayTimings);
+      appendTransferTimings(raceInfo);
+    } else if (raceInfo) {
       // Jour J : event.date en priorité, sinon permanence ou réunion DS pour que les départs apparaissent
       const mainEventDay = getTargetMealDay(event.date)
         || getTargetMealDay(raceInfo.permanenceDate)
@@ -936,41 +1562,59 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
       
       // Jour J - Événements principaux (départs course, présentation, arrivée sur site)
       if (mainEventDay) {
-        // Départ réel de la course (toujours affiché si renseigné)
-        if (raceInfo.departReelTime) {
-          timings.push({ 
-            id: 'auto-departReel', 
-            time: raceInfo.departReelTime, 
-            description: '🏁 Départ Réel', 
-            isAutoGenerated: true, 
-            targetMealDay: mainEventDay, 
-            category: OperationalTimingCategory.COURSE 
-          });
-          
-          // Repas avant le départ (3h avant)
-          const mealTime = subtractDurationFromTimeOfDay(raceInfo.departReelTime, 180);
-          if (mealTime) {
+        if (raceInfo.isTimeTrial) {
+          appendRiderDepartureTimings(
+            raceInfo.riderStartTimes,
+            'auto-depart-rider',
+            '',
+            '',
+            mainEventDay,
+          );
+          appendTimeTrialArrivalOnSite(
+            raceInfo.premierDepartTime,
+            raceInfo.riderStartTimes,
+            'auto-arriveeSite',
+            '',
+            '',
+            mainEventDay,
+          );
+        } else {
+          // Départ réel de la course (toujours affiché si renseigné)
+          if (raceInfo.departReelTime) {
             timings.push({ 
-              id: 'auto-repas', 
-              time: mealTime, 
-              description: '🍽️ Repas', 
+              id: 'auto-departReel', 
+              time: raceInfo.departReelTime, 
+              description: '🏁 Départ Réel', 
               isAutoGenerated: true, 
               targetMealDay: mainEventDay, 
-              category: OperationalTimingCategory.REPAS 
+              category: OperationalTimingCategory.COURSE 
+            });
+            
+            // Repas avant le départ (3h avant)
+            const mealTime = subtractDurationFromTimeOfDay(raceInfo.departReelTime, 180);
+            if (mealTime) {
+              timings.push({ 
+                id: 'auto-repas', 
+                time: mealTime, 
+                description: '🍽️ Repas', 
+                isAutoGenerated: true, 
+                targetMealDay: mainEventDay, 
+                category: OperationalTimingCategory.REPAS 
+              });
+            }
+          }
+          
+          // Départ fictif (toujours affiché si renseigné)
+          if (raceInfo.departFictifTime) {
+            timings.push({ 
+              id: 'auto-departFictif', 
+              time: raceInfo.departFictifTime, 
+              description: '🚩 Départ Fictif', 
+              isAutoGenerated: true, 
+              targetMealDay: mainEventDay, 
+              category: OperationalTimingCategory.COURSE 
             });
           }
-        }
-        
-        // Départ fictif (toujours affiché si renseigné)
-        if (raceInfo.departFictifTime) {
-          timings.push({ 
-            id: 'auto-departFictif', 
-            time: raceInfo.departFictifTime, 
-            description: '🚩 Départ Fictif', 
-            isAutoGenerated: true, 
-            targetMealDay: mainEventDay, 
-            category: OperationalTimingCategory.COURSE 
-          });
         }
         
         // Présentation des équipes
@@ -984,17 +1628,19 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
             category: OperationalTimingCategory.COURSE 
           });
           
-          // Arrivée sur site (30min avant présentation)
-          const arrivalOnSiteTime = subtractDurationFromTimeOfDay(raceInfo.presentationTime, 30);
-          if (arrivalOnSiteTime) {
-            timings.push({ 
-              id: 'auto-arriveeSite', 
-              time: arrivalOnSiteTime, 
-              description: '📍 Arrivée sur site', 
-              isAutoGenerated: true, 
-              targetMealDay: mainEventDay, 
-              category: OperationalTimingCategory.COURSE 
-            });
+          if (!raceInfo.isTimeTrial) {
+            // Arrivée sur site (30min avant présentation)
+            const arrivalOnSiteTime = subtractDurationFromTimeOfDay(raceInfo.presentationTime, 30);
+            if (arrivalOnSiteTime) {
+              timings.push({ 
+                id: 'auto-arriveeSite', 
+                time: arrivalOnSiteTime, 
+                description: '📍 Arrivée sur site', 
+                isAutoGenerated: true, 
+                targetMealDay: mainEventDay, 
+                category: OperationalTimingCategory.COURSE 
+              });
+            }
           }
         }
         
@@ -1015,49 +1661,124 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
       }
     }
     
-    // Départ Hôtel et petit-déjeuner : à partir de l'arrivée sur site (ou d'une heure de référence si pas de présentation)
-    const arrivalOnSiteTiming = timings.find(t => t.id === 'auto-arriveeSite');
-    const raceInfoRef = event.raceInfo;
-    const mainEventDayForHotel = raceInfoRef
-      ? (getTargetMealDay(event.date) || getTargetMealDay(raceInfoRef.permanenceDate) || getTargetMealDay(raceInfoRef.reunionDSDate))
-      : null;
-    const accommodation = appState.eventAccommodations.find(a => a.eventId === event.id && !a.isStopover);
-    const referenceArrivalTime = arrivalOnSiteTiming?.time ?? (raceInfoRef?.departFictifTime ? subtractDurationFromTimeOfDay(raceInfoRef.departFictifTime, 30) : raceInfoRef?.departReelTime ? subtractDurationFromTimeOfDay(raceInfoRef.departReelTime, 60) : null);
-    const dayForHotel = arrivalOnSiteTiming?.targetMealDay ?? mainEventDayForHotel;
+    // Départ Hôtel et petit-déjeuner : à partir de l'arrivée sur site (temps de trajet hébergement)
+    const globalAccommodation = appState.eventAccommodations.find(
+      a => a.eventId === event.id && !a.isStopover,
+    );
 
-    if (referenceArrivalTime && dayForHotel && accommodation?.travelTimeToStart) {
-      const travelDurationMinutes = parseDurationToMinutes(accommodation.travelTimeToStart);
-      if (travelDurationMinutes !== null) {
-        const totalTravelMinutesWithMargin = Math.ceil(travelDurationMinutes * 1.1);
-        const hotelDepartureTime = subtractDurationFromTimeOfDay(referenceArrivalTime, totalTravelMinutesWithMargin);
-        if (hotelDepartureTime) {
-          const hasDepartHotel = timings.some(t => t.id === 'auto-departHotel');
-          if (!hasDepartHotel) {
-            timings.push({
-              id: 'auto-departHotel',
-              time: hotelDepartureTime,
-              description: '🏨 Départ Hôtel',
-              isAutoGenerated: true,
-              targetMealDay: dayForHotel,
-              category: OperationalTimingCategory.TRANSPORT
-            });
-          }
-          const hasBreakfast = timings.some(t => t.id === 'auto-petitDejeuner');
-          if (!hasBreakfast) {
-            const breakfastTime = subtractDurationFromTimeOfDay(hotelDepartureTime, 90);
-            if (breakfastTime) {
-              timings.push({
-                id: 'auto-petitDejeuner',
-                time: breakfastTime,
-                description: '🥐 Petit-déjeuner',
-                isAutoGenerated: true,
-                targetMealDay: dayForHotel,
-                category: OperationalTimingCategory.REPAS
-              });
-            }
-          }
+    const appendHotelAndBreakfastTimings = (
+      referenceArrivalTime: string | null,
+      dayForHotel: MealDay | null,
+      travelTimeToStart: string | undefined,
+      hotelId: string,
+      breakfastId: string,
+    ) => {
+      if (!referenceArrivalTime || !dayForHotel || !travelTimeToStart?.trim()) return;
+      const travelDurationMinutes = parseDurationToMinutes(travelTimeToStart);
+      if (travelDurationMinutes === null) return;
+      const totalTravelMinutesWithMargin = Math.ceil(travelDurationMinutes * 1.1);
+      const hotelDepartureTime = subtractDurationFromTimeOfDay(
+        referenceArrivalTime,
+        totalTravelMinutesWithMargin,
+      );
+      if (!hotelDepartureTime) return;
+      if (!timings.some(t => t.id === hotelId)) {
+        timings.push({
+          id: hotelId,
+          time: hotelDepartureTime,
+          description: '🏨 Départ Hôtel',
+          isAutoGenerated: true,
+          targetMealDay: dayForHotel,
+          category: OperationalTimingCategory.TRANSPORT,
+        });
+      }
+      if (!timings.some(t => t.id === breakfastId)) {
+        const breakfastTime = subtractDurationFromTimeOfDay(hotelDepartureTime, 90);
+        if (breakfastTime) {
+          timings.push({
+            id: breakfastId,
+            time: breakfastTime,
+            description: '🥐 Petit-déjeuner',
+            isAutoGenerated: true,
+            targetMealDay: dayForHotel,
+            category: OperationalTimingCategory.REPAS,
+          });
         }
       }
+    };
+
+    const findStageAccommodation = (
+      accommodations: StageDayAccommodation[] | undefined,
+      stage: StageDayLogistics,
+    ): StageDayAccommodation | undefined =>
+      accommodations?.find(a => !a.isStopover && a.stageDate === stage.date)
+      ?? accommodations?.find(a => !a.isStopover && a.stageNumber === stage.stageNumber);
+
+    const getStageReferenceArrivalTime = (stage: StageDayLogistics): string | null => {
+      const arrivalTiming = timings.find(t => t.id === `auto-arriveeSite-${stage.id}`);
+      if (arrivalTiming?.time) return arrivalTiming.time;
+      if (stage.isTimeTrial) {
+        const firstDepart = getTimeTrialFirstDepartTime(
+          stage.premierDepartTime,
+          stage.riderStartTimes,
+        );
+        return firstDepart
+          ? subtractDurationFromTimeOfDay(firstDepart, TIME_TRIAL_TEAM_ARRIVAL_LEAD_MINUTES)
+          : null;
+      }
+      if (stage.presentationTime) {
+        return subtractDurationFromTimeOfDay(stage.presentationTime, 30);
+      }
+      if (stage.departFictifTime) {
+        return subtractDurationFromTimeOfDay(stage.departFictifTime, 30);
+      }
+      if (stage.departReelTime) {
+        return subtractDurationFromTimeOfDay(stage.departReelTime, 60);
+      }
+      return null;
+    };
+
+    if (raceInfo && isStageRace(event) && stageDaysList.length > 0) {
+      stageDaysList.forEach(stage => {
+        const stageAcco = findStageAccommodation(raceInfo.stageAccommodations, stage);
+        const travelTimeToStart =
+          stageAcco?.travelTimeToStart?.trim() || globalAccommodation?.travelTimeToStart;
+        const arrivalTiming = timings.find(t => t.id === `auto-arriveeSite-${stage.id}`);
+        const dayForHotel = arrivalTiming?.targetMealDay ?? getTargetMealDay(stage.date);
+        appendHotelAndBreakfastTimings(
+          getStageReferenceArrivalTime(stage),
+          dayForHotel,
+          travelTimeToStart,
+          `auto-departHotel-${stage.id}`,
+          `auto-petitDejeuner-${stage.id}`,
+        );
+      });
+    } else if (raceInfo) {
+      const arrivalOnSiteTiming = timings.find(t => t.id === 'auto-arriveeSite');
+      const mainEventDayForHotel =
+        getTargetMealDay(event.date)
+        || getTargetMealDay(raceInfo.permanenceDate)
+        || getTargetMealDay(raceInfo.reunionDSDate);
+      const firstTimeTrialDepart = raceInfo.isTimeTrial
+        ? getTimeTrialFirstDepartTime(raceInfo.premierDepartTime, raceInfo.riderStartTimes)
+        : null;
+      const referenceArrivalTime = arrivalOnSiteTiming?.time
+        ?? (firstTimeTrialDepart
+          ? subtractDurationFromTimeOfDay(firstTimeTrialDepart, TIME_TRIAL_TEAM_ARRIVAL_LEAD_MINUTES)
+          : null)
+        ?? (raceInfo.departFictifTime
+          ? subtractDurationFromTimeOfDay(raceInfo.departFictifTime, 30)
+          : raceInfo.departReelTime
+            ? subtractDurationFromTimeOfDay(raceInfo.departReelTime, 60)
+            : null);
+      const dayForHotel = arrivalOnSiteTiming?.targetMealDay ?? mainEventDayForHotel;
+      appendHotelAndBreakfastTimings(
+        referenceArrivalTime,
+        dayForHotel,
+        globalAccommodation?.travelTimeToStart,
+        'auto-departHotel',
+        'auto-petitDejeuner',
+      );
     }
     
     // Ajouter le dîner du soir (si c'est un événement multi-jours)
@@ -1077,7 +1798,7 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
     }
 
     return timings;
-  }, [event, appState.eventTransportLegs, appState.eventAccommodations]);
+  }, [event, appState.eventTransportLegs, appState.eventAccommodations, appState.riders]);
 
   const mainEventDayName = useMemo(() => {
     const dayMap: Record<number, MealDayEnum> = { 0: MealDayEnum.DIMANCHE, 1: MealDayEnum.LUNDI, 2: MealDayEnum.MARDI, 3: MealDayEnum.MERCREDI, 4: MealDayEnum.JEUDI, 5: MealDayEnum.VENDREDI, 6: MealDayEnum.SAMEDI };
@@ -1086,6 +1807,8 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
         return dayMap[new Date(`${event.date}T12:00:00Z`).getUTCDay()];
     } catch { return null; }
   }, [event.date]);
+
+  const stageTitleByMealDay = useMemo(() => getStageTitleByMealDay(event), [event]);
 
   const displayLogistics = useMemo(() => {
     const mergedDays: Record<string, OperationalLogisticsDay> = {};
@@ -1110,11 +1833,21 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
     let finalDays = Object.values(mergedDays);
     finalDays.forEach(day => day.keyTimings.sort((a, b) => (parseTimeOfDayToMinutes(a.time) ?? 9999) - (parseTimeOfDayToMinutes(b.time) ?? 9999)));
 
+    if (isEditing) {
+        return sortOperationalLogisticsDays(event, finalDays);
+    }
+
     // Logique de groupement simplifiée (uniquement en mode équipe)
     const groupedDays = finalDays.map(day => {
         // En mode individuel, ne pas grouper les timings
         if (viewMode === 'individual') {
-            return day;
+            return {
+                ...day,
+                keyTimings: groupPlanningTimingsByTime(day.keyTimings).map(timing => ({
+                    ...timing,
+                    description: normalizeVehicleDepartureDescription(timing.description || ''),
+                })),
+            };
         }
         
         const newKeyTimings: OperationalTiming[] = [];
@@ -1161,62 +1894,40 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
                     ...currentTiming,
                     description: groupedDescription
                 });
-            } else if (currentTiming.description.includes('Départ du')) {
-                // Grouper les départs identiques
-                const time = currentTiming.time;
-                const vehicleName = currentTiming.description.replace('Départ du ', '');
-                
-                // Chercher d'autres départs à la même heure
-                const vehicles: string[] = [vehicleName];
-                
+            } else if (looksLikeVehicleDepartureDescription(currentTiming.description)) {
+                const vehicles = salvageVehicleNamesFromDepartureDescription(currentTiming.description);
+
                 for (let j = i + 1; j < day.keyTimings.length; j++) {
                     if (processedIndices.has(j)) continue;
-                    
+
                     const nextTiming = day.keyTimings[j];
-                    if (nextTiming.time === time && 
-                        nextTiming.description.includes('Départ du')) {
-                        
-                        const nextVehicleName = nextTiming.description.replace('Départ du ', '');
-                        vehicles.push(nextVehicleName);
-                        processedIndices.add(j);
-                    }
+                    if (!arePlanningTimesEqual(currentTiming.time, nextTiming.time)) continue;
+                    if (!looksLikeVehicleDepartureDescription(nextTiming.description)) continue;
+
+                    vehicles.push(...salvageVehicleNamesFromDepartureDescription(nextTiming.description));
+                    processedIndices.add(j);
                 }
-                
-                // Créer la description groupée avec tous les véhicules
-                if (vehicles.length > 1) {
-                    const uniqueVehicles = [...new Set(vehicles)];
-                    const groupedDescription = `Départ des véhicules (${uniqueVehicles.join(', ')})`;
-                    
-                    newKeyTimings.push({
-                        ...currentTiming,
-                        description: groupedDescription
-                    });
-                } else {
-                    newKeyTimings.push(currentTiming);
-                }
+
+                newKeyTimings.push({
+                    ...currentTiming,
+                    description: formatVehicleDepartureDescription(vehicles),
+                });
             } else {
                 // Pour tous les autres timings, les ajouter normalement
                 newKeyTimings.push(currentTiming);
             }
         }
-        return { ...day, keyTimings: newKeyTimings };
+        return {
+            ...day,
+            keyTimings: groupPlanningTimingsByTime(newKeyTimings).map(timing => ({
+                ...timing,
+                description: normalizeVehicleDepartureDescription(timing.description || ''),
+            })),
+        };
     });
 
-    // Trier par dates réelles de l'événement (et non l'ordre de l'enum),
-    // sinon un événement Thu→Sun affiche "Jeudi" après "Dimanche".
-    const dayToIso = getDayToIsoDateMap(event);
-    const fallbackIndex = (d: MealDayEnum) => Object.values(MealDayEnum).indexOf(d);
-
-    return groupedDays.sort((a, b) => {
-      const aIso = dayToIso[a.dayName];
-      const bIso = dayToIso[b.dayName];
-
-      if (aIso && bIso) return aIso.localeCompare(bIso);
-      if (aIso && !bIso) return -1;
-      if (!aIso && bIso) return 1;
-      return fallbackIndex(a.dayName) - fallbackIndex(b.dayName);
-    });
-  }, [logistics, autoGeneratedTimings, deletedAutoTimings, viewMode, event.date, event.endDate]);
+    return sortOperationalLogisticsDays(event, groupedDays);
+  }, [logistics, autoGeneratedTimings, deletedAutoTimings, viewMode, isEditing, event.date, event.endDate]);
   
   const handleTimingChange = (dayId: string, dayNameForCreation: MealDay, timing: OperationalTiming, field: keyof OperationalTiming, value: any) => {
     setLogistics(currentLogistics => {
@@ -1625,6 +2336,11 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
                 <select value={day.dayName} onChange={(e) => handleDayNameChange(day.id, e.target.value as MealDay)} className={`${lightInputClass} font-semibold !w-auto mr-2`}>
                   {Object.values(MealDayEnum).map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
+                {stageTitleByMealDay[day.dayName] && (
+                  <span className="text-sm font-medium text-amber-800 mr-2">
+                    — {stageTitleByMealDay[day.dayName]}
+                  </span>
+                )}
                 {day.dayName === mainEventDayName && <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">JOUR J</span>}
                 
                 {/* Boutons de sélection par jour */}
@@ -1771,9 +2487,14 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
           {displayLogistics.length > 0 ? (
           displayLogistics.map(day => (
             <div key={day.id} className="p-3 mb-3 border rounded-md bg-gray-50">
-              <h4 className="text-md font-semibold text-gray-700 mb-1 flex items-center">
-                  {day.dayName}
-                  {day.dayName === mainEventDayName && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">JOUR J</span>}
+              <h4 className="text-md font-semibold text-gray-700 mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>{day.dayName}</span>
+                  {stageTitleByMealDay[day.dayName] && (
+                    <span className="font-medium text-amber-800">— {stageTitleByMealDay[day.dayName]}</span>
+                  )}
+                  {day.dayName === mainEventDayName && (
+                    <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">JOUR J</span>
+                  )}
               </h4>
               <ul className="space-y-1">
                 {day.keyTimings.map(timing => {
@@ -1783,6 +2504,10 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
                   const title = timing.isAutoGenerated ? (timing.isOverridden ? 'Automatique, modifié' : 'Automatique') : 'Manuel';
                   
                   let description = timing.description || "N/A";
+                  const stageTitle = stageTitleByMealDay[day.dayName];
+                  if (stageTitle) {
+                    description = stripStageTitleFromTimingDescription(description, stageTitle);
+                  }
                   if (category === OperationalTimingCategory.MASSAGE && timing.personId) {
                       const riderName = getOccupantName(timing.personId, 'rider');
                       description = `${description}: ${riderName} ${timing.order ? `(#${timing.order})` : ''}`;
