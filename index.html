@@ -120,6 +120,7 @@
 </head>
   <body class="bg-gray-100">
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
+    <!-- Chemin absolu : avec une URL non racine (ex. /archives), ./index.tsx chargerait /archives/index.tsx (HTML) → erreur MIME -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

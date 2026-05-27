@@ -20,7 +20,7 @@ import CakeIcon from '../components/icons/CakeIcon';
 import { getAgeCategory } from '../utils/ageUtils';
 import { getRiderCharacteristicSafe } from '../utils/riderUtils';
 import { RiderComparisonChart, RiderRadarChart, PerformanceTrendsChart, RiderComparisonRadarChart, RiderComparisonSelector } from '../components/PerformanceCharts';
-import PowerAnalysisTable from '../components/PowerAnalysisTable';
+import { PowerAnalysisTable } from '../components';
 
 // Type definitions for the new section
 type PerformancePoleTab = 'global' | 'powerAnalysis' | 'charts' | 'comparison' | 'nutritionProducts' | 'planning';

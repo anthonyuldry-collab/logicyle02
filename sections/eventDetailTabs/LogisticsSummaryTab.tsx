@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import { AppState, RaceEvent, TransportDirection, TransportMode, TransportStopType, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, StaffRole, AppSection, PermissionLevel } from '../../types';
+import { AppState, RaceEvent, TransportDirection, TransportMode, TransportStopType, ChecklistItemStatus, TeamState, StaffRoleKey, EventTransportLeg, EventAccommodation, StaffRole, AppSection, PermissionLevel } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
 import UsersIcon from '../../components/icons/UsersIcon';
@@ -127,13 +127,13 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
         const allerLegs = allTransportLegs.filter(leg => leg.direction === 'Aller');
         const retourLegs = allTransportLegs.filter(leg => leg.direction === 'Retour');
 
-        const VOITURE_PERSO_KEY = '(Voiture Personnelle)';
+        const VOITURE_PERSO_KEY = 'Véhicule personnel';
         const allKeys = Array.from(new Set([
             ...allerLegs.map(l => getLegSortKey(l, appState)),
             ...retourLegs.map(l => getLegSortKey(l, appState)),
         ])).sort((a, b) => {
-            if (a === VOITURE_PERSO_KEY && b !== VOITURE_PERSO_KEY) return -1;
-            if (b === VOITURE_PERSO_KEY && a !== VOITURE_PERSO_KEY) return 1;
+            if (a === VOITURE_PERSO_KEY && b !== VOITURE_PERSO_KEY) return 1;
+            if (b === VOITURE_PERSO_KEY && a !== VOITURE_PERSO_KEY) return -1;
             return a.localeCompare(b);
         });
         type Row = { aller: EventTransportLeg | null; retour: EventTransportLeg | null };
@@ -149,28 +149,15 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
             let cy = 0;
             const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
             const modeLabel = getTransportLegLabel(leg, vehicle?.name);
-            const title = `${leg.personName || 'Trajet'}${modeLabel ? ` ${modeLabel}` : ''}`;
+            const title = modeLabel || leg.personName || 'Trajet';
             const titleWrapped = doc.splitTextToSize(title, width - 2);
             cy += titleWrapped.length * lineH;
             cy += 1; // petit espace après le titre
 
-            if (leg.departureDate || leg.departureTime || leg.departureLocation) {
-                const depDayOnly = leg.departureDate ? formatDateFn(leg.departureDate) : '';
-                const depStr = depDayOnly
-                    ? `${depDayOnly} à ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`
-                    : `${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
-                const depWrapped = doc.splitTextToSize(depStr, width - PDF_LABEL_WIDTH);
-                cy += Math.max(1, depWrapped.length) * lineH;
-                cy += 1;
-            }
-
-            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
-                const arrDayOnly = leg.arrivalDate ? formatDateFn(leg.arrivalDate) : '';
-                const arrStr = [arrDayOnly, leg.arrivalTime, leg.arrivalLocation || '—'].filter(Boolean).join(' à ');
-                const arrWrapped = doc.splitTextToSize(arrStr, width - PDF_LABEL_WIDTH);
-                cy += Math.max(1, arrWrapped.length) * lineH;
-                cy += 1;
-            }
+            const depWrapped = doc.splitTextToSize(formatLegDepartureStr(leg, formatDateFn), width - PDF_LABEL_WIDTH);
+            cy += Math.max(1, depWrapped.length) * lineH + 1;
+            const arrWrapped = doc.splitTextToSize(formatLegArrivalStr(leg, formatDateFn), width - PDF_LABEL_WIDTH);
+            cy += Math.max(1, arrWrapped.length) * lineH + 1;
 
             const driver = leg.driverId ? appState.staff.find(s => s.id === leg.driverId) : null;
             if (vehicle && driver) {
@@ -193,7 +180,7 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
             const pickupDropoffLines = getLegPickupDropoffLines(leg, appState);
             if (pickupDropoffLines.length > 0) {
                 cy += 2;
-                cy += lineH + 1; // ligne "Récup. / déposes:"
+                cy += lineH + 1; // ligne "Étapes:"
                 // le PDF dessine en taille 8 avec marge x+4 ; on garde une marge similaire
                 pickupDropoffLines.forEach(line => {
                     const wrapped = doc.splitTextToSize(line, width - 6);
@@ -239,41 +226,39 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(8);
             doc.setTextColor(...PDF_SECTION_GRAY);
-            const title = `${leg.personName || 'Trajet'}${modeLabel ? ` ${modeLabel}` : ''}`;
+            const title = modeLabel || leg.personName || 'Trajet';
             const titleWrapped = doc.splitTextToSize(title, width - 2);
             titleWrapped.forEach((w: string) => { doc.text(w, x, cy + 2.5); cy += lineH; });
             doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             cy += 1;
-            if (leg.departureDate || leg.departureTime || leg.departureLocation) {
-                const depDayOnly = leg.departureDate ? formatDateFn(leg.departureDate) : '';
+            doc.setFont('helvetica', 'bold');
+            doc.text('Départ:', x, cy + 2.5);
+            doc.setFont('helvetica', 'normal');
+            doc.splitTextToSize(formatLegDepartureStr(leg, formatDateFn), width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+            cy += 1;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Arrivée:', x, cy + 2.5);
+            doc.setFont('helvetica', 'normal');
+            doc.splitTextToSize(formatLegArrivalStr(leg, formatDateFn), width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
+            cy += 1;
+            if (driver) {
                 doc.setFont('helvetica', 'bold');
-                doc.text('Départ:', x, cy + 2.5);
+                doc.text('Conducteur:', x, cy + 2.5);
                 doc.setFont('helvetica', 'normal');
-                const depStr = depDayOnly ? `${depDayOnly} à ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}` : `${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
-                doc.splitTextToSize(depStr, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
-                cy += 1;
-            }
-            if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
-                const arrDayOnly = leg.arrivalDate ? formatDateFn(leg.arrivalDate) : '';
-                doc.setFont('helvetica', 'bold');
-                doc.text('Arrivée:', x, cy + 2.5);
-                doc.setFont('helvetica', 'normal');
-                const arrStr = [arrDayOnly, leg.arrivalTime, leg.arrivalLocation || '—'].filter(Boolean).join(' à ');
-                doc.splitTextToSize(arrStr, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
-                cy += 1;
-            }
-            if (vehicle && driver) {
+                doc.text(`${driver.firstName} ${driver.lastName}`, x + PDF_LABEL_WIDTH, cy + 2.5);
+                cy += lineH + 1;
+            } else if (vehicle) {
                 doc.setFont('helvetica', 'bold');
                 doc.text('Véhicule:', x, cy + 2.5);
                 doc.setFont('helvetica', 'normal');
-                doc.splitTextToSize(`${vehicle.name} (${driver.firstName})`, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
-                cy += 1;
+                doc.text(vehicle.name, x + PDF_LABEL_WIDTH, cy + 2.5);
+                cy += lineH + 1;
             }
             if (occupants) {
                 doc.setFont('helvetica', 'bold');
-                doc.text('Occupants:', x, cy + 2.5);
+                doc.text('À bord:', x, cy + 2.5);
                 doc.setFont('helvetica', 'normal');
                 doc.splitTextToSize(occupants, width - PDF_LABEL_WIDTH).forEach((w: string) => { doc.text(w, x + PDF_LABEL_WIDTH, cy + 2.5); cy += lineH; });
                 cy += 1;
@@ -284,7 +269,7 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(9);
                 doc.setTextColor(0, 0, 0);
-                doc.text('Récup. / déposes:', x, cy + 2.5);
+                doc.text('Étapes:', x, cy + 2.5);
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(8);
                 cy += lineH + 1;
@@ -339,6 +324,8 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
             let legH = lineH * 1.5 + 2;
             if (leg.departureTime || leg.departureLocation) legH += lineH + 1;
             if (leg.arrivalTime || leg.arrivalLocation) legH += lineH + 1;
+            const jourJStopLines = getLegPickupDropoffLines(leg, appState);
+            if (jourJStopLines.length > 0) legH += lineH + 1 + jourJStopLines.length * lineH;
             if (vehicle && driver) legH += lineH + 1;
             if (occupants) legH += lineH + 1;
             legH += 4;
@@ -371,6 +358,20 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
                 doc.text(`${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}`, boxX + PDF_LABEL_WIDTH + 2, cy + 2.5);
                 cy += lineH + 1;
             }
+            if (jourJStopLines.length > 0) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('Étapes:', boxX + 2, cy + 2.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                cy += lineH + 1;
+                jourJStopLines.forEach((line) => {
+                    doc.splitTextToSize(line, boxW - 6).forEach((w: string) => {
+                        doc.text(w, boxX + 4, cy + 2.5);
+                        cy += lineH;
+                    });
+                });
+                doc.setFontSize(9);
+            }
             if (vehicle && driver) {
                 doc.setFont('helvetica', 'bold');
                 doc.text('Véhicule:', boxX + 2, cy + 2.5);
@@ -392,24 +393,20 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover)
         || appState.eventAccommodations.find(acc => acc.eventId === event.id);
-    const hasAccommodationInfo = Boolean(accommodation?.hotelName?.trim() || accommodation?.address?.trim());
-    if (hasAccommodationInfo) {
+    const accommodationLines = getConvocationAccommodationLines(event, accommodation, formatDateFn);
+    if (accommodationLines.length > 0) {
         if (y > PDF_PAGE_HEIGHT - 45) {
             doc.addPage();
             y = PDF_MARGIN;
         }
         y = drawPdfSectionTitle(doc, 'HÉBERGEMENT', y, true);
-        if (accommodation?.hotelName?.trim()) {
-            doc.text(`Hôtel: ${accommodation.hotelName.trim()}`, PDF_MARGIN, y);
-            y += lineH;
-        }
-        if (accommodation?.address?.trim()) {
-            const addrLines = doc.splitTextToSize(`Adresse: ${accommodation.address.trim()}`, PDF_CONTENT_WIDTH - 4);
-            addrLines.forEach((line: string) => {
-                doc.text(line, PDF_MARGIN, y);
+        accommodationLines.forEach((line) => {
+            const wrapped = doc.splitTextToSize(line, PDF_CONTENT_WIDTH - 4);
+            wrapped.forEach((w: string) => {
+                doc.text(w, PDF_MARGIN, y);
                 y += lineH;
             });
-        }
+        });
         y += gap;
     }
 
@@ -574,6 +571,58 @@ const formatDate = (dateStr?: string) => {
     return new Date(dateStr + "T12:00:00Z").toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
+const subtractOneDayIso = (isoDate: string): string => {
+    const d = new Date(isoDate + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+};
+
+const eventSpansMultipleDays = (event: RaceEvent): boolean => {
+    const endDate = event.endDate || event.date;
+    return Boolean(event.date && endDate && endDate !== event.date);
+};
+
+/** Lignes hébergement pour convocation : nuits jusqu'à la veille du dernier jour (pas de retour hôtel le jour de fin). */
+const getConvocationAccommodationLines = (
+    event: RaceEvent,
+    accommodation: EventAccommodation | undefined,
+    formatDateFn: (d?: string) => string
+): string[] => {
+    if (!accommodation) return [];
+    const hotelName = accommodation.hotelName?.trim();
+    const address = accommodation.address?.trim();
+    if (!hotelName && !address) return [];
+
+    const lines: string[] = [];
+    if (eventSpansMultipleDays(event)) {
+        const lastNightIso = subtractOneDayIso(event.endDate || event.date);
+        lines.push(`Nuits : du ${formatDateFn(event.date)} au ${formatDateFn(lastNightIso)}`);
+        lines.push(`(Pas de retour à l'hôtel le ${formatDateFn(event.endDate || event.date)} — retour direct)`);
+    }
+    if (hotelName) lines.push(`Hôtel : ${hotelName}`);
+    if (address) lines.push(`Adresse : ${address}`);
+    if (accommodation.numberOfNights > 0 && !eventSpansMultipleDays(event)) {
+        lines.push(`Nombre de nuits : ${accommodation.numberOfNights}`);
+    }
+    return lines;
+};
+
+const formatLegDepartureStr = (leg: EventTransportLeg, formatDateFn: (d?: string) => string): string => {
+    const depDayOnly = leg.departureDate ? formatDateFn(leg.departureDate) : '';
+    if (depDayOnly) {
+        return `${depDayOnly} à ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
+    }
+    return `${leg.departureTime || '—'} de ${leg.departureLocation || '—'}`;
+};
+
+const formatLegArrivalStr = (leg: EventTransportLeg, formatDateFn: (d?: string) => string): string => {
+    const arrDayOnly = leg.arrivalDate ? formatDateFn(leg.arrivalDate) : '';
+    if (arrDayOnly) {
+        return `${arrDayOnly} à ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}`;
+    }
+    return `${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}`;
+};
+
 const isConvocationTransportLeg = (leg: EventTransportLeg) =>
     leg.direction !== 'Transport Jour J';
 
@@ -581,8 +630,13 @@ const isConvocationTransportLeg = (leg: EventTransportLeg) =>
 const isJourJTransportLeg = (leg: EventTransportLeg) =>
     leg.direction === 'Transport Jour J';
 
+const isPersonalVehicleLeg = (leg: EventTransportLeg): boolean =>
+    leg.mode === TransportMode.VOITURE_PERSO
+    || leg.mode === 'Voiture Personnelle'
+    || leg.assignedVehicleId === 'perso';
+
 const getTransportLegLabel = (leg: EventTransportLeg, vehicleName?: string | null): string => {
-    if (leg.mode === TransportMode.VOITURE_PERSO || leg.mode === 'Voiture Personnelle') return '(Voiture Personnelle)';
+    if (isPersonalVehicleLeg(leg)) return 'Véhicule personnel';
     if (vehicleName && vehicleName.trim()) return vehicleName.trim();
     if (
       leg.mode === TransportMode.VOITURE_EQUIPE
@@ -604,9 +658,10 @@ const getTransportLegLabel = (leg: EventTransportLeg, vehicleName?: string | nul
 
 /** Clé pour aligner le même véhicule aller/retour sur la même ligne du tableau PDF. */
 const getLegSortKey = (leg: EventTransportLeg, appState: TeamState): string => {
+    if (isPersonalVehicleLeg(leg)) return 'Véhicule personnel';
     const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
     const label = getTransportLegLabel(leg, vehicle?.name);
-    return label || leg.personName || leg.id || '';
+    return label || leg.id || '';
 };
 
 const isPickupType = (stopType: TransportStopType | string) =>
@@ -614,23 +669,54 @@ const isPickupType = (stopType: TransportStopType | string) =>
 const isDropoffType = (stopType: TransportStopType | string) =>
     typeof stopType === 'string' ? stopType.includes('Dépose') : [TransportStopType.DROPOFF, TransportStopType.HOME_DROPOFF, TransportStopType.HOTEL_DROPOFF, TransportStopType.TRAIN_DROPOFF, TransportStopType.AIRPORT_DROPOFF].includes(stopType as TransportStopType);
 
-/** Si useDirectionForLabel est true, le libellé est déduit du sens du trajet : Aller → Récupération, Retour → Dépose. */
+const formatStopDateShort = (dateStr?: string): string => {
+    if (!dateStr?.trim()) return '';
+    try {
+        return new Date(dateStr + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    } catch {
+        return '';
+    }
+};
+
+const getStopActionLabel = (
+    leg: EventTransportLeg,
+    stopType: TransportStopType | string | undefined,
+    useDirectionForLabel: boolean
+): string => {
+    if (useDirectionForLabel) {
+        if (leg.direction === 'Aller') return 'Récupération';
+        if (leg.direction === 'Retour') return 'Dépose';
+    }
+    if (isPickupType(stopType)) return 'Récupération';
+    if (isDropoffType(stopType)) return 'Dépose';
+    return 'Étape';
+};
+
+/** Lignes détaillées pour chaque étape intermédiaire (lieu, heure, personnes). */
 const getLegPickupDropoffLines = (leg: EventTransportLeg, appState: TeamState, useDirectionForLabel = true): string[] => {
     const lines: string[] = [];
     if (!leg.intermediateStops?.length) return lines;
-    const defaultLabelFromDirection = leg.direction === 'Aller' ? 'Récupération' : leg.direction === 'Retour' ? 'Dépose' : null;
+
     leg.intermediateStops.forEach(stop => {
-        if (!stop.persons?.length) return;
-        const label = useDirectionForLabel && defaultLabelFromDirection
-            ? defaultLabelFromDirection
-            : (isPickupType(stop.stopType) ? 'Récupération' : isDropoffType(stop.stopType) ? 'Dépose' : null);
-        if (!label) return;
-        const timeLoc = [stop.time, stop.location].filter(Boolean).join(' à ');
-        const names = stop.persons.map(p => {
+        const label = getStopActionLabel(leg, stop.stopType, useDirectionForLabel);
+        const datePart = formatStopDateShort(stop.date);
+        const timePart = stop.time?.trim() || '';
+        const locationPart = stop.location?.trim() || '';
+        const whenWhereParts: string[] = [];
+        if (datePart) whenWhereParts.push(datePart);
+        if (timePart && locationPart) {
+            whenWhereParts.push(`${timePart} à ${locationPart}`);
+        } else if (timePart) {
+            whenWhereParts.push(timePart);
+        } else if (locationPart) {
+            whenWhereParts.push(`à ${locationPart}`);
+        }
+        const whenWhere = whenWhereParts.join(' — ') || '—';
+        const names = (stop.persons || []).map(p => {
             const person = p.type === 'rider' ? appState.riders.find(r => r.id === p.id) : appState.staff.find(s => s.id === p.id);
             return person ? `${person.firstName[0]}.${person.lastName}` : '';
         }).filter(Boolean).join(', ');
-        if (timeLoc && names) lines.push(`${label} à ${timeLoc}: ${names}`);
+        lines.push(names ? `${label} : ${whenWhere} (${names})` : `${label} : ${whenWhere}`);
     });
     return lines;
 };
@@ -640,10 +726,17 @@ const getOccupantPickupDropoffLines = (leg: EventTransportLeg, personId: string,
     if (!leg.intermediateStops?.length) return lines;
     leg.intermediateStops.forEach(stop => {
         if (!stop.persons?.some(p => p.id === personId && p.type === personType)) return;
-        const label = isPickupType(stop.stopType) ? 'Récupération' : isDropoffType(stop.stopType) ? 'Dépose' : null;
-        if (!label) return;
-        const timeLoc = [stop.time, stop.location].filter(Boolean).join(' à ');
-        if (timeLoc) lines.push(`${label} à ${timeLoc}`);
+        const label = getStopActionLabel(leg, stop.stopType, true);
+        const datePart = formatStopDateShort(stop.date);
+        const timePart = stop.time?.trim() || '';
+        const locationPart = stop.location?.trim() || '';
+        const whenWhereParts: string[] = [];
+        if (datePart) whenWhereParts.push(datePart);
+        if (timePart && locationPart) whenWhereParts.push(`${timePart} à ${locationPart}`);
+        else if (timePart) whenWhereParts.push(timePart);
+        else if (locationPart) whenWhereParts.push(`à ${locationPart}`);
+        const whenWhere = whenWhereParts.join(' — ');
+        if (whenWhere) lines.push(`${label} : ${whenWhere}`);
     });
     return lines;
 };
@@ -741,6 +834,7 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
                 if (v) text += `    - Véhicule : ${v.name}\n`;
             }
             if (leg.details) text += `    - Détails : ${leg.details}\n`;
+            getOccupantPickupDropoffLines(leg, rider.id, 'rider', appState).forEach(l => { text += `    - ${l}\n`; });
         });
         text += `\n`;
     }
@@ -756,6 +850,7 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
             text += `  • Jour J${label ? ` ${label}` : ''}\n`;
             text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
             text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            getOccupantPickupDropoffLines(leg, rider.id, 'rider', appState).forEach(l => { text += `    - ${l}\n`; });
             if (leg.driverId) {
                 const driver = appState.staff.find(s => s.id === leg.driverId);
                 if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
@@ -766,12 +861,10 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    const hotelName = accommodation?.hotelName?.trim() || '';
-    const address = accommodation?.address?.trim() || '';
-    if (hotelName || address) {
+    const accommodationLines = getConvocationAccommodationLines(event, accommodation, formatDate);
+    if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
-        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
-        if (address) text += `- Adresse : ${address}\n`;
+        accommodationLines.forEach(line => { text += `- ${line}\n`; });
         text += `\n`;
     }
 
@@ -819,6 +912,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             }
             const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
             text += `    - Passagers : ${occupants || 'Aucun'}\n`;
+            getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
         });
         text += `\n`;
     }
@@ -839,6 +933,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             }
             const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
             text += `    - Passagers : ${occupants || 'Aucun'}\n`;
+            getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
         });
         text += `\n`;
     }
@@ -859,7 +954,10 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
                 text += `    - Arrivée : ${leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}${leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}${leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}\n`;
             }
-            getOccupantPickupDropoffLines(leg, staff.id, 'staff', appState).forEach(l => { text += `    - ${l}\n`; });
+            const stopLines = asDriver
+                ? getLegPickupDropoffLines(leg, appState)
+                : getOccupantPickupDropoffLines(leg, staff.id, 'staff', appState);
+            stopLines.forEach(l => { text += `    - ${l}\n`; });
         });
         text += `\n`;
     }
@@ -876,18 +974,17 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             text += `  • Jour J${label ? ` ${label}` : ''}${asDriver ? ' [conducteur]' : ' [passager]'}\n`;
             text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
             text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
             if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
         });
         text += `\n`;
     }
     
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    const hotelName = accommodation?.hotelName?.trim() || '';
-    const address = accommodation?.address?.trim() || '';
-    if (hotelName || address) {
+    const accommodationLines = getConvocationAccommodationLines(event, accommodation, formatDate);
+    if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
-        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
-        if (address) text += `- Adresse : ${address}\n`;
+        accommodationLines.forEach(line => { text += `- ${line}\n`; });
         text += `\n`;
     }
 
@@ -931,15 +1028,9 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                 if (idx > 0) text += `\n`;
                 const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
                 const label = getTransportLegLabel(leg, vehicle?.name);
-                text += `  • ${leg.personName}${label ? ` ${label}` : ''}\n`;
-                if (leg.departureDate || leg.departureTime || leg.departureLocation) {
-                    const depDay = leg.departureDate ? formatDate(leg.departureDate) + ' à ' : '';
-                    text += `    Départ: ${depDay}${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
-                }
-                if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
-                    const arrDay = leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : '';
-                    text += `    Arrivée: ${arrDay}${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
-                }
+                text += `  • ${label || leg.personName || 'Trajet'}\n`;
+                text += `    Départ: ${formatLegDepartureStr(leg, formatDate)}\n`;
+                text += `    Arrivée: ${formatLegArrivalStr(leg, formatDate)}\n`;
                 const occupants = (leg.occupants || []).map(o => {
                     const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
                     return p ? `${p.firstName[0]}.${p.lastName}` : '';
@@ -966,15 +1057,9 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                 if (idx > 0) text += `\n`;
                 const vehicle = leg.assignedVehicleId ? appState.vehicles.find(v => v.id === leg.assignedVehicleId) : null;
                 const label = getTransportLegLabel(leg, vehicle?.name);
-                text += `  • ${leg.personName}${label ? ` ${label}` : ''}\n`;
-                if (leg.departureDate || leg.departureTime || leg.departureLocation) {
-                    const depDay = leg.departureDate ? formatDate(leg.departureDate) + ' à ' : '';
-                    text += `    Départ: ${depDay}${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
-                }
-                if (leg.arrivalDate || leg.arrivalTime || leg.arrivalLocation) {
-                    const arrDay = leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : '';
-                    text += `    Arrivée: ${arrDay}${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
-                }
+                text += `  • ${label || leg.personName || 'Trajet'}\n`;
+                text += `    Départ: ${formatLegDepartureStr(leg, formatDate)}\n`;
+                text += `    Arrivée: ${formatLegArrivalStr(leg, formatDate)}\n`;
                 const occupants = (leg.occupants || []).map(o => {
                     const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id);
                     return p ? `${p.firstName[0]}.${p.lastName}` : '';
@@ -1016,17 +1101,16 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                 const driver = appState.staff.find(s => s.id === leg.driverId);
                 if (driver) text += `    Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
             }
+            getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
         });
         text += `\n`;
     }
 
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    const hotelName = accommodation?.hotelName?.trim() || '';
-    const address = accommodation?.address?.trim() || '';
-    if (hotelName || address) {
+    const accommodationLines = getConvocationAccommodationLines(event, accommodation, formatDate);
+    if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
-        if (hotelName) text += `- Hôtel : ${hotelName}\n`;
-        if (address) text += `- Adresse : ${address}\n`;
+        accommodationLines.forEach(line => { text += `- ${line}\n`; });
         text += `\n`;
     }
     
@@ -1066,9 +1150,8 @@ const ConvocationPreview: React.FC<{
         (leg.driverId === participant.id || isPersonInLeg(leg, participant.id, mode === 'athlete' ? 'rider' : 'staff'))
     ) : [];
     const accommodation = appState.eventAccommodations.find(acc => acc.eventId === event.id && !acc.isStopover);
-    const accommodationHotelName = accommodation?.hotelName?.trim() || '';
-    const accommodationAddress = accommodation?.address?.trim() || '';
-    const hasAccommodationInfo = Boolean(accommodationHotelName || accommodationAddress);
+    const accommodationLines = getConvocationAccommodationLines(event, accommodation, formatDate);
+    const hasAccommodationInfo = accommodationLines.length > 0;
 
     const Section: React.FC<{ title: string; icon: React.ElementType; children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
         <div className="mb-4">
@@ -1155,9 +1238,9 @@ const ConvocationPreview: React.FC<{
                                             const label = getTransportLegLabel(leg, vehicle?.name);
                                             return (
                                             <div key={leg.id} className="p-2 border rounded bg-white mb-2">
-                                                <p className="font-semibold">{leg.personName}{label ? ` ${label}` : ''}</p>
-                                                <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) + ' à ' : ''}{leg.departureTime} de {leg.departureLocation}</p>
-                                                <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : ''}{leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                <p className="font-semibold">{label || leg.personName || 'Trajet'}</p>
+                                                <p><strong>Départ:</strong> {formatLegDepartureStr(leg, formatDate)}</p>
+                                                <p><strong>Arrivée:</strong> {formatLegArrivalStr(leg, formatDate)}</p>
                                                 {leg.assignedVehicleId && leg.driverId && (
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
@@ -1176,9 +1259,9 @@ const ConvocationPreview: React.FC<{
                                             const label = getTransportLegLabel(leg, vehicle?.name);
                                             return (
                                             <div key={leg.id} className="p-2 border rounded bg-white mb-2">
-                                                <p className="font-semibold">{leg.personName}{label ? ` ${label}` : ''}</p>
-                                                <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) + ' à ' : ''}{leg.departureTime} de {leg.departureLocation}</p>
-                                                <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) + ' à ' : ''}{leg.arrivalTime} à {leg.arrivalLocation}</p>
+                                                <p className="font-semibold">{label || leg.personName || 'Trajet'}</p>
+                                                <p><strong>Départ:</strong> {formatLegDepartureStr(leg, formatDate)}</p>
+                                                <p><strong>Arrivée:</strong> {formatLegArrivalStr(leg, formatDate)}</p>
                                                 {leg.assignedVehicleId && leg.driverId && (
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
@@ -1200,6 +1283,7 @@ const ConvocationPreview: React.FC<{
                                                 <p className="font-semibold">Jour J{label ? ` ${label}` : ''}</p>
                                                 <p><strong>Départ:</strong> {leg.departureTime || '—'} de {leg.departureLocation || '—'}</p>
                                                 <p><strong>Arrivée:</strong> {leg.arrivalTime || '—'} à {leg.arrivalLocation || '—'}</p>
+                                                {(() => { const pd = getLegPickupDropoffLines(leg, appState); return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Étapes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null; })()}
                                                 {leg.assignedVehicleId && leg.driverId && (
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
@@ -1224,14 +1308,20 @@ const ConvocationPreview: React.FC<{
                                         <>
                                             <p><strong>Départ:</strong> {da.departureDate ? formatDate(da.departureDate) + ' à ' : ''}{da.departureTime} de {da.departureLocation}</p>
                                             <p><strong>Arrivée:</strong> {da.arrivalDate ? formatDate(da.arrivalDate) + ' à ' : ''}{da.arrivalTime} à {da.arrivalLocation}</p>
+                                            {participant && (() => {
+                                                const pd = getOccupantPickupDropoffLines(leg, participant.id, 'rider', appState);
+                                                return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Étapes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null;
+                                            })()}
                                         </>
                                     ) : (
                                         <>
-                                            {(leg.departureDate || leg.departureTime) && <p><strong>Départ:</strong> {leg.departureDate ? formatDate(leg.departureDate) : ''}{leg.departureTime ? ` à ${leg.departureTime}` : ''}{leg.departureLocation ? ` de ${leg.departureLocation}` : ''}</p>}
-                                            {(leg.arrivalDate || leg.arrivalTime) && <p><strong>Arrivée:</strong> {leg.arrivalDate ? formatDate(leg.arrivalDate) : ''}{leg.arrivalTime ? ` à ${leg.arrivalTime}` : ''}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>}
+                                            <p><strong>Départ:</strong> {formatLegDepartureStr(leg, formatDate)}</p>
+                                            <p><strong>Arrivée:</strong> {formatLegArrivalStr(leg, formatDate)}</p>
                                             {participant && (() => {
-                                                const pd = getOccupantPickupDropoffLines(leg, participant.id, 'staff', appState);
-                                                return pd.length > 0 ? <p className="text-xs text-gray-600"><strong>Récupération / Dépose:</strong> {pd.join(' — ')}</p> : null;
+                                                const pd = isDriver
+                                                    ? getLegPickupDropoffLines(leg, appState)
+                                                    : getOccupantPickupDropoffLines(leg, participant.id, 'staff', appState);
+                                                return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Étapes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null;
                                             })()}
                                         </>
                                     )}
@@ -1257,6 +1347,12 @@ const ConvocationPreview: React.FC<{
                                         <p className="font-semibold">Jour J{label ? ` ${label}` : ''}{isDriver && <span className="ml-1 text-xs font-normal text-amber-700">(conducteur)</span>}</p>
                                         <p><strong>Départ:</strong> {leg.departureTime || '—'} de {leg.departureLocation || '—'}</p>
                                         <p><strong>Arrivée:</strong> {leg.arrivalTime || '—'} à {leg.arrivalLocation || '—'}</p>
+                                        {(() => {
+                                            const pd = isDriver
+                                                ? getLegPickupDropoffLines(leg, appState)
+                                                : (participant ? getOccupantPickupDropoffLines(leg, participant.id, mode === 'athlete' ? 'rider' : 'staff', appState) : []);
+                                            return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Étapes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null;
+                                        })()}
                                         <p className="text-sm text-gray-700"><strong>Chauffeur:</strong> {driver ? `${driver.firstName} ${driver.lastName}` : <span className="italic text-amber-600">Non renseigné</span>}</p>
                                         {vehicle && <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {vehicle.name}</p>}
                                     </div>
@@ -1270,8 +1366,9 @@ const ConvocationPreview: React.FC<{
 
             {hasAccommodationInfo && (
                 <Section title="Hébergement" icon={BuildingOfficeIcon}>
-                    {accommodationHotelName && <p><strong>Hôtel:</strong> {accommodationHotelName}</p>}
-                    {accommodationAddress && <p><strong>Adresse:</strong> {accommodationAddress}</p>}
+                    {accommodationLines.map((line) => (
+                        <p key={line}>{line}</p>
+                    ))}
                 </Section>
             )}
 

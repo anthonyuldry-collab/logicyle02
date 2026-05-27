@@ -342,6 +342,76 @@ const formatDateForPlanning = (dateStr: string): string => {
     }
 };
 
+/** Résumé départ / arrivée pour la grille « Logistique véhicules » du PDF planning. */
+const formatLegDepartureForSummary = (leg: EventTransportLeg): string | null => {
+    const time = leg.departureTime?.trim();
+    const location = leg.departureLocation?.trim();
+    if (!time && !location) return null;
+    if (time && location) return `${time} de ${location}`;
+    if (time) return time;
+    return location ? `de ${location}` : null;
+};
+
+const formatLegArrivalForSummary = (leg: EventTransportLeg): string | null => {
+    const time = leg.arrivalTime?.trim();
+    const location = leg.arrivalLocation?.trim();
+    if (!time && !location) return null;
+    if (time && location) return `${time} à ${location}`;
+    if (time) return time;
+    return location ? `à ${location}` : null;
+};
+
+const getLegStopFallbackDate = (leg: EventTransportLeg, fallbackDate?: string): string | undefined => {
+    if (isRetourTransportLeg(leg)) {
+        return leg.arrivalDate || leg.departureDate || fallbackDate;
+    }
+    return leg.departureDate || leg.arrivalDate || fallbackDate;
+};
+
+const formatIntermediateStopsToLines = (
+    leg: EventTransportLeg,
+    stops: EventTransportLeg['intermediateStops'],
+    getOccupantName: (id: string, type: 'rider' | 'staff') => string
+): string[] => {
+    if (!stops?.length) return [];
+    return stops.map((stop) => {
+        const label = getTransportStopActionLabel(leg, stop.stopType) || 'Étape';
+        const datePart = stop.date ? formatDateForPlanning(stop.date) : '';
+        const timePart = stop.time?.trim() || '';
+        const locationPart = stop.location?.trim() || '';
+        const whenWhereParts: string[] = [];
+        if (datePart) whenWhereParts.push(datePart);
+        if (timePart && locationPart) whenWhereParts.push(`${timePart} à ${locationPart}`);
+        else if (timePart) whenWhereParts.push(timePart);
+        else if (locationPart) whenWhereParts.push(`à ${locationPart}`);
+        const whenWhere = whenWhereParts.join(' — ') || '—';
+        const names = (stop.persons || [])
+            .map((p) => getOccupantName(p.id, p.type))
+            .filter(Boolean)
+            .join(', ');
+        return names ? `${label} : ${whenWhere} (${names})` : `${label} : ${whenWhere}`;
+    });
+};
+
+/** Étapes intermédiaires d'un trajet pour le tableau logistique véhicules (lieu, heure, personnes). */
+const formatLegIntermediateStopLines = (
+    leg: EventTransportLeg,
+    getOccupantName: (id: string, type: 'rider' | 'staff') => string,
+    dateMatches?: (dateStr: string | undefined) => boolean,
+    fallbackDate?: string
+): string[] => {
+    if (!leg.intermediateStops?.length) return [];
+    const stopFallback = getLegStopFallbackDate(leg, fallbackDate);
+    let stops = leg.intermediateStops.filter((stop) => {
+        if (!dateMatches) return true;
+        return dateMatches(stop.date || stopFallback);
+    });
+    if (stops.length === 0) {
+        stops = leg.intermediateStops;
+    }
+    return formatIntermediateStopsToLines(leg, stops, getOccupantName);
+};
+
 /** Supprime emoji et caractères non compatibles Helvetica pour un PDF lisible et professionnel. */
 const sanitizeTextForPdf = (text: string): string => {
     if (!text) return '';
@@ -553,6 +623,19 @@ interface ExportPlanningOptions {
     includeVehicleLogistics?: boolean;
 }
 
+/** Pas d'hébergement sur l'export du dernier jour (retour à domicile, pas de nuit à l'hôtel). */
+const shouldShowAccommodationInPlanningPdf = (
+    event: RaceEvent,
+    selectedDay: MealDay | null,
+    dayToIso: Record<string, string>
+): boolean => {
+    if (!selectedDay) return true;
+    const endIso = toIsoDate(event.endDate || event.date);
+    const selectedIso = toIsoDate(dayToIso[selectedDay]);
+    if (!endIso || !selectedIso) return true;
+    return selectedIso !== endIso;
+};
+
 const exportPlanningToPdf = (
     event: RaceEvent,
     logistics: OperationalLogisticsDay[],
@@ -597,8 +680,8 @@ const exportPlanningToPdf = (
         ? dayMapPdf[new Date(`${event.date}T12:00:00Z`).getUTCDay()]
         : null;
 
-    const titleBlockH = 18;
-    const dayHeaderH = 9;
+    const titleBlockH = 22;
+    const dayHeaderH = 12;
     const blockPadding = 2;
     const lineH = 3.4;
     const timeColW = 14;
@@ -665,28 +748,53 @@ const exportPlanningToPdf = (
         colWidth = (contentW - (numCols - 1) * colGap) / numCols;
     }
 
-    const drawPlanningHeader = (y: number, compact = false): number => {
-        const headerHeight = compact ? 10 : titleBlockH;
-        doc.setFillColor(248, 250, 252);
-        doc.rect(margin, y, contentW, headerHeight, 'F');
-        doc.setDrawColor(...colorBorder);
-        doc.line(margin, y + headerHeight, margin + contentW, y + headerHeight);
+    if (filteredLogistics.length === 1) {
+        colWidth = Math.min(132, contentW * 0.62);
+    }
 
-        doc.setFontSize(compact ? 11 : 14);
+    const drawPlanningHeader = (y: number, compact = false): number => {
+        const headerHeight = compact ? 11 : titleBlockH;
+        const headerX = margin;
+        const headerW = contentW;
+
+        doc.setFillColor(...colorRaceDay);
+        doc.rect(headerX, y, headerW, 1.2, 'F');
+
+        doc.setFillColor(255, 255, 255);
+        doc.rect(headerX, y + 1.2, headerW, headerHeight - 1.2, 'F');
+        doc.setDrawColor(...colorBorder);
+        doc.setLineWidth(0.2);
+        doc.line(headerX, y + headerHeight, headerX + headerW, y + headerHeight);
+
+        const centerX = pageW / 2;
+
+        doc.setFontSize(compact ? 12 : 16);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...colorTitle);
-        doc.text(sanitizeTextForPdf(event.name), pageW / 2, y + (compact ? 4 : 5), { align: 'center' });
+        doc.text(sanitizeTextForPdf(event.name), centerX, y + (compact ? 6 : 8), { align: 'center' });
 
         if (!compact) {
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
             const dateRange = event.endDate && event.endDate !== event.date
                 ? `Du ${formatDateForPlanning(event.date)} au ${formatDateForPlanning(event.endDate)}`
                 : `Le ${formatDateForPlanning(event.date)}`;
-            doc.text(dateRange, pageW / 2, y + 10, { align: 'center' });
-            doc.setFontSize(8);
+            const dateLabel = sanitizeTextForPdf(dateRange);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const pillPadX = 5;
+            const pillW = doc.getTextWidth(dateLabel) + pillPadX * 2;
+            const pillH = 5.5;
+            const pillY = y + 11;
+            const pillX = centerX - pillW / 2;
+            doc.setFillColor(241, 245, 249);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(pillX, pillY, pillW, pillH, 2, 2, 'FD');
+            doc.setTextColor(...colorTextPrimary);
+            doc.text(dateLabel, centerX, pillY + 3.8, { align: 'center' });
+
+            doc.setFontSize(7.5);
             doc.setTextColor(...colorTextMuted);
-            doc.text('Timing du déplacement', pageW / 2, y + 14.5, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.text('Timing du déplacement', centerX, y + 19, { align: 'center' });
         }
 
         return y + headerHeight;
@@ -713,39 +821,67 @@ const exportPlanningToPdf = (
         const isRaceDay = day.dayName === mainEventDayName;
         const timings = getSortedTimings(day);
 
+        const centerX = x + colWidth / 2;
+
         doc.setFillColor(...colorCardHeader);
         doc.setDrawColor(...colorBorder);
         doc.rect(x, y, colWidth, dayHeaderH, 'FD');
 
         if (isRaceDay) {
             doc.setFillColor(...colorRaceDay);
-            doc.rect(x, y, 1.2, dayHeaderH, 'F');
+            doc.rect(x, y, colWidth, 1.1, 'F');
         }
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
+        doc.setFontSize(11);
         doc.setTextColor(...colorTextPrimary);
-        doc.text(dayTitle, x + blockPadding + (isRaceDay ? 1.5 : 0), y + 4.2);
+        const dayTitleDisplay = stageTitle
+            ? dayTitleBase.charAt(0).toUpperCase() + dayTitleBase.slice(1)
+            : dayTitle.charAt(0).toUpperCase() + dayTitle.slice(1);
+        doc.text(dayTitleDisplay, centerX, y + (stageTitle ? 4.8 : 5.5), { align: 'center' });
 
-        if (dayDateLabel) {
+        if (stageTitle) {
             doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(...colorTextMuted);
+            doc.text(sanitizeTextForPdf(stageTitle), centerX, y + 8.2, { align: 'center' });
+        }
+
+        const metaParts: string[] = [];
+        if (dayDateLabel) metaParts.push(dayDateLabel);
+        if (isWeekend) metaParts.push('Week-end');
+        if (isRaceDay) metaParts.push('JOUR J');
+        if (metaParts.length > 0) {
+            const metaY = y + (stageTitle ? 10.8 : 9.5);
             doc.setFontSize(7);
-            doc.setTextColor(...colorTextMuted);
-            doc.text(dayDateLabel, x + colWidth - blockPadding, y + 4.2, { align: 'right' });
-        }
-
-        if (isWeekend) {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(6);
-            doc.setTextColor(...colorTextMuted);
-            doc.text('Week-end', x + blockPadding + (isRaceDay ? 1.5 : 0), y + 7.2);
-        }
-
-        if (isRaceDay) {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(6.5);
-            doc.setTextColor(...colorRaceDay);
-            doc.text('JOUR J', x + colWidth - blockPadding, y + 7.2, { align: 'right' });
+            if (isRaceDay && metaParts.length > 0) {
+                const plainParts = metaParts.filter(p => p !== 'JOUR J');
+                const plainText = plainParts.join('  ·  ');
+                if (plainText) {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(...colorTextMuted);
+                    const plainW = doc.getTextWidth(plainText);
+                    const jourJW = doc.getTextWidth('JOUR J');
+                    const sepW = doc.getTextWidth('  ·  ');
+                    const totalW = plainText ? plainW + sepW + jourJW : jourJW;
+                    let metaX = centerX - totalW / 2;
+                    if (plainText) {
+                        doc.text(plainText, metaX, metaY);
+                        metaX += plainW + sepW;
+                    }
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(...colorRaceDay);
+                    doc.text('JOUR J', metaX, metaY);
+                } else {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(...colorRaceDay);
+                    doc.text('JOUR J', centerX, metaY, { align: 'center' });
+                }
+            } else {
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(...colorTextMuted);
+                doc.text(metaParts.join('  ·  '), centerX, metaY, { align: 'center' });
+            }
         }
 
         doc.setFillColor(...colorCardBody);
@@ -801,8 +937,11 @@ const exportPlanningToPdf = (
             }
         }
 
+        const rowWidth = rowDays.length * colWidth + (rowDays.length - 1) * colGap;
+        const rowStartX = margin + (contentW - rowWidth) / 2;
+
         rowDays.forEach((day, colIndex) => {
-            const x = margin + colIndex * (colWidth + colGap);
+            const x = rowStartX + colIndex * (colWidth + colGap);
             drawDayCard(day, x, gridBottomY, rowHeight);
         });
 
@@ -872,6 +1011,9 @@ const exportPlanningToPdf = (
 
             type VehicleCellSummary = {
                 driverName: string;
+                departureSummary: string | null;
+                arrivalSummary: string | null;
+                intermediateStopLines: string[];
                 occupants: string;
                 passengersAtStops: string[];
                 passengersActionLabel: 'Qui monte' | 'Dépose';
@@ -879,6 +1021,9 @@ const exportPlanningToPdf = (
             };
             const emptyCellSummary = (): VehicleCellSummary => ({
                 driverName: '—',
+                departureSummary: null,
+                arrivalSummary: null,
+                intermediateStopLines: [],
                 occupants: '—',
                 passengersAtStops: [],
                 passengersActionLabel: 'Qui monte',
@@ -898,19 +1043,21 @@ const exportPlanningToPdf = (
                 const occupantsStr = (leg.occupants || []).map((o) => getOccupantName(o.id, o.type)).join(', ') || '—';
 
                 const fallbackDate = leg.direction === TransportDirection.JOUR_J ? event.date : undefined;
-                const effectiveDepartureDate = leg.departureDate || fallbackDate;
-                const stopsOnDay = (leg.intermediateStops || []).filter((s) => dateMatchesDay(s.date || effectiveDepartureDate));
-
-                const passengersAtStops = Array.from(new Set(
-                    stopsOnDay
-                        .filter((stop) => (stop.persons || []).length > 0)
-                        .flatMap((stop) => (stop.persons || []).map((person) => getOccupantName(person.id, person.type)))
-                ));
+                const stopFallback = getLegStopFallbackDate(leg, fallbackDate);
+                let stopsForDisplay = (leg.intermediateStops || []).filter((s) =>
+                    dateMatchesDay(s.date || stopFallback)
+                );
+                if (stopsForDisplay.length === 0 && (leg.intermediateStops || []).length > 0) {
+                    stopsForDisplay = leg.intermediateStops || [];
+                }
 
                 const routeSummary: VehicleCellSummary = {
                     driverName,
+                    departureSummary: formatLegDepartureForSummary(leg),
+                    arrivalSummary: formatLegArrivalForSummary(leg),
+                    intermediateStopLines: formatIntermediateStopsToLines(leg, stopsForDisplay, getOccupantName),
                     occupants: occupantsStr,
-                    passengersAtStops,
+                    passengersAtStops: [],
                     passengersActionLabel: isRetourLeg(leg) ? 'Dépose' : 'Qui monte',
                     hasData: true,
                 };
@@ -952,6 +1099,24 @@ const exportPlanningToPdf = (
 
                 let currentY = y + 3;
 
+                const drawLabeledLine = (label: string, value: string) => {
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(label, x, currentY);
+                    const labelWidth = doc.getTextWidth(label);
+                    const valueLines = doc.splitTextToSize(sanitizeTextForPdf(value), colW - 3 - labelWidth);
+                    valueLines.forEach((line: string, index: number) => {
+                        doc.text(line, x + (index === 0 ? labelWidth : 0), currentY);
+                        currentY += lineH;
+                    });
+                };
+
+                if (summary.departureSummary) {
+                    drawLabeledLine('Départ: ', summary.departureSummary);
+                }
+                if (summary.arrivalSummary) {
+                    drawLabeledLine('Arrivée: ', summary.arrivalSummary);
+                }
+
                 // Conducteur : nom en gras pour une lecture immédiate
                 doc.setFont('helvetica', 'normal');
                 doc.text('Conducteur: ', x, currentY);
@@ -967,7 +1132,19 @@ const exportPlanningToPdf = (
                     currentY += lineH;
                 });
 
-                if (summary.passengersAtStops.length > 0) {
+                if (summary.intermediateStopLines.length > 0) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Étapes:', x, currentY);
+                    doc.setFont('helvetica', 'normal');
+                    currentY += lineH;
+                    summary.intermediateStopLines.forEach((stopLine) => {
+                        const stopLines = doc.splitTextToSize(sanitizeTextForPdf(stopLine), colW - 5);
+                        stopLines.forEach((line: string) => {
+                            doc.text(line, x + 2, currentY);
+                            currentY += lineH;
+                        });
+                    });
+                } else if (summary.passengersAtStops.length > 0) {
                     const passengerText = sanitizeTextForPdf(summary.passengersAtStops.join(', '));
                     const passengerLines = doc.splitTextToSize(`${summary.passengersActionLabel}: ${passengerText}`, colW - 3);
                     passengerLines.forEach((line: string) => {
@@ -978,11 +1155,27 @@ const exportPlanningToPdf = (
             };
 
             rows.forEach((row) => {
+                const countLabeledLines = (label: string, value: string): number => {
+                    const labelWidth = doc.getTextWidth(label);
+                    return doc.splitTextToSize(sanitizeTextForPdf(value), colW - 3 - labelWidth).length;
+                };
+
                 const getSummaryLinesCount = (summary: VehicleCellSummary): number => {
                     if (!summary.hasData) return 1;
                     let count = 2; // Conducteur + au moins une ligne À bord
+                    if (summary.departureSummary) {
+                        count += countLabeledLines('Départ: ', summary.departureSummary);
+                    }
+                    if (summary.arrivalSummary) {
+                        count += countLabeledLines('Arrivée: ', summary.arrivalSummary);
+                    }
                     count += Math.max(1, doc.splitTextToSize(`À bord: ${sanitizeTextForPdf(summary.occupants)}`, colW - 3).length) - 1;
-                    if (summary.passengersAtStops.length > 0) {
+                    if (summary.intermediateStopLines.length > 0) {
+                        count += 1; // libellé "Étapes:"
+                        summary.intermediateStopLines.forEach((stopLine) => {
+                            count += doc.splitTextToSize(sanitizeTextForPdf(stopLine), colW - 5).length;
+                        });
+                    } else if (summary.passengersAtStops.length > 0) {
                         count += doc.splitTextToSize(
                             `${summary.passengersActionLabel}: ${sanitizeTextForPdf(summary.passengersAtStops.join(', '))}`,
                             colW - 3
@@ -1015,8 +1208,12 @@ const exportPlanningToPdf = (
         }
     }
 
+    const dayToIsoForExport = getDayToIsoDateMap(event);
     const accommodations = appState.eventAccommodations.filter(a => a.eventId === event.id);
-    if (accommodations.length > 0) {
+    if (
+        accommodations.length > 0
+        && shouldShowAccommodationInPlanningPdf(event, selectedDay, dayToIsoForExport)
+    ) {
         const accHeaderH = 7;
         let y = gridBottomY + 4;
         doc.setFillColor(...colorCardHeader);
@@ -1098,15 +1295,12 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
   };
 
   const getVehicleInfo = (vehicleId: string | undefined, leg?: EventTransportLeg): string => {
+    const isPersonalVehicle =
+      vehicleId === 'perso'
+      || leg?.mode === TransportMode.VOITURE_PERSO
+      || leg?.mode === 'Voiture Personnelle';
+    if (isPersonalVehicle) return 'Véhicule personnel';
     if (!vehicleId) return 'Véhicule personnel';
-    if (vehicleId === 'perso') {
-      // Pour les véhicules personnels, afficher le nom de la personne
-      if (leg && leg.occupants && leg.occupants.length > 0) {
-        const occupantName = getOccupantName(leg.occupants[0].id, leg.occupants[0].type);
-        return occupantName;
-      }
-      return 'Véhicule personnel';
-    }
     const vehicle = appState.vehicles.find(v => v.id === vehicleId);
     return vehicle ? vehicle.name : 'Véhicule inconnu';
   };
@@ -1492,31 +1686,36 @@ const EventOperationalLogisticsTab: React.FC<EventOperationalLogisticsTabProps> 
 
     const appendTransferTimings = (info: RaceInformation) => {
       info.transfers?.forEach((transfer, index) => {
-        const targetDay = getTargetMealDay(transfer.fromDate) || getTargetMealDay(transfer.toDate);
-        if (!targetDay) return;
         const locNote = [transfer.departLocation, transfer.arriveeLocation].filter(Boolean).join(' → ');
         const locSuffix = locNote ? ` (${locNote})` : '';
 
+        // Départ après la course : jour de fin d'étape (pas mélangé avec le déroulé « pendant »)
         if (transfer.departTime) {
-          timings.push({
-            id: `auto-transfer-depart-${transfer.id}`,
-            time: transfer.departTime,
-            description: `🚌 Départ transfert après étape ${index + 1}${locSuffix}`,
-            isAutoGenerated: true,
-            targetMealDay: targetDay,
-            category: OperationalTimingCategory.TRANSPORT,
-          });
+          const departDay = getTargetMealDay(transfer.fromDate);
+          if (departDay) {
+            timings.push({
+              id: `auto-transfer-depart-${transfer.id}`,
+              time: transfer.departTime,
+              description: `🚌 Après étape ${index + 1} — départ transfert${locSuffix}`,
+              isAutoGenerated: true,
+              targetMealDay: departDay,
+              category: OperationalTimingCategory.TRANSPORT,
+            });
+          }
         }
+        // Arrivée vers l'étape suivante (souvent le lendemain)
         if (transfer.arriveePrevueTime) {
-          const arrivalDay = getTargetMealDay(transfer.toDate) || targetDay;
-          timings.push({
-            id: `auto-transfer-arrivee-${transfer.id}`,
-            time: transfer.arriveePrevueTime,
-            description: `🏁 Arrivée transfert (étape ${index + 2})${locSuffix}`,
-            isAutoGenerated: true,
-            targetMealDay: arrivalDay,
-            category: OperationalTimingCategory.TRANSPORT,
-          });
+          const arrivalDay = getTargetMealDay(transfer.toDate) || getTargetMealDay(transfer.fromDate);
+          if (arrivalDay) {
+            timings.push({
+              id: `auto-transfer-arrivee-${transfer.id}`,
+              time: transfer.arriveePrevueTime,
+              description: `🏁 Arrivée vers étape ${index + 2}${locSuffix}`,
+              isAutoGenerated: true,
+              targetMealDay: arrivalDay,
+              category: OperationalTimingCategory.TRANSPORT,
+            });
+          }
         }
       });
     };

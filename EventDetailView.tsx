@@ -97,23 +97,51 @@ function EventDetailView({
   useEffect(() => {
     const foundEvent = appState.raceEvents.find(e => e.id === eventId);
     if (foundEvent) {
-      setCurrentEvent(foundEvent);
+      setCurrentEvent((prev) => {
+        if (prev.id !== eventId) return foundEvent;
+        const prevDays = prev.raceInfo?.stageDays ?? [];
+        const foundDays = foundEvent.raceInfo?.stageDays ?? [];
+        if (prevDays.length === 0) return foundEvent;
+        const mergedStageDays = foundDays.map((foundDay) => {
+          const prevDay =
+            prevDays.find((d) => d.id === foundDay.id)
+            ?? prevDays.find((d) => d.date === foundDay.date);
+          if (!prevDay) return foundDay;
+          const prevRavitoLen = prevDay.ravitoVehicles?.length ?? 0;
+          const foundRavitoLen = foundDay.ravitoVehicles?.length ?? 0;
+          if (prevRavitoLen > foundRavitoLen) {
+            return {
+              ...foundDay,
+              ravitoVehicles: prevDay.ravitoVehicles,
+              additionalStaffIds:
+                prevDay.additionalStaffIds ?? foundDay.additionalStaffIds,
+            };
+          }
+          return foundDay;
+        });
+        return {
+          ...foundEvent,
+          raceInfo: { ...foundEvent.raceInfo, stageDays: mergedStageDays },
+        };
+      });
     } else {
-      // If the event is not found (e.g., deleted), navigate back to the events list.
       navigateTo('events');
     }
   }, [eventId, appState.raceEvents, navigateTo]);
 
 
-  const updateEventDetails = (updatedEventData: Partial<RaceEvent>) => {
+  const updateEventDetails = (updatedEventData: Partial<RaceEvent>): Promise<void> => {
     const mergedEvent = { ...currentEvent, ...updatedEventData };
     setRaceEvents(prevEvents => prevEvents.map(e => e.id === eventId ? mergedEvent : e));
     setCurrentEvent(mergedEvent);
     if (onSaveRaceEvent) {
-      onSaveRaceEvent(mergedEvent).catch(() => {
-        // Optionnel : afficher une erreur à l'utilisateur si la persistance échoue
+      return onSaveRaceEvent(mergedEvent).catch((err) => {
+        console.error(err);
+        alert('Erreur lors de la sauvegarde de l\'événement.');
+        throw err;
       });
     }
+    return Promise.resolve();
   };
   
   const updateRadioEquipment = (equipmentOrUpdater: EventRadioEquipment | ((prev: EventRadioEquipment | undefined) => EventRadioEquipment)) => {

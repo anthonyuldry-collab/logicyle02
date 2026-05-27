@@ -508,8 +508,8 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
         Course à étapes : {stageDays.length} jour{stageDays.length > 1 ? 's' : ''} ({formatEventDateRange(formData)}).
         {mode === 'edit'
-          ? ' Renseignez la logistique course de chaque étape. Les transferts se gèrent dans Transport → chaque étape → Retours.'
-          : ' Consultez chaque étape ci-dessous. Les transferts sont dans Transport → Retours de chaque étape.'}
+          ? ' Renseignez la logistique course de chaque étape. Ravitos et transports jour J : Transport → étape → En course. Transferts : Transport → étape → Transferts & retours.'
+          : ' Consultez chaque étape ci-dessous. Ravitos et transferts : onglet Transport de chaque étape.'}
       </p>
       <StageRaceSubTabs
         stageDays={stageDays}

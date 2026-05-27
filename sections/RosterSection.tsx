@@ -4582,14 +4582,7 @@ Les compteurs de jours de course ont été remis à 0.`);
         onConfirm={async () => {
           if (riderToDelete) {
             try {
-              // Supprimer de Firebase
-              if (appState.activeTeamId) {
-                await deleteData(appState.activeTeamId, "riders", riderToDelete.id);
-              }
-              
-              // Supprimer de l'état local
-              onDeleteRider(riderToDelete);
-              
+              await onDeleteRider(riderToDelete);
               console.log('✅ Coureur supprimé avec succès:', riderToDelete.firstName, riderToDelete.lastName);
             } catch (error) {
               console.error('❌ Erreur lors de la suppression:', error);
@@ -4600,7 +4593,7 @@ Les compteurs de jours de course ont été remis à 0.`);
           setRiderToDelete(null);
         }}
         title="Confirmer la suppression"
-        message="Etes-vous sur de vouloir supprimer ce coureur ? Cette action est irreversible et supprimera toutes les donnees associees."
+        message="Etes-vous sur de vouloir retirer cette coureuse de l'effectif ? Elle sera conservee dans les Archives des Performances (notes, profils de fatigue). Les autres donnees liees a l'effectif actif seront supprimees."
       />
     </SectionWrapper>
   );

@@ -335,7 +335,8 @@ export const TEAM_STATE_COLLECTIONS = [
     'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments', 
     'eventBudgetItems', 'eventChecklistItems', 'performanceEntries', 'riderEventSelections', 
     'eventStaffAvailabilities', 'incomeItems', 'scoutingProfiles', 'teamProducts', 
-    'stockItems', 'equipmentStockItems', 'peerRatings', 'teamEventReviews', 'debriefings', 'missions', 'meetingReports'
+    'stockItems', 'equipmentStockItems', 'peerRatings', 'teamEventReviews', 'debriefings', 'missions', 'meetingReports',
+    'performanceArchives'
 ];
 
 export const emptyRaceInformation: RaceInformation = {
@@ -423,6 +424,7 @@ export const getInitialTeamState = (): TeamState => ({
     debriefings: [],
     dietaryPlans: [],
     missions: [],
+    performanceArchives: [],
 });
 
 export const initialEquipmentFormState: Omit<EquipmentItem, 'id'> = {

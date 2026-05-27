@@ -61,6 +61,8 @@ import {
 import { auth, db } from "./firebaseConfig";
 import { doc, setDoc, updateDoc, deleteDoc, addDoc, collection } from "firebase/firestore";
 import * as firebaseService from "./services/firebaseService";
+import { addRiderToSeasonArchive } from "./utils/performanceArchiveUtils";
+import { getCurrentSeasonYear } from "./utils/seasonUtils";
 
 
 import Sidebar from "./components/Sidebar";
@@ -714,6 +716,22 @@ const App: React.FC = () => {
     }
     
     try {
+      const season = getCurrentSeasonYear();
+      const updatedArchives = addRiderToSeasonArchive(
+        appState.performanceArchives || [],
+        item,
+        appState.performanceEntries || [],
+        season
+      );
+      const archiveToSave = updatedArchives.find(a => a.season === season);
+      if (archiveToSave) {
+        await firebaseService.saveData(
+          appState.activeTeamId,
+          'performanceArchives',
+          archiveToSave
+        );
+      }
+
       await firebaseService.deleteData(
         appState.activeTeamId,
         "riders",
@@ -726,13 +744,14 @@ const App: React.FC = () => {
         return {
           ...prev,
           riders: newRiders,
+          performanceArchives: updatedArchives,
         };
       });
     } catch (error) {
       console.error('Erreur lors de la suppression:', error);
       throw error;
     }
-  }, [appState.activeTeamId]);
+  }, [appState.activeTeamId, appState.performanceArchives, appState.performanceEntries]);
 
   const onSaveStaff = useCallback(async (item: StaffMember) => {
     if (!appState.activeTeamId) {

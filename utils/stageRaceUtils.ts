@@ -4,8 +4,12 @@ import {
   RaceEvent,
   StageDayAccommodation,
   StageDayLogistics,
+  StageRaceVehicleKind,
+  StageRavitoPoint,
+  StageRavitoVehicle,
   StageRiderStartTime,
   StageTransferLogistics,
+  StageTransferVehicle,
 } from '../types';
 import { isStageRace, parseEventDate } from './dateUtils';
 
@@ -102,6 +106,8 @@ export const createEmptyStageDay = (date: string, stageNumber: number): StageDay
   isTimeTrial: false,
   premierDepartTime: '',
   riderStartTimes: [],
+  ravitoVehicles: [],
+  additionalStaffIds: [],
 });
 
 /** Synchronise la liste des départs individuels avec les coureuses sélectionnées. */
@@ -124,6 +130,65 @@ export const createEmptyTransfer = (fromDate: string, toDate: string): StageTran
   arriveePrevueTime: '',
   distanceKm: undefined,
   duration: '',
+  notes: '',
+  vehicles: [],
+});
+
+export const createEmptyRavitoPoint = (): StageRavitoPoint => ({
+  id: `ravito-pt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  label: '',
+  location: '',
+  arrivalTime: '',
+  departureTime: '',
+  notes: '',
+});
+
+export const createEmptyRavitoVehicle = (
+  kind: StageRaceVehicleKind = StageRaceVehicleKind.RAVITO,
+): StageRavitoVehicle => ({
+  id: `ravito-v-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  kind,
+  roleLabel:
+    kind === StageRaceVehicleKind.RACE_FOLLOWER
+      ? 'Véhicule suiveur course'
+      : kind === StageRaceVehicleKind.STAFF_SUPPORT
+        ? 'Véhicule staff'
+        : 'Véhicule ravito',
+  vehicleId: undefined,
+  driverId: undefined,
+  staffOccupantIds: [],
+  directeurSportifStaffId: undefined,
+  mecanoStaffId: undefined,
+  points: kind === StageRaceVehicleKind.RAVITO ? [createEmptyRavitoPoint()] : [],
+  notes: '',
+});
+
+/** Préremplit le suiveur course avec le DS et le mécano de l'événement. */
+export const createRaceFollowerVehicle = (event: RaceEvent): StageRavitoVehicle => {
+  const dsId = event.directeurSportifId?.[0];
+  const mecanoId = event.mecanoId?.[0];
+  const staffOccupantIds = [...new Set([dsId, mecanoId].filter(Boolean) as string[])];
+  return {
+    ...createEmptyRavitoVehicle(StageRaceVehicleKind.RACE_FOLLOWER),
+    directeurSportifStaffId: dsId,
+    mecanoStaffId,
+    staffOccupantIds,
+  };
+};
+
+export const syncRaceFollowerStaffOccupants = (vehicle: StageRavitoVehicle): StageRavitoVehicle => {
+  if (vehicle.kind !== StageRaceVehicleKind.RACE_FOLLOWER) return vehicle;
+  const ids = new Set(vehicle.staffOccupantIds ?? []);
+  if (vehicle.directeurSportifStaffId) ids.add(vehicle.directeurSportifStaffId);
+  if (vehicle.mecanoStaffId) ids.add(vehicle.mecanoStaffId);
+  return { ...vehicle, staffOccupantIds: [...ids] };
+};
+
+export const createEmptyTransferVehicle = (): StageTransferVehicle => ({
+  id: `transfer-v-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  roleLabel: '',
+  vehicleId: undefined,
+  driverId: undefined,
   notes: '',
 });
 

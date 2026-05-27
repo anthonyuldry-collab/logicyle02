@@ -1,16 +1,52 @@
-import React, { useState, useMemo } from 'react';
-import { Rider, ScoutingProfile, Sex } from '../types';
-import { getAgeCategory } from '../utils/ageUtils';
-import { computeGroupAverages, getCellInsight, type PowerDurationKey } from '../utils/performanceInsights';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Rider, ScoutingProfile, Sex } from '../../types';
+import { getAgeCategory } from '../../utils/ageUtils';
+import {
+  computeGroupAverages,
+  getCellInsight,
+  type PowerDurationKey,
+  computePowerStatsReport,
+  getPowerRowsWithData,
+} from '../../utils/performanceInsights';
+import { getCurrentSeasonYear } from '../../utils/seasonUtils';
+import { ALL_TIME_STATS_SEASON } from '../../utils/performanceArchiveUtils';
+import PowerStatsPanel from '../PowerStatsPanel';
 
 interface PowerAnalysisTableProps {
   riders: Rider[];
   scoutingProfiles?: ScoutingProfile[];
+  /** Titre du bloc (ex. mode archives) */
+  title?: string;
+  /** Afficher l'option scouts par défaut */
+  defaultIncludeScouts?: boolean;
+  /** Masquer complètement l'option scouts */
+  hideScoutsOption?: boolean;
+  /** IDs des coureuses retirées (badge dans le tableau archives) */
+  removedRiderIds?: Set<string>;
+  /** Panneau méthodo + min/moy/max (comme Pertes fatigue) */
+  showStatsPanel?: boolean;
+  /** Année affichée dans le panneau (défaut : saison courante) */
+  season?: number;
+  /** Référence gagnantes (victoires sur la saison) */
+  winnerRiderIds?: Set<string>;
+  /** Inclure tous les scouts sans case à cocher */
+  alwaysIncludeScouts?: boolean;
+  /** Libellé scope (ex. « All time ») */
+  scopeLabel?: string;
 }
 
 const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({ 
   riders, 
-  scoutingProfiles = [] 
+  scoutingProfiles = [],
+  title = 'Analyse des Puissances',
+  defaultIncludeScouts = false,
+  hideScoutsOption = false,
+  removedRiderIds,
+  showStatsPanel = true,
+  season,
+  winnerRiderIds = new Set(),
+  alwaysIncludeScouts = false,
+  scopeLabel,
 }) => {
   const [displayMode, setDisplayMode] = useState<'watts' | 'wattsPerKg'>('wattsPerKg');
   const [sortBy, setSortBy] = useState<string>('cp');
@@ -18,8 +54,14 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
   const [genderFilter, setGenderFilter] = useState<'all' | Sex>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [levelFilter, setLevelFilter] = useState<'all' | string>('all');
-  const [includeScouts, setIncludeScouts] = useState<boolean>(false);
+  const [includeScouts, setIncludeScouts] = useState<boolean>(
+    alwaysIncludeScouts || defaultIncludeScouts
+  );
   const [fatigueProfile, setFatigueProfile] = useState<'fresh' | '15kj' | '30kj' | '45kj'>('fresh');
+
+  useEffect(() => {
+    if (alwaysIncludeScouts) setIncludeScouts(true);
+  }, [alwaysIncludeScouts]);
 
   // Configuration des durées de puissance
   const powerDurations = [
@@ -57,8 +99,24 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
           powerProfile = item.powerProfileFresh;
       }
     } else {
-      // C'est un ScoutingProfile
-      powerProfile = item.powerProfileFresh;
+      // ScoutingProfile : profils fatigue si renseignés
+      const scout = item as ScoutingProfile;
+      switch (fatigueProfile) {
+        case 'fresh':
+          powerProfile = scout.powerProfileFresh;
+          break;
+        case '15kj':
+          powerProfile = scout.powerProfile15KJ ?? scout.powerProfileFresh;
+          break;
+        case '30kj':
+          powerProfile = scout.powerProfile30KJ ?? scout.powerProfileFresh;
+          break;
+        case '45kj':
+          powerProfile = scout.powerProfile45KJ ?? scout.powerProfileFresh;
+          break;
+        default:
+          powerProfile = scout.powerProfileFresh;
+      }
     }
 
     if (!powerProfile) return 0;
@@ -81,6 +139,48 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
   const groupAverages = useMemo(
     () => computeGroupAverages(riders, displayMode, fatigueProfile),
     [riders, displayMode, fatigueProfile]
+  );
+
+  const effectiveSeason = season ?? getCurrentSeasonYear();
+  const isAllTime = effectiveSeason === ALL_TIME_STATS_SEASON;
+
+  const subjectsForReport = useMemo(() => {
+    const base = [...riders, ...(includeScouts ? scoutingProfiles : [])];
+    return base.filter(item => {
+      const genderMatch = genderFilter === 'all' || item.sex === genderFilter;
+      const levelMatch =
+        levelFilter === 'all' ||
+        (!!item.qualitativeProfile && item.qualitativeProfile === levelFilter);
+      return genderMatch && levelMatch;
+    });
+  }, [riders, scoutingProfiles, includeScouts, genderFilter, levelFilter]);
+
+  const powerStatsReport = useMemo(() => {
+    if (!showStatsPanel) return null;
+    return computePowerStatsReport(subjectsForReport, effectiveSeason, {
+      mode: displayMode,
+      fatigue: fatigueProfile,
+      winnerRiderIds,
+      categoryFilter,
+    });
+  }, [
+    showStatsPanel,
+    subjectsForReport,
+    effectiveSeason,
+    displayMode,
+    fatigueProfile,
+    winnerRiderIds,
+    categoryFilter,
+  ]);
+
+  const powerStatsRows = useMemo(
+    () => (powerStatsReport ? getPowerRowsWithData(powerStatsReport.globalRows, 1) : []),
+    [powerStatsReport]
+  );
+
+  const hasWinnerPowerMeasurements = useMemo(
+    () => powerStatsRows.some(r => r.winnerCount > 0),
+    [powerStatsRows]
   );
 
   // Filtrage des riders et scouts
@@ -144,7 +244,7 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
 
   // Fonction pour obtenir le type (Rider ou Scout)
   const getItemType = (item: Rider | ScoutingProfile): string => {
-    return 'powerProfileFresh' in item ? 'Coureur' : 'Scout';
+    return 'status' in item && 'potentialRating' in item ? 'Scout' : 'Coureur';
   };
 
   // Fonction pour obtenir la catégorie d'âge
@@ -157,7 +257,7 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
     <div className="bg-white rounded-lg shadow-lg overflow-hidden">
       {/* En-tête avec contrôles */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white">
-        <h2 className="text-xl font-bold mb-4">Analyse des Puissances</h2>
+        <h2 className="text-xl font-bold mb-4">{title}</h2>
         
         {/* Contrôles principaux */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
@@ -200,22 +300,33 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
           </div>
 
           {/* Inclure les scouts */}
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="includeScouts"
-              checked={includeScouts}
-              onChange={(e) => setIncludeScouts(e.target.checked)}
-              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="includeScouts" className="text-sm font-medium">
-              Inclure scouts
-            </label>
-          </div>
+          {alwaysIncludeScouts ? (
+            <span className="text-sm text-green-100 font-medium">
+              Scouts inclus automatiquement
+            </span>
+          ) : (
+            !hideScoutsOption && (
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="includeScouts"
+                  checked={includeScouts}
+                  onChange={e => setIncludeScouts(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="includeScouts" className="text-sm font-medium">
+                  Inclure scouts
+                </label>
+              </div>
+            )
+          )}
 
           {/* Statistiques */}
           <div className="text-sm">
-            <span className="font-medium">{sortedData.length}</span> coureurs affichés
+            <span className="font-medium">{sortedData.length}</span>{' '}
+            {includeScouts && sortedData.some(i => 'status' in i && 'potentialRating' in i)
+              ? 'profils affichés'
+              : 'coureurs affichés'}
           </div>
         </div>
 
@@ -270,28 +381,49 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
         </div>
       </div>
 
+      {scopeLabel && (
+        <div className="px-4 py-2 bg-slate-800 text-white text-xs font-medium flex flex-wrap gap-2 items-center">
+          <span>Portée : {scopeLabel}</span>
+          {alwaysIncludeScouts && (
+            <span className="bg-green-600/80 px-2 py-0.5 rounded">+ tous les scouts</span>
+          )}
+        </div>
+      )}
+
+      {showStatsPanel && powerStatsReport && subjectsForReport.length > 0 && (
+        <div className="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-3 py-3 sm:px-4">
+          <PowerStatsPanel
+            isAllTime={isAllTime}
+            report={powerStatsReport}
+            categoryFilter={categoryFilter}
+            statsRows={powerStatsRows}
+            hasWinnerMeasurements={hasWinnerPowerMeasurements}
+          />
+        </div>
+      )}
+
       {/* Tableau des performances */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[min(70vh,52rem)] overflow-y-auto overscroll-contain">
         <table className="min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="sticky top-0 z-30 bg-gradient-to-b from-slate-100 to-slate-50 shadow-sm border-b border-slate-200">
             <tr>
-              <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider z-10">
+              <th className="sticky left-0 z-40 bg-gradient-to-b from-slate-100 to-slate-50 px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-r border-slate-200/80">
                 Coureur
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 Type
               </th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 Effectif
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 Catégorie
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 Poids
               </th>
               {powerDurations.map(duration => (
-                <th key={duration.key} className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th key={duration.key} className="px-3 py-3.5 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap">
                   <button
                     onClick={() => handleSort(duration.key)}
                     className={`group flex flex-col items-center space-y-1 hover:bg-gray-100 rounded p-1 transition-colors ${
@@ -312,17 +444,21 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="divide-y divide-slate-100">
             {sortedData.map((item, index) => {
-              const isScout = !('powerProfileFresh' in item);
+              const isScout = 'status' in item && 'potentialRating' in item;
+              const rowBg = index % 2 === 0 ? 'bg-white' : 'bg-slate-50/80';
               const powerValues = powerDurations.map(duration => 
                 getPowerValue(item, duration.key, displayMode)
               );
               const maxValue = Math.max(...powerValues);
               
               return (
-                <tr key={isScout ? `scout-${index}` : item.id} className="hover:bg-gray-50">
-                  <td className="sticky left-0 bg-white px-4 py-3 whitespace-nowrap z-10">
+                <tr
+                  key={isScout ? `scout-${index}` : item.id}
+                  className={`group ${rowBg} hover:bg-blue-50/45 transition-colors`}
+                >
+                  <td className={`sticky left-0 z-10 ${rowBg} group-hover:bg-blue-50/45 px-4 py-3.5 whitespace-nowrap border-r border-slate-100 transition-colors`}>
                     <div className="flex items-center">
                       <div className="flex-shrink-0 h-8 w-8">
                         {!isScout && (item as Rider).photoUrl ? (
@@ -343,20 +479,27 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
                         </div>
                         <div className="text-sm text-gray-500">
                           {getItemAgeCategory(item)}
+                          {!isScout && removedRiderIds?.has((item as Rider).id) && (
+                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                              Retirée
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                  <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       isScout 
                         ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
+                        : removedRiderIds?.has((item as Rider).id)
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {getItemType(item)}
+                      {removedRiderIds?.has((item as Rider).id) ? 'Archivée' : getItemType(item)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                  <td className="px-4 py-3.5 whitespace-nowrap text-sm text-center">
                     {!isScout ? (
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         (item as Rider).rosterRole === 'reserve' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800'
@@ -367,10 +510,10 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
                       <span className="text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
                     {getItemAgeCategory(item)}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
                     {item.weightKg || 'N/A'} kg
                   </td>
                   {powerDurations.map(duration => {
@@ -392,7 +535,7 @@ const PowerAnalysisTable: React.FC<PowerAnalysisTableProps> = ({
                     );
                     
                     return (
-                      <td key={duration.key} className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                      <td key={duration.key} className="px-3 py-3.5 whitespace-nowrap text-sm text-center">
                         <div className="flex flex-col items-center gap-0.5">
                           <span className={`font-medium ${
                             isSorted ? 'text-blue-600 bg-blue-50 px-2 py-1 rounded' : 

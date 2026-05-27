@@ -155,7 +155,7 @@ function hasMeaningfulFatigueProfile(rider: Rider, fatigue: '15kj' | '30kj' | '4
   return false;
 }
 
-/** Pour les moyennes : ne garder que les riders qui ont au moins une valeur pour ce profil */
+/** Pour les moyennes : ne garder que les sujets qui ont au moins une valeur pour ce profil */
 function hasMeaningfulProfile(item: ItemWithPower, fatigue: 'fresh' | '15kj' | '30kj' | '45kj'): boolean {
   const profile = getPowerProfile(item, fatigue);
   if (!profile || typeof profile !== 'object') return false;
@@ -166,6 +166,179 @@ function hasMeaningfulProfile(item: ItemWithPower, fatigue: 'fresh' | '15kj' | '
     if (typeof v === 'number' && v > 0) return true;
   }
   return false;
+}
+
+/** Exposé pour les panneaux de synthèse (puissance / archives) */
+export function hasMeaningfulPowerProfile(
+  item: ItemWithPower,
+  fatigue: 'fresh' | '15kj' | '30kj' | '45kj' = 'fresh'
+): boolean {
+  return hasMeaningfulProfile(item, fatigue);
+}
+
+function avgNums(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function minNum(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.min(...values);
+}
+
+function maxNum(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.max(...values);
+}
+
+/** Seuil « haut du plateau » : minimum des valeurs du quartile supérieur (puissance : plus haut = mieux) */
+function eliteThresholdHigh(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => b - a);
+  const top = sorted.slice(0, Math.max(1, Math.ceil(sorted.length * 0.25)));
+  return minNum(top);
+}
+
+const POWER_STAT_LABELS: Record<PowerDurationKey, string> = {
+  '1s': '1 s',
+  '5s': '5 s',
+  '30s': '30 s',
+  '1min': '1 min',
+  '3min': '3 min',
+  '5min': '5 min',
+  '12min': '12 min',
+  '20min': '20 min',
+  cp: 'CP',
+};
+
+export interface PowerDurationBenchmarkRow {
+  durationKey: PowerDurationKey;
+  label: string;
+  sampleCount: number;
+  teamMin: number | null;
+  teamMax: number | null;
+  teamAverage: number | null;
+  winnerAverage: number | null;
+  winnerMin: number | null;
+  winnerMax: number | null;
+  winnerCount: number;
+  eliteThreshold: number | null;
+}
+
+export interface CategoryPowerStatsReport {
+  category: string;
+  profileCount: number;
+  rows: PowerDurationBenchmarkRow[];
+}
+
+export interface PowerStatsReport {
+  season: number;
+  mode: 'watts' | 'wattsPerKg';
+  fatigue: 'fresh' | '15kj' | '30kj' | '45kj';
+  globalRows: PowerDurationBenchmarkRow[];
+  byCategory: CategoryPowerStatsReport[];
+  profileCount: number;
+  winnerRiderCount: number;
+}
+
+const AGE_CATEGORIES_POWER = ['U15', 'U17', 'U19', 'U23', 'Senior'] as const;
+
+function collectPowerBenchmarkRows(
+  subjects: ItemWithPower[],
+  mode: 'watts' | 'wattsPerKg',
+  fatigue: 'fresh' | '15kj' | '30kj' | '45kj',
+  winnerRiderIds: Set<string>,
+  categoryFilter: string
+): PowerDurationBenchmarkRow[] {
+  const filtered = subjects.filter(s => {
+    if (!hasMeaningfulProfile(s, fatigue)) return false;
+    if (categoryFilter === 'all') return true;
+    return getAgeCategory(s.birthDate).category === categoryFilter;
+  });
+
+  const rows: PowerDurationBenchmarkRow[] = [];
+
+  for (const key of POWER_DURATION_KEYS) {
+    const teamVals: number[] = [];
+    const winnerVals: number[] = [];
+
+    for (const item of filtered) {
+      const v = getPowerValue(item, key, mode, fatigue);
+      if (v <= 0) continue;
+      teamVals.push(v);
+      if ('rosterRole' in item && winnerRiderIds.has((item as Rider).id)) {
+        winnerVals.push(v);
+      }
+    }
+
+    rows.push({
+      durationKey: key,
+      label: POWER_STAT_LABELS[key],
+      sampleCount: teamVals.length,
+      teamMin: minNum(teamVals),
+      teamMax: maxNum(teamVals),
+      teamAverage: avgNums(teamVals),
+      winnerAverage: avgNums(winnerVals),
+      winnerMin: minNum(winnerVals),
+      winnerMax: maxNum(winnerVals),
+      winnerCount: winnerVals.length,
+      eliteThreshold: eliteThresholdHigh(teamVals),
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Synthèse min / moy / max par durée (W ou W/kg), réf. gagnantes et seuil « top 25 % » puissance.
+ * `subjects` : en pratique coureuses (+ scouts si inclus dans la liste passée).
+ */
+export function computePowerStatsReport(
+  subjects: ItemWithPower[],
+  season: number,
+  options: {
+    mode: 'watts' | 'wattsPerKg';
+    fatigue: 'fresh' | '15kj' | '30kj' | '45kj';
+    winnerRiderIds: Set<string>;
+    categoryFilter?: string;
+  }
+): PowerStatsReport {
+  const { mode, fatigue, winnerRiderIds, categoryFilter = 'all' } = options;
+
+  const withProfile = subjects.filter(s => hasMeaningfulProfile(s, fatigue));
+
+  const byCategory: CategoryPowerStatsReport[] = AGE_CATEGORIES_POWER.map(category => {
+    const inCat = withProfile.filter(s => getAgeCategory(s.birthDate).category === category);
+    return {
+      category,
+      profileCount: inCat.length,
+      rows: collectPowerBenchmarkRows(subjects, mode, fatigue, winnerRiderIds, category),
+    };
+  }).filter(c => c.profileCount > 0);
+
+  return {
+    season,
+    mode,
+    fatigue,
+    globalRows: collectPowerBenchmarkRows(subjects, mode, fatigue, winnerRiderIds, categoryFilter),
+    byCategory,
+    profileCount: withProfile.length,
+    winnerRiderCount: winnerRiderIds.size,
+  };
+}
+
+export function formatPowerStatValue(value: number | null | undefined, mode: 'watts' | 'wattsPerKg'): string {
+  if (value === undefined || value === null) return '—';
+  if (mode === 'watts') return `${Math.round(value)}`;
+  return value.toFixed(1);
+}
+
+/** Lignes du tableau de synthèse avec au moins une mesure */
+export function getPowerRowsWithData(
+  rows: PowerDurationBenchmarkRow[],
+  minSamples = 1
+): PowerDurationBenchmarkRow[] {
+  return rows.filter(r => r.sampleCount >= minSamples);
 }
 
 /** Moyennes par groupe (équipe, catégorie, sexe) pour chaque durée */

@@ -1,6 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { AppState, Rider, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel, RiderQualitativeProfile } from '../types';
-import { generatePerformanceArchive } from '../utils/performanceArchiveUtils';
+import { AppState, Rider, ScoutingProfile, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel, RiderQualitativeProfile } from '../types';
+import {
+  getMergedPerformanceArchive,
+  getAllTimePowerAnalysisRiders,
+  getAllScoutingProfilesForAnalysis,
+  getAllTimeWinnerRiderIds,
+  getAllTimeArchivedRiderIds,
+  ALL_TIME_STATS_SEASON,
+} from '../utils/performanceArchiveUtils';
+import { getCurrentSeasonYear } from '../utils/seasonUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import UsersIcon from '../components/icons/UsersIcon';
 import TrophyIcon from '../components/icons/TrophyIcon';
@@ -8,7 +16,8 @@ import StarIcon from '../components/icons/StarIcon';
 import CakeIcon from '../components/icons/CakeIcon';
 import ChartBarIcon from '../components/icons/ChartBarIcon';
 import { getAgeCategory } from '../utils/ageUtils';
-import { PowerAnalysisTable } from '../components';
+import { DurabilityAnalysisTable, PowerAnalysisTable } from '../components';
+import { countSeasonWins } from '../utils/fatigueDurabilityUtils';
 import PerformanceProjectSynergyAnalyzer from '../components/PerformanceProjectSynergyAnalyzer';
 import WorkGroupManager from '../components/WorkGroupManager';
 import PerformanceOverviewEnhanced from '../components/PerformanceOverviewEnhanced';
@@ -24,14 +33,42 @@ interface PerformancePoleSectionProps {
 
 type PerformanceTab = 'overview' | 'powerAnalysis' | 'debriefings' | 'archives' | 'performanceProjects';
 type PerformanceViewMode = 'overview' | 'synergy' | 'workgroups' | 'details';
+type ArchiveDetailTab = 'quality' | 'powers' | 'durability';
 
 const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appState, effectivePermissions, currentUser }) => {
   const [activeTab, setActiveTab] = useState<PerformanceTab>('overview');
-  const [selectedYear, setSelectedYear] = useState<number | null>(2025); // Par défaut 2025
+  const [selectedYear, setSelectedYear] = useState<number | null>(getCurrentSeasonYear());
+  const [archiveDetailTab, setArchiveDetailTab] = useState<ArchiveDetailTab>('quality');
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [performanceViewMode, setPerformanceViewMode] = useState<PerformanceViewMode>('overview');
   const [categoryDetail, setCategoryDetail] = useState<{ type: 'age' | 'roster'; key: string; label: string; riders: Rider[] } | null>(null);
+
+  /** Puissances / fatigue archives : all time (effectif + archives + scouts auto) */
+  const allTimePowerRiders = useMemo(() => {
+    if (!appState) return [];
+    return getAllTimePowerAnalysisRiders(appState);
+  }, [appState]);
+
+  const allTimeScouts = useMemo(() => {
+    if (!appState) return [];
+    return getAllScoutingProfilesForAnalysis(appState);
+  }, [appState]);
+
+  const allTimeArchivedRiderIds = useMemo(() => {
+    if (!appState) return new Set<string>();
+    return getAllTimeArchivedRiderIds(appState);
+  }, [appState]);
+
+  const hasAllTimePowerData = useMemo(() => {
+    return allTimePowerRiders.length > 0 || allTimeScouts.length > 0;
+  }, [allTimePowerRiders, allTimeScouts]);
+
+  const allTimeWinnerRiderIds = useMemo(() => {
+    if (!appState) return new Set<string>();
+    return getAllTimeWinnerRiderIds(appState, allTimePowerRiders);
+  }, [appState, allTimePowerRiders]);
+
   // Protection contre appState null/undefined
   if (!appState) {
     return (
@@ -1094,27 +1131,19 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Archives des Performances</h3>
             <p className="text-gray-600 mb-6">
-              Consultez les notes de qualité d'effectifs et les moyennes du groupe pour la saison 2025. Les archives des années précédentes apparaîtront automatiquement à la fin de chaque saison.
+              Les <strong>notes de qualité</strong> restent liées à la saison sélectionnée. Les onglets{' '}
+              <strong>Puissances</strong> et <strong>Pertes fatigue</strong> utilisent une vue{' '}
+              <strong>all time</strong> : effectif actuel, toutes les coureuses archivées en base et{' '}
+              <strong>tous les scouts</strong> inclus automatiquement.
             </p>
             
 
             {/* Affichage des archives */}
             <div className="space-y-6">
               {(() => {
-                // Utiliser les archives existantes ou générer uniquement pour 2025
-                const existingArchives = appState.performanceArchives || [];
-                
-                // Générer uniquement l'archive pour 2025
-                const archives: PerformanceArchive[] = existingArchives.length > 0 
-                  ? existingArchives.filter(archive => archive.season === 2025)
-                  : (() => {
-                      const archive2025 = generatePerformanceArchive(appState, 2025);
-                      return archive2025.groupAverages.totalRiders > 0 || 
-                             archive2025.teamMetrics.totalEvents > 0 ||
-                             archive2025.riderQualityNotes.length > 0 ||
-                             archive2025.staffQualityNotes.length > 0
-                        ? [archive2025] : [];
-                    })();
+                const currentSeason = getCurrentSeasonYear();
+                const mergedArchive = getMergedPerformanceArchive(appState, currentSeason);
+                const archives: PerformanceArchive[] = mergedArchive ? [mergedArchive] : [];
 
                 const filteredArchives = selectedYear 
                   ? archives.filter(archive => archive.season === selectedYear)
@@ -1124,8 +1153,8 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                   return (
                     <div className="text-center py-8 text-gray-500">
                       <ChartBarIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">Aucune donnée disponible pour 2025</p>
-                      <p className="text-sm">Les archives apparaîtront ici une fois que vous aurez des coureurs et des événements enregistrés.</p>
+                      <p className="text-lg font-medium">Aucune donnée disponible pour {getCurrentSeasonYear()}</p>
+                      <p className="text-sm">Les archives apparaîtront ici une fois que vous aurez des coureurs et des événements enregistrés. Les coureuses retirées de l&apos;effectif restent visibles dans cet historique.</p>
                     </div>
                   );
                 }
@@ -1210,11 +1239,96 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                       </div>
                     </div>
 
-                    {/* Détails des notes de qualité pour l'année sélectionnée */}
-                    {selectedYear && (() => {
+                    {/* Détails : qualité = saison ; puissances / fatigue = all time */}
+                    {(selectedYear || hasAllTimePowerData) && (
+                      <div className="space-y-4">
+                        <nav className="flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={() => setArchiveDetailTab('quality')}
+                            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                              archiveDetailTab === 'quality'
+                                ? 'bg-green-600 text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            Notes de qualité
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setArchiveDetailTab('powers')}
+                            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                              archiveDetailTab === 'powers'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            Analyse des puissances
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setArchiveDetailTab('durability')}
+                            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                              archiveDetailTab === 'durability'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            Pertes fatigue
+                          </button>
+                        </nav>
+
+                        {archiveDetailTab === 'powers' && (
+                          hasAllTimePowerData ? (
+                            <PowerAnalysisTable
+                              riders={allTimePowerRiders}
+                              scoutingProfiles={allTimeScouts}
+                              title="Analyse des Puissances — All time"
+                              alwaysIncludeScouts
+                              removedRiderIds={allTimeArchivedRiderIds}
+                              season={ALL_TIME_STATS_SEASON}
+                              winnerRiderIds={allTimeWinnerRiderIds}
+                              scopeLabel="All time (toutes saisons, toute la base)"
+                            />
+                          ) : (
+                            <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+                              <p className="text-sm">
+                                Aucun profil de puissance en base. Ajoutez des PPR aux coureuses ou aux
+                                scouts du module Scouting.
+                              </p>
+                            </div>
+                          )
+                        )}
+
+                        {archiveDetailTab === 'durability' && (
+                          <DurabilityAnalysisTable
+                            riders={allTimePowerRiders}
+                            scoutingProfiles={allTimeScouts}
+                            title="Pertes sous fatigue — All time"
+                            subtitle="Effectif actuel, coureuses archivées et scouts — repères sur toute la base."
+                            season={ALL_TIME_STATS_SEASON}
+                            winnerRiderIds={allTimeWinnerRiderIds}
+                            removedRiderIds={allTimeArchivedRiderIds}
+                            showBenchmarkPanel
+                            alwaysIncludeScouts
+                            scopeLabel="All time (toutes saisons, toute la base)"
+                          />
+                        )}
+
+                        {archiveDetailTab === 'quality' && !selectedYear && (
+                          <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+                            <p className="text-sm">Sélectionnez une saison dans le tableau pour les notes de qualité.</p>
+                          </div>
+                        )}
+
+                        {archiveDetailTab === 'quality' && selectedYear && (() => {
                       const selectedArchive = archives.find(a => a.season === selectedYear);
                       if (!selectedArchive || selectedArchive.riderQualityNotes.length === 0) {
-                        return null;
+                        return (
+                          <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+                            <p className="text-sm">Aucune note de qualité pour cette saison.</p>
+                          </div>
+                        );
                       }
 
                       return (
@@ -1465,9 +1579,19 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                                     {(() => {
 
                                   // Fonction pour obtenir la valeur de tri
+                                  const getRiderArchiveInfo = (riderNote: RiderQualityArchive) => {
+                                    const live = riders.find(r => r.id === riderNote.riderId);
+                                    return {
+                                      firstName: riderNote.firstName || live?.firstName || '',
+                                      lastName: riderNote.lastName || live?.lastName || '',
+                                      birthDate: riderNote.birthDate || live?.birthDate,
+                                      sex: riderNote.sex ?? live?.sex,
+                                    };
+                                  };
+
                                   const getSortValue = (rider: RiderQualityArchive, field: string) => {
-                                    const riderInfo = riders.find(r => r.id === rider.riderId);
-                                    if (!riderInfo) return '';
+                                    const riderInfo = getRiderArchiveInfo(rider);
+                                    if (!riderInfo.firstName && !riderInfo.lastName && field !== 'age') return '';
                                     
                                     switch (field) {
                                       case 'firstName':
@@ -1512,14 +1636,14 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                                   });
 
                                   return sortedRiders.map((rider, index) => {
-                                    // Récupérer les informations du coureur
-                                    const riderInfo = riders.find(r => r.id === rider.riderId);
-                                    const riderName = riderInfo ? `${riderInfo.firstName} ${riderInfo.lastName}` : `Coureur #${index + 1}`;
-                                    const riderSex = riderInfo?.sex;
+                                    const archiveInfo = getRiderArchiveInfo(rider);
+                                    const riderName = archiveInfo.firstName || archiveInfo.lastName
+                                      ? `${archiveInfo.firstName} ${archiveInfo.lastName}`.trim()
+                                      : `Coureur #${index + 1}`;
+                                    const riderSex = archiveInfo.sex;
                                     
-                                    // Calculer l'âge du coureur figé à l'année de l'archive
-                                    const riderAge = riderInfo?.birthDate 
-                                      ? selectedYear - new Date(riderInfo.birthDate).getFullYear()
+                                    const riderAge = archiveInfo.birthDate 
+                                      ? selectedYear - new Date(archiveInfo.birthDate).getFullYear()
                                       : 0;
                                   
                                   // Fonction pour déterminer la couleur du score
@@ -1547,6 +1671,11 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                                             <div className="text-sm font-medium text-gray-900">{riderName}</div>
                                             <div className="text-sm text-gray-500">
                                               {riderSex === Sex.FEMALE ? 'Féminine' : 'Masculine'} • {riderAge} ans
+                                              {rider.isRemovedFromRoster && (
+                                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                                  Retirée
+                                                </span>
+                                              )}
                                             </div>
                                           </div>
                                         </div>
@@ -1611,6 +1740,8 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                         </div>
                       );
                     })()}
+                      </div>
+                    )}
 
 
                   </div>
@@ -1630,145 +1761,33 @@ type PowerAnalysisSubTab = 'powers' | 'durability';
 
 interface PowerAnalysisSubSectionProps {
   riders: Rider[];
-  scoutingProfiles?: any[];
+  scoutingProfiles?: ScoutingProfile[];
 }
 
-const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ riders, scoutingProfiles }) => {
+const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({
+  riders,
+  scoutingProfiles = [],
+}) => {
   const [subTab, setSubTab] = useState<PowerAnalysisSubTab>('powers');
   const [roleFilter, setRoleFilter] = useState<'both' | 'team1' | 'reserve'>('both');
 
-  // Riders filtrés par effectif (Équipe 1 / Réserve) pour les deux sous-onglets
+  const currentSeason = getCurrentSeasonYear();
+
   const filteredRidersByRole = useMemo(() => {
     if (roleFilter === 'both') return riders;
-    return riders.filter(r => (r.rosterRole ?? 'principal') === (roleFilter === 'team1' ? 'principal' : 'reserve'));
+    return riders.filter(
+      r => (r.rosterRole ?? 'principal') === (roleFilter === 'team1' ? 'principal' : 'reserve')
+    );
   }, [riders, roleFilter]);
 
-  // Configuration des durées de puissance
-  const powerDurations = [
-    { key: '1s', label: '1s', field: 'power1s' },
-    { key: '5s', label: '5s', field: 'power5s' },
-    { key: '30s', label: '30s', field: 'power30s' },
-    { key: '1min', label: '1min', field: 'power1min' },
-    { key: '3min', label: '3min', field: 'power3min' },
-    { key: '5min', label: '5min', field: 'power5min' },
-    { key: '12min', label: '12min', field: 'power12min' },
-    { key: '20min', label: '20min', field: 'power20min' },
-    { key: 'cp', label: 'CP', field: 'criticalPower' }
-  ];
-  
-  // États pour les filtres de la vue durabilité
-  const [durabilityGenderFilter, setDurabilityGenderFilter] = useState<'all' | Sex>('all');
-  const [durabilityCategoryFilter, setDurabilityCategoryFilter] = useState<'all' | string>('all');
-  const [durabilityDurationFilter, setDurabilityDurationFilter] = useState<string[]>(powerDurations.map(d => d.key)); // Toutes les durées par défaut
-  const [durabilityKjFilter, setDurabilityKjFilter] = useState<'all' | '15kj' | '30kj' | '45kj'>('all');
-  
-  // États pour le tri et la mise en évidence des priorités
-  const [durabilitySortColumn, setDurabilitySortColumn] = useState<string>('');
-  const [durabilitySortDirection, setDurabilitySortDirection] = useState<'asc' | 'desc'>('asc');
-  const [showPriorities, setShowPriorities] = useState<boolean>(true);
-
-  // Calcul des indicateurs de durabilité (Δ% pour 15/30/45 kJ/kg en W/kg)
-  const getDropPercentages = (rider: Rider | any): Record<string, { d15?: number; d30?: number; d45?: number }> => {
-    const results: Record<string, { d15?: number; d30?: number; d45?: number }> = {};
-    
-    // Uniquement pour les riders - ce filtre a déjà été fait en amont
-    if (!rider) return results;
-
-    const weight = rider.weightKg || 0;
-    if (!weight || weight <= 0) return results;
-
-    powerDurations.forEach(duration => {
-      const fresh = (rider.powerProfileFresh as any)?.[duration.field];
-      const k15 = (rider.powerProfile15KJ as any)?.[duration.field];
-      const k30 = (rider.powerProfile30KJ as any)?.[duration.field];
-      const k45 = (rider.powerProfile45KJ as any)?.[duration.field];
-
-      if (!fresh || fresh <= 0) {
-        results[duration.key] = {};
-        return;
-      }
-
-      const freshWkg = fresh / weight;
-      const calc = (v?: number) => (v && v > 0 ? ((v / weight - freshWkg) / freshWkg) * 100 : undefined);
-
-      results[duration.key] = {
-        d15: calc(k15),
-        d30: calc(k30),
-        d45: calc(k45)
-      };
+  const winnerRiderIds = useMemo(() => {
+    const ids = new Set<string>();
+    filteredRidersByRole.forEach(r => {
+      if (countSeasonWins(r, currentSeason) > 0) ids.add(r.id);
     });
+    return ids;
+  }, [filteredRidersByRole, currentSeason]);
 
-    return results;
-  };
-
-  const getColorClass = (drop?: number): string => {
-    if (drop === undefined || drop >= -2) return 'text-gray-800';
-    const absDrop = Math.abs(drop);
-    if (absDrop <= 10) return 'text-yellow-600 font-semibold';
-    if (absDrop <= 20) return 'text-orange-600 font-semibold';
-    return 'text-red-600 font-semibold';
-  };
-
-  // Fonction pour obtenir la valeur à trier
-  const getDurabilityValue = (item: Rider | any, durationKey: string, kjLevel: 'd15' | 'd30' | 'd45'): number => {
-    const durability = getDropPercentages(item);
-    const drops = durability[durationKey] || {};
-    const value = drops[kjLevel];
-    return value !== undefined ? value : -999; // -999 pour mettre les valeurs manquantes en fin
-  };
-
-  // Fonction de tri
-  const handleDurabilitySort = (durationKey: string) => {
-    if (durabilitySortColumn === durationKey) {
-      setDurabilitySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setDurabilitySortColumn(durationKey);
-      setDurabilitySortDirection('asc');
-    }
-  };
-
-  // Fonction pour déterminer si une cellule est prioritaire (régression forte)
-  const isPriorityCell = (drop?: number): boolean => {
-    if (drop === undefined) return false;
-    return drop < -20; // Régression de plus de 20%
-  };
-
-  // Filtrage et tri des données pour la vue durabilité (utilise déjà le filtre Effectif via filteredRidersByRole)
-  const filteredDurabilityData = useMemo(() => {
-    const allData = [...filteredRidersByRole];
-    let filtered = allData.filter(item => {
-      // Filtre par sexe
-      if (durabilityGenderFilter !== 'all' && item.sex !== durabilityGenderFilter) return false;
-      
-      // Filtre par catégorie d'âge
-      if (durabilityCategoryFilter !== 'all') {
-        const { category } = getAgeCategory(item.birthDate);
-        if (category !== durabilityCategoryFilter) return false;
-      }
-      
-      return true;
-    });
-
-    // Tri si une colonne est sélectionnée
-    if (durabilitySortColumn && durabilityKjFilter !== 'all') {
-      const kjLevel = durabilityKjFilter === '15kj' ? 'd15' : durabilityKjFilter === '30kj' ? 'd30' : 'd45';
-      filtered.sort((a, b) => {
-        const aValue = getDurabilityValue(a, durabilitySortColumn, kjLevel as 'd15' | 'd30' | 'd45');
-        const bValue = getDurabilityValue(b, durabilitySortColumn, kjLevel as 'd15' | 'd30' | 'd45');
-        
-        if (durabilitySortDirection === 'asc') {
-          return aValue - bValue;
-        } else {
-          return bValue - aValue;
-        }
-      });
-    }
-
-    return filtered;
-  }, [filteredRidersByRole, durabilityGenderFilter, durabilityCategoryFilter, durabilitySortColumn, durabilitySortDirection, durabilityKjFilter]);
-
-  // Durées affichées selon le filtre
-  const visibleDurations = powerDurations.filter(d => durabilityDurationFilter.includes(d.key));
 
   return (
     <div className="space-y-6">
@@ -1820,308 +1839,35 @@ const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({ rider
       </div>
 
       {/* Contenu du sous-onglet actif */}
+      <p className="text-sm text-gray-600 px-1">
+        Saison <strong>{currentSeason}</strong> · effectif actuel uniquement (historique complet dans{' '}
+        <strong>Archives</strong>).
+      </p>
+
       {subTab === 'powers' && (
-        <PowerAnalysisTable riders={filteredRidersByRole} scoutingProfiles={scoutingProfiles} />
+        <PowerAnalysisTable
+          riders={filteredRidersByRole}
+          scoutingProfiles={scoutingProfiles}
+          title={`Analyse des Puissances — Saison ${currentSeason}`}
+          season={currentSeason}
+          winnerRiderIds={winnerRiderIds}
+          defaultIncludeScouts={false}
+          scopeLabel={`Saison ${currentSeason} · effectif actuel`}
+        />
       )}
 
       {subTab === 'durability' && (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white">
-            <h2 className="text-xl font-bold mb-2">Indicateurs de Durabilité</h2>
-            <p className="text-sm text-blue-100">
-              Analyse des régressions (%) de puissance entre le profil frais et après 15, 30 et 45 kJ/kg en W/kg
-            </p>
-          </div>
-
-          {/* Barre de filtres */}
-          <div className="bg-gray-50 p-4 border-b border-gray-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Filtre par sexe */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Sexe:</label>
-                <select
-                  value={durabilityGenderFilter}
-                  onChange={(e) => setDurabilityGenderFilter(e.target.value as 'all' | Sex)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Tous</option>
-                  <option value={Sex.MALE}>Hommes</option>
-                  <option value={Sex.FEMALE}>Femmes</option>
-                </select>
-              </div>
-
-              {/* Filtre par catégorie */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Catégorie:</label>
-                <select
-                  value={durabilityCategoryFilter}
-                  onChange={(e) => setDurabilityCategoryFilter(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Toutes</option>
-                  <option value="U15">U15</option>
-                  <option value="U17">U17</option>
-                  <option value="U19">U19</option>
-                  <option value="U23">U23</option>
-                  <option value="Senior">Senior</option>
-                </select>
-              </div>
-
-              {/* Filtre par niveau kJ/kg */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Afficher:</label>
-                <select
-                  value={durabilityKjFilter}
-                  onChange={(e) => setDurabilityKjFilter(e.target.value as any)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Tous (15/30/45kJ)</option>
-                  <option value="15kj">15 kJ/kg uniquement</option>
-                  <option value="30kj">30 kJ/kg uniquement</option>
-                  <option value="45kj">45 kJ/kg uniquement</option>
-                </select>
-              </div>
-
-              {/* Durées sélectionnées */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Durées:</label>
-                <select
-                  value={durabilityDurationFilter.length === powerDurations.length ? 'all' : durabilityDurationFilter.join(',')}
-                  onChange={(e) => {
-                    if (e.target.value === 'all') {
-                      setDurabilityDurationFilter(powerDurations.map(d => d.key));
-                    } else {
-                      setDurabilityDurationFilter([e.target.value]);
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={powerDurations.map(d => d.key).join(',')}>Toutes</option>
-                  {powerDurations.map(d => (
-                    <option key={d.key} value={d.key}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Ligne supplémentaire avec compteur et option de priorité */}
-            <div className="mt-3 flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {filteredDurabilityData.length} athlète{filteredDurabilityData.length !== 1 ? 's' : ''} affiché{filteredDurabilityData.length !== 1 ? 's' : ''}
-              </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Mettre en évidence les priorités:</label>
-                <button
-                  onClick={() => setShowPriorities(!showPriorities)}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    showPriorities 
-                      ? 'bg-red-600 text-white' 
-                      : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-                  }`}
-                >
-                  {showPriorities ? '✓ Activé' : '✗ Désactivé'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider z-10">
-                    Coureur
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Profil
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Effectif
-                  </th>
-                  {visibleDurations.map(duration => {
-                    const colSpan = durabilityKjFilter === 'all' ? 3 : 1;
-                    const isSortable = durabilityKjFilter !== 'all'; // Triable uniquement si un kJ est sélectionné
-                    const isSorted = durabilitySortColumn === duration.key;
-                    return (
-                      <th 
-                        key={duration.key} 
-                        colSpan={colSpan} 
-                        className={`px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-l border-gray-300 ${
-                          isSortable ? 'cursor-pointer hover:bg-gray-100' : ''
-                        } ${isSorted ? 'bg-blue-100' : ''}`}
-                        onClick={() => isSortable && handleDurabilitySort(duration.key)}
-                        title={isSortable ? 'Cliquer pour trier par cette colonne' : ''}
-                      >
-                        <div className="flex items-center justify-center space-x-1">
-                          <span>{duration.label}</span>
-                          {isSorted && (
-                            <span className="text-blue-600 font-bold">
-                              {durabilitySortDirection === 'asc' ? '↑' : '↓'}
-                            </span>
-                          )}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-                <tr className="bg-gray-50">
-                  <th className="sticky left-0 bg-gray-50 px-4 py-2 text-left text-xs font-medium text-gray-500 z-10"></th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500"></th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500"></th>
-                  {visibleDurations.map(duration => {
-                    if (durabilityKjFilter === 'all') {
-                      return (
-                        <React.Fragment key={duration.key}>
-                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">
-                            Δ% 15kJ
-                          </th>
-                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500">
-                            Δ% 30kJ
-                          </th>
-                          <th className="px-2 py-2 text-center text-xs font-medium text-gray-500">
-                            Δ% 45kJ
-                          </th>
-                        </React.Fragment>
-                      );
-                    } else {
-                      return (
-                        <th key={duration.key} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">
-                          Δ% {durabilityKjFilter}
-                        </th>
-                      );
-                    }
-                  })}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDurabilityData.map((item, index) => {
-                  const durability = getDropPercentages(item);
-                  
-                  return (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="sticky left-0 bg-white px-4 py-3 whitespace-nowrap z-10">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-8 w-8">
-                            {item.photoUrl ? (
-                              <img className="h-8 w-8 rounded-full" src={item.photoUrl} alt={`${item.firstName} ${item.lastName}`} />
-                            ) : (
-                              <div className="h-8 w-8 rounded-full flex items-center justify-center bg-gray-300">
-                                <span className="text-xs font-medium text-gray-600">
-                                  {`${item.firstName}`.charAt(0)}{`${item.lastName}`.charAt(0)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="ml-3">
-                            <div className="text-sm font-medium text-gray-900">
-                              {item.firstName} {item.lastName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {getAgeCategory(item.birthDate).category}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.qualitativeProfile === RiderQualitativeProfile.SPRINTEUR ? 'bg-yellow-100 text-yellow-800' :
-                            item.qualitativeProfile === RiderQualitativeProfile.GRIMPEUR ? 'bg-green-100 text-green-800' :
-                            item.qualitativeProfile === RiderQualitativeProfile.PUNCHEUR ? 'bg-blue-100 text-blue-800' :
-                            item.qualitativeProfile === RiderQualitativeProfile.ROULEUR ? 'bg-purple-100 text-purple-800' :
-                            item.qualitativeProfile === RiderQualitativeProfile.COMPLET ? 'bg-indigo-100 text-indigo-800' :
-                            'bg-gray-100 text-gray-600'
-                        }`}>
-                          {item.qualitativeProfile || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.rosterRole === 'reserve' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800'
-                      }`}>
-                        {item.rosterRole === 'reserve' ? 'Réserve' : 'Équipe 1'}
-                      </span>
-                    </td>
-                    {visibleDurations.map(duration => {
-                      const drops = durability[duration.key] || {};
-                      
-                      if (durabilityKjFilter === 'all') {
-                        // Afficher les 3 colonnes (15, 30, 45 kJ)
-                        const isPriority15 = showPriorities && isPriorityCell(drops.d15);
-                        const isPriority30 = showPriorities && isPriorityCell(drops.d30);
-                        const isPriority45 = showPriorities && isPriorityCell(drops.d45);
-                        
-                        return (
-                          <React.Fragment key={duration.key}>
-                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center border-l border-gray-200 ${isPriority15 ? 'bg-red-100 font-bold' : ''}`}>
-                              <span className={getColorClass(drops.d15)}>
-                                {drops.d15 !== undefined ? `${drops.d15.toFixed(0)}%` : '-'}
-                              </span>
-                            </td>
-                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center ${isPriority30 ? 'bg-red-100 font-bold' : ''}`}>
-                              <span className={getColorClass(drops.d30)}>
-                                {drops.d30 !== undefined ? `${drops.d30.toFixed(0)}%` : '-'}
-                              </span>
-                            </td>
-                            <td className={`px-2 py-3 whitespace-nowrap text-sm text-center ${isPriority45 ? 'bg-red-100 font-bold' : ''}`}>
-                              <span className={getColorClass(drops.d45)}>
-                                {drops.d45 !== undefined ? `${drops.d45.toFixed(0)}%` : '-'}
-                              </span>
-                            </td>
-                          </React.Fragment>
-                        );
-                      } else {
-                        // Afficher uniquement la colonne filtrée (15, 30 ou 45 kJ)
-                        let dropValue: number | undefined;
-                        if (durabilityKjFilter === '15kj') dropValue = drops.d15;
-                        else if (durabilityKjFilter === '30kj') dropValue = drops.d30;
-                        else if (durabilityKjFilter === '45kj') dropValue = drops.d45;
-                        
-                        const isPriority = showPriorities && isPriorityCell(dropValue);
-                        
-                        return (
-                          <td key={duration.key} className={`px-2 py-3 whitespace-nowrap text-sm text-center border-l border-gray-200 ${isPriority ? 'bg-red-100 font-bold' : ''}`}>
-                            <span className={getColorClass(dropValue)}>
-                              {dropValue !== undefined ? `${dropValue.toFixed(0)}%` : '-'}
-                            </span>
-                          </td>
-                        );
-                      }
-                    })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="bg-gray-50 p-4 border-t border-gray-200">
-            <div className="flex items-center justify-between flex-wrap gap-4 text-xs text-gray-600">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-yellow-400 rounded"></div>
-                  <span>Δ% ≥ -10%</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-orange-400 rounded"></div>
-                  <span>-10% &gt; Δ% &gt; -20%</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-red-400 rounded"></div>
-                  <span>Δ% ≤ -20%</span>
-                </div>
-                {showPriorities && (
-                  <div className="flex items-center space-x-1 ml-2">
-                    <div className="w-6 h-6 bg-red-100 rounded border-2 border-red-500"></div>
-                    <span className="font-semibold">Priorité (Δ% &lt; -20%)</span>
-                  </div>
-                )}
-              </div>
-              <div>
-                Calculé en W/kg pour chaque durée de puissance
-              </div>
-            </div>
-          </div>
-        </div>
+        <DurabilityAnalysisTable
+          riders={filteredRidersByRole}
+          scoutingProfiles={scoutingProfiles}
+          title={`Pertes sous fatigue — Saison ${currentSeason}`}
+          subtitle="Effectif de la saison en cours — repères calculés sur cet effectif."
+          season={currentSeason}
+          winnerRiderIds={winnerRiderIds}
+          showBenchmarkPanel
+          defaultIncludeScouts={false}
+          scopeLabel={`Saison ${currentSeason} · effectif actuel`}
+        />
       )}
     </div>
   );

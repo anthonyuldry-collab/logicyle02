@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, RaceEvent, StageTransferLogistics } from '../../types';
+import { AppState, RaceEvent, StageTransferLogistics, StageTransferVehicle } from '../../types';
 import { saveData } from '../../services/firebaseService';
-import { ensureStageRaceLogistics, formatStageDateLabel, isStageRace } from '../../utils/stageRaceUtils';
+import {
+  createEmptyTransferVehicle,
+  ensureStageRaceLogistics,
+  formatStageDateLabel,
+  isStageRace,
+} from '../../utils/stageRaceUtils';
+import { buildGoogleMapsDirectionsUrl } from '../../utils/transportLogisticsExport';
+import PlusCircleIcon from '../../components/icons/PlusCircleIcon';
+import TrashIcon from '../../components/icons/TrashIcon';
 import { stageTransferFields } from './stageRaceFields';
 import ActionButton from '../../components/ActionButton';
 import { formatEventDateRange } from '../../utils/dateUtils';
@@ -76,6 +84,21 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
 
   const lightInputClass =
     'mt-1 block w-full px-3 py-2 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 focus:ring-blue-500 focus:border-blue-500';
+
+  const updateTransferVehicles = (
+    transferId: string,
+    vehicles: StageTransferVehicle[],
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      raceInfo: {
+        ...prev.raceInfo,
+        transfers: (prev.raceInfo?.transfers || []).map((t) =>
+          t.id === transferId ? { ...t, vehicles } : t,
+        ),
+      },
+    }));
+  };
 
   const handleTransferChange = (
     transferId: string,
@@ -196,6 +219,132 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
                 />
               </div>
             ))}
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+              <h5 className="text-sm font-semibold text-sky-900">Véhicules du transfert</h5>
+              <ActionButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<PlusCircleIcon className="w-4 h-4" />}
+                onClick={() => {
+                  const current = transfer.vehicles ?? [];
+                  updateTransferVehicles(transfer.id, [...current, createEmptyTransferVehicle()]);
+                }}
+              >
+                Ajouter un véhicule
+              </ActionButton>
+            </div>
+            {(transfer.vehicles ?? []).length === 0 ? (
+              <p className="text-sm text-gray-500 italic">
+                Aucun véhicule assigné — bus, camion atelier, voitures staff…
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {(transfer.vehicles ?? []).map((tv) => (
+                  <div
+                    key={tv.id}
+                    className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-sky-50/80 p-3 rounded-lg border border-sky-100"
+                  >
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Rôle</label>
+                      <input
+                        type="text"
+                        value={tv.roleLabel || ''}
+                        onChange={(e) => {
+                          const vehicles = (transfer.vehicles ?? []).map((v) =>
+                            v.id === tv.id ? { ...v, roleLabel: e.target.value } : v,
+                          );
+                          updateTransferVehicles(transfer.id, vehicles);
+                        }}
+                        placeholder="Bus 1, Camion…"
+                        className={lightInputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Véhicule</label>
+                      <select
+                        value={tv.vehicleId || ''}
+                        onChange={(e) => {
+                          const vehicles = (transfer.vehicles ?? []).map((v) =>
+                            v.id === tv.id
+                              ? { ...v, vehicleId: e.target.value || undefined }
+                              : v,
+                          );
+                          updateTransferVehicles(transfer.id, vehicles);
+                        }}
+                        className={lightInputClass}
+                      >
+                        <option value="">—</option>
+                        <option value="perso">Véhicule personnel</option>
+                        {appState.vehicles.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Conducteur</label>
+                      <select
+                        value={tv.driverId || ''}
+                        onChange={(e) => {
+                          const vehicles = (transfer.vehicles ?? []).map((v) =>
+                            v.id === tv.id
+                              ? { ...v, driverId: e.target.value || undefined }
+                              : v,
+                          );
+                          updateTransferVehicles(transfer.id, vehicles);
+                        }}
+                        className={lightInputClass}
+                      >
+                        <option value="">—</option>
+                        {appState.staff.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.firstName} {s.lastName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-end">
+                      <ActionButton
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          updateTransferVehicles(
+                            transfer.id,
+                            (transfer.vehicles ?? []).filter((v) => v.id !== tv.id),
+                          );
+                        }}
+                        icon={<TrashIcon className="w-4 h-4" />}
+                      >
+                        Retirer
+                      </ActionButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(() => {
+              const routePoints = [transfer.departLocation, transfer.arriveeLocation]
+                .map((p) => p?.trim())
+                .filter(Boolean) as string[];
+              const mapsUrl =
+                routePoints.length >= 2 ? buildGoogleMapsDirectionsUrl(routePoints) : null;
+              return mapsUrl ? (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-3 text-sm text-blue-600 hover:underline"
+                >
+                  Itinéraire du transfert (Google Maps)
+                </a>
+              ) : null;
+            })()}
           </div>
         </div>
       </div>

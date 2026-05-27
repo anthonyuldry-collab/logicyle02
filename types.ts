@@ -535,6 +535,10 @@ export interface StageDayLogistics {
     /** Heure du premier départ (chrono) — sert au calcul d'arrivée sur site (1h30 avant). */
     premierDepartTime?: string;
     riderStartTimes?: StageRiderStartTime[];
+    /** Véhicules ravito et points d'approvisionnement le jour de l'étape. */
+    ravitoVehicles?: StageRavitoVehicle[];
+    /** Staff présent uniquement sur cette étape (vacataires, renforts d'une journée). */
+    additionalStaffIds?: string[];
 }
 
 /** Hébergement prévu pour une nuit d'étape. */
@@ -561,6 +565,52 @@ export interface StageDayAccommodation {
     isStopover?: boolean;
 }
 
+/** Véhicule assigné à un transfert inter-étapes. */
+export interface StageTransferVehicle {
+    id: string;
+    roleLabel?: string;
+    vehicleId?: string;
+    driverId?: string;
+    notes?: string;
+}
+
+/** Point ravito (lieu + horaire d'arrivée du véhicule). */
+export interface StageRavitoPoint {
+    id: string;
+    label?: string;
+    location: string;
+    arrivalTime: string;
+    departureTime?: string;
+    notes?: string;
+}
+
+/** Type de véhicule pendant la course (coureuses sur le vélo, staff en voiture). */
+export enum StageRaceVehicleKind {
+  /** Suiveur course : DS + mécanicien obligatoires à bord. */
+  RACE_FOLLOWER = 'race_follower',
+  /** Ravito : points d'approvisionnement sur le parcours. */
+  RAVITO = 'ravito',
+  /** Autre véhicule staff (assistants, kiné, etc.). */
+  STAFF_SUPPORT = 'staff_support',
+}
+
+/** Véhicule en course (suiveur, ravito, staff) — occupants staff uniquement. */
+export interface StageRavitoVehicle {
+    id: string;
+    kind?: StageRaceVehicleKind;
+    roleLabel?: string;
+    vehicleId?: string;
+    driverId?: string;
+    /** Staff à bord (pas de coureuses : elles sont sur le vélo). */
+    staffOccupantIds?: string[];
+    /** Suiveur course : directeur sportif obligatoire. */
+    directeurSportifStaffId?: string;
+    /** Suiveur course : mécanicien obligatoire. */
+    mecanoStaffId?: string;
+    points: StageRavitoPoint[];
+    notes?: string;
+}
+
 /** Transfert entre deux étapes consécutives. */
 export interface StageTransferLogistics {
     id: string;
@@ -573,6 +623,8 @@ export interface StageTransferLogistics {
     distanceKm?: number;
     duration?: string;
     notes: string;
+    /** Véhicules du convoi de transfert (bus, camion, voitures staff…). */
+    vehicles?: StageTransferVehicle[];
 }
 
 export interface RaceInformation {
@@ -752,11 +804,16 @@ export interface TransportStop {
     reminderMinutes?: number; // Minutes avant pour rappel
 }
 
+/** Onglet logistique d'origine (évite qu'un aller s'affiche en « pendant »). */
+export type EventTransportLogisticsPhase = 'aller_course' | 'pendant' | 'retour';
+
 export interface EventTransportLeg {
   id: string;
   eventId: string;
   direction: TransportDirection;
   mode: TransportMode;
+  /** Phase logistique : aller sur l'étape, pendant la course, ou retour. */
+  logisticsPhase?: EventTransportLogisticsPhase;
   /** Date de l'étape concernée (course à étapes, transports jour J). */
   stageDate?: string;
   departureDate?: string;
@@ -943,6 +1000,23 @@ export interface RiderQualityArchive {
   eventsWithRatings: number;
   qualityTrend: 'improving' | 'stable' | 'declining';
   lastRatingDate: string;
+  // Identité figée pour les coureuses retirées de l'effectif
+  firstName?: string;
+  lastName?: string;
+  birthDate?: string;
+  sex?: Sex;
+  isRemovedFromRoster?: boolean;
+  removedAt?: string;
+  // Profils de puissance figés (pour le tableau archives)
+  weightKg?: number;
+  qualitativeProfile?: RiderQualitativeProfile;
+  rosterRole?: 'principal' | 'reserve';
+  powerProfileFresh?: PowerProfile;
+  powerProfile15KJ?: PowerProfile;
+  powerProfile30KJ?: PowerProfile;
+  powerProfile45KJ?: PowerProfile;
+  seasonWins?: number;
+  seasonPodiums?: number;
 }
 
 export interface StaffQualityArchive {
