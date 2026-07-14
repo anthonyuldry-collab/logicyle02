@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { AppSection, User, Team, PermissionLevel, StaffMember, PermissionRole, UserRole, TeamRole } from '../types';
-import { SECTIONS } from '../constants';
+import { SECTIONS, INDEPENDENT_SECTIONS } from '../constants';
 import HomeIcon from './icons/HomeIcon';
 import UsersIcon from './icons/UsersIcon';
 import UserGroupIcon from './icons/UserGroupIcon';
@@ -50,6 +50,10 @@ interface SidebarProps {
   onTeamSwitch: (teamId: string) => void;
   isIndependent: boolean;
   onGoToLobby: () => void;
+  isMobile?: boolean;
+  isDrawerOpen?: boolean;
+  onDrawerClose?: () => void;
+  lockedSections?: AppSection[];
 }
 
 const iconMap: Record<string, React.ComponentType<any>> = {
@@ -90,14 +94,17 @@ const iconMap: Record<string, React.ComponentType<any>> = {
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentSection, onSelectSection, teamLogoUrl, onLogout, 
   currentUser, effectivePermissions, staff, permissionRoles, userTeams, currentTeamId, onTeamSwitch,
-  isIndependent, onGoToLobby 
+  isIndependent, onGoToLobby,
+  isMobile = false, isDrawerOpen = false, onDrawerClose,
+  lockedSections = [],
 }) => {
   const { t, language } = useTranslations();
   
 
   
   const groupedSections = useMemo(() => {
-    return SECTIONS.reduce((acc, section) => {
+    const source = isIndependent ? INDEPENDENT_SECTIONS : SECTIONS;
+    return source.reduce((acc, section) => {
         const group = section.group[language] || section.group['en'];
         if (!acc[group]) {
             acc[group] = [];
@@ -105,9 +112,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         acc[group].push(section);
         return acc;
     }, {} as Record<string, typeof SECTIONS>);
-  }, [language]);
+  }, [language, isIndependent]);
 
-  const groupOrder = [
+  const groupOrder = isIndependent
+    ? (language === 'fr'
+        ? ['Mon Parcours', 'Opportunités', 'Compte']
+        : ['My Journey', 'Opportunities', 'Account'])
+    : [
     'Tableau de Bord',
     'Navigation Principale',
     'Performance & Santé', 
@@ -127,13 +138,20 @@ const Sidebar: React.FC<SidebarProps> = ({
     return role?.name || 'Role inconnu';
   }, [currentUser, isIndependent, permissionRoles]);
 
+  const sidebarClasses = isMobile
+    ? `w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-50 transition-transform duration-300 ease-in-out ${
+        isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+      }`
+    : 'w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto';
+
   return (
     <div 
-        className="w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto"
+        className={sidebarClasses}
         style={{ 
           backgroundColor: 'var(--theme-primary-bg)',
           borderRight: '1px solid rgba(255, 255, 255, 0.1)'
         }}
+        aria-hidden={isMobile && !isDrawerOpen ? true : undefined}
     >
       {/* Header avec logo et sélecteur d'équipe */}
       <div className="p-6 border-b border-white/10">
@@ -172,9 +190,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             // Filtrer les sections selon le rôle de l'utilisateur
             let visibleSections = sectionsInGroup;
-            
-            // Si l'utilisateur est Manager/Admin, exclure les sections "Mon Espace"
-            if (currentUser && (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN)) {
+
+            if (isIndependent) {
+                visibleSections = sectionsInGroup.filter((section) => {
+                    if (section.id === 'userSettings') return true;
+                    if (section.id === 'missionSearch' && currentUser?.userRole !== UserRole.STAFF) return false;
+                    return (
+                        effectivePermissions &&
+                        effectivePermissions[section.id as AppSection] &&
+                        effectivePermissions[section.id as AppSection]!.includes('view')
+                    );
+                });
+            } else if (currentUser && (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN)) {
                 visibleSections = sectionsInGroup.filter(section => {
                     // Exclure toutes les sections "Mon Espace" pour les administrateurs
                     if (section.group[language] === t('sidebarGroupMySpace')) return false;
@@ -187,6 +214,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                     // Toujours afficher l'historique hébergements pour Admin/Manager
                     if (section.id === 'accommodationHistory') {
                         return true;
+                    }
+                    
+                    // Paramètres équipe & abonnement : managers/admins uniquement
+                    if (section.id === 'settings' || section.id === 'pricing') {
+                        return currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN;
                     }
                     
                     // Pour les administrateurs, masquer adminDashboard car myDashboard affiche déjà l'admin
@@ -240,10 +272,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 Icon = ChartBarIcon; // Icône différente pour l'admin
                             }
                             
+                            const isLocked = lockedSections.includes(section.id as AppSection);
+                            
                             return (
                                 <SidebarButton
                                     key={section.id}
-                                    label={displayLabel}
+                                    label={isLocked ? `${displayLabel} 🔒` : displayLabel}
                                     icon={Icon}
                                     isActive={currentSection === section.id}
                                     onClick={() => onSelectSection(section.id as AppSection)}

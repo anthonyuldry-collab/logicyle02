@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { User, ResultItem, DisciplinePracticed, Rider, Team, ScoutingRequest, ScoutingRequestStatus, StaffMember, UserRole, TeamMembership, TeamMembershipStatus } from '../types';
+import { userToRiderProfile, userToStaffProfile } from '../utils/independentUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import TrophyIcon from '../components/icons/TrophyIcon';
 import ActionButton from '../components/ActionButton';
@@ -29,6 +30,7 @@ interface CareerSectionProps {
   onRespondToScoutingRequest: (requestId: string, response: 'accepted' | 'rejected') => void;
   onUpdateVisibility: (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => void;
   teamMemberships: TeamMembership[];
+  onSaveIndependentProfile?: (updates: Partial<User>) => Promise<void>;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -50,7 +52,8 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     scoutingRequests, 
     onRespondToScoutingRequest,
     onUpdateVisibility,
-    teamMemberships
+    teamMemberships,
+    onSaveIndependentProfile,
 }) => {
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ResultItem | null>(null);
@@ -77,8 +80,16 @@ const CareerSection: React.FC<CareerSectionProps> = ({
 
   const isRider = currentUser.userRole === UserRole.COUREUR;
   const isIndependent = !currentTeamId;
-  const riderProfile = useMemo(() => isRider ? riders.find(r => r.email === currentUser.email) : null, [riders, currentUser, isRider]);
-  const staffProfile = useMemo(() => !isRider ? staff.find(s => s.email === currentUser.email) : null, [staff, currentUser, isRider]);
+  const riderProfile = useMemo(() => {
+    if (!isRider) return null;
+    if (isIndependent) return userToRiderProfile(currentUser);
+    return riders.find((r) => r.email === currentUser.email) || null;
+  }, [isRider, isIndependent, riders, currentUser]);
+  const staffProfile = useMemo(() => {
+    if (isRider) return null;
+    if (isIndependent) return userToStaffProfile(currentUser);
+    return staff.find((s) => s.email === currentUser.email) || null;
+  }, [isRider, isIndependent, staff, currentUser]);
   
   const careerStats = useMemo(() => {
     if (!riderProfile?.resultsHistory) return { wins: 0, podiums: 0, top10s: 0 };
@@ -150,7 +161,13 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     );
   }, [scoutingRequests, currentUser.id]);
 
-  const handleSaveResult = (resultToSave: ResultItem) => {
+  const persistIndependent = async (updates: Partial<User>) => {
+    if (isIndependent && onSaveIndependentProfile) {
+      await onSaveIndependentProfile(updates);
+    }
+  };
+
+  const handleSaveResult = async (resultToSave: ResultItem) => {
     if (!riderProfile) return;
     const history = riderProfile.resultsHistory || [];
     let newHistory;
@@ -159,15 +176,23 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     } else {
         newHistory = [...history, { ...resultToSave, id: generateId() }];
     }
-    setRiders(prevRiders => prevRiders.map(r => r.id === riderProfile.id ? { ...r, resultsHistory: newHistory } : r));
+    if (isIndependent) {
+      await persistIndependent({ resultsHistory: newHistory });
+    } else {
+      setRiders(prevRiders => prevRiders.map(r => r.id === riderProfile.id ? { ...r, resultsHistory: newHistory } : r));
+    }
     setIsResultModalOpen(false);
   };
 
-  const handleDeleteResult = (resultId: string) => {
+  const handleDeleteResult = async (resultId: string) => {
     if (window.confirm("Supprimer ce résultat ?")) {
         if (!riderProfile) return;
         const newHistory = (riderProfile.resultsHistory || []).filter(r => r.id !== resultId);
-        setRiders(prevRiders => prevRiders.map(r => r.id === riderProfile.id ? { ...r, resultsHistory: newHistory } : r));
+        if (isIndependent) {
+          await persistIndependent({ resultsHistory: newHistory });
+        } else {
+          setRiders(prevRiders => prevRiders.map(r => r.id === riderProfile.id ? { ...r, resultsHistory: newHistory } : r));
+        }
     }
   };
 
@@ -233,25 +258,36 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     setTimeout(() => setSuccessMessage(''), 3000);
   };
   
-  const handleStaffInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleStaffInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    if (staffProfile) {
-        setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, [name]: value } : s));
+    if (!staffProfile) return;
+    if (isIndependent) {
+      await persistIndependent({ [name]: value } as Partial<User>);
+    } else {
+      setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, [name]: value } : s));
     }
   };
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (currentSkill && staffProfile && !staffProfile.skills.includes(currentSkill)) {
         const updatedSkills = [...staffProfile.skills, currentSkill];
-        setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, skills: updatedSkills } : s));
+        if (isIndependent) {
+          await persistIndependent({ skills: updatedSkills });
+        } else {
+          setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, skills: updatedSkills } : s));
+        }
         setCurrentSkill('');
     }
   };
 
-  const handleRemoveSkill = (skillToRemove: string) => {
+  const handleRemoveSkill = async (skillToRemove: string) => {
     if (staffProfile) {
         const updatedSkills = staffProfile.skills.filter(s => s !== skillToRemove);
-        setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, skills: updatedSkills } : s));
+        if (isIndependent) {
+          await persistIndependent({ skills: updatedSkills });
+        } else {
+          setStaff(prevStaff => prevStaff.map(s => s.id === staffProfile.id ? { ...s, skills: updatedSkills } : s));
+        }
     }
   };
 
@@ -622,14 +658,19 @@ const CareerSection: React.FC<CareerSectionProps> = ({
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-gray-600">{getCategoryLabel(result.category)}</td>
                                                     <td className="px-6 py-4 text-sm">
+                                                        {(() => {
+                                                            const rankNum = typeof result.rank === 'string' ? parseInt(result.rank.replace(/\D/g, ''), 10) : result.rank;
+                                                            return (
                                                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                                            result.rank === 1 ? 'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200' :
-                                                            result.rank <= 3 ? 'bg-gray-100 text-gray-800 ring-1 ring-gray-200' :
-                                                            result.rank <= 10 ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-200' :
+                                                            rankNum === 1 ? 'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200' :
+                                                            rankNum <= 3 ? 'bg-gray-100 text-gray-800 ring-1 ring-gray-200' :
+                                                            rankNum <= 10 ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-200' :
                                                             'bg-gray-50 text-gray-600 ring-1 ring-gray-100'
                                                         }`}>
                                                             {result.rank}
                                                         </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-gray-600">{result.team}</td>
                                                     <td className="px-6 py-4 text-right text-sm space-x-2">

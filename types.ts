@@ -8,9 +8,34 @@ export enum TeamLevel {
     PRO = "Équipe Professionnelle",
 }
 
+export enum SubscriptionPlanId {
+    CLUB = 'club',
+    COMPETITION = 'competition',
+    CONTINENTAL = 'continental',
+    PRO = 'pro',
+    FEDERATION = 'federation',
+}
+
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'pilot';
+
+export interface TeamSubscription {
+    planId: SubscriptionPlanId;
+    status: SubscriptionStatus;
+    trialEndsAt?: string;
+    pilotEndsAt?: string;
+    currentPeriodEnd?: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    billingInterval?: 'month' | 'year';
+}
+
 export enum Sex {
     MALE = "Homme",
     FEMALE = "Femme",
+    /** Valeurs legacy */
+    MALE_SHORT = "male",
+    FEMALE_SHORT = "female",
+    FEMALE_EN = "FEMALE",
 }
 
 export enum StaffRole {
@@ -105,6 +130,21 @@ export enum BudgetItemCategory {
   FRAIS_DIVERS = "Frais Divers",
 }
 
+export enum ExpenseReceiptStatus {
+  DRAFT = "Brouillon",
+  SUBMITTED = "Soumis",
+  VALIDATED = "Validé",
+  REJECTED = "Refusé",
+  SYNCED = "Comptabilisé",
+}
+
+export enum ExpenseOcrStatus {
+  PENDING = "pending",
+  DONE = "done",
+  FAILED = "failed",
+  MANUAL = "manual",
+}
+
 export enum ChecklistItemStatus {
   A_FAIRE = "À Faire",
   EN_COURS = "En Cours",
@@ -114,6 +154,8 @@ export enum ChecklistItemStatus {
 export enum EventType {
     COMPETITION = "Compétition",
     STAGE = "Stage",
+    COURSE = "Course",
+    ENTRAINEMENT = "Entraînement",
 }
 
 export enum RiderEventStatus {
@@ -157,6 +199,11 @@ export enum FormeStatus {
   PASSABLE = "Passable",
   FATIGUE = "Fatigué(e)",
   INCONNU = "?",
+  /** Valeurs legacy utilisées dans certaines vues */
+  EXCELLENTE = "EXCELLENTE",
+  BONNE = "BONNE",
+  MOYENNE = "MOYENNE",
+  MAUVAIS = "MAUVAIS",
 }
 
 export enum MoralStatus {
@@ -165,6 +212,10 @@ export enum MoralStatus {
   NEUTRE = "Neutre",
   BAS = "Bas",
   INCONNU = "?",
+  /** Valeurs legacy utilisées dans certaines vues */
+  EXCELLENT = "EXCELLENT",
+  MOYEN = "MOYEN",
+  MAUVAIS = "MAUVAIS",
 }
 
 export enum HealthCondition {
@@ -287,6 +338,9 @@ export enum AllergySeverity {
     FAIBLE = "Faible",
     MODEREE = "Modérée",
     SEVERE = "Sévère",
+    LEGERE = "LÉGÈRE",
+    SEVERE_ALT = "SÉVÈRE",
+    MODEREE_ALT = "MODÉRÉE",
 }
 
 export enum ScoutingStatus {
@@ -350,7 +404,8 @@ export type AppSection =
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
-  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability' | 'myDashboard' | 'myProfile' | 'adminDashboard';
+  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability' | 'myDashboard' | 'myProfile' | 'adminDashboard'
+  | 'myResults' | 'bikeSetup' | 'myCareer' | 'independentHub' | 'pricing' | 'expenseReceipts';
 
 export type PermissionLevel = 'view' | 'edit';
 export type StaffRoleKey =
@@ -452,6 +507,7 @@ export interface ClothingItem {
     id: string;
     type: ClothingType;
     quantity: number;
+    name?: string;
     brand?: string;
     reference?: string;
     size?: string;
@@ -661,8 +717,10 @@ export interface RaceEvent {
     name: string;
     date: string;
     endDate?: string;
+    startDate?: string;
     location: string;
     eventType: EventType;
+    type?: string;
     eligibleCategory: string;
     discipline: Discipline;
     raceInfo: RaceInformation;
@@ -707,6 +765,9 @@ export interface EducationOrCertification {
     degree: string;
     institution: string;
     year?: number;
+    startDate?: string;
+    endDate?: string;
+    description?: string;
 }
 export interface SpokenLanguage {
     id: string;
@@ -733,11 +794,12 @@ export interface StaffMember {
     id: string;
     firstName: string;
     lastName: string;
+    name?: string;
     email: string;
     phone?: string;
-    role: StaffRole;
+    role: StaffRole | string;
     customRole?: string;
-    status: StaffStatus;
+    status: StaffStatus | string;
     openToExternalMissions?: boolean;
     skills: string[];
     professionalSummary?: string;
@@ -746,6 +808,7 @@ export interface StaffMember {
     availability?: AvailabilityPeriod[];
     workHistory?: WorkExperience[];
     education?: EducationOrCertification[];
+    assignedEvents?: string[];
     
     // Gestion des saisons
     currentSeason?: number; // Saison active du membre du staff
@@ -764,6 +827,13 @@ export interface StaffMember {
     licenseNumber?: string;
     licenseImageBase64?: string;
     licenseImageMimeType?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+    heightCm?: number;
+    weightKg?: number;
+    sex?: Sex;
+    seasonObjectives?: string;
+    globalWishes?: string;
 }
 export enum TransportStopType {
     PICKUP = "Récupération",
@@ -792,7 +862,7 @@ export interface TransportStop {
     address?: string; // Adresse précise pour les lieux de rendez-vous
     date: string;
     time: string;
-    stopType: TransportStopType;
+    stopType: TransportStopType | string;
     persons: { id: string, type: 'rider' | 'staff' }[];
     notes?: string;
     isTimingCritical?: boolean; // Pour les horaires d'avion/train
@@ -810,8 +880,8 @@ export type EventTransportLogisticsPhase = 'aller_course' | 'pendant' | 'retour'
 export interface EventTransportLeg {
   id: string;
   eventId: string;
-  direction: TransportDirection;
-  mode: TransportMode;
+  direction: TransportDirection | string;
+  mode: TransportMode | string;
   /** Phase logistique : aller sur l'étape, pendant la course, ou retour. */
   logisticsPhase?: EventTransportLogisticsPhase;
   /** Date de l'étape concernée (course à étapes, transports jour J). */
@@ -836,6 +906,9 @@ export interface EventAccommodation {
   eventId: string;
   hotelName: string;
   address: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  roomType?: string;
   reservationConfirmed: boolean;
   status: AccommodationStatus;
   confirmationDetails: string;
@@ -886,6 +959,37 @@ export interface EventBudgetItem {
   sourceVehicleId?: string;
   sourceStaffId?: string;
   proofDocumentId?: string;
+  accountingCode?: string;
+  accountingLabel?: string;
+  expenseReceiptId?: string;
+  receiptDate?: string;
+}
+
+export interface ExpenseReceipt {
+  id: string;
+  eventId?: string;
+  transportLegId?: string;
+  submittedByUserId: string;
+  submittedByName?: string;
+  staffRole?: string;
+  imageUrl: string;
+  imageMimeType?: string;
+  status: ExpenseReceiptStatus;
+  budgetCategory: BudgetItemCategory;
+  accountingCode: string;
+  accountingLabel: string;
+  amount: number;
+  receiptDate: string;
+  merchant?: string;
+  description?: string;
+  ocrStatus?: ExpenseOcrStatus | string;
+  ocrRawText?: string;
+  ocrConfidence?: number;
+  budgetItemId?: string;
+  createdAt: string;
+  validatedAt?: string;
+  validatedByUserId?: string;
+  notes?: string;
 }
 
 export interface EventChecklistItem {
@@ -909,7 +1013,12 @@ export interface PeerRating {
     eventId: string;
     raterRiderId: string;
     ratedRiderId: string;
-    rating: number; // e.g., 1 to 5
+    /** Apport au résultat / collaboration (1–10) */
+    rating?: number;
+    /** Niveau technique observable (1–10) */
+    technicalScore?: number;
+    /** Niveau physique du jour (1–10) */
+    physicalScore?: number;
 }
 
 export interface RiderRating {
@@ -922,6 +1031,8 @@ export interface RiderRating {
     collectiveScore?: number;
     technicalScore?: number;
     physicalScore?: number;
+    /** Coureur absent — exclu des moyennes (barème X) */
+    isAbsent?: boolean;
 }
 
 export interface StaffRating {
@@ -934,6 +1045,7 @@ export interface StaffRating {
 export interface PerformanceEntry {
   id: string;
   eventId: string;
+  date?: string;
   generalObjectives: string;
   resultsSummary: string;
   keyLearnings: string;
@@ -1246,11 +1358,17 @@ export interface PerformanceFactorDetail {
     aOptimiser: string;
     aDevelopper: string;
     besoinsActions: string;
+    score?: number;
+    objective?: string;
+    actions?: string;
+    deadline?: string;
+    notes?: string;
 }
 
 export interface AllergyItem {
     id: string;
     allergenKey: PredefinedAllergen | 'CUSTOM';
+    allergen?: string;
     customAllergenName?: string;
     severity: AllergySeverity;
     regimeDetails: string;
@@ -1268,6 +1386,17 @@ export interface PerformanceNutrition {
     selectedBars?: SelectedProduct[];
     selectedDrinks?: SelectedProduct[];
     customProducts?: TeamProduct[];
+    /** Champs legacy */
+    gels?: SelectedProduct[];
+    bars?: SelectedProduct[];
+    drinks?: SelectedProduct[];
+    caloricGoal?: string | number;
+    hydrationGoal?: string | number;
+    notes?: string;
+    hydrationStrategy?: string;
+    preRaceMeal?: string;
+    duringRaceNutrition?: string;
+    recoveryNutrition?: string;
 }
 
 export interface BikeFitMeasurements {
@@ -1289,6 +1418,15 @@ export interface BikeSpecificMeasurements {
 export interface BikeSetup {
     specifics: BikeSpecificMeasurements;
     cotes: BikeFitMeasurements;
+    bikeType?: string;
+    name?: string;
+    brand?: string;
+    size?: string;
+    year?: string | number;
+    groupset?: string;
+    wheels?: string;
+    weight?: string | number;
+    model?: string;
 }
 
 export interface PprData {
@@ -1322,7 +1460,12 @@ export interface Rider {
     teamName?: string;
     isSearchable?: boolean; // For talent search
     salary?: number;
+    contractStartDate?: string;
     contractEndDate?: string;
+    contractType?: ContractType;
+    contractClauses?: string;
+    signingBonus?: number;
+    performanceBonusNotes?: string;
     nextSeasonTeam?: string;
     
     // Gestion des saisons
@@ -1384,6 +1527,10 @@ export interface Rider {
     roadBikeSetup: BikeSetup;
     ttBikeSetup: BikeSetup;
     clothing: ClothingItem[];
+    /** Alias legacy pour certaines vues coureur */
+    equipment?: EquipmentItem[];
+    bikeFitMeasurements?: BikeFitMeasurements;
+    bikeSpecificMeasurements?: BikeSpecificMeasurements;
     
     // Power Data - Saison en cours (réinitialisé chaque 1er novembre)
     powerProfileFresh?: PowerProfile;
@@ -1443,10 +1590,11 @@ export interface ScoutingProfile {
   pcsUrl?: string;
   directVeloUrl?: string;
 
-  status: ScoutingStatus;
+  status: ScoutingStatus | string;
   potentialRating: number; // 1-5
   discipline: DisciplinePracticed;
   categories: string[];
+  photoUrl?: string;
   qualitativeProfile?: RiderQualitativeProfile;
   qualitativeNotes?: string;
   powerProfileFresh?: PowerProfile;
@@ -1498,6 +1646,7 @@ export interface ScoutingRequest {
     status: ScoutingRequestStatus;
     requestDate: string;
     responseDate?: string;
+    message?: string;
 }
 
 
@@ -1527,6 +1676,20 @@ export interface SignupInfo {
   allergies?: string;
 }
 
+export interface GdprConsent {
+  termsAcceptedAt: string;
+  termsVersion: string;
+  privacyPolicyAcceptedAt: string;
+  privacyPolicyVersion: string;
+  ndaAcceptedAt?: string;
+  ndaVersion?: string;
+}
+
+export enum SignupMode {
+  TEAM = 'team',
+  INDEPENDENT = 'independent',
+}
+
 export interface User {
     id: string;
     email: string;
@@ -1534,11 +1697,50 @@ export interface User {
     lastName: string;
     permissionRole: TeamRole;
     customPermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
-    userRole: UserRole;
+    userRole: UserRole | string;
+    teamId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    isActive?: boolean;
+    phone?: string;
+    address?: Address;
+    disciplines?: DisciplinePracticed[];
+    categories?: string[];
+    forme?: FormeStatus | string;
+    moral?: MoralStatus | string;
+    healthCondition?: HealthCondition | string;
+    powerProfile?: PowerProfile;
+    characteristics?: RiderQualitativeProfile;
+    performanceData?: unknown;
+    resultsHistory?: ResultItem[];
+    favoriteRaces?: FavoriteRace[];
+    teamsHistory?: TeamHistory[];
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+    socialSecurityNumber?: string;
+    licenseNumber?: string;
+    uciId?: string;
+    photoUrl?: string;
+    licenseImageUrl?: string;
+    licenseImageBase64?: string;
+    licenseImageMimeType?: string;
+    teamName?: string;
+    salary?: number;
+    contractEndDate?: string;
+    nextSeasonTeam?: string;
     isSearchable?: boolean;
     openToExternalMissions?: boolean;
     signupInfo?: SignupInfo;
     qualitativeProfile?: RiderQualitativeProfile;
+    gdprConsent?: GdprConsent;
+    /** Parcours sans équipe : profil visible pour le recrutement */
+    signupMode?: SignupMode | string;
+    isIndependentProfile?: boolean;
+    independentActivatedAt?: string;
+    /** Profil sportif / pro sur le document User (mode indépendant) */
+    professionalSummary?: string;
+    skills?: string[];
+    careerAspirations?: string;
 }
 
 export interface Team {
@@ -1547,6 +1749,7 @@ export interface Team {
     country: string;
     level: TeamLevel;
     address?: Address;
+    subscription?: TeamSubscription;
 }
 
 export interface TeamMembership {
@@ -1556,8 +1759,11 @@ export interface TeamMembership {
     lastName?: string;
     userId?: string;
     teamId: string;
-    status: TeamMembershipStatus;
-    userRole?: UserRole;
+    teamName?: string;
+    teamLevel?: string;
+    teamCountry?: string;
+    status: TeamMembershipStatus | string;
+    userRole?: UserRole | string;
     requestedUserRole?: UserRole; // Rôle demandé lors de l'invitation
     startDate?: string;
     endDate?: string;
@@ -1566,6 +1772,10 @@ export interface TeamMembership {
     approvedAt?: string;
     approvedBy?: string;
     message?: string;
+    /** Origine de la demande : inscription, invitation email, etc. */
+    source?: 'self_join' | 'email_invite' | string;
+    invitedBy?: string;
+    invitedAt?: string;
 }
 
 export interface Mission {
@@ -1646,6 +1856,7 @@ export interface MeetingReport {
 
 export interface TeamState {
     teamLevel?: TeamLevel;
+    subscription?: TeamSubscription;
     themePrimaryColor?: string;
     themeAccentColor?: string;
     language?: 'fr' | 'en';
@@ -1662,9 +1873,11 @@ export interface TeamState {
     eventRadioEquipments: EventRadioEquipment[];
     eventRadioAssignments: EventRadioAssignment[];
     eventBudgetItems: EventBudgetItem[];
+    expenseReceipts: ExpenseReceipt[];
     eventChecklistItems: EventChecklistItem[];
     performanceEntries: PerformanceEntry[];
     riderEventSelections: RiderEventSelection[];
+    staffEventSelections: StaffEventSelection[];
     eventStaffAvailabilities: EventStaffAvailability[];
     incomeItems: IncomeItem[];
     checklistTemplates: Record<ChecklistRole, ChecklistTemplate[]>;

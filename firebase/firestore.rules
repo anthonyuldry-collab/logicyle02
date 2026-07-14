@@ -1,0 +1,121 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function userExists() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isTeamMember(teamId) {
+      return userExists() && userData().teamId == teamId;
+    }
+
+    function isTeamManager(teamId) {
+      return isTeamMember(teamId) && (
+        userData().userRole == 'MANAGER' ||
+        userData().permissionRole == 'ADMIN'
+      );
+    }
+
+    function subscriptionUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId)
+        || (userExists() && resource.data.teamId == userData().teamId);
+      allow create: if isSelf(userId);
+      allow update: if isSelf(userId) || isTeamManager(resource.data.teamId);
+      allow delete: if isSelf(userId);
+    }
+
+    match /teams/{teamId} {
+      allow read: if isTeamMember(teamId);
+      allow create: if isSignedIn();
+      allow update: if isTeamManager(teamId) && subscriptionUnchanged();
+      allow delete: if isTeamManager(teamId);
+
+    match /{subcollection}/{docId} {
+        allow read: if isTeamMember(teamId);
+        allow write: if isTeamManager(teamId)
+          || (isTeamMember(teamId) && isSelf(docId))
+          || (subcollection == 'expenseReceipts'
+              && isTeamMember(teamId)
+              && request.resource.data.submittedByUserId == request.auth.uid);
+      }
+
+      match /expenseReceipts/{receiptId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamMember(teamId)
+          && request.resource.data.submittedByUserId == request.auth.uid;
+        allow update: if isTeamManager(teamId)
+          || (isTeamMember(teamId)
+              && resource.data.submittedByUserId == request.auth.uid
+              && request.resource.data.submittedByUserId == resource.data.submittedByUserId);
+        allow delete: if isTeamManager(teamId)
+          || (isTeamMember(teamId) && resource.data.submittedByUserId == request.auth.uid);
+      }
+    }
+
+    match /teamMemberships/{membershipId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isTeamManager(resource.data.teamId)
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isTeamManager(resource.data.teamId) ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.email == request.auth.token.email
+      );
+      allow delete: if isTeamManager(resource.data.teamId)
+        || resource.data.userId == request.auth.uid;
+    }
+
+    match /permissions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /permissionRoles/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /gdprAuditLogs/{logId} {
+      allow read: if isSignedIn() && (
+        resource.data.performedBy == request.auth.uid ||
+        resource.data.targetId == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /scoutingRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isTeamManager(resource.data.requesterTeamId)
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isTeamManager(resource.data.requesterTeamId) ||
+        resource.data.athleteId == request.auth.uid
+      );
+      allow delete: if isTeamManager(resource.data.requesterTeamId);
+    }
+  }
+}

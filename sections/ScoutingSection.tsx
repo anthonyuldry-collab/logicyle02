@@ -24,6 +24,7 @@ interface ScoutingSectionProps {
   onSaveScoutingProfile: (profile: ScoutingProfile) => void;
   onDeleteScoutingProfile: (profileId: string) => void;
   onSaveRider?: (rider: Rider) => void | Promise<void>;
+  onCreateScoutingRequest?: (athleteId: string, message?: string) => Promise<string>;
   effectivePermissions?: any;
   appState?: AppState;
   currentTeamId?: string | null;
@@ -141,7 +142,7 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, effectivePermissions, appState, currentTeamId }) => {
+const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, onCreateScoutingRequest, effectivePermissions, appState, currentTeamId }) => {
   // Protection minimale - seulement scoutingProfiles est requis
   if (!scoutingProfiles) {
     return (
@@ -542,18 +543,26 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             Pour que des profils de coureurs apparaissent dans cette recherche, ils doivent :
           </p>
           <ul className="text-blue-200 text-sm list-disc list-inside space-y-1">
-            <li>Se connecter à l'application avec le rôle "Coureur"</li>
-            <li>Aller dans la section "Ma Carrière"</li>
-            <li>Activer l'option "Profil visible pour le recrutement"</li>
-            <li>Ne pas être déjà membre de votre équipe</li>
+            <li>Avoir un compte Coureur (équipe ou profil indépendant)</li>
+            <li>Activer la visibilité recrutement dans Mon Espace ou Ma Carrière</li>
+            <li>Cliquer sur « Demander le profil » — une demande de suivi est envoyée automatiquement</li>
+            <li>Une fois acceptée, le profil complet est importé dans vos prospects</li>
           </ul>
         </div>
         
         <TalentSearchTab 
           appState={appState} 
+          onRequestScoutingAccess={async (user) => {
+            if (!currentTeamId || !onCreateScoutingRequest) return;
+            const teamName = appState?.teams?.find((t) => t.id === currentTeamId)?.name || 'notre équipe';
+            await onCreateScoutingRequest(
+              user.id,
+              `${teamName} souhaite accéder à votre profil pour un suivi scouting.`
+            );
+          }}
           onProfileSelect={(user) => {
           // Créer un profil de scouting à partir de l'utilisateur sélectionné
-          const newScoutProfile: ScoutingProfile = {
+          const newScoutProfile = {
             id: `scout_${generateId()}`,
             firstName: user.firstName,
             lastName: user.lastName,
@@ -563,15 +572,14 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             nationality: user.signupInfo?.nationality,
             heightCm: user.signupInfo?.heightCm,
             weightKg: user.signupInfo?.weightKg,
-            qualitativeProfile: user.qualitativeProfile || 'N/A',
-            disciplines: user.disciplines || [],
+            qualitativeProfile: user.qualitativeProfile || RiderQualitativeProfile.AUTRE,
             categories: user.categories || [],
             forme: user.forme || 'BONNE',
             moral: user.moral || 'BON',
             healthCondition: user.healthCondition || 'BONNE',
             potentialRating: 3,
             status: 'TO_WATCH',
-            discipline: user.disciplines?.[0] || 'ROUTE',
+            discipline: user.disciplines?.[0] || DisciplinePracticed.ROUTE,
             powerProfile: user.powerProfile || {},
             characteristics: user.characteristics || {},
             notes: '',
@@ -604,8 +612,9 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             isSearchable: user.isSearchable,
             salary: user.salary,
             contractEndDate: user.contractEndDate,
-            nextSeasonTeam: user.nextSeasonTeam
-          };
+            nextSeasonTeam: user.nextSeasonTeam,
+            allergies: [],
+          } as ScoutingProfile;
           
           onSaveScoutingProfile(newScoutProfile);
           setActiveTab('profiles'); // Basculer vers l'onglet profils
@@ -1049,7 +1058,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
               setAddProspectModal({ ...addProspectModal, isOpen: false });
           }}
           isEditMode={true}
-          appState={{ riders: [], teams: [], raceEvents: [], teamProducts: [] }}
+          appState={appState as AppState}
           raceEvents={[]}
           riderEventSelections={[]}
           performanceEntries={[]}

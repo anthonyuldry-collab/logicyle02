@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import {
   DEFAULT_THEME_ACCENT_COLOR,
   DEFAULT_THEME_PRIMARY_COLOR,
@@ -19,12 +19,17 @@ import {
   EventRadioEquipment,
   EventRadioAssignment,
   EventBudgetItem,
+  ExpenseReceipt,
   EventChecklistItem,
   PeerRating,
   RaceEvent,
   Rider,
   RiderEventSelection,
+  RiderEventPreference,
+  RiderEventStatus,
   ScoutingProfile,
+  RiderQualitativeProfile,
+  DisciplinePracticed,
   StaffMember,
   StaffRole,
   StaffStatus,
@@ -32,23 +37,29 @@ import {
   MeetingReport,
   StockItem,
   TeamProduct,
+  Mission,
   TeamLevel,
+  SubscriptionPlanId,
   TeamMembershipStatus,
+  TeamMembership,
   TeamRole,
   TeamState,
   User,
   UserRole,
   Vehicle,
+  PermissionLevel,
   // Enums pour les coureurs
-  DisciplinePracticed,
   FormeStatus,
   MoralStatus,
   HealthCondition,
   BikeType,
+  PerformanceFactorDetail,
+  BikeSetup,
   // Types pour l'historique PPR
   PowerProfileHistoryEntry,
   PowerProfileHistory,
   PowerProfile,
+  ScoutingRequestStatus,
 } from "./types";
 
 // Firebase imports
@@ -63,80 +74,72 @@ import { doc, setDoc, updateDoc, deleteDoc, addDoc, collection } from "firebase/
 import * as firebaseService from "./services/firebaseService";
 import { addRiderToSeasonArchive } from "./utils/performanceArchiveUtils";
 import { getCurrentSeasonYear } from "./utils/seasonUtils";
+import { buildDefaultRider, buildDefaultStaffMember } from "./utils/defaultTeamMemberProfiles";
 
 
-import Sidebar from "./components/Sidebar";
+import MobileShell from "./components/mobile/MobileShell";
 import { SectionErrorBoundary } from "./components/SectionErrorBoundary";
 import { LanguageProvider } from "./contexts/LanguageContext";
-import EventDetailView from "./EventDetailView";
 import { useTranslations } from "./hooks/useTranslations";
-import AdminDossierSection from "./sections/AdminDossierSection";
-import AdminDashboardSection from "./sections/AdminDashboardSection";
-import SuperAdminSection from "./sections/SuperAdminSection";
-import { AutomatedPerformanceProfileSection } from "./sections/AutomatedPerformanceProfileSection";
-import CareerSection from "./sections/CareerSection";
-import ChecklistSection from "./sections/ChecklistSection";
-import EquipmentSection from "./sections/EquipmentSection";
-import { EventsSection } from "./sections/EventsSection";
-import { FinancialSection } from "./sections/FinancialSection";
 import LoginView from "./sections/LoginView";
-import MissionSearchSection from "./sections/MissionSearchSection";
-import MyPerformanceSectionNew from "./sections/MyPerformanceSection_new";
-import MyTripsSection from "./sections/MyTripsSection";
 import NoTeamView from "./sections/NoTeamView";
-import NutritionSection from "./sections/NutritionSection";
 import PendingApprovalView from "./sections/PendingApprovalView";
-import { PerformanceProjectSection } from "./sections/PerformanceProjectSection";
-import PerformanceSection from "./sections/PerformanceSection";
-import PerformancePoleSection from "./sections/PerformancePoleSection";
-import PermissionsSection from "./sections/PermissionsSection";
-import RiderEquipmentSection from "./sections/RiderEquipmentSection";
-import RosterSection from "./sections/RosterSection";
-import SeasonPlanningSection from "./sections/SeasonPlanningSection";
-import ScoutingSection from "./sections/ScoutingSection";
-import SettingsSection from "./sections/SettingsSection";
 import SignupView, { SignupData } from "./sections/SignupView";
-import StaffSection from "./sections/StaffSection";
-import StocksSection from "./sections/StocksSection";
-import { AccommodationHistorySection } from "./sections/AccommodationHistorySection";
-import UserManagementSection from "./sections/UserManagementSection";
-import UserSettingsSection from "./sections/UserSettingsSection";
-import VehiclesSection from "./sections/VehiclesSection";
-
-// Nouvelles sections pour le back-office coureur
-import MyDashboardSection from "./sections/MyDashboardSection";
-import MyProfileSection from "./sections/MyProfileSection";
-import MyCalendarSection from "./sections/MyCalendarSection";
-import MyResultsSection from "./sections/MyResultsSection";
-import BikeSetupSection from "./sections/BikeSetupSection";
-import MyCareerSection from "./sections/MyCareerSection";
-import MyAdminSection from "./sections/MyAdminSection";
-import TalentAvailabilitySection from "./sections/TalentAvailabilitySection";
+import {
+  SectionSuspense,
+  LazyEventDetailView,
+  LazyAdminDossierSection,
+  LazyAdminDashboardSection,
+  LazySuperAdminSection,
+  LazyAutomatedPerformanceProfileSection,
+  LazyCareerSection,
+  LazyChecklistSection,
+  LazyEquipmentSection,
+  LazyEventsSection,
+  LazyFinancialSection,
+  LazyExpenseReceiptsSection,
+  LazyMissionSearchSection,
+  LazyMyTripsSection,
+  LazyNutritionSection,
+  LazyPerformanceProjectSection,
+  LazyPerformanceSection,
+  LazyPerformancePoleSection,
+  LazyPermissionsSection,
+  LazyRiderEquipmentSection,
+  LazyRosterSection,
+  LazySeasonPlanningSection,
+  LazyScoutingSection,
+  LazySettingsSection,
+  LazyStaffSection,
+  LazyStocksSection,
+  LazyAccommodationHistorySection,
+  LazyUserManagementSection,
+  LazyUserSettingsSection,
+  LazyVehiclesSection,
+  LazyMyDashboardSection,
+  LazyMyProfileSection,
+  LazyMyCalendarSection,
+  LazyMyResultsSection,
+  LazyBikeSetupSection,
+  LazyMyCareerSection,
+  LazyMyAdminSection,
+  LazyTalentAvailabilitySection,
+  LazyIndependentSpaceSection,
+  LazyPricingSection,
+} from "./sections/lazySections";
+import { getContrastYIQ, generateId, lightenDarkenColor } from "./utils/themeUtils";
+import { isIndependentUser } from "./utils/independentUtils";
+import { activateIndependentProfile, saveIndependentProfile } from "./services/independentProfileService";
 import SeasonTransitionManager from "./components/SeasonTransitionManager";
-
-// Helper functions for dynamic theming
-function getContrastYIQ(hexcolor: string): string {
-  if (!hexcolor) return "#FFFFFF";
-  hexcolor = hexcolor.replace("#", "");
-  if (hexcolor.length === 3) {
-    hexcolor = hexcolor
-      .split("")
-      .map((char) => char + char)
-      .join("");
-  }
-  if (hexcolor.length !== 6) return "#FFFFFF";
-
-  const r = parseInt(hexcolor.substring(0, 2), 16);
-  const g = parseInt(hexcolor.substring(2, 4), 16);
-  const b = parseInt(hexcolor.substring(4, 6), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 128 ? "#000000" : "#FFFFFF";
-}
-
-// Helper function for generating unique IDs
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-}
+import { processPendingInvitesOnLogin } from "./services/inviteService";
+import SubscriptionBanner from "./components/SubscriptionBanner";
+import { getDefaultPlanForTeamLevel } from "./constants/subscriptionPlans";
+import {
+  canAccessSection,
+  getLockedSections,
+  getSubscriptionAccess,
+} from "./utils/subscriptionEntitlements";
+import { requestPlanUpgrade, createBillingPortalSession } from "./services/billingService";
 
 // Fonction de sécurité pour StaffRole et StaffStatus
 function getSafeStaffRole(role: string): string {
@@ -164,89 +167,71 @@ function getSafeStaffStatus(status: string): string {
 }
 
 // Fonctions de sécurité pour les enums des coureurs
-function getSafeDisciplinePracticed(discipline: string): string {
+function getSafeDisciplinePracticed(discipline: string): DisciplinePracticed {
   try {
-    if (typeof DisciplinePracticed !== 'undefined' && DisciplinePracticed.ROUTE) {
+    if (discipline === "Route" && DisciplinePracticed.ROUTE) {
       return DisciplinePracticed.ROUTE;
     }
-  } catch (error) {
-    // DisciplinePracticed non disponible
+  } catch {
+    // ignore
   }
-  return "Route";
+  return DisciplinePracticed.ROUTE;
 }
 
-function getSafeFormeStatus(status: string): string {
+function getSafeFormeStatus(status: string): FormeStatus {
   try {
-    if (typeof FormeStatus !== 'undefined' && FormeStatus.BON) {
-      return FormeStatus.BON;
-    }
-  } catch (error) {
-    // FormeStatus non disponible
+    if (status === "Bonne" && FormeStatus.BON) return FormeStatus.BON;
+  } catch {
+    // ignore
   }
-  return "Bon";
+  return FormeStatus.BON;
 }
 
-function getSafeMoralStatus(status: string): string {
+function getSafeMoralStatus(status: string): MoralStatus {
   try {
-    if (typeof MoralStatus !== 'undefined' && MoralStatus.BON) {
-      return MoralStatus.BON;
-    }
-  } catch (error) {
-    // MoralStatus non disponible
+    if (status === "Bon" && MoralStatus.BON) return MoralStatus.BON;
+  } catch {
+    // ignore
   }
-  return "Bon";
+  return MoralStatus.BON;
 }
 
-function getSafeHealthCondition(condition: string): string {
+function getSafeHealthCondition(condition: string): HealthCondition {
   try {
     if (typeof HealthCondition !== 'undefined' && HealthCondition.PRET_A_COURIR) {
       return HealthCondition.PRET_A_COURIR;
     }
-  } catch (error) {
-    // HealthCondition non disponible
+  } catch {
+    // ignore
   }
-  return "Prêt(e) à courir";
+  return HealthCondition.PRET_A_COURIR;
 }
 
-function getSafeBikeType(type: string): string {
+function getSafeBikeType(type: string): BikeType {
   try {
-    if (typeof BikeType !== 'undefined' && BikeType.ROUTE) {
-      return BikeType.ROUTE;
-    }
-  } catch (error) {
-    // BikeType non disponible
+    if (type === "Route" && BikeType.ROUTE) return BikeType.ROUTE;
+    if (type === "Contre-la-montre" && BikeType.CONTRE_LA_MONTRE) return BikeType.CONTRE_LA_MONTRE;
+  } catch {
+    // ignore
   }
-  return "Route";
+  return BikeType.ROUTE;
 }
 
-function lightenDarkenColor(col: string, amt: number): string {
-  if (!col) return "#000000";
-  col = col.replace("#", "");
-  if (col.length === 3) {
-    col = col
-      .split("")
-      .map((char) => char + char)
-      .join("");
-  }
-  if (col.length !== 6) return "#000000";
+const emptyPerformanceFactor = (): PerformanceFactorDetail => ({
+  forces: '',
+  aOptimiser: '',
+  aDevelopper: '',
+  besoinsActions: '',
+});
 
-  let num = parseInt(col, 16);
-  let r = (num >> 16) + amt;
-  if (r > 255) r = 255;
-  else if (r < 0) r = 0;
-  let green = ((num >> 8) & 0x00ff) + amt;
-  if (green > 255) green = 255;
-  else if (green < 0) green = 0;
-  let blue = (num & 0x0000ff) + amt;
-  if (blue > 255) blue = 255;
-  else if (blue < 0) blue = 0;
-
-  const rHex = r.toString(16).padStart(2, "0");
-  const gHex = green.toString(16).padStart(2, "0");
-  const bHex = blue.toString(16).padStart(2, "0");
-
-  return `#${rHex}${gHex}${bHex}`;
-}
+const emptyBikeSetup = (bikeType: BikeType): BikeSetup => ({
+  specifics: {},
+  cotes: {},
+  bikeType,
+  size: '',
+  brand: '',
+  model: '',
+});
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>({
@@ -260,7 +245,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
-    "login" | "signup" | "app" | "pending" | "no_team" | "load_error"
+    "login" | "signup" | "app" | "pending" | "no_team" | "load_error" | "pricing"
   >("login");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
@@ -268,6 +253,11 @@ const App: React.FC = () => {
   const isMountedRef = useRef(true);
 
   const [language, setLanguageState] = useState<"fr" | "en">("fr");
+  const [receiptScanDefaults, setReceiptScanDefaults] = useState<{
+    eventId?: string;
+    transportLegId?: string;
+    openScanner?: boolean;
+  }>({});
 
   const { t } = useTranslations();
 
@@ -305,6 +295,12 @@ const App: React.FC = () => {
         userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
       ) {
         setView("pending");
+      } else if (isIndependentUser(user)) {
+        const globalMissions = await firebaseService.getOpenMissionsGlobal();
+        teamData = { ...getInitialTeamState(), missions: globalMissions };
+        if (!isMountedRef.current) return;
+        setView("app");
+        setCurrentSection("independentHub");
       } else {
         setView("no_team");
       }
@@ -341,109 +337,141 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (!isMountedRef.current) return;
-      if (firebaseUser) {
-        setIsLoading(true);
-        let userProfile = await firebaseService.getUserProfile(
-          firebaseUser.uid
-        );
+      try {
+        if (firebaseUser) {
+          setIsLoading(true);
+          let userProfile = await firebaseService.getUserProfile(
+            firebaseUser.uid
+          );
 
-        // If profile doesn't exist (e.g., first login after signup), create it. This makes the app more robust.
-        if (!userProfile) {
-          try {
-            // Utiliser les données d'inscription stockées si disponibles (via ref pour éviter les problèmes de closure)
-            const signupData = pendingSignupDataRef.current;
-            if (signupData) {
-              await firebaseService.createUserProfile(
-                firebaseUser.uid,
-                signupData
-              );
-              // Nettoyer les données temporaires après utilisation
+          // If profile doesn't exist (e.g., first login after signup), create it. This makes the app more robust.
+          if (!userProfile) {
+            try {
+              // Utiliser les données d'inscription stockées si disponibles (via ref pour éviter les problèmes de closure)
+              const signupData = pendingSignupDataRef.current;
+              if (signupData) {
+                await firebaseService.createUserProfile(
+                  firebaseUser.uid,
+                  signupData
+                );
+                // Nettoyer les données temporaires après utilisation
+                setPendingSignupData(null);
+                pendingSignupDataRef.current = null;
+              } else {
+                // Fallback pour les utilisateurs existants sans données d'inscription
+                const { email } = firebaseUser;
+                const emailPrefix = email?.split("@")[0] || "utilisateur";
+                const firstName = emailPrefix;
+                const lastName = "";
+                const newProfileData: SignupData = {
+                  email: email || "",
+                  firstName,
+                  lastName,
+                  password: "",
+                  userRole: UserRole.COUREUR, // Rôle par défaut pour les utilisateurs existants
+                  birthDate: "1990-01-01", // Date par défaut pour les utilisateurs existants
+                  sex: undefined, // Genre non défini par défaut
+                };
+                await firebaseService.createUserProfile(
+                  firebaseUser.uid,
+                  newProfileData
+                );
+              }
+              userProfile = await firebaseService.getUserProfile(
+                firebaseUser.uid
+              ); // Re-fetch the newly created profile
+            } catch (profileError: any) {
+              console.error("Erreur lors de la création du profil utilisateur:", profileError);
+              
+              // Nettoyer les données temporaires en cas d'erreur
               setPendingSignupData(null);
               pendingSignupDataRef.current = null;
-            } else {
-              // Fallback pour les utilisateurs existants sans données d'inscription
-              const { email } = firebaseUser;
-              const emailPrefix = email?.split("@")[0] || "utilisateur";
-              const firstName = emailPrefix;
-              const lastName = "";
-              const newProfileData: SignupData = {
-                email: email || "",
-                firstName,
-                lastName,
-                password: "",
-                userRole: UserRole.COUREUR, // Rôle par défaut pour les utilisateurs existants
-                birthDate: "1990-01-01", // Date par défaut pour les utilisateurs existants
-                sex: undefined, // Genre non défini par défaut
-              };
-              await firebaseService.createUserProfile(
-                firebaseUser.uid,
-                newProfileData
-              );
+              
+              // Déconnecter l'utilisateur pour éviter un état incohérent
+              try {
+                await signOut(auth);
+              } catch (signOutError) {
+                // Erreur de déconnexion silencieuse
+              }
+              
+              // Afficher un message d'erreur plus détaillé selon le type d'erreur
+              let errorMessage = "Erreur lors de la création du profil. Veuillez contacter l'administrateur.";
+              
+              if (profileError?.code === 'permission-denied') {
+                errorMessage = "Erreur de permissions Firestore. Les règles de sécurité ne permettent pas la création de votre profil. Veuillez contacter l'administrateur.";
+              } else if (profileError?.code === 'unavailable') {
+                errorMessage = "Service Firestore indisponible. Vérifiez votre connexion internet et réessayez.";
+              } else if (profileError?.code === 'failed-precondition') {
+                errorMessage = "Condition préalable non remplie. Veuillez réessayer ou contacter l'administrateur.";
+              } else if (profileError?.code === 'already-exists') {
+                errorMessage = "Un profil existe déjà pour cet utilisateur. Veuillez vous connecter.";
+              } else if (profileError?.message) {
+                // Utiliser le message d'erreur amélioré si disponible
+                errorMessage = profileError.message.includes("Données d'inscription incomplètes") 
+                  ? profileError.message
+                  : `Erreur lors de la création du profil: ${profileError.message}`;
+              }
+              
+              alert(errorMessage);
+              return;
             }
-            userProfile = await firebaseService.getUserProfile(
-              firebaseUser.uid
-            ); // Re-fetch the newly created profile
-          } catch (profileError: any) {
-            console.error("Erreur lors de la création du profil utilisateur:", profileError);
-            
-            // Nettoyer les données temporaires en cas d'erreur
-            setPendingSignupData(null);
-            pendingSignupDataRef.current = null;
-            
-            // Déconnecter l'utilisateur pour éviter un état incohérent
-            try {
-              await signOut(auth);
-            } catch (signOutError) {
-              // Erreur de déconnexion silencieuse
-            }
-            
-            // Afficher un message d'erreur plus détaillé selon le type d'erreur
-            let errorMessage = "Erreur lors de la création du profil. Veuillez contacter l'administrateur.";
-            
-            if (profileError?.code === 'permission-denied') {
-              errorMessage = "Erreur de permissions Firestore. Les règles de sécurité ne permettent pas la création de votre profil. Veuillez contacter l'administrateur.";
-            } else if (profileError?.code === 'unavailable') {
-              errorMessage = "Service Firestore indisponible. Vérifiez votre connexion internet et réessayez.";
-            } else if (profileError?.code === 'failed-precondition') {
-              errorMessage = "Condition préalable non remplie. Veuillez réessayer ou contacter l'administrateur.";
-            } else if (profileError?.code === 'already-exists') {
-              errorMessage = "Un profil existe déjà pour cet utilisateur. Veuillez vous connecter.";
-            } else if (profileError?.message) {
-              // Utiliser le message d'erreur amélioré si disponible
-              errorMessage = profileError.message.includes("Données d'inscription incomplètes") 
-                ? profileError.message
-                : `Erreur lors de la création du profil: ${profileError.message}`;
-            }
-            
-            alert(errorMessage);
-            setIsLoading(false);
-            return; // Sortir de la fonction pour éviter de continuer
           }
-        }
 
-        if (userProfile) {
-          setCurrentUser(userProfile);
-          await loadDataForUser(userProfile); // This will set loading to false
-          if (!isMountedRef.current) return;
-          // Redirection automatique vers le tableau de bord administrateur pour les admins
-          if (userProfile.permissionRole === TeamRole.ADMIN || userProfile.userRole === UserRole.MANAGER) {
-            setCurrentSection("myDashboard"); // myDashboard affichera automatiquement AdminDashboardSection
+          if (userProfile) {
+            if (firebaseUser.email) {
+              try {
+                const activated = await processPendingInvitesOnLogin(
+                  firebaseUser.uid,
+                  firebaseUser.email
+                );
+                if (activated > 0) {
+                  userProfile = await firebaseService.getUserProfile(firebaseUser.uid);
+                }
+              } catch (inviteError) {
+                console.warn('Traitement des invitations:', inviteError);
+              }
+            }
+
+            if (!userProfile) return;
+            setCurrentUser(userProfile);
+            await loadDataForUser(userProfile); // This will set loading to false
+            if (!isMountedRef.current) return;
+            // Redirection automatique vers le tableau de bord administrateur pour les admins
+            if (userProfile.permissionRole === TeamRole.ADMIN || userProfile.userRole === UserRole.MANAGER) {
+              setCurrentSection("myDashboard"); // myDashboard affichera automatiquement LazyAdminDashboardSection
+            }
+          } else {
+            // This case should ideally not be reached if profile creation is successful.
+            await signOut(auth); // Log out to prevent inconsistent state
           }
         } else {
-          // This case should ideally not be reached if profile creation is successful.
-          signOut(auth); // Log out to prevent inconsistent state
+          if (!isMountedRef.current) return;
+          setCurrentUser(null);
+          setAppState({
+            ...getInitialGlobalState(),
+            ...getInitialTeamState(),
+            activeEventId: null,
+            activeTeamId: null,
+          });
+          setView("login");
         }
-      } else {
-        if (!isMountedRef.current) return;
-        setCurrentUser(null);
-        setAppState({
-          ...getInitialGlobalState(),
-          ...getInitialTeamState(),
-          activeEventId: null,
-          activeTeamId: null,
-        });
-        setView("login");
-        setIsLoading(false);
+      } catch (error: unknown) {
+        console.error("Erreur lors de la vérification de l'authentification:", error);
+        const message = error instanceof Error
+          ? error.message
+          : "Erreur de connexion. Vérifiez votre connexion et réessayez.";
+        alert(message);
+        try {
+          await signOut(auth);
+        } catch {
+          // ignore
+        }
+        if (isMountedRef.current) {
+          setCurrentUser(null);
+          setView("login");
+        }
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
       }
     });
     return () => unsubscribe();
@@ -783,275 +811,378 @@ const App: React.FC = () => {
 
   const onDeleteStaff = useCallback(async (item: StaffMember) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "staff",
-      item.id
-    );
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "staff",
+        item.id
+      );
 
-    setAppState((prev: AppState) => {
-      const collection = prev.staff;
-      return {
-        ...prev,
-        staff: collection.filter((i: StaffMember) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.staff;
+        return {
+          ...prev,
+          staff: collection.filter((i: StaffMember) => i.id !== item.id),
+        };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression du staff:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveMeetingReport = useCallback(async (item: MeetingReport) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "meetingReports",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.meetingReports || [];
-      const exists = collection.some((i: MeetingReport) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: MeetingReport) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, meetingReports: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "meetingReports",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.meetingReports || [];
+        const exists = collection.some((i: MeetingReport) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: MeetingReport) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, meetingReports: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du compte rendu:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteMeetingReport = useCallback(async (item: MeetingReport) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "meetingReports",
-      item.id
-    );
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "meetingReports",
+        item.id
+      );
 
-    setAppState((prev: AppState) => {
-      const collection = prev.meetingReports || [];
-      return {
-        ...prev,
-        meetingReports: collection.filter((i: MeetingReport) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.meetingReports || [];
+        return {
+          ...prev,
+          meetingReports: collection.filter((i: MeetingReport) => i.id !== item.id),
+        };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression du compte rendu:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveVehicle = useCallback(async (item: Vehicle) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "vehicles",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "vehicles",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
 
-    setAppState((prev: AppState) => {
-      const collection = prev.vehicles;
-      const exists = collection.some((i: Vehicle) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: Vehicle) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, vehicles: newCollection };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.vehicles;
+        const exists = collection.some((i: Vehicle) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: Vehicle) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, vehicles: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du véhicule:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteVehicle = useCallback(async (item: Vehicle) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "vehicles",
-      item.id
-    );
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "vehicles",
+        item.id
+      );
 
-    setAppState((prev: AppState) => {
-      const collection = prev.vehicles;
-      return {
-        ...prev,
-        vehicles: collection.filter((i: Vehicle) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.vehicles;
+        return {
+          ...prev,
+          vehicles: collection.filter((i: Vehicle) => i.id !== item.id),
+        };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression du véhicule:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveEquipment = useCallback(async (item: EquipmentItem) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "equipment",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "equipment",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
 
-    setAppState((prev: AppState) => {
-      const collection = prev.equipment;
-      const exists = collection.some((i: EquipmentItem) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: EquipmentItem) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, equipment: newCollection };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.equipment;
+        const exists = collection.some((i: EquipmentItem) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: EquipmentItem) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, equipment: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde de l'équipement:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteEquipment = useCallback(async (item: EquipmentItem) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "equipment",
-      item.id
-    );
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "equipment",
+        item.id
+      );
 
-    setAppState((prev: AppState) => {
-      const collection = prev.equipment;
-      return {
-        ...prev,
-        equipment: collection.filter((i: EquipmentItem) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.equipment;
+        return {
+          ...prev,
+          equipment: collection.filter((i: EquipmentItem) => i.id !== item.id),
+        };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression de l'équipement:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveRaceEvent = useCallback(async (item: RaceEvent) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "raceEvents",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "raceEvents",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
 
-    setAppState((prev: AppState) => {
-      const collection = prev.raceEvents;
-      const exists = collection.some((i: RaceEvent) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: RaceEvent) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, raceEvents: newCollection };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.raceEvents;
+        const exists = collection.some((i: RaceEvent) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: RaceEvent) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, raceEvents: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde de l'événement:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteRaceEvent = useCallback(async (item: RaceEvent) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "raceEvents",
-      item.id
-    );
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "raceEvents",
+        item.id
+      );
 
-    setAppState((prev: AppState) => {
-      const collection = prev.raceEvents;
-      return {
-        ...prev,
-        raceEvents: collection.filter((i: RaceEvent) => i.id !== item.id),
-      };
-    });
+      setAppState((prev: AppState) => {
+        const collection = prev.raceEvents;
+        return {
+          ...prev,
+          raceEvents: collection.filter((i: RaceEvent) => i.id !== item.id),
+        };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression de l'événement:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   // Handlers pour les autres types
   const onSavePerformanceEntry = useCallback(async (item: PerformanceEntry) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "performanceEntries",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.performanceEntries;
-      const exists = collection.some((i: PerformanceEntry) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: PerformanceEntry) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, performanceEntries: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "performanceEntries",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.performanceEntries;
+        const exists = collection.some((i: PerformanceEntry) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: PerformanceEntry) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, performanceEntries: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde de la performance:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeletePerformanceEntry = useCallback(async (item: PerformanceEntry) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "performanceEntries",
-      item.id
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      performanceEntries: prev.performanceEntries.filter((i: PerformanceEntry) => i.id !== item.id),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "performanceEntries",
+        item.id
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        performanceEntries: prev.performanceEntries.filter((i: PerformanceEntry) => i.id !== item.id),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression de la performance:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
 
   const onSaveIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "incomeItems",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.incomeItems;
-      const exists = collection.some((i: IncomeItem) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: IncomeItem) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, incomeItems: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "incomeItems",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.incomeItems;
+        const exists = collection.some((i: IncomeItem) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: IncomeItem) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, incomeItems: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du revenu:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "incomeItems",
-      item.id
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      incomeItems: prev.incomeItems.filter((i: IncomeItem) => i.id !== item.id),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "incomeItems",
+        item.id
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        incomeItems: prev.incomeItems.filter((i: IncomeItem) => i.id !== item.id),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression du revenu:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveBudgetItem = useCallback(async (item: EventBudgetItem) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "eventBudgetItems",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.eventBudgetItems;
-      const exists = collection.some((i: EventBudgetItem) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: EventBudgetItem) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, eventBudgetItems: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "eventBudgetItems",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.eventBudgetItems;
+        const exists = collection.some((i: EventBudgetItem) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: EventBudgetItem) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, eventBudgetItems: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du budget:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteBudgetItem = useCallback(async (item: EventBudgetItem) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "eventBudgetItems",
-      item.id
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      eventBudgetItems: prev.eventBudgetItems.filter((i: EventBudgetItem) => i.id !== item.id),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "eventBudgetItems",
+        item.id
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        eventBudgetItems: prev.eventBudgetItems.filter((i: EventBudgetItem) => i.id !== item.id),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression du budget:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
+  }, [appState.activeTeamId]);
+
+  const onSaveExpenseReceipt = useCallback(async (receipt: ExpenseReceipt) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "expenseReceipts",
+        receipt
+      );
+      const finalItem = { ...receipt, id: receipt.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.expenseReceipts || [];
+        const exists = collection.some((i: ExpenseReceipt) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: ExpenseReceipt) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, expenseReceipts: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du justificatif:", error);
+      alert("Erreur lors de la sauvegarde du justificatif. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveScoutingProfile = useCallback(async (item: ScoutingProfile) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "scoutingProfiles",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.scoutingProfiles;
-      const exists = collection.some((i: ScoutingProfile) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: ScoutingProfile) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, scoutingProfiles: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "scoutingProfiles",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.scoutingProfiles;
+        const exists = collection.some((i: ScoutingProfile) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: ScoutingProfile) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, scoutingProfiles: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du profil scouting:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteScoutingProfile = useCallback(async (item: ScoutingProfile | string) => {
@@ -1060,114 +1191,149 @@ const App: React.FC = () => {
     const profileId = typeof item === 'string' ? item : item.id;
     if (!profileId) return;
     
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "scoutingProfiles",
-      profileId
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      scoutingProfiles: prev.scoutingProfiles.filter((i: ScoutingProfile) => i.id !== profileId),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "scoutingProfiles",
+        profileId
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        scoutingProfiles: prev.scoutingProfiles.filter((i: ScoutingProfile) => i.id !== profileId),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression du profil scouting:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveStockItem = useCallback(async (item: StockItem) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "stockItems",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.stockItems;
-      const exists = collection.some((i: StockItem) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: StockItem) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, stockItems: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "stockItems",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.stockItems;
+        const exists = collection.some((i: StockItem) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: StockItem) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, stockItems: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du stock:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteStockItem = useCallback(async (item: StockItem) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "stockItems",
-      item.id
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      stockItems: prev.stockItems.filter((i: StockItem) => i.id !== item.id),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "stockItems",
+        item.id
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        stockItems: prev.stockItems.filter((i: StockItem) => i.id !== item.id),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression du stock:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onSaveChecklistTemplate = useCallback(async (item: ChecklistTemplate) => {
     if (!appState.activeTeamId) return;
-    const role = item.role ?? ChecklistRole.DS;
-    const toSave = { ...item, id: item.id || '', name: item.name, role, kind: item.kind || 'task', eventType: item.eventType, timing: item.timing, timingLabel: item.timingLabel };
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "checklistTemplates",
-      toSave
-    );
-    const finalItem = { ...toSave, id: toSave.id || savedId };
-    setAppState((prev: AppState) => {
-      const record = prev.checklistTemplates || {};
-      const arr = record[role] || [];
-      const exists = arr.some((i: ChecklistTemplate) => i.id === finalItem.id);
-      const newArr = exists
-        ? arr.map((i: ChecklistTemplate) => (i.id === finalItem.id ? finalItem : i))
-        : [...arr, finalItem];
-      return { ...prev, checklistTemplates: { ...record, [role]: newArr } };
-    });
+    try {
+      const role = item.role ?? ChecklistRole.DS;
+      const toSave = { ...item, id: item.id || '', name: item.name, role, kind: item.kind || 'task', eventType: item.eventType, timing: item.timing, timingLabel: item.timingLabel };
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "checklistTemplates",
+        toSave
+      );
+      const finalItem = { ...toSave, id: toSave.id || savedId };
+      setAppState((prev: AppState) => {
+        const record = (prev.checklistTemplates ?? {}) as TeamState['checklistTemplates'];
+        const arr = record[role] || [];
+        const exists = arr.some((i: ChecklistTemplate) => i.id === finalItem.id);
+        const newArr = exists
+          ? arr.map((i: ChecklistTemplate) => (i.id === finalItem.id ? finalItem : i))
+          : [...arr, finalItem];
+        return { ...prev, checklistTemplates: { ...record, [role]: newArr } };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du modèle checklist:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteChecklistTemplate = useCallback(async (item: ChecklistTemplate) => {
     if (!appState.activeTeamId || !item.id) return;
-    const role = item.role ?? ChecklistRole.DS;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "checklistTemplates",
-      item.id
-    );
-    setAppState((prev: AppState) => {
-      const record = prev.checklistTemplates || {};
-      const arr = (record[role] || []).filter((i: ChecklistTemplate) => i.id !== item.id);
-      return { ...prev, checklistTemplates: { ...record, [role]: arr } };
-    });
+    try {
+      const role = item.role ?? ChecklistRole.DS;
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "checklistTemplates",
+        item.id
+      );
+      setAppState((prev: AppState) => {
+        const record = (prev.checklistTemplates ?? {}) as TeamState['checklistTemplates'];
+        const arr = (record[role] || []).filter((i: ChecklistTemplate) => i.id !== item.id);
+        return { ...prev, checklistTemplates: { ...record, [role]: arr } };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la suppression du modèle checklist:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   // Handlers pour TeamProduct
   const onSaveTeamProduct = useCallback(async (item: TeamProduct) => {
     if (!appState.activeTeamId) return;
-    const savedId = await firebaseService.saveData(
-      appState.activeTeamId,
-      "teamProducts",
-      item
-    );
-    const finalItem = { ...item, id: item.id || savedId };
-    setAppState((prev: AppState) => {
-      const collection = prev.teamProducts;
-      const exists = collection.some((i: TeamProduct) => i.id === finalItem.id);
-      const newCollection = exists
-        ? collection.map((i: TeamProduct) => (i.id === finalItem.id ? finalItem : i))
-        : [...collection, finalItem];
-      return { ...prev, teamProducts: newCollection };
-    });
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "teamProducts",
+        item
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.teamProducts;
+        const exists = collection.some((i: TeamProduct) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i: TeamProduct) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, teamProducts: newCollection };
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du produit:", error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   const onDeleteTeamProduct = useCallback(async (item: TeamProduct) => {
     if (!appState.activeTeamId || !item.id) return;
-    await firebaseService.deleteData(
-      appState.activeTeamId,
-      "teamProducts",
-      item.id
-    );
-    setAppState((prev: AppState) => ({
-      ...prev,
-      teamProducts: prev.teamProducts.filter((i: TeamProduct) => i.id !== item.id),
-    }));
+    try {
+      await firebaseService.deleteData(
+        appState.activeTeamId,
+        "teamProducts",
+        item.id
+      );
+      setAppState((prev: AppState) => ({
+        ...prev,
+        teamProducts: prev.teamProducts.filter((i: TeamProduct) => i.id !== item.id),
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la suppression du produit:", error);
+      alert("Erreur lors de la suppression. Veuillez réessayer.");
+    }
   }, [appState.activeTeamId]);
 
   // Fonction utilitaire pour remplacer createBatchSetHandler
@@ -1185,6 +1351,112 @@ const App: React.FC = () => {
         return { ...prev, [collectionName]: newItems };
       });
     };
+
+  const persistCollectionDiff = async <T extends { id?: string }>(
+    teamId: string,
+    collectionName: string,
+    oldItems: T[],
+    newItems: T[],
+  ) => {
+    try {
+      const oldMap = new Map(
+        oldItems.filter((item) => item.id).map((item) => [item.id!, item]),
+      );
+      const newMap = new Map(
+        newItems.filter((item) => item.id).map((item) => [item.id!, item]),
+      );
+
+      for (const item of newItems) {
+        const oldItem = item.id ? oldMap.get(item.id) : undefined;
+        if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
+          await firebaseService.saveData(teamId, collectionName, item);
+        }
+      }
+      for (const [id] of oldMap) {
+        if (!newMap.has(id)) {
+          await firebaseService.deleteData(teamId, collectionName, id);
+        }
+      }
+    } catch (error) {
+      console.error(`Erreur lors de la persistance de ${collectionName}:`, error);
+      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
+  };
+
+  const createPersistedBatchSetHandler = <T extends { id?: string }>(
+    collectionName: keyof TeamState,
+  ): React.Dispatch<React.SetStateAction<T[]>> =>
+    (updater: React.SetStateAction<T[]>) => {
+      setAppState((prev: AppState) => {
+        const currentItems = (prev[collectionName] as T[]) || [];
+        const newItems =
+          typeof updater === "function"
+            ? (updater as (prevState: T[]) => T[])(currentItems)
+            : updater;
+
+        if (prev.activeTeamId) {
+          void persistCollectionDiff(
+            prev.activeTeamId,
+            collectionName as string,
+            currentItems,
+            newItems,
+          );
+        }
+
+        return { ...prev, [collectionName]: newItems };
+      });
+    };
+
+  const handleUpdateRiderPreference = useCallback(async (
+    eventId: string,
+    riderId: string,
+    preference: RiderEventPreference,
+    objectives?: string,
+  ) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const existing = appState.riderEventSelections.find(
+        (sel) => sel.eventId === eventId && sel.riderId === riderId,
+      );
+      if (existing) {
+        const updated: RiderEventSelection = {
+          ...existing,
+          riderPreference: preference,
+          riderObjectives: objectives ?? existing.riderObjectives,
+        };
+        await firebaseService.saveData(appState.activeTeamId, "riderEventSelections", updated);
+        setAppState((prev) => ({
+          ...prev,
+          riderEventSelections: prev.riderEventSelections.map((sel) =>
+            sel.id === existing.id ? updated : sel,
+          ),
+        }));
+      } else {
+        const newSelection: RiderEventSelection = {
+          id: `selection_${Date.now()}`,
+          eventId,
+          riderId,
+          status: RiderEventStatus.EN_ATTENTE,
+          riderPreference: preference,
+          riderObjectives: objectives || "",
+          notes: "",
+        };
+        const savedId = await firebaseService.saveData(
+          appState.activeTeamId,
+          "riderEventSelections",
+          newSelection,
+        );
+        const finalItem = { ...newSelection, id: savedId };
+        setAppState((prev) => ({
+          ...prev,
+          riderEventSelections: [...prev.riderEventSelections, finalItem],
+        }));
+      }
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour des préférences:", error);
+      alert("Erreur lors de la mise à jour. Veuillez réessayer.");
+    }
+  }, [appState.activeTeamId, appState.riderEventSelections]);
 
 
 
@@ -1267,7 +1539,40 @@ const App: React.FC = () => {
     }
   };
 
-  const handleJoinTeamRequest = async (teamId: string) => {
+  const handleActivateIndependentProfile = async () => {
+    if (!currentUser) return;
+    if (currentUser.userRole === UserRole.MANAGER) {
+      alert("Les managers créent une équipe. Utilisez le parcours « Créer mon équipe ».");
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await activateIndependentProfile(currentUser.id, currentUser.userRole as UserRole);
+      const refreshedProfile = await firebaseService.getUserProfile(currentUser.id);
+      if (refreshedProfile) {
+        setCurrentUser(refreshedProfile);
+        await loadDataForUser(refreshedProfile);
+      }
+    } catch (error: unknown) {
+      console.error("Erreur activation profil indépendant:", error);
+      alert(error instanceof Error ? error.message : "Impossible d'activer le profil indépendant.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveIndependentProfile = async (updates: Partial<User>) => {
+    if (!currentUser) return;
+    await saveIndependentProfile(currentUser.id, updates);
+    const merged = { ...currentUser, ...updates };
+    setCurrentUser(merged);
+    setAppState((prev) => ({
+      ...prev,
+      users: prev.users.map((u) => (u.id === currentUser.id ? { ...u, ...updates } : u)),
+    }));
+  };
+
+  const handleJoinTeamRequest = async (teamId: string, joinRole: UserRole) => {
     if (!currentUser) {
       alert("Vous devez être connecté pour rejoindre une équipe.");
       return;
@@ -1276,14 +1581,18 @@ const App: React.FC = () => {
       await firebaseService.requestToJoinTeam(
         currentUser.id,
         teamId,
-        currentUser.userRole
+        joinRole,
+        {
+          firstName: currentUser.firstName,
+          lastName: currentUser.lastName,
+          email: currentUser.email,
+        }
       );
       setView("pending");
-      // Recharger les données pour mettre à jour les memberships
       await loadDataForUser(currentUser);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("❌ Échec de la demande pour rejoindre l'équipe:", error);
-      const errorMessage = error?.message || t("errorJoinTeam");
+      const errorMessage = error instanceof Error ? error.message : t("errorJoinTeam");
       alert(errorMessage);
     }
   };
@@ -1292,8 +1601,13 @@ const App: React.FC = () => {
     name: string;
     level: TeamLevel;
     country: string;
+    planId?: SubscriptionPlanId;
   }) => {
     if (!currentUser) return;
+    if (currentUser.userRole !== UserRole.MANAGER) {
+      alert("Seuls les comptes Manager peuvent créer une équipe. Inscrivez-vous avec le parcours Manager.");
+      return;
+    }
     try {
       setIsLoading(true);
       // Forcer le rôle Manager lors de la création d'équipe
@@ -1341,6 +1655,16 @@ const App: React.FC = () => {
 
 
   const navigateTo = (section: AppSection, eventId?: string) => {
+    if (currentUser && appState?.activeTeamId && !isIndependentUser(currentUser)) {
+      const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
+      if (!canAccessSection(section, appState.subscription, fallbackPlan)) {
+        setCurrentSection("pricing");
+        if (section === "eventDetail" && eventId) {
+          setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+        }
+        return;
+      }
+    }
     if (section === "eventDetail" && eventId) {
       setAppState((prev: AppState) => ({ ...prev, activeEventId: eventId }));
     } else {
@@ -1376,7 +1700,35 @@ const App: React.FC = () => {
         <LoginView
           onLogin={handleLogin}
           onSwitchToSignup={() => setView("signup")}
+          onViewPricing={() => setView("pricing")}
         />
+      );
+    }
+    if (view === "pricing") {
+      return (
+        <div className="min-h-screen bg-gray-50 py-12 px-4">
+          <div className="max-w-6xl mx-auto">
+          <SectionSuspense>
+            <LazyPricingSection isPublic />
+          </SectionSuspense>
+            <div className="text-center mt-8 space-x-4">
+              <button
+                type="button"
+                onClick={() => setView("signup")}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+              >
+                {t("loginSignUpLink")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("login")}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+              >
+                {t("loginSubmitButton")}
+              </button>
+            </div>
+          </div>
+        </div>
       );
     }
     if (view === "signup") {
@@ -1384,12 +1736,21 @@ const App: React.FC = () => {
         <SignupView
           onRegister={handleRegister}
           onSwitchToLogin={() => setView("login")}
-          teams={appState.teams}
         />
       );
     }
     if (view === "pending") {
-      return <PendingApprovalView onLogout={handleLogout} />;
+      return (
+        <PendingApprovalView
+          userRole={currentUser?.userRole}
+          onLogout={handleLogout}
+          onCheckStatus={async () => {
+            if (currentUser) {
+              await loadDataForUser(currentUser);
+            }
+          }}
+        />
+      );
     }
     if (view === "load_error" && currentUser) {
       return (
@@ -1427,6 +1788,7 @@ const App: React.FC = () => {
           teams={appState.teams}
           onJoinTeam={handleJoinTeamRequest}
           onCreateTeam={handleCreateTeam}
+          onActivateIndependent={handleActivateIndependentProfile}
           onLogout={handleLogout}
         />
       );
@@ -1441,8 +1803,36 @@ const App: React.FC = () => {
       );
     }
 
-    if (view === "app" && currentUser && appState.activeTeamId) {
-      // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager si l'utilisateur est Manager/Admin
+    if (view === "app" && currentUser && (appState.activeTeamId || isIndependentUser(currentUser))) {
+      const userIsIndependent = isIndependentUser(currentUser);
+      const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
+      const subscriptionAccess = userIsIndependent
+        ? null
+        : getSubscriptionAccess(appState.subscription, fallbackPlan);
+      const lockedSections = userIsIndependent
+        ? []
+        : getLockedSections(appState.subscription, fallbackPlan);
+
+      const handleUpgradePlan = async (planId: SubscriptionPlanId) => {
+        if (!appState.activeTeamId) return;
+        try {
+          await requestPlanUpgrade(appState.activeTeamId, planId, "year");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          alert(message.includes('Stripe') ? message : 'Impossible de lancer le paiement. Réessayez ou contactez le support.');
+        }
+      };
+
+      const handleBillingPortal = async () => {
+        if (!appState.activeTeamId) return;
+        try {
+          const { url } = await createBillingPortalSession(appState.activeTeamId);
+          window.location.href = url;
+        } catch {
+          setCurrentSection("pricing");
+        }
+      };
+
       let effectivePermissions = firebaseService.getEffectivePermissions(
         currentUser,
         appState.permissions,
@@ -1466,6 +1856,7 @@ const App: React.FC = () => {
           permissions: ['view', 'edit'],
           checklist: ['view', 'edit'],
           settings: ['view', 'edit'],
+          pricing: ['view', 'edit'],
           // Exclure les sections "Mon Espace"
         };
       }
@@ -1488,33 +1879,40 @@ const App: React.FC = () => {
             if (lang) setLanguageState(lang);
           }}
         >
-          <div className="flex min-h-screen">
-            {appState && (
-              <Sidebar
-                currentSection={currentSection}
-                onSelectSection={navigateTo}
-                teamLogoUrl={appState.teamLogoUrl}
-                onLogout={handleLogout}
-                currentUser={currentUser}
-                effectivePermissions={effectivePermissions}
-                staff={appState.staff}
-                permissionRoles={appState.permissionRoles}
-                userTeams={userTeams}
-                currentTeamId={appState.activeTeamId}
-                onTeamSwitch={() => {
-                  /* TODO */
-                }}
-                isIndependent={false}
-                onGoToLobby={() => setView("no_team")}
-              />
-            )}
-            <main className="main-content p-6 bg-gray-100 min-h-screen ml-72">
+          <MobileShell
+            currentSection={currentSection}
+            onSelectSection={navigateTo}
+            teamLogoUrl={appState.teamLogoUrl}
+            onLogout={handleLogout}
+            currentUser={currentUser}
+            effectivePermissions={effectivePermissions}
+            staff={appState.staff}
+            permissionRoles={appState.permissionRoles}
+            userTeams={userTeams}
+            currentTeamId={appState.activeTeamId}
+            onTeamSwitch={() => {
+              /* TODO */
+            }}
+            isIndependent={userIsIndependent}
+            onGoToLobby={() => setView("no_team")}
+            lockedSections={lockedSections}
+            subscriptionBanner={
+              subscriptionAccess && !userIsIndependent ? (
+                <SubscriptionBanner
+                  access={subscriptionAccess}
+                  onManageBilling={() => setCurrentSection("pricing")}
+                  onViewPricing={() => setCurrentSection("pricing")}
+                />
+              ) : null
+            }
+          >
               <SectionErrorBoundary
                 sectionName="le contenu principal"
                 onRetry={() => navigateTo("myDashboard")}
               >
               {activeEvent ? (
-                <EventDetailView
+                <SectionSuspense>
+                <LazyEventDetailView
                   event={activeEvent}
                   eventId={activeEvent.id}
                   appState={appState as AppState}
@@ -1524,6 +1922,7 @@ const App: React.FC = () => {
                     navigateTo("events");
                   }}
                   currentUser={currentUser}
+                  effectivePermissions={effectivePermissions}
                   setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
                   onSaveRaceEvent={onSaveRaceEvent}
                   setEventTransportLegs={createBatchSetHandler<EventTransportLeg>(
@@ -1557,6 +1956,7 @@ const App: React.FC = () => {
                   setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                   onSavePerformanceEntry={onSavePerformanceEntry}
                 />
+                </SectionSuspense>
               ) : (
                 <div>
                   {/* Protection globale contre l'état non initialisé */}
@@ -1569,6 +1969,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ) : (
+                    <SectionSuspense>
                     <>
                       {currentSection === "myDashboard" && currentUser && (
                         <>
@@ -1582,7 +1983,7 @@ const App: React.FC = () => {
                           
                           {/* Redirection automatique pour les administrateurs */}
                           {currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER ? (
-                            <AdminDashboardSection
+                            <LazyAdminDashboardSection
                               riders={appState.riders}
                               staff={appState.staff}
                               currentUser={currentUser}
@@ -1592,7 +1993,7 @@ const App: React.FC = () => {
                               navigateTo={navigateTo}
                             />
                           ) : (
-                            <MyDashboardSection
+                            <LazyMyDashboardSection
                               riders={appState.riders}
                               staff={appState.staff}
                               currentUser={currentUser}
@@ -1605,7 +2006,7 @@ const App: React.FC = () => {
                         </>
                       )}
                       {currentSection === "adminDashboard" && currentUser && (
-                        <AdminDashboardSection
+                        <LazyAdminDashboardSection
                           riders={appState.riders}
                           staff={appState.staff}
                           currentUser={currentUser}
@@ -1616,7 +2017,7 @@ const App: React.FC = () => {
                         />
                       )}
                   {currentSection === "events" && (
-                    <EventsSection
+                    <LazyEventsSection
                       raceEvents={appState.raceEvents}
                       setRaceEvents={onSaveRaceEvent}
                       setEventDocuments={createBatchSetHandler<EventRaceDocument>(
@@ -1637,7 +2038,7 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "roster" && appState.riders && (
-                    <RosterSection
+                    <LazyRosterSection
                       riders={appState.riders}
                       onSaveRider={onSaveRider}
                       onDeleteRider={onDeleteRider}
@@ -1650,10 +2051,11 @@ const App: React.FC = () => {
                       teamProducts={appState.teamProducts}
                       currentUser={currentUser}
                       appState={appState}
+                      effectivePermissions={effectivePermissions}
                     />
                   )}
                   {currentSection === "season-planning" && appState.riders && (
-                    <SeasonPlanningSection
+                    <LazySeasonPlanningSection
                       riders={appState.riders}
                       onSaveRider={onSaveRider}
                       onDeleteRider={onDeleteRider}
@@ -1671,7 +2073,7 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "staff" && appState.staff && currentUser && (
-                    <StaffSection
+                    <LazyStaffSection
                       staff={appState.staff}
                       onSave={onSaveStaff}
                       onDelete={onDeleteStaff}
@@ -1681,7 +2083,7 @@ const App: React.FC = () => {
                         // TODO: Implémenter la sauvegarde des archives et transitions
                       }}
                       staffEventSelections={appState.staffEventSelections || []}
-                      setStaffEventSelections={createBatchSetHandler<StaffEventSelection>("staffEventSelections")}
+                      setStaffEventSelections={createPersistedBatchSetHandler<StaffEventSelection>("staffEventSelections")}
                       effectivePermissions={effectivePermissions}
                       raceEvents={appState.raceEvents}
                       eventStaffAvailabilities={appState.eventStaffAvailabilities}
@@ -1702,10 +2104,13 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "vehicles" && (
-                    <VehiclesSection
+                    <LazyVehiclesSection
                       vehicles={appState.vehicles}
                       onSave={onSaveVehicle}
-                      onDelete={onDeleteVehicle}
+                      onDelete={(vehicleId) => {
+                        const vehicle = appState.vehicles.find((v) => v.id === vehicleId);
+                        if (vehicle) void onDeleteVehicle(vehicle);
+                      }}
                       effectivePermissions={effectivePermissions}
                       staff={appState.staff}
                       eventTransportLegs={appState.eventTransportLegs}
@@ -1714,17 +2119,20 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "equipment" && (
-                    <EquipmentSection
+                    <LazyEquipmentSection
                       equipment={appState.equipment}
                       onSave={onSaveEquipment}
-                      onDelete={onDeleteEquipment}
+                      onDelete={(itemId) => {
+                        const item = appState.equipment.find((e) => e.id === itemId);
+                        if (item) void onDeleteEquipment(item);
+                      }}
                       effectivePermissions={effectivePermissions}
                       equipmentStockItems={appState.equipmentStockItems}
                       currentUser={currentUser}
                     />
                   )}
                   {currentSection === "accommodationHistory" && (
-                    <AccommodationHistorySection
+                    <LazyAccommodationHistorySection
                       appState={appState}
                       setEventAccommodations={createBatchSetHandler<EventAccommodation>(
                         "eventAccommodations"
@@ -1734,29 +2142,85 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "performance" && appState.riders && currentUser && (
-                    <PerformancePoleSection
+                    <LazyPerformancePoleSection
                       appState={appState}
                       effectivePermissions={effectivePermissions}
                       currentUser={currentUser}
                     />
                   )}
                   {currentSection === "settings" && (
-                    <SettingsSection
-                      appState={appState}
-                      onSaveTeamSettings={async (settings) => {
-                        if (appState.activeTeamId) {
-                          await firebaseService.saveTeamSettings(
-                            appState.activeTeamId,
-                            settings
-                          );
-                          setAppState((prev) => ({ ...prev, ...settings }));
+                    <LazySettingsSection
+                      teamLogoBase64={appState.teamLogoUrl}
+                      teamLogoMimeType={undefined}
+                      setTeamLogoBase64={() => {}}
+                      setTeamLogoMimeType={() => {}}
+                      themePrimaryColor={appState.themePrimaryColor}
+                      setThemePrimaryColor={(color) => {
+                        setAppState((prev) => ({ ...prev, themePrimaryColor: color }));
+                      }}
+                      themeAccentColor={appState.themeAccentColor}
+                      setThemeAccentColor={(color) => {
+                        setAppState((prev) => ({ ...prev, themeAccentColor: color }));
+                      }}
+                      teamLevel={appState.teamLevel}
+                      setTeamLevel={(level) => {
+                        setAppState((prev) => ({ ...prev, teamLevel: level }));
+                      }}
+                      language={appState.language}
+                      setLanguage={(lang) => {
+                        setAppState((prev) => ({ ...prev, language: lang }));
+                        setLanguageState(lang);
+                      }}
+                      team={appState.teams.find((t) => t.id === appState.activeTeamId)}
+                      onUpdateTeam={async (team) => {
+                        if (!appState.activeTeamId) return;
+                        await firebaseService.saveTeamSettings(appState.activeTeamId, {
+                          level: appState.teamLevel,
+                          themePrimaryColor: appState.themePrimaryColor,
+                          themeAccentColor: appState.themeAccentColor,
+                          language: appState.language,
+                        });
+                        setAppState((prev) => ({
+                          ...prev,
+                          teams: prev.teams.map((t) => (t.id === team.id ? team : t)),
+                        }));
+                      }}
+                      canDeleteTeam={
+                        currentUser.userRole === UserRole.MANAGER ||
+                        currentUser.permissionRole === TeamRole.ADMIN
+                      }
+                      onDeleteTeam={async (password) => {
+                        if (!appState.activeTeamId) return;
+                        const deletedTeamId = appState.activeTeamId;
+                        await firebaseService.deleteTeamWithAuth(deletedTeamId, password);
+                        setAppState((prev) => ({
+                          ...prev,
+                          teams: prev.teams.filter((t) => t.id !== deletedTeamId),
+                          teamMemberships: prev.teamMemberships.filter((m) => m.teamId !== deletedTeamId),
+                          activeTeamId: null,
+                          riders: [],
+                          staff: [],
+                          raceEvents: [],
+                        }));
+                        if (currentUser) {
+                          setCurrentUser({ ...currentUser, teamId: undefined });
+                          setView("no_team");
                         }
                       }}
-                      effectivePermissions={effectivePermissions}
+                      subscriptionAccess={subscriptionAccess ?? undefined}
+                      onUpgradePlan={handleUpgradePlan}
+                      onManageBillingPortal={handleBillingPortal}
+                    />
+                  )}
+                  {currentSection === "pricing" && (
+                    <LazyPricingSection
+                      currentPlanId={subscriptionAccess?.planId}
+                      teamLevel={appState.teamLevel}
+                      onSelectPlan={handleUpgradePlan}
                     />
                   )}
                   {currentSection === "financial" && appState.incomeItems && appState.eventBudgetItems && (
-                    <FinancialSection
+                    <LazyFinancialSection
                       incomeItems={appState.incomeItems}
                       budgetItems={appState.eventBudgetItems}
                       onSaveIncomeItem={onSaveIncomeItem}
@@ -1764,184 +2228,178 @@ const App: React.FC = () => {
                       onSaveBudgetItem={onSaveBudgetItem}
                       onDeleteBudgetItem={onDeleteBudgetItem}
                       effectivePermissions={effectivePermissions}
+                      raceEvents={appState.raceEvents}
+                      teamName={appState.teams.find((t) => t.id === appState.activeTeamId)?.name ?? 'equipe'}
+                      riders={appState.riders}
+                      staff={appState.staff}
+                      staffEventSelections={appState.staffEventSelections}
+                      expenseReceipts={appState.expenseReceipts || []}
+                      eventTransportLegs={appState.eventTransportLegs}
+                      currentUser={currentUser}
+                      teamId={appState.activeTeamId || ''}
+                      onSaveExpenseReceipt={onSaveExpenseReceipt}
+                      subscription={appState.subscription}
+                      fallbackPlanId={getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN)}
+                    />
+                  )}
+                  {currentSection === "expenseReceipts" && currentUser && appState.activeTeamId && (
+                    <LazyExpenseReceiptsSection
+                      receipts={appState.expenseReceipts || []}
+                      raceEvents={appState.raceEvents}
+                      transportLegs={appState.eventTransportLegs}
+                      currentUser={currentUser}
+                      staff={appState.staff}
+                      teamId={appState.activeTeamId}
+                      teamName={appState.teams.find((t) => t.id === appState.activeTeamId)?.name ?? 'equipe'}
+                      effectivePermissions={effectivePermissions}
+                      onSaveReceipt={onSaveExpenseReceipt}
+                      onSaveBudgetItem={onSaveBudgetItem}
+                      defaultEventId={receiptScanDefaults.eventId}
+                      defaultTransportLegId={receiptScanDefaults.transportLegId}
+                      autoOpenScanner={receiptScanDefaults.openScanner}
+                      onScannerOpened={() => setReceiptScanDefaults({})}
                     />
                   )}
                   {currentSection === "scouting" && (
-                    <ScoutingSection
+                    <LazyScoutingSection
                       scoutingProfiles={appState.scoutingProfiles}
                       riders={appState.riders}
                       onSaveScoutingProfile={onSaveScoutingProfile}
                       onDeleteScoutingProfile={onDeleteScoutingProfile}
                       onSaveRider={onSaveRider}
+                      onCreateScoutingRequest={async (athleteId, message) => {
+                        if (!appState.activeTeamId) throw new Error('Équipe active requise');
+                        const requestId = await firebaseService.createScoutingRequest({
+                          requesterTeamId: appState.activeTeamId,
+                          athleteId,
+                          message,
+                        });
+                        setAppState((prev) => ({
+                          ...prev,
+                          scoutingRequests: [
+                            ...(prev.scoutingRequests || []),
+                            {
+                              id: requestId,
+                              requesterTeamId: appState.activeTeamId!,
+                              athleteId,
+                              status: ScoutingRequestStatus.PENDING,
+                              requestDate: new Date().toISOString(),
+                              message: message || '',
+                            },
+                          ],
+                        }));
+                        return requestId;
+                      }}
                       effectivePermissions={effectivePermissions}
                       appState={appState}
                       currentTeamId={appState.activeTeamId}
                     />
                   )}
                   {currentSection === "userManagement" && appState.users && appState.teamMemberships && (
-                    <UserManagementSection
+                    <LazyUserManagementSection
                       appState={appState}
                       currentTeamId={appState.activeTeamId || ''}
                       onApprove={async (membership) => {
                         try {
-                          // Vérifier que membership est valide
-                          if (!membership || !membership.id || !membership.email || !membership.teamId) {
+                          if (!membership?.id || !membership.teamId) {
                             alert('Erreur: Données d\'adhésion invalides');
                             return;
                           }
-                          
-                          // Vérifier les permissions
+
                           if (!currentUser || !effectivePermissions) {
                             alert('Erreur: Permissions non définies. Veuillez vous reconnecter.');
                             return;
                           }
 
-                          // Vérifier si l'utilisateur a le droit d'approuver des adhésions
-                          const canApproveMemberships = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                      currentUser.permissionRole === TeamRole.ADMIN ||
-                                                      currentUser.userRole === UserRole.MANAGER;
-                          
+                          const canApproveMemberships =
+                            (effectivePermissions?.userManagement?.includes('edit')) ||
+                            currentUser.permissionRole === TeamRole.ADMIN ||
+                            currentUser.userRole === UserRole.MANAGER;
+
                           if (!canApproveMemberships) {
                             alert('Erreur: Vous n\'avez pas les permissions nécessaires pour approuver des adhésions.');
                             return;
                           }
 
-                          // Mettre à jour le statut de l'adhésion
-                          const membershipRef = doc(db, 'teamMemberships', membership.id);
-                          await updateDoc(membershipRef, {
-                            status: TeamMembershipStatus.ACTIVE,
-                            approvedAt: new Date().toISOString(),
-                            approvedBy: currentUser.id
+                          const existingUser =
+                            appState.users.find((u) => u.id === membership.userId) ||
+                            appState.users.find((u) => u.email === membership.email);
+
+                          const userId = membership.userId || existingUser?.id;
+                          const email = membership.email || existingUser?.email;
+
+                          if (!userId || !email) {
+                            alert('Erreur: Utilisateur introuvable pour cette demande.');
+                            return;
+                          }
+
+                          const approvedRole = (membership.userRole || membership.requestedUserRole || UserRole.COUREUR) as UserRole;
+
+                          const { riderCreated, staffCreated } = await firebaseService.approveTeamMembership(
+                            {
+                              membershipId: membership.id,
+                              userId,
+                              teamId: membership.teamId,
+                              userRole: approvedRole,
+                              email,
+                              firstName: membership.firstName || existingUser?.firstName,
+                              lastName: membership.lastName || existingUser?.lastName,
+                            },
+                            currentUser.id,
+                            existingUser
+                          );
+
+                          const now = new Date().toISOString();
+                          setAppState((prev: AppState) => {
+                            const updatedUsers = prev.users.map((u) =>
+                              u.id === userId
+                                ? { ...u, teamId: membership.teamId, userRole: approvedRole, permissionRole: TeamRole.MEMBER }
+                                : u
+                            );
+
+                            let riders = prev.riders;
+                            let staff = prev.staff;
+
+                            if (riderCreated && approvedRole === UserRole.COUREUR) {
+                              riders = [...riders, buildDefaultRider(
+                                {
+                                  id: userId,
+                                  firstName: membership.firstName || existingUser?.firstName || '',
+                                  lastName: membership.lastName || existingUser?.lastName || '',
+                                  email,
+                                },
+                                existingUser?.signupInfo
+                              )];
+                            }
+
+                            if (staffCreated && approvedRole === UserRole.STAFF) {
+                              staff = [...staff, buildDefaultStaffMember({
+                                id: userId,
+                                firstName: membership.firstName || existingUser?.firstName || '',
+                                lastName: membership.lastName || existingUser?.lastName || '',
+                                email,
+                              })];
+                            }
+
+                            return {
+                              ...prev,
+                              users: updatedUsers,
+                              riders,
+                              staff,
+                              teamMemberships: prev.teamMemberships.map((m) =>
+                                m.id === membership.id
+                                  ? { ...m, status: TeamMembershipStatus.ACTIVE, approvedAt: now, approvedBy: currentUser.id }
+                                  : m
+                              ),
+                            };
                           });
 
-                          // Mettre à jour l'état local
-                          setAppState((prev: AppState) => ({
-                            ...prev,
-                            teamMemberships: prev.teamMemberships.map(m => 
-                              m.id === membership.id 
-                                ? { ...m, status: TeamMembershipStatus.ACTIVE, approvedAt: new Date().toISOString(), approvedBy: currentUser.id }
-                                : m
-                            )
-                          }));
-
-                          // Créer un profil utilisateur si nécessaire
-                          const existingUser = appState.users.find(u => u.email === membership.email);
-                          
-                          if (!existingUser) {
-                            const newUserId = generateId();
-                            
-                            const newUser: User = {
-                              id: newUserId,
-                              email: membership.email,
-                              firstName: membership.firstName || '',
-                              lastName: membership.lastName || '',
-                              userRole: UserRole.COUREUR,
-                              teamId: membership.teamId,
-                              permissionRole: TeamRole.MEMBER,
-                              createdAt: new Date().toISOString(),
-                              updatedAt: new Date().toISOString(),
-                              isActive: true
-                            };
-                            
-                            await setDoc(doc(db, 'users', newUser.id), newUser);
-                            
-                            setAppState((prev: AppState) => ({
-                              ...prev,
-                              users: [...prev.users, newUser]
-                            }));
-
-                            // 🎯 AJOUTER L'UTILISATEUR AUX COLLECTIONS CORRESPONDANTES
-                            
-                            if (membership.userRole === UserRole.COUREUR) {
-                              // Créer le profil coureur
-                              const newRider: Rider = {
-                                id: newUserId,
-                                firstName: newUser.firstName,
-                                lastName: newUser.lastName,
-                                email: newUser.email,
-                                // Propriétés obligatoires avec valeurs par défaut
-                                qualitativeProfile: {
-                                  sprint: 0,
-                                  anaerobic: 0,
-                                  puncher: 0,
-                                  climbing: 0,
-                                  rouleur: 0,
-                                  generalPerformance: 0,
-                                  fatigueResistance: 0
-                                },
-                                                              disciplines: [getSafeDisciplinePracticed("Route")],
-                              categories: ['Senior'],
-                              forme: getSafeFormeStatus("Bonne"),
-                              moral: getSafeMoralStatus("Bon"),
-                              healthCondition: getSafeHealthCondition("Bon"),
-                                // Autres propriétés avec valeurs par défaut
-                                resultsHistory: [],
-                                favoriteRaces: [],
-                                performanceGoals: '',
-                                physiquePerformanceProject: { score: 0, notes: '' },
-                                techniquePerformanceProject: { score: 0, notes: '' },
-                                mentalPerformanceProject: { score: 0, notes: '' },
-                                environnementPerformanceProject: { score: 0, notes: '' },
-                                tactiquePerformanceProject: { score: 0, notes: '' },
-                                allergies: [],
-                                performanceNutrition: {
-                                  hydrationStrategy: '',
-                                  preRaceMeal: '',
-                                  duringRaceNutrition: '',
-                                  recoveryNutrition: ''
-                                },
-                                                              roadBikeSetup: { bikeType: getSafeBikeType("Route"), size: '', brand: '', model: '' },
-                              ttBikeSetup: { bikeType: getSafeBikeType("Contre-la-montre"), size: '', brand: '', model: '' },
-                                clothing: [],
-                                charSprint: 0,
-                                charAnaerobic: 0,
-                                charPuncher: 0,
-                                charClimbing: 0,
-                                charRouleur: 0,
-                                generalPerformanceScore: 0,
-                                fatigueResistanceScore: 0
-                              };
-
-                              // Sauvegarder en Firebase
-                              await setDoc(doc(db, 'teams', membership.teamId, 'riders', newUserId), newRider);
-
-                              // Mettre à jour l'état local
-                              setAppState((prev: AppState) => ({
-                                ...prev,
-                                riders: [...prev.riders, newRider]
-                              }));
-
-                            } else if (membership.userRole === UserRole.STAFF) {
-                              // Créer le profil staff
-                              const newStaffMember: StaffMember = {
-                                id: newUserId,
-                                firstName: newUser.firstName,
-                                lastName: newUser.lastName,
-                                email: newUser.email,
-                                role: StaffRole.AUTRE,
-                                status: StaffStatus.VACATAIRE,
-                                openToExternalMissions: false,
-                                skills: [],
-                                availability: []
-                              };
-
-                              // Sauvegarder en Firebase
-                              await setDoc(doc(db, 'teams', membership.teamId, 'staff', newUserId), newStaffMember);
-
-                              // Mettre à jour l'état local
-                              setAppState((prev: AppState) => ({
-                                ...prev,
-                                staff: [...prev.staff, newStaffMember]
-                              }));
-                            }
-                            
-                            // Message de confirmation pour l'utilisateur
-                            const roleText = membership.userRole === UserRole.COUREUR ? 'coureurs' : 'staff';
-                            alert(`✅ ${newUser.firstName} ${newUser.lastName} a été approuvé et ajouté aux ${roleText} !`);
-                          }
+                          const displayName = `${membership.firstName || existingUser?.firstName || ''} ${membership.lastName || existingUser?.lastName || ''}`.trim();
+                          const roleText = approvedRole === UserRole.STAFF ? 'staff' : 'effectif';
+                          alert(`✅ ${displayName || email} a été approuvé et ajouté à l'${roleText} !`);
                         } catch (error) {
                           let errorMessage = 'Erreur lors de l\'approbation de l\'adhésion';
-                          
+
                           if (error instanceof Error) {
                             if (error.message.includes('permission-denied')) {
                               errorMessage = 'Permission refusée. Vérifiez vos droits d\'administrateur.';
@@ -1953,7 +2411,7 @@ const App: React.FC = () => {
                               errorMessage = `Erreur: ${error.message}`;
                             }
                           }
-                          
+
                           alert(errorMessage);
                         }
                       }}
@@ -2005,56 +2463,61 @@ const App: React.FC = () => {
                       }}
                       onInvite={async (email, teamId, userRole = UserRole.COUREUR) => {
                         try {
-                          // Vérifier les permissions
                           if (!currentUser || !effectivePermissions) {
                             alert('Erreur: Permissions non définies. Veuillez vous reconnecter.');
                             return;
                           }
 
-                          // Vérifier si l'utilisateur a le droit d'inviter des membres
-                          const canInviteMembers = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                 currentUser.permissionRole === TeamRole.ADMIN ||
-                                                 currentUser.userRole === UserRole.MANAGER;
-                          
+                          const canInviteMembers =
+                            effectivePermissions?.userManagement?.includes('edit') ||
+                            currentUser.permissionRole === TeamRole.ADMIN ||
+                            currentUser.userRole === UserRole.MANAGER;
+
                           if (!canInviteMembers) {
                             alert('Erreur: Vous n\'avez pas les permissions nécessaires pour inviter des membres.');
                             return;
                           }
 
-                          // Vérifier si l'utilisateur existe déjà
-                          const existingUser = appState.users.find(u => u.email === email);
-                          if (existingUser) {
-                            alert('Un utilisateur avec cet email existe déjà');
-                            return;
-                          }
+                          const team = appState.teams.find((t) => t.id === teamId);
+                          const existingUser = appState.users.find(
+                            (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+                          );
 
-                          // Créer une nouvelle adhésion en attente
-                          const newMembership: TeamMembership = {
-                            id: generateId(),
-                            email,
+                          const { sendTeamInvitation } = await import('./services/inviteService');
+                          const result = await sendTeamInvitation({
+                            email: email.trim(),
                             teamId,
-                            status: TeamMembershipStatus.PENDING,
-                            requestedUserRole: userRole, // Rôle demandé lors de l'invitation
-                            requestedAt: new Date().toISOString(),
-                            requestedBy: currentUser.id,
-                            firstName: '',
-                            lastName: '',
-                            message: ''
-                          };
+                            teamName: team?.name || 'Équipe',
+                            userRole,
+                            invitedBy: currentUser.id,
+                            existingUserId: existingUser?.id,
+                          });
 
-                          // Sauvegarder dans Firestore
-                          await addDoc(collection(db, 'teamMemberships'), newMembership);
-
-                          // Mettre à jour l'état local
                           setAppState((prev: AppState) => ({
                             ...prev,
-                            teamMemberships: [...prev.teamMemberships, newMembership]
+                            teamMemberships: [
+                              ...prev.teamMemberships,
+                              {
+                                id: result.membershipId,
+                                email: email.trim().toLowerCase(),
+                                teamId,
+                                teamName: team?.name,
+                                status: TeamMembershipStatus.PENDING,
+                                userRole,
+                                requestedUserRole: userRole,
+                                userId: existingUser?.id,
+                                invitedBy: currentUser.id,
+                                invitedAt: new Date().toISOString(),
+                                source: 'email_invite',
+                              },
+                            ],
                           }));
 
-                          alert(`Invitation envoyée à ${email}`);
+                          alert(result.message);
                         } catch (error) {
                           console.error('Erreur lors de l\'invitation:', error);
-                          alert('Erreur lors de l\'envoi de l\'invitation');
+                          const message = error instanceof Error ? error.message : 'Erreur lors de l\'envoi de l\'invitation';
+                          alert(message);
                         }
                       }}
                       onRemove={async (userId, teamId) => {
@@ -2145,15 +2608,7 @@ const App: React.FC = () => {
                               lastName: user.lastName,
                               email: user.email,
                               // Propriétés obligatoires avec valeurs par défaut
-                              qualitativeProfile: {
-                                sprint: 0,
-                                anaerobic: 0,
-                                puncher: 0,
-                                climbing: 0,
-                                rouleur: 0,
-                                generalPerformance: 0,
-                                fatigueResistance: 0
-                              },
+                              qualitativeProfile: RiderQualitativeProfile.ROULEUR,
                               disciplines: [getSafeDisciplinePracticed("Route")],
                               categories: ['Senior'],
                               forme: getSafeFormeStatus("Bonne"),
@@ -2163,11 +2618,11 @@ const App: React.FC = () => {
                               resultsHistory: [],
                               favoriteRaces: [],
                               performanceGoals: '',
-                              physiquePerformanceProject: { score: 0, notes: '' },
-                              techniquePerformanceProject: { score: 0, notes: '' },
-                              mentalPerformanceProject: { score: 0, notes: '' },
-                              environnementPerformanceProject: { score: 0, notes: '' },
-                              tactiquePerformanceProject: { score: 0, notes: '' },
+                              physiquePerformanceProject: emptyPerformanceFactor(),
+                              techniquePerformanceProject: emptyPerformanceFactor(),
+                              mentalPerformanceProject: emptyPerformanceFactor(),
+                              environnementPerformanceProject: emptyPerformanceFactor(),
+                              tactiquePerformanceProject: emptyPerformanceFactor(),
                               allergies: [],
                               performanceNutrition: {
                                 hydrationStrategy: '',
@@ -2175,8 +2630,8 @@ const App: React.FC = () => {
                                 duringRaceNutrition: '',
                                 recoveryNutrition: ''
                               },
-                              roadBikeSetup: { bikeType: getSafeBikeType("Route"), size: '', brand: '', model: '' },
-                              ttBikeSetup: { bikeType: getSafeBikeType("Contre-la-montre"), size: '', brand: '', model: '' },
+                              roadBikeSetup: emptyBikeSetup(getSafeBikeType("Route")),
+                              ttBikeSetup: emptyBikeSetup(getSafeBikeType("Contre-la-montre")),
                               clothing: [],
                               charSprint: 0,
                               charAnaerobic: 0,
@@ -2337,23 +2792,50 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "permissions" && (
-                    <PermissionsSection
+                    <LazyPermissionsSection
                       permissions={appState.permissions}
-                      permissionRoles={appState.permissionRoles}
-                      onSavePermissions={async (permissions) => {
-                        const permissionsDocRef = doc(
-                          db,
-                          "permissions",
-                          "default"
-                        );
-                        await setDoc(permissionsDocRef, permissions);
-                        setAppState((prev) => ({ ...prev, permissions }));
+                      setPermissions={(updater) => {
+                        setAppState((prev) => ({
+                          ...prev,
+                          permissions: typeof updater === 'function' ? updater(prev.permissions) : updater,
+                        }));
                       }}
-                      effectivePermissions={effectivePermissions}
+                      permissionRoles={appState.permissionRoles}
+                      setPermissionRoles={(updater) => {
+                        setAppState((prev) => ({
+                          ...prev,
+                          permissionRoles: typeof updater === 'function' ? updater(prev.permissionRoles) : updater,
+                        }));
+                      }}
+                      users={appState.users}
+                    />
+                  )}
+                  {currentSection === "independentHub" && currentUser && userIsIndependent && (
+                    <LazyIndependentSpaceSection
+                      currentUser={currentUser}
+                      teams={appState.teams}
+                      scoutingRequests={appState.scoutingRequests || []}
+                      onUpdateProfile={handleSaveIndependentProfile}
+                      onRespondToScoutingRequest={async (requestId, response) => {
+                        await firebaseService.respondToScoutingRequest(requestId, response);
+                        setAppState((prev) => ({
+                          ...prev,
+                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
+                            r.id === requestId
+                              ? {
+                                  ...r,
+                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
+                                  responseDate: new Date().toISOString(),
+                                }
+                              : r
+                          ),
+                        }));
+                      }}
+                      onGoToLobby={() => setView("no_team")}
                     />
                   )}
                   {currentSection === "career" && currentUser && (
-                    <CareerSection
+                    <LazyCareerSection
                       riders={appState.riders}
                       staff={appState.staff}
                       currentUser={currentUser}
@@ -2367,8 +2849,21 @@ const App: React.FC = () => {
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
                       onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected') => {
-                        // TODO: Implémenter la logique de réponse aux demandes de suivi
+                        await firebaseService.respondToScoutingRequest(requestId, response);
+                        setAppState((prev) => ({
+                          ...prev,
+                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
+                            r.id === requestId
+                              ? {
+                                  ...r,
+                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
+                                  responseDate: new Date().toISOString(),
+                                }
+                              : r
+                          ),
+                        }));
                       }}
+                      onSaveIndependentProfile={userIsIndependent ? handleSaveIndependentProfile : undefined}
                       onUpdateVisibility={async (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => {
                         try {
                           if (!currentUser) return;
@@ -2381,7 +2876,7 @@ const App: React.FC = () => {
                               updatedAt: new Date().toISOString()
                             });
                             
-                            // Mettre à jour l'état local des utilisateurs
+                            setCurrentUser((prev) => prev ? { ...prev, isSearchable: updates.isSearchable } : prev);
                             setAppState((prev: AppState) => ({
                               ...prev,
                               users: prev.users.map(u => 
@@ -2391,9 +2886,26 @@ const App: React.FC = () => {
                               )
                             }));
                           }
+
+                          if (updates.openToMissions !== undefined) {
+                            const userRef = doc(db, 'users', currentUser.id);
+                            await updateDoc(userRef, {
+                              openToExternalMissions: updates.openToMissions,
+                              updatedAt: new Date().toISOString()
+                            });
+                            setCurrentUser((prev) => prev ? { ...prev, openToExternalMissions: updates.openToMissions } : prev);
+                            setAppState((prev: AppState) => ({
+                              ...prev,
+                              users: prev.users.map(u =>
+                                u.id === currentUser.id
+                                  ? { ...u, openToExternalMissions: updates.openToMissions }
+                                  : u
+                              ),
+                            }));
+                          }
                           
-                          // Mettre à jour le profil coureur si c'est un coureur
-                          if (currentUser.userRole === UserRole.COUREUR && updates.isSearchable !== undefined) {
+                          // Mettre à jour le profil coureur si membre d'une équipe
+                          if (!userIsIndependent && currentUser.userRole === UserRole.COUREUR && updates.isSearchable !== undefined) {
                             const riderProfile = appState.riders.find(r => r.email === currentUser.email);
                             if (riderProfile) {
                               const riderRef = doc(db, 'teams', appState.activeTeamId!, 'riders', riderProfile.id);
@@ -2414,8 +2926,8 @@ const App: React.FC = () => {
                             }
                           }
                           
-                          // Mettre à jour le profil staff si c'est un membre du staff
-                          if (currentUser.userRole !== UserRole.COUREUR && updates.openToMissions !== undefined) {
+                          // Mettre à jour le profil staff si membre d'une équipe
+                          if (!userIsIndependent && currentUser.userRole !== UserRole.COUREUR && updates.openToMissions !== undefined) {
                             const staffProfile = appState.staff.find(s => s.email === currentUser.email);
                             if (staffProfile) {
                               const staffRef = doc(db, 'teams', appState.activeTeamId!, 'staff', staffProfile.id);
@@ -2444,7 +2956,7 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "nutrition" && (
-                    <NutritionSection
+                    <LazyNutritionSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                       setRiders={createBatchSetHandler<Rider>("riders")}
                       onSaveRider={onSaveRider}
@@ -2453,14 +2965,10 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "userSettings" && currentUser && (
-                    <UserSettingsSection
-                      currentUser={currentUser}
-                      riderProfile={appState.riders.find((r) => r.email === currentUser.email)}
-                      staffProfile={appState.staff.find((s) => s.email === currentUser.email)}
-                    />
+                    <LazyUserSettingsSection currentUser={currentUser} />
                   )}
                   {currentSection === "riderEquipment" && (
-                    <RiderEquipmentSection
+                    <LazyRiderEquipmentSection
                       riders={appState.riders}
                       equipment={appState.equipment}
                       currentUser={currentUser}
@@ -2470,7 +2978,7 @@ const App: React.FC = () => {
                   
                   {/* Nouvelles sections pour le back-office coureur */}
                   {currentSection === "myProfile" && currentUser && (
-                    <MyProfileSection
+                    <LazyMyProfileSection
                       riders={appState.riders}
                       staff={appState.staff}
                       currentUser={currentUser}
@@ -2486,50 +2994,71 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "myCalendar" && currentUser && (
-                    <MyCalendarSection
+                    <LazyMyCalendarSection
                       riders={appState.riders}
                       currentUser={currentUser}
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
                       setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
-                      effectivePermissions={appState.effectivePermissions}
+                      effectivePermissions={effectivePermissions}
                       navigateTo={navigateTo}
                     />
                   )}
                   {currentSection === "talentAvailability" && currentUser && (
-                    <TalentAvailabilitySection
+                    <LazyTalentAvailabilitySection
                       riders={appState.riders}
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
                       currentUser={currentUser}
-                      effectivePermissions={appState.effectivePermissions}
+                      effectivePermissions={effectivePermissions}
                     />
                   )}
                   {currentSection === "myResults" && currentUser && (
-                    <MyResultsSection
+                    <LazyMyResultsSection
                       riders={appState.riders}
                       currentUser={currentUser}
                     />
                   )}
                   {currentSection === "bikeSetup" && currentUser && (
-                    <BikeSetupSection
+                    <LazyBikeSetupSection
                       riders={appState.riders}
                       currentUser={currentUser}
                     />
                   )}
-                  {currentSection === "myCareer" && currentUser && (
-                    <MyCareerSection
+                  {currentSection === "myCareer" && currentUser && userIsIndependent && (
+                    <LazyCareerSection
+                      riders={appState.riders}
+                      staff={appState.staff}
+                      currentUser={currentUser}
+                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      teams={appState.teams}
+                      currentTeamId={null}
+                      teamMemberships={appState.teamMemberships || []}
+                      onRequestTransfer={async () => {}}
+                      scoutingRequests={appState.scoutingRequests || []}
+                      onRespondToScoutingRequest={async (requestId, response) => {
+                        await firebaseService.respondToScoutingRequest(requestId, response);
+                      }}
+                      onUpdateVisibility={async (updates) => {
+                        await handleSaveIndependentProfile({
+                          ...(updates.isSearchable !== undefined ? { isSearchable: updates.isSearchable } : {}),
+                          ...(updates.openToMissions !== undefined ? { openToExternalMissions: updates.openToMissions } : {}),
+                        });
+                      }}
+                      onSaveIndependentProfile={handleSaveIndependentProfile}
+                    />
+                  )}
+                  {currentSection === "myCareer" && currentUser && !userIsIndependent && (
+                    <LazyMyCareerSection
                       riders={appState.riders}
                       currentUser={currentUser}
                       onSaveRider={onSaveRider}
                       teams={appState.teams}
-                      raceEvents={appState.raceEvents}
-                      scoutingProfiles={appState.scoutingProfiles}
-                      onUpdateScoutingProfile={createBatchSetHandler<ScoutingProfile>("scoutingProfiles")}
                     />
                   )}
                   {currentSection === "adminDossier" && currentUser && (
-                    <MyAdminSection
+                    <LazyMyAdminSection
                       riders={appState.riders}
                       currentUser={currentUser}
                       raceEvents={appState.raceEvents}
@@ -2537,11 +3066,11 @@ const App: React.FC = () => {
                       onSaveRider={onSaveRider}
                       onUpdateRiderPreference={handleUpdateRiderPreference}
                       appState={appState}
-                      effectivePermissions={appState.effectivePermissions}
+                      effectivePermissions={effectivePermissions}
                     />
                   )}
                   {currentSection === "superAdmin" && currentUser && (
-                    <SuperAdminSection
+                    <LazySuperAdminSection
                       riders={appState.riders}
                       staff={appState.staff}
                       currentUser={currentUser}
@@ -2551,55 +3080,70 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "myTrips" && (
-                    <MyTripsSection
+                    <LazyMyTripsSection
                       riders={appState.riders}
                       staff={appState.staff}
                       eventTransportLegs={appState.eventTransportLegs}
                       raceEvents={appState.raceEvents}
                       currentUser={currentUser}
+                      onNavigateToReceipts={(eventId, transportLegId) => {
+                        setReceiptScanDefaults({ eventId, transportLegId, openScanner: true });
+                        setCurrentSection('expenseReceipts');
+                      }}
                     />
                   )}
                   {currentSection === "stocks" && appState.stockItems && (
-                    <StocksSection
+                    <LazyStocksSection
                       stockItems={appState.stockItems}
-                      onSaveStockItem={onSaveStockItem}
-                      onDeleteStockItem={onDeleteStockItem}
-                      effectivePermissions={effectivePermissions}
+                      setStockItems={createPersistedBatchSetHandler<StockItem>("stockItems")}
+                      staff={appState.staff}
                     />
                   )}
                   {currentSection === "checklist" && (
-                    <ChecklistSection
+                    <LazyChecklistSection
                       checklistTemplates={appState.checklistTemplates}
                       onSaveChecklistTemplate={onSaveChecklistTemplate}
                       onDeleteChecklistTemplate={onDeleteChecklistTemplate}
                       effectivePermissions={effectivePermissions}
                     />
                   )}
-                  {currentSection === "missionSearch" && (
-                    <MissionSearchSection
-                      riders={appState.riders}
-                      effectivePermissions={effectivePermissions}
+                  {currentSection === "missionSearch" && currentUser && (
+                    <LazyMissionSearchSection
+                      missions={appState.missions}
+                      teams={appState.teams}
+                      currentUser={currentUser}
+                      setMissions={userIsIndependent
+                        ? (updater) => {
+                            setAppState((prev) => ({
+                              ...prev,
+                              missions: typeof updater === 'function' ? updater(prev.missions) : updater,
+                            }));
+                          }
+                        : createPersistedBatchSetHandler<Mission>("missions")}
+                      onApplyToMission={async (mission) => {
+                        await firebaseService.applyToMission(mission.teamId, mission.id, currentUser.id);
+                      }}
                     />
                   )}
                   {currentSection === "automatedPerformanceProfile" && (
-                    <AutomatedPerformanceProfileSection
+                    <LazyAutomatedPerformanceProfileSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                     />
                   )}
                   {currentSection === "performanceProject" && (
-                    <PerformanceProjectSection
+                    <LazyPerformanceProjectSection
                       rider={appState.riders.find((r) => r.email === currentUser.email)}
                       setRiders={createBatchSetHandler<Rider>("riders")}
                       onSaveRider={onSaveRider}
                     />
                   )}
                     </>
+                    </SectionSuspense>
                   )}
                 </div>
               )}
               </SectionErrorBoundary>
-            </main>
-          </div>
+          </MobileShell>
         </LanguageProvider>
       );
     }

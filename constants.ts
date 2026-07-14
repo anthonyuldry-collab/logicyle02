@@ -319,21 +319,39 @@ export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; 
     { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     { id: 'accommodationHistory', labels: { fr: 'Hist. Hébergements', en: 'Accommodation History' }, icon: 'BuildingOfficeIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
+    { id: 'expenseReceipts', labels: { fr: 'Justificatifs', en: 'Receipts' }, icon: 'DocumentTextIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
     
     // Administration - Fonctions administratives avancées
     { id: 'adminDashboard', labels: { fr: 'Tableau de Bord Admin', en: 'Admin Dashboard' }, icon: 'ChartBarIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'adminDossier', labels: { fr: 'Admin', en: 'Admin' }, icon: 'ShieldCheckIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'settings', labels: { fr: 'Paramètres Équipe', en: 'Team Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Administration', en: 'Administration' } },
+    { id: 'pricing', labels: { fr: 'Abonnement', en: 'Subscription' }, icon: 'BanknotesIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'userManagement', labels: { fr: 'Gestion Utilisateurs', en: 'User Management' }, icon: 'UserPlusIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Administration', en: 'Administration' } },
     { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Administration', en: 'Administration' } },
 ];
 
+/** Sections visibles pour les profils indépendants (sans équipe). */
+export const INDEPENDENT_SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; icon: string; group: Record<'fr' | 'en', string> }> = [
+    { id: 'independentHub', labels: { fr: 'Mon Espace', en: 'My Space' }, icon: 'HomeIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'missionSearch', labels: { fr: 'Offres & Missions', en: 'Jobs & Missions' }, icon: 'BriefcaseIcon', group: { fr: 'Opportunités', en: 'Opportunities' } },
+    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Compte', en: 'Account' } },
+];
+
+export const LEGAL_VERSIONS = {
+  TERMS_VERSION: '2026-01',
+  PRIVACY_POLICY_VERSION: '2026-01',
+  NDA_VERSION: '2026-01',
+} as const;
+
 export const TEAM_STATE_COLLECTIONS = [
     'riders', 'staff', 'vehicles', 'equipment', 'raceEvents', 'eventTransportLegs', 
     'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments', 
-    'eventBudgetItems', 'eventChecklistItems', 'performanceEntries', 'riderEventSelections', 
+    'eventBudgetItems', 'expenseReceipts', 'eventChecklistItems', 'performanceEntries', 'riderEventSelections',
+    'staffEventSelections',
     'eventStaffAvailabilities', 'incomeItems', 'scoutingProfiles', 'teamProducts', 
     'stockItems', 'equipmentStockItems', 'peerRatings', 'teamEventReviews', 'debriefings', 'missions', 'meetingReports',
     'performanceArchives'
@@ -400,6 +418,7 @@ export const getInitialTeamState = (): TeamState => ({
     eventRadioEquipments: [],
     eventRadioAssignments: [],
     eventBudgetItems: [],
+    expenseReceipts: [],
     eventChecklistItems: [],
     performanceEntries: [],
     riderEventSelections: [],
@@ -425,6 +444,7 @@ export const getInitialTeamState = (): TeamState => ({
     dietaryPlans: [],
     missions: [],
     performanceArchives: [],
+    meetingReports: [],
 });
 
 export const initialEquipmentFormState: Omit<EquipmentItem, 'id'> = {
@@ -604,6 +624,8 @@ export const STAFF_STATUS_COLORS: Record<StaffStatus, string> = {
 export const EVENT_TYPE_COLORS: Record<EventType, string> = {
   [EventType.COMPETITION]: 'bg-blue-100 text-blue-800',
   [EventType.STAGE]: 'bg-yellow-100 text-yellow-800',
+  [EventType.COURSE]: 'bg-blue-100 text-blue-800',
+  [EventType.ENTRAINEMENT]: 'bg-green-100 text-green-800',
 };
 
 export const INCOME_CATEGORY_COLORS: Record<IncomeCategory, string> = {
@@ -686,6 +708,9 @@ export const RIDER_ALLERGY_SEVERITY_COLORS: Record<AllergySeverity, string> = {
     [AllergySeverity.FAIBLE]: 'bg-green-100 text-green-800',
     [AllergySeverity.MODEREE]: 'bg-yellow-100 text-yellow-800',
     [AllergySeverity.SEVERE]: 'bg-red-100 text-red-800',
+    [AllergySeverity.LEGERE]: 'bg-green-100 text-green-800',
+    [AllergySeverity.SEVERE_ALT]: 'bg-red-100 text-red-800',
+    [AllergySeverity.MODEREE_ALT]: 'bg-yellow-100 text-yellow-800',
 };
 
 export const COGGAN_CATEGORY_COLORS: Record<string, string> = {

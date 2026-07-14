@@ -1,16 +1,18 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../firebaseConfig';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
-import { LanguageContext } from '../contexts/LanguageContext';
 import { useTranslations } from '../hooks/useTranslations';
 import { LANGUAGE_OPTIONS } from '../constants';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   onSwitchToSignup: () => void;
+  onViewPricing?: () => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
+const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onViewPricing }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,6 +20,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
   const [isForgotPasswordModalOpen, setIsForgotPasswordModalOpen] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
   
   const { t, language, setLanguage } = useTranslations();
 
@@ -36,12 +40,22 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
     // On success, onAuthStateChanged in App.tsx will take over, no need to set isLoading to false.
   };
   
-  const handleForgotPasswordSubmit = (e: React.FormEvent) => {
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetMessage(`${t('loginResetSuccess')} ${forgotPasswordEmail}, ${t('loginResetSuccess2')}`);
-    setTimeout(() => {
+    setResetError('');
+    setIsResetting(true);
+    try {
+      await sendPasswordResetEmail(auth, forgotPasswordEmail);
+      setResetMessage(`${t('loginResetSuccess')} ${forgotPasswordEmail}, ${t('loginResetSuccess2')}`);
+      setTimeout(() => {
         setIsForgotPasswordModalOpen(false);
-    }, 3000);
+        setResetMessage('');
+      }, 4000);
+    } catch {
+      setResetError(t('loginResetError'));
+    } finally {
+      setIsResetting(false);
+    }
   };
 
 
@@ -89,6 +103,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
                         type="button"
                         onClick={() => {
                             setResetMessage('');
+                            setResetError('');
                             setForgotPasswordEmail('');
                             setIsForgotPasswordModalOpen(true);
                         }}
@@ -119,11 +134,24 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
             </ActionButton>
           </div>
         </form>
-        <div className="text-sm text-center text-slate-400">
-          {t('loginNoAccount')}{' '}
-          <button onClick={onSwitchToSignup} className="font-medium text-blue-400 hover:text-blue-300">
-            {t('loginSignUpLink')}
-          </button>
+        <div className="text-sm text-center text-slate-400 space-y-2">
+          <p>
+            {t('loginNoAccount')}{' '}
+            <button onClick={onSwitchToSignup} className="font-medium text-blue-400 hover:text-blue-300">
+              {t('loginSignUpLink')}
+            </button>
+          </p>
+          {onViewPricing && (
+            <p>
+              <button
+                type="button"
+                onClick={onViewPricing}
+                className="font-medium text-indigo-400 hover:text-indigo-300"
+              >
+                {t('pricingViewPlans')}
+              </button>
+            </p>
+          )}
         </div>
       </div>
       
@@ -157,10 +185,11 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup }) => {
             </div>
             <div className="flex justify-end space-x-2 pt-3">
                 <ActionButton type="button" variant="secondary" onClick={() => setIsForgotPasswordModalOpen(false)}>{t('cancel')}</ActionButton>
-                <ActionButton type="submit">
-                    {t('loginSendLink')}
+                <ActionButton type="submit" disabled={isResetting}>
+                    {isResetting ? t('loginLoadingButton') : t('loginSendLink')}
                 </ActionButton>
             </div>
+            {resetError && <p className="text-sm text-red-600">{resetError}</p>}
           </form>
         )}
       </Modal>

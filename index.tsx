@@ -1,7 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './src/index.css';
+
+registerSW({ immediate: true });
+
+const isDev = import.meta.env.DEV;
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -31,10 +36,31 @@ class AppErrorBoundary extends React.Component<
         }}>
           <h1 style={{ color: '#b91c1c', marginTop: 0 }}>Erreur de l'application</h1>
           <p style={{ color: '#991b1b' }}>{this.state.error.message}</p>
-          <pre style={{ overflow: 'auto', fontSize: 12, background: '#fff', padding: 12, border: '1px solid #fecaca' }}>
-            {this.state.error.stack}
-          </pre>
-          <p style={{ color: '#6b7280', fontSize: 14 }}>Ouvre la console du navigateur (F12) pour plus de détails.</p>
+          {isDev && (
+            <pre style={{ overflow: 'auto', fontSize: 12, background: '#fff', padding: 12, border: '1px solid #fecaca' }}>
+              {this.state.error.stack}
+            </pre>
+          )}
+          <p style={{ color: '#6b7280', fontSize: 14 }}>
+            {isDev
+              ? 'Ouvre la console du navigateur (F12) pour plus de détails.'
+              : 'Rechargez la page ou contactez le support si le problème persiste.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: 16,
+              padding: '8px 16px',
+              background: '#dc2626',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            Recharger
+          </button>
         </div>
       );
     }

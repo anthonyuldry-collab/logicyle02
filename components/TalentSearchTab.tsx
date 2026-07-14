@@ -1,15 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
-import { Rider, AppState, RiderQualitativeProfile as RiderQualitativeProfileEnum, Sex, User, UserRole, ScoutingRequestStatus, TeamMembershipStatus } from '../types';
-import { RIDER_LEVEL_CATEGORIES, SPIDER_CHART_CHARACTERISTICS_CONFIG, ALL_COUNTRIES } from '../constants';
+import { AppState, Sex, User, UserRole, ScoutingRequestStatus, TeamMembershipStatus } from '../types';
+import { SPIDER_CHART_CHARACTERISTICS_CONFIG, ALL_COUNTRIES } from '../constants';
 import { getRiderCharacteristicSafe } from '../utils/riderUtils';
 import ActionButton from './ActionButton';
-import SearchIcon from './icons/SearchIcon';
 import UserCircleIcon from './icons/UserCircleIcon';
+import { useTranslations } from '../hooks/useTranslations';
 
 interface TalentSearchTabProps {
   appState: AppState;
   onProfileSelect: (user: User) => void;
+  onRequestScoutingAccess: (user: User) => Promise<void>;
   currentTeamId: string | null;
 }
 
@@ -46,12 +47,27 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSelect, currentTeamId }) => {
+const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
+  appState,
+  onProfileSelect,
+  onRequestScoutingAccess,
+  currentTeamId,
+}) => {
+    const { t } = useTranslations();
     const [nameFilter, setNameFilter] = useState('');
     const [sexFilter, setSexFilter] = useState<'all' | Sex>('all');
     const [minAge, setMinAge] = useState(19);
     const [maxAge, setMaxAge] = useState(40);
     const [nationalityFilter, setNationalityFilter] = useState('all');
+    const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
+
+    const teamScoutingRequests = useMemo(() => {
+        if (!currentTeamId || !appState.scoutingRequests) return [];
+        return appState.scoutingRequests.filter((r) => r.requesterTeamId === currentTeamId);
+    }, [appState.scoutingRequests, currentTeamId]);
+
+    const getRequestForUser = (userId: string) =>
+        teamScoutingRequests.find((r) => r.athleteId === userId);
 
     const filteredTalents = useMemo(() => {
         if (!currentTeamId || !appState.teamMemberships || !appState.users || !appState.scoutingRequests) return [];
@@ -64,27 +80,21 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
 
         return appState.users.filter(user => {
             if (user.userRole !== UserRole.COUREUR) return false;
-            if (currentTeamUserIds.has(user.id)) return false; // Exclude my own team members
+            if (currentTeamUserIds.has(user.id)) return false;
 
-            // Vérifier la visibilité dans les données utilisateur ET coureur
             const isPubliclySearchable = user.isSearchable;
-            
-            // Vérifier aussi dans les données du coureur si disponible
             const riderProfile = appState.riders.find(r => r.email === user.email);
             const isRiderSearchable = riderProfile?.isSearchable;
-            
-            // Le profil est visible si l'utilisateur OU le coureur est marqué comme visible
             const isVisible = isPubliclySearchable || isRiderSearchable;
-            
+
             const hasSharedData = appState.scoutingRequests.some(
-                req => req.athleteId === user.id && 
-                       req.requesterTeamId === currentTeamId && 
+                req => req.athleteId === user.id &&
+                       req.requesterTeamId === currentTeamId &&
                        req.status === ScoutingRequestStatus.ACCEPTED
             );
 
             if (!isVisible && !hasSharedData) return false;
 
-            // Apply UI filters
             const age = getAge(user.signupInfo?.birthDate);
             if (age === null || age < minAge || age > maxAge) return false;
             if (nameFilter && !`${user.firstName} ${user.lastName}`.toLowerCase().includes(nameFilter.toLowerCase())) return false;
@@ -102,6 +112,58 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
         }));
     };
 
+    const handleTalentAction = async (user: User) => {
+        const existing = getRequestForUser(user.id);
+
+        if (existing?.status === ScoutingRequestStatus.ACCEPTED) {
+            onProfileSelect(user);
+            return;
+        }
+        if (existing?.status === ScoutingRequestStatus.PENDING) {
+            alert(t('talentScoutingRequestPending'));
+            return;
+        }
+        if (existing?.status === ScoutingRequestStatus.REJECTED) {
+            alert(t('talentScoutingRequestRejected'));
+            return;
+        }
+
+        setLoadingUserId(user.id);
+        try {
+            await onRequestScoutingAccess(user);
+            alert(t('talentScoutingRequestSent'));
+        } finally {
+            setLoadingUserId(null);
+        }
+    };
+
+    const getButtonLabel = (userId: string) => {
+        const existing = getRequestForUser(userId);
+        if (existing?.status === ScoutingRequestStatus.ACCEPTED) return t('talentScoutingViewProfile');
+        if (existing?.status === ScoutingRequestStatus.PENDING) return t('talentScoutingStatusPending');
+        return t('talentScoutingRequestProfile');
+    };
+
+    const getStatusBadge = (userId: string) => {
+        const existing = getRequestForUser(userId);
+        if (!existing) return null;
+        if (existing.status === ScoutingRequestStatus.ACCEPTED) {
+            return (
+                <span className="text-xs font-medium text-emerald-300 bg-emerald-900/40 px-2 py-0.5 rounded">
+                    {t('talentScoutingStatusAccepted')}
+                </span>
+            );
+        }
+        if (existing.status === ScoutingRequestStatus.PENDING) {
+            return (
+                <span className="text-xs font-medium text-amber-300 bg-amber-900/40 px-2 py-0.5 rounded">
+                    {t('talentScoutingStatusPending')}
+                </span>
+            );
+        }
+        return null;
+    };
+
     return (
         <div className="space-y-4">
             <div className="p-4 bg-slate-700 rounded-lg shadow-md">
@@ -116,14 +178,14 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-300">Sexe</label>
-                        <select value={sexFilter} onChange={e => setSexFilter(e.target.value as any)} className="input-field-sm">
+                        <select value={sexFilter} onChange={e => setSexFilter(e.target.value as 'all' | Sex)} className="input-field-sm">
                             <option value="all">Tous les Sexes</option>
                             <option value={Sex.MALE}>{Sex.MALE}</option>
                             <option value={Sex.FEMALE}>{Sex.FEMALE}</option>
                         </select>
                     </div>
                     <div className="lg:col-span-2">
-                        <label className="block text-xs font-medium text-slate-300">Tranche d'âge: {minAge} - {maxAge} ans</label>
+                        <label className="block text-xs font-medium text-slate-300">Tranche d&apos;âge: {minAge} - {maxAge} ans</label>
                         <div className="flex items-center space-x-2 mt-1">
                             <input type="number" value={minAge} onChange={e => setMinAge(Number(e.target.value))} className="input-field-sm w-full" placeholder="Min" min="16" max="50"/>
                             <span className="text-slate-400">-</span>
@@ -134,7 +196,10 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {filteredTalents.map(user => (
+                {filteredTalents.map(user => {
+                    const existing = getRequestForUser(user.id);
+                    const isPending = existing?.status === ScoutingRequestStatus.PENDING;
+                    return (
                     <div key={user.id} className="bg-slate-800 rounded-lg shadow-lg overflow-hidden flex flex-col border border-slate-700">
                         <div className="p-3">
                             <div className="flex justify-between items-start">
@@ -143,6 +208,7 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
                                     <div>
                                         <h4 className="font-bold text-slate-100">{user.firstName} {user.lastName}</h4>
                                         <p className="text-xs text-slate-400">{getAge(user.signupInfo?.birthDate)} ans - {user.signupInfo?.nationality}</p>
+                                        <div className="mt-1">{getStatusBadge(user.id)}</div>
                                     </div>
                                 </div>
                                 <div className="w-20 h-20 flex-shrink-0">
@@ -154,19 +220,24 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({ appState, onProfileSe
                              </div>
                         </div>
                          <div className="mt-auto p-2 bg-slate-700/50 text-right">
-                             <ActionButton onClick={() => onProfileSelect(user)} variant="secondary" size="sm">
-                                Voir Profil Complet
+                             <ActionButton
+                                onClick={() => handleTalentAction(user)}
+                                variant="secondary"
+                                size="sm"
+                                disabled={loadingUserId === user.id || isPending}
+                             >
+                                {loadingUserId === user.id ? '...' : getButtonLabel(user.id)}
                              </ActionButton>
                         </div>
                     </div>
-                ))}
+                );})}
             </div>
             {filteredTalents.length === 0 && (
                 <div className="text-center py-8">
                     <p className="text-slate-400 mb-4">Aucun talent ne correspond à vos critères de recherche.</p>
                     <div className="text-sm text-slate-500">
-                        <p>Debug: {appState.users?.filter(u => u.userRole === UserRole.COUREUR).length || 0} coureurs trouvés dans la base</p>
-                        <p>Debug: {appState.users?.filter(u => u.userRole === UserRole.COUREUR && u.isSearchable).length || 0} coureurs avec profil visible</p>
+                        <p>{appState.users?.filter(u => u.userRole === UserRole.COUREUR).length || 0} coureurs dans la base</p>
+                        <p>{appState.users?.filter(u => u.userRole === UserRole.COUREUR && u.isSearchable).length || 0} coureurs visibles en recrutement</p>
                     </div>
                 </div>
             )}

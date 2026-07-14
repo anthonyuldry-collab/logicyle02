@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserGroupIcon, 
   CalendarDaysIcon,
-  TrophyIcon,
   PlusCircleIcon,
   PencilIcon,
   TrashIcon,
@@ -11,7 +10,14 @@ import {
   ArchiveBoxIcon,
   DocumentTextIcon,
   EnvelopeIcon,
-  TruckIcon
+  TruckIcon,
+  TableCellsIcon,
+  MagnifyingGlassIcon,
+  UserPlusIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
+  MapPinIcon,
+  ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -21,6 +27,15 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getActiveStaffForCurrentSeason } from '../utils/rosterArchiveUtils';
 import { getStaffRoleDisplayLabel, getStaffRoleKey, STAFF_ROLE_KEYS, getEventRoleKeyForStaff, EVENT_ROLE_KEYS, type StaffRoleKeyString } from '../utils/staffRoleUtils';
+import {
+  normalizeStaffStatusKey,
+  getStaffStatusLabel,
+  getStaffStatusBadgeClass,
+  compareStaffByStatus,
+  staffMatchesEmploymentStatus,
+  STAFF_STATUS_KEYS,
+  type StaffStatusKey,
+} from '../utils/staffStatusUtils';
 import { 
   getStaffStatsForSeason, 
   getDetailedStaffStatsForSeason,
@@ -28,6 +43,9 @@ import {
 } from '../utils/staffRosterUtils';
 import { saveData } from '../services/firebaseService';
 import { StaffTransitionManager, StaffArchiveViewer, StaffArchiveDetailModal, StaffSeasonPlanning } from '../components';
+import StaffSearchTab from '../components/StaffSearchTab';
+import { getGlobalRecruitableStaff } from '../utils/independentUtils';
+import { useTranslations } from '../hooks/useTranslations';
 
 interface StaffSectionProps {
   staff: StaffMember[];
@@ -57,132 +75,238 @@ interface StaffSectionProps {
   navigateTo?: (section: any, eventId?: string) => void;
 }
 
-/** Affiche le calendrier des déplacements par mois (année en cours uniquement), style visuel type planning. */
+/** Calendrier des déplacements : timeline chronologique, prochain événement mis en avant, passés repliés. */
 function StaffMemberTravelCalendar({
   staffMember,
   raceEvents,
   eventTransportLegs,
-  vehicles = [],
+  onOpenEvent,
 }: {
   staffMember: StaffMember;
   raceEvents: RaceEvent[];
   eventTransportLegs: EventTransportLeg[];
   vehicles?: { id?: string; name?: string }[];
+  onOpenEvent?: (eventId: string) => void;
 }) {
   const currentYear = getCurrentSeasonYear();
+  const [showPast, setShowPast] = useState(false);
 
-  const eventsForStaff = (raceEvents || []).filter((e) => {
+  const eventsForStaff = useMemo(() => (raceEvents || []).filter((e) => {
     const eventYear = e.date ? new Date(e.date + 'T12:00:00Z').getFullYear() : null;
     if (eventYear !== currentYear) return false;
     if (e.selectedStaffIds?.includes(staffMember.id)) return true;
     const roleKeys = ['managerId', 'directeurSportifId', 'assistantId', 'mecanoId', 'kineId', 'medecinId', 'respPerfId', 'entraineurId', 'dataAnalystId', 'prepaPhysiqueId', 'communicationId'];
     return roleKeys.some((key) => {
-      const arr = (e as Record<string, unknown>)[key];
+      const arr = (e as unknown as Record<string, unknown>)[key];
       return Array.isArray(arr) && arr.includes(staffMember.id);
     });
-  });
+  }), [raceEvents, staffMember.id, currentYear]);
 
-  const legsForStaffCurrentYear = (eventTransportLegs || []).filter((leg) => {
+  const legsForStaffCurrentYear = useMemo(() => (eventTransportLegs || []).filter((leg) => {
     const legYear = leg.departureDate ? new Date(leg.departureDate + 'T12:00:00Z').getFullYear() : currentYear;
     if (legYear !== currentYear) return false;
     return leg.driverId === staffMember.id || (leg.occupants || []).some((o) => o.type === 'staff' && o.id === staffMember.id);
-  });
+  }), [eventTransportLegs, staffMember.id, currentYear]);
 
-  const getEventName = (eventId: string) => raceEvents.find((e) => e.id === eventId)?.name || 'Événement';
+  const tripItems = useMemo(() => {
+    const seen = new Set<string>();
+    const items: { event: RaceEvent; legs: EventTransportLeg[]; sortDate: string }[] = [];
 
-  // Grouper les événements par mois (1-12)
-  const eventsByMonth = useMemo(() => {
-    const byMonth: Record<number, RaceEvent[]> = {};
-    for (let m = 1; m <= 12; m++) byMonth[m] = [];
-    eventsForStaff.forEach((e) => {
-      if (!e.date) return;
-      const month = new Date(e.date + 'T12:00:00Z').getMonth() + 1;
-      byMonth[month].push(e);
+    const pushEvent = (event: RaceEvent) => {
+      if (!event?.id || seen.has(event.id)) return;
+      seen.add(event.id);
+      items.push({
+        event,
+        legs: legsForStaffCurrentYear.filter((l) => l.eventId === event.id),
+        sortDate: event.date || '',
+      });
+    };
+
+    eventsForStaff.forEach(pushEvent);
+    legsForStaffCurrentYear.forEach((leg) => {
+      if (seen.has(leg.eventId)) return;
+      const event = raceEvents.find((e) => e.id === leg.eventId);
+      if (event) pushEvent(event);
     });
-    Object.keys(byMonth).forEach((m) => {
-      const month = Number(m);
-      byMonth[month].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    });
-    return byMonth;
-  }, [eventsForStaff]);
 
-  const formatEventDate = (e: RaceEvent) => {
-    const start = e.date ? new Date(e.date + 'T12:00:00Z') : null;
-    const end = e.endDate ? new Date(e.endDate + 'T12:00:00Z') : null;
-    const loc = e.location || '';
-    if (!start) return loc ? `– ${loc}` : '–';
-    const startStr = format(start, 'd MMM', { locale: fr });
-    if (end && end.getTime() !== start.getTime()) {
-      const endStr = format(end, 'd MMM', { locale: fr });
-      return loc ? `Du ${startStr} au ${endStr} - ${loc}` : `Du ${startStr} au ${endStr}`;
-    }
-    return loc ? `${startStr} - ${loc}` : startStr;
+    return items.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+  }, [eventsForStaff, legsForStaffCurrentYear, raceEvents]);
+
+  const today = new Date().toISOString().split('T')[0];
+  const upcoming = tripItems.filter((t) => (t.event.date || '') >= today);
+  const past = tripItems.filter((t) => (t.event.date || '') < today);
+  const nextTrip = upcoming[0];
+  const totalLegs = legsForStaffCurrentYear.length;
+
+  const formatLegShort = (leg: EventTransportLeg) => {
+    const dir = String(leg.direction || '');
+    const shortDir = dir.includes('Aller') ? 'Aller' : dir.includes('Retour') ? 'Retour' : dir.includes('Jour') ? 'Jour J' : dir;
+    const dateStr = leg.departureDate
+      ? format(new Date(leg.departureDate + 'T12:00:00Z'), 'd MMM', { locale: fr })
+      : null;
+    return { shortDir, dateStr, isDriver: leg.driverId === staffMember.id };
   };
 
-  const hasAny = eventsForStaff.length > 0 || legsForStaffCurrentYear.length > 0;
+  const renderTripCard = (item: typeof tripItems[0], options?: { highlight?: boolean; compact?: boolean }) => {
+    const { event, legs } = item;
+    const isPast = (event.date || '') < today;
+    const eventDate = event.date ? new Date(event.date + 'T12:00:00Z') : null;
+    const isHighlight = options?.highlight;
+
+    return (
+      <div
+        key={event.id}
+        className={`relative rounded-xl border transition-all ${
+          isHighlight
+            ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-white shadow-sm ring-1 ring-blue-100'
+            : isPast
+            ? 'border-gray-100 bg-gray-50/60'
+            : 'border-gray-200 bg-white hover:border-blue-200 hover:shadow-sm'
+        }`}
+      >
+        {isHighlight && (
+          <span className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-semibold uppercase tracking-wide">
+            Prochain
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onOpenEvent?.(event.id)}
+          className="w-full flex items-start gap-3 px-3 py-3 text-left group"
+        >
+          <div className={`shrink-0 w-12 text-center rounded-lg py-1.5 mt-0.5 ${
+            isHighlight ? 'bg-blue-600 text-white' : isPast ? 'bg-gray-100' : 'bg-blue-50'
+          }`}>
+            <div className={`text-base font-bold leading-none ${isHighlight ? 'text-white' : isPast ? 'text-gray-600' : 'text-blue-700'}`}>
+              {eventDate ? format(eventDate, 'd', { locale: fr }) : '–'}
+            </div>
+            <div className={`text-[10px] uppercase mt-0.5 ${isHighlight ? 'text-blue-100' : isPast ? 'text-gray-400' : 'text-blue-500'}`}>
+              {eventDate ? format(eventDate, 'MMM', { locale: fr }) : ''}
+            </div>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm font-semibold leading-snug ${isPast ? 'text-gray-700' : 'text-gray-900 group-hover:text-blue-700'}`}>
+              {event.name || 'Sans nom'}
+            </p>
+            {event.location && (
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <MapPinIcon className="w-3 h-3 shrink-0" />
+                <span className="truncate">{event.location}</span>
+              </p>
+            )}
+            {event.endDate && event.endDate !== event.date && (
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {format(new Date(event.date + 'T12:00:00Z'), 'd MMM', { locale: fr })}
+                {' → '}
+                {format(new Date(event.endDate + 'T12:00:00Z'), 'd MMM yyyy', { locale: fr })}
+              </p>
+            )}
+            {legs.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {legs.map((leg) => {
+                  const { shortDir, dateStr, isDriver } = formatLegShort(leg);
+                  return (
+                    <span
+                      key={leg.id}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        isDriver ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      <TruckIcon className="w-3 h-3" />
+                      {shortDir}{dateStr && ` ${dateStr}`}
+                      {isDriver && ' · Cond.'}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="shrink-0 flex flex-col items-center gap-0.5 pt-1">
+            <ChevronRightIcon className={`w-4 h-4 ${isPast ? 'text-gray-300' : 'text-gray-400 group-hover:text-blue-500'}`} />
+            <span className="text-[9px] text-gray-400 group-hover:text-blue-500">Fiche</span>
+          </div>
+        </button>
+      </div>
+    );
+  };
 
   return (
-    <div className="mt-6 pt-4 border-t border-gray-200">
-      <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
-        <CalendarDaysIcon className="w-5 h-5 text-blue-600" />
-        Calendrier des déplacements
-      </h4>
-      {!hasAny ? (
-        <p className="text-sm text-gray-500 italic">Aucun déplacement ou événement assigné pour {currentYear}.</p>
+    <div className="mt-5 pt-4 border-t border-gray-100">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <CalendarDaysIcon className="w-4 h-4 text-blue-600" />
+            Saison {currentYear}
+          </h4>
+          {tripItems.length > 0 && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              {upcoming.length} à venir
+              {past.length > 0 && ` · ${past.length} passé${past.length > 1 ? 's' : ''}`}
+              {totalLegs > 0 && ` · ${totalLegs} trajet${totalLegs > 1 ? 's' : ''}`}
+            </p>
+          )}
+        </div>
+        {past.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowPast(!showPast)}
+            className="text-xs font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 shrink-0"
+          >
+            {showPast ? 'Masquer passés' : `Voir passés (${past.length})`}
+            <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${showPast ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
+
+      {tripItems.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
+          <CalendarDaysIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">Aucun déplacement assigné.</p>
+          <p className="text-xs text-gray-400 mt-1">Les événements où ce membre est staff apparaîtront ici.</p>
+        </div>
+      ) : upcoming.length === 0 && !showPast ? (
+        <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-6 text-center">
+          <p className="text-sm text-gray-600">Plus d&apos;événement à venir cette saison.</p>
+          <button type="button" onClick={() => setShowPast(true)} className="text-xs text-blue-600 hover:underline mt-2">
+            Voir les {past.length} événement{past.length > 1 ? 's' : ''} passé{past.length > 1 ? 's' : ''}
+          </button>
+        </div>
       ) : (
-        <div className="rounded-xl bg-slate-800 text-slate-100 p-4 overflow-hidden">
-          <p className="text-slate-300 text-sm mb-4">{currentYear}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((monthNum) => {
-              const monthDate = new Date(currentYear, monthNum - 1, 1);
-              const monthLabel = format(monthDate, 'MMMM yyyy', { locale: fr });
-              const monthEvents = eventsByMonth[monthNum] || [];
-              const monthLegs = legsForStaffCurrentYear.filter((leg) => {
-                if (!leg.departureDate) return false;
-                return new Date(leg.departureDate + 'T12:00:00Z').getMonth() + 1 === monthNum;
-              });
-              const isEmpty = monthEvents.length === 0 && monthLegs.length === 0;
-              return (
-                <div key={monthNum} className="flex flex-col">
-                  <h5 className="text-sm font-semibold text-slate-200 capitalize mb-2">{monthLabel}</h5>
-                  <div className="space-y-2">
-                    {isEmpty ? (
-                      <p className="text-slate-500 text-sm">Aucun événement</p>
-                    ) : (
-                      <>
-                        {monthEvents.map((e) => (
-                          <div
-                            key={e.id}
-                            className="rounded-lg bg-slate-700/80 backdrop-blur border border-slate-600/50 p-3 text-sm"
-                          >
-                            <p className="font-medium text-slate-100 truncate" title={e.name || ''}>
-                              {e.name || 'Sans nom'}
-                            </p>
-                            <p className="text-slate-400 text-xs mt-1">{formatEventDate(e)}</p>
-                          </div>
-                        ))}
-                        {monthLegs.map((leg) => (
-                          <div
-                            key={leg.id}
-                            className="rounded-lg bg-slate-700/80 backdrop-blur border border-slate-600/50 p-3 text-sm flex items-center gap-2"
-                          >
-                            <TruckIcon className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-medium text-slate-100 truncate">{getEventName(leg.eventId)}</p>
-                              <p className="text-slate-400 text-xs mt-0.5">
-                                {leg.departureDate ? format(new Date(leg.departureDate + 'T12:00:00Z'), 'd MMM', { locale: fr }) : '–'} — {leg.direction}
-                                {leg.driverId === staffMember.id && ' · Chauffeur'}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="space-y-3">
+          {/* Timeline à venir */}
+          {upcoming.length > 0 && (
+            <div className="relative pl-1">
+              {upcoming.length > 1 && (
+                <div className="absolute left-[1.4rem] top-8 bottom-4 w-px bg-blue-100" aria-hidden />
+              )}
+              <div className="space-y-2">
+                {upcoming.map((item, idx) => renderTripCard(item, { highlight: idx === 0 && item.event.id === nextTrip?.event.id }))}
+              </div>
+            </div>
+          )}
+
+          {/* Passés repliés */}
+          {showPast && past.length > 0 && (
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Passés</p>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {past.map((item) => renderTripCard(item, { compact: true }))}
+              </div>
+            </div>
+          )}
+
+          {upcoming.length > 0 && onOpenEvent && (
+            <button
+              type="button"
+              onClick={() => onOpenEvent(upcoming[0].event.id)}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-blue-200 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <ArrowRightIcon className="w-3.5 h-3.5" />
+              Ouvrir le prochain événement
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -222,7 +346,15 @@ export default function StaffSection({
   }
 
   // États pour la gestion des onglets
-  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives' | 'meetings'>('planning');
+  const [activeTab, setActiveTab] = useState<'staff' | 'workload' | 'planning' | 'archives' | 'meetings' | 'recruitment'>('staff');
+  const { t } = useTranslations();
+  const [staffListSearch, setStaffListSearch] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'' | StaffStatusKey>('');
+  const [staffSortBy, setStaffSortBy] = useState<'name' | 'status' | 'role'>('name');
+  const recruitableStaff = useMemo(
+    () => getGlobalRecruitableStaff(users || [], staff || []),
+    [users, staff]
+  );
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
   const [staffRoleFilter, setStaffRoleFilter] = useState<StaffRoleKeyString | ''>('');
   
@@ -267,6 +399,16 @@ export default function StaffSection({
 
   // Obtenir le staff actif pour la saison courante
   const activeStaff = staff && staff.length > 0 ? getActiveStaffForCurrentSeason(staff) : [];
+  const seasonYears = useMemo(() => getAvailableSeasonYears(), []);
+
+  const staffTabs = useMemo(() => ([
+    { id: 'staff' as const, label: 'Liste', icon: UserGroupIcon, count: activeStaff.length },
+    { id: 'workload' as const, label: 'Jours', icon: CalendarDaysIcon },
+    { id: 'planning' as const, label: 'Planning', icon: TableCellsIcon },
+    { id: 'archives' as const, label: 'Archives', icon: ArchiveBoxIcon },
+    { id: 'recruitment' as const, label: t('staffRecruitmentTab'), icon: UserPlusIcon },
+    { id: 'meetings' as const, label: 'Réunions', icon: DocumentTextIcon, count: meetingReports.length || undefined },
+  ]), [activeStaff.length, meetingReports.length, t]);
   const handleAssignStaffToEvent = (eventId: string, staffId: string, status: any) => {
     try {
       const event = (raceEvents || []).find((e: any) => e.id === eventId);
@@ -286,14 +428,14 @@ export default function StaffSection({
       if (isAdding && staffMember) {
         const eventRoleKey = getEventRoleKeyForStaff(staffMember.role);
         if (eventRoleKey) {
-          const roleArr = Array.from((event as Record<string, unknown>)[eventRoleKey] as string[] || []);
+          const roleArr = Array.from((event as unknown as Record<string, unknown>)[eventRoleKey] as string[] || []);
           if (!roleArr.includes(staffId)) {
             (updatedEvent as Record<string, unknown>)[eventRoleKey] = [...roleArr, staffId];
           }
         }
       } else if (!isAdding) {
         EVENT_ROLE_KEYS.forEach((key) => {
-          const arr = (event as Record<string, unknown>)[key];
+          const arr = (event as unknown as Record<string, unknown>)[key];
           if (Array.isArray(arr) && arr.includes(staffId)) {
             (updatedEvent as Record<string, unknown>)[key] = arr.filter((id: string) => id !== staffId);
           }
@@ -308,27 +450,23 @@ export default function StaffSection({
     }
   };
 
-  // Fonction pour calculer le nombre de jours de staff depuis le début de saison
-  const getStaffDays = (staffId: string) => {
+  // Fonction pour calculer le nombre de jours de staff pour une année donnée
+  const getStaffDays = (staffId: string, year: number = selectedYear) => {
     if (!raceEvents || !Array.isArray(raceEvents)) {
       return 0;
     }
 
-    const currentDate = new Date();
-    const currentSeason = getCurrentSeasonYear();
+    const seasonStart = new Date(year, 0, 1);
+    const seasonEnd = year === getCurrentSeasonYear() ? new Date() : new Date(year, 11, 31);
     
-    // Début de saison (1er janvier de l'année de saison courante)
-    const seasonStart = new Date(currentSeason, 0, 1);
-    
-    // Utiliser raceEvents pour avoir les données les plus récentes
     const seasonEvents = raceEvents.filter(event => {
       if (!event || !event.date) return false;
       try {
         const eventDate = new Date(event.date);
         const eventYear = eventDate.getFullYear();
-        return eventYear === currentSeason && 
+        return eventYear === year && 
                eventDate >= seasonStart && 
-               eventDate <= currentDate;
+               eventDate <= seasonEnd;
     } catch (error) {
         return false;
       }
@@ -479,193 +617,117 @@ export default function StaffSection({
 
   // Composant StaffTab - Affichage des jours de staff
   const StaffWorkloadTab = () => {
-    // Filtrer les événements de l'année sélectionnée
-    const yearEvents = raceEvents.filter(event => {
-      const eventDate = new Date(event.date);
-      const eventYear = eventDate.getFullYear();
-      return eventYear === selectedYear;
-    });
-
     // Calculer les statistiques du staff
     const staffStats = useMemo(() => {
       const totalStaff = staff.length;
-      const activeStaff = staff.filter(member => member.isActive !== false).length;
-      const totalStaffDays = staff.reduce((total, member) => total + getStaffDays(member.id), 0);
+      const activeStaffCount = staff.filter(member => member.isActive !== false).length;
+      const totalStaffDays = staff.reduce((total, member) => total + getStaffDays(member.id, selectedYear), 0);
       const averageStaffDays = totalStaff > 0 ? Math.round(totalStaffDays / totalStaff) : 0;
 
       return {
         totalStaff,
-        activeStaff,
+        activeStaff: activeStaffCount,
         totalStaffDays,
         averageStaffDays
       };
-    }, [staff, getStaffDays]);
+    }, [staff, selectedYear]);
 
     return (
-      <div className="space-y-6">
-        {/* En-tête avec sélecteur d'année */}
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Staff & Jours de Travail - {selectedYear}
-          </h3>
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Année :</label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {[2024, 2025, 2026, 2027].map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Jours de travail — {selectedYear}</h3>
+            <p className="text-sm text-gray-500">Jours cumulés sur les événements assignés</p>
+          </div>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 self-start"
+          >
+            {seasonYears.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
           </select>
         </div>
-      </div>
 
-        {/* Métriques du staff */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <UserGroupIcon className="w-8 h-8 text-blue-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-blue-600">Total Staff</p>
-                <p className="text-2xl font-bold text-blue-900">{staffStats.totalStaff}</p>
-                        </div>
-                    </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-blue-600 uppercase">Total staff</p>
+            <p className="text-2xl font-bold text-blue-900 mt-1">{staffStats.totalStaff}</p>
           </div>
-          
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 font-bold">✓</span>
-                                                </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-green-600">Staff Actif</p>
-                <p className="text-2xl font-bold text-green-900">{staffStats.activeStaff}</p>
-                                            </div>
-                                    </div>
-                                </div>
-          
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <CalendarDaysIcon className="w-8 h-8 text-orange-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-orange-600">Total Jours</p>
-                <p className="text-2xl font-bold text-orange-900">{staffStats.totalStaffDays}</p>
-                        </div>
-                    </div>
-                </div>
-          
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <TrophyIcon className="w-8 h-8 text-purple-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-purple-600">Moyenne</p>
-                <p className="text-2xl font-bold text-purple-900">{staffStats.averageStaffDays}</p>
-                </div>
-              </div>
-      </div>
-    </div>
-
-        {/* Tableau du staff */}
-        <div className="bg-white shadow rounded-lg overflow-hidden max-w-full">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900">Détail des Jours de Staff</h4>
-            <p className="text-sm text-gray-600">
-              Jours de travail calculés pour la saison {selectedYear}
-                      </p>
-                    </div>
-          
-          <div className="overflow-x-auto max-w-full">
-            <table className="min-w-full divide-y divide-gray-200 max-w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rôle
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Jours de Travail
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Téléphone
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {(staff || []).map((member) => {
-                  if (!member || !member.id) return null;
-                  const staffDays = getStaffDays(member.id);
-                  return (
-                    <tr key={member.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10">
-                            <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                              <span className="text-sm font-medium text-gray-700">
-                                {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
-                              </span>
-                  </div>
-                  </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {member.firstName} {member.lastName}
-                </div>
-                            <div className="text-sm text-gray-500">
-                              {member.email}
-              </div>
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-emerald-600 uppercase">Actifs</p>
+            <p className="text-2xl font-bold text-emerald-900 mt-1">{staffStats.activeStaff}</p>
+          </div>
+          <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-orange-600 uppercase">Total jours</p>
+            <p className="text-2xl font-bold text-orange-900 mt-1">{staffStats.totalStaffDays}</p>
+          </div>
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-purple-600 uppercase">Moyenne</p>
+            <p className="text-2xl font-bold text-purple-900 mt-1">{staffStats.averageStaffDays}</p>
           </div>
         </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h4 className="text-sm font-semibold text-gray-900">Détail par membre</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Membre</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Rôle</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Jours</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Statut</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(staff || []).map((member) => {
+                  if (!member || !member.id) return null;
+                  const staffDays = getStaffDays(member.id, selectedYear);
+                  return (
+                    <tr key={member.id} className="hover:bg-blue-50/40 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-semibold text-white">
+                              {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{member.firstName} {member.lastName}</div>
+                            <div className="text-xs text-gray-500">{member.email}</div>
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
                           {getStaffRoleDisplayLabel(member.role) || 'staff'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <span className={`inline-flex items-center justify-center min-w-[3rem] px-2 py-0.5 rounded-full text-xs font-semibold ${
                           staffDays === 0 
-                            ? 'bg-gray-100 text-gray-800' 
+                            ? 'bg-gray-100 text-gray-500' 
                             : staffDays < 10 
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-emerald-100 text-emerald-800'
                             : staffDays < 20
-                            ? 'bg-yellow-100 text-yellow-800'
+                            ? 'bg-amber-100 text-amber-800'
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {staffDays} jours
+                          {staffDays}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          member.status === 'BENEVOLE' 
-                            ? 'bg-green-100 text-green-800'
-                            : member.status === 'VACATAIRE'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : member.status === 'SALARIE'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {member.status === 'BENEVOLE' ? 'Bénévole' : 
-                           member.status === 'VACATAIRE' ? 'Vacataire' : 
-                           member.status === 'SALARIE' ? 'Salarié(e)' : 
-                           'Non défini'}
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStaffStatusBadgeClass(member.status)}`}>
+                          {getStaffStatusLabel(member.status)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm text-gray-900">
-                          {member.phone || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center space-x-2">
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-1">
                           <ActionButton
                             onClick={() => openViewModal(member)}
                             variant="secondary"
@@ -697,136 +759,162 @@ export default function StaffSection({
                     </div>
           
           {(staff || []).length === 0 && (
-            <div className="text-center py-8">
-              <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <div className="text-center py-10 px-4">
+              <UserGroupIcon className="mx-auto h-10 w-10 text-gray-300" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun membre du staff</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Aucun membre du staff n'est disponible pour la saison {selectedYear}.
-              </p>
-             </div>
-                )}
-             </div>
-         </div>
+              <p className="mt-1 text-sm text-gray-500">Aucune donnée pour {selectedYear}.</p>
+            </div>
+          )}
+        </div>
+      </div>
     );
   };
 
   // Composant StaffListTab - Liste des membres du staff
   const StaffListTab = () => {
     const filteredStaff = (activeStaff || []).filter((member) => {
-      if (!staffRoleFilter) return true;
-      const memberRoleKey = getStaffRoleKey(member.role);
-      return memberRoleKey === staffRoleFilter;
+      if (staffRoleFilter) {
+        const memberRoleKey = getStaffRoleKey(member.role);
+        if (memberRoleKey !== staffRoleFilter) return false;
+      }
+      if (!staffMatchesEmploymentStatus(member.status, staffStatusFilter || 'all')) return false;
+      if (staffListSearch) {
+        const q = staffListSearch.toLowerCase();
+        const fullName = `${member.firstName} ${member.lastName}`.toLowerCase();
+        return fullName.includes(q) || (member.email || '').toLowerCase().includes(q);
+      }
+      return true;
+    }).sort((a, b) => {
+      if (staffSortBy === 'status') {
+        const cmp = compareStaffByStatus(a.status, b.status, 'asc');
+        if (cmp !== 0) return cmp;
+      } else if (staffSortBy === 'role') {
+        const roleA = getStaffRoleDisplayLabel(a.role) || '';
+        const roleB = getStaffRoleDisplayLabel(b.role) || '';
+        const cmp = roleA.localeCompare(roleB, 'fr');
+        if (cmp !== 0) return cmp;
+      }
+      const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+      const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+      return nameA.localeCompare(nameB, 'fr');
     });
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Liste du Staff - {filteredStaff.length} membre{filteredStaff.length !== 1 ? 's' : ''}
-          </h3>
+        <div className="space-y-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold text-gray-900">Membres actifs</h4>
+                <p className="text-sm text-gray-500">{filteredStaff.length} membre{filteredStaff.length !== 1 ? 's' : ''} sur {activeStaff.length}</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <div className="relative min-w-[200px]">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher..."
+                    value={staffListSearch}
+                    onChange={(e) => setStaffListSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <select
+                  value={staffSortBy}
+                  onChange={(e) => setStaffSortBy(e.target.value as 'name' | 'status' | 'role')}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[140px]"
+                >
+                  <option value="name">Trier : Nom</option>
+                  <option value="status">Trier : Statut</option>
+                  <option value="role">Trier : Rôle</option>
+                </select>
+                <select
+                  id="staff-role-filter"
+                  value={staffRoleFilter}
+                  onChange={(e) => setStaffRoleFilter((e.target.value || '') as StaffRoleKeyString | '')}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[160px]"
+                >
+                  <option value="">Tous les postes</option>
+                  {STAFF_ROLE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {getStaffRoleDisplayLabel(key)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            
-        {/* Tableau du staff */}
-        <div className="bg-white shadow rounded-lg overflow-hidden max-w-full">
-          <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h4 className="text-lg font-medium text-gray-900">Membres du Staff</h4>
-              <p className="text-sm text-gray-600">
-                Gestion des membres de l'équipe technique
-              </p>
-            </div>
-            <div className="flex items-center gap-2 min-w-0 sm:min-w-[220px]">
-              <label htmlFor="staff-role-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                Poste :
-              </label>
-              <select
-                id="staff-role-filter"
-                value={staffRoleFilter}
-                onChange={(e) => setStaffRoleFilter((e.target.value || '') as StaffRoleKeyString | '')}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            {/* Filtres rapides par statut */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-gray-500">Statut :</span>
+              <button
+                type="button"
+                onClick={() => setStaffStatusFilter('')}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  !staffStatusFilter ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
               >
-                <option value="">Tous les postes</option>
-                {STAFF_ROLE_KEYS.map((key) => (
-                  <option key={key} value={key}>
-                    {getStaffRoleDisplayLabel(key)}
-                  </option>
-                ))}
-              </select>
+                Tous
+              </button>
+              {STAFF_STATUS_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStaffStatusFilter(staffStatusFilter === key ? '' : key)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                    staffStatusFilter === key
+                      ? 'ring-2 ring-offset-1 ring-blue-400 ' + getStaffStatusBadgeClass(key)
+                      : getStaffStatusBadgeClass(key) + ' opacity-80 hover:opacity-100'
+                  }`}
+                >
+                  {getStaffStatusLabel(key)}
+                </button>
+              ))}
             </div>
-            </div>
+          </div>
 
-          <div className="overflow-x-auto max-w-full">
-            <table className="min-w-full divide-y divide-gray-200 max-w-full">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rôle
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Téléphone
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Membre</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Rôle</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Statut</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Tél.</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {filteredStaff.map((member) => {
                   if (!member || !member.id) return null;
                   return (
-                  <tr key={member.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                            <span className="text-sm font-medium text-gray-700">
-                              {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
-                            </span>
-              </div>
-            </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {member.firstName} {member.lastName}
-        </div>
-                          <div className="text-sm text-gray-500">
-                            {member.email}
-                          </div>
+                  <tr key={member.id} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-semibold text-white">
+                            {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900">{member.firstName} {member.lastName}</div>
+                          <div className="text-xs text-gray-500 truncate">{member.email}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
                         {getStaffRoleDisplayLabel(member.role) || 'staff'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        member.status === 'BENEVOLE' 
-                          ? 'bg-green-100 text-green-800'
-                          : member.status === 'VACATAIRE'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : member.status === 'SALARIE'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {member.status === 'BENEVOLE' ? 'Bénévole' : 
-                         member.status === 'VACATAIRE' ? 'Vacataire' : 
-                         member.status === 'SALARIE' ? 'Salarié(e)' : 
-                         'Non défini'}
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStaffStatusBadgeClass(member.status)}`}>
+                        {getStaffStatusLabel(member.status)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="text-sm text-gray-900">
-                        {member.phone || '-'}
-                      </span>
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      <span className="text-sm text-gray-700">{member.phone || '—'}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center space-x-2">
                         <ActionButton
                           onClick={() => openViewModal(member)}
@@ -859,21 +947,23 @@ export default function StaffSection({
       </div>
 
           {filteredStaff.length === 0 && (
-            <div className="text-center py-8">
-              <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <div className="text-center py-10 px-4">
+              <UserGroupIcon className="mx-auto h-10 w-10 text-gray-300" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">
-                {staffRoleFilter ? 'Aucun membre pour ce poste' : 'Aucun membre du staff'}
+                {staffListSearch || staffRoleFilter || staffStatusFilter ? 'Aucun résultat' : 'Aucun membre du staff'}
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                {staffRoleFilter
-                  ? `Aucun membre du staff avec le poste « ${getStaffRoleDisplayLabel(staffRoleFilter)} ». Essayez un autre filtre.`
-                  : 'Aucun membre du staff n\'est disponible.'}
+                {staffListSearch
+                  ? 'Modifiez votre recherche ou réinitialisez les filtres.'
+                  : staffRoleFilter
+                  ? `Aucun membre avec le poste « ${getStaffRoleDisplayLabel(staffRoleFilter)} ».`
+                  : 'Ajoutez un membre avec le bouton en haut à droite.'}
               </p>
             </div>
           )}
-                        </div>
-                      </div>
-                    );
+        </div>
+      </div>
+    );
   };
 
   // Composant ArchivesTab - Gestion des archives des effectifs
@@ -1703,88 +1793,73 @@ export default function StaffSection({
     <SectionWrapper 
       title="Gestion du Staff"
       actionButton={
-        <ActionButton onClick={handleAddStaff} icon={<PlusCircleIcon className="w-5 h-5"/>}>
-          Ajouter Membre
-        </ActionButton>
+        activeTab === 'staff' ? (
+          <ActionButton onClick={handleAddStaff} icon={<PlusCircleIcon className="w-5 h-5"/>}>
+            Ajouter membre
+          </ActionButton>
+        ) : activeTab === 'meetings' ? (
+          <ActionButton onClick={() => {
+            const now = new Date();
+            setMeetingReportForm({
+              title: '',
+              date: now.toISOString().split('T')[0],
+              time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
+              location: '',
+              organizerId: currentUser?.id || '',
+              participantIds: [],
+              agenda: '',
+              content: '',
+              actionItems: [],
+              recurrence: MeetingRecurrence.NONE,
+              isScheduled: true,
+            });
+            setSelectedMeetingReport(null);
+            setIsMeetingReportModalOpen(true);
+          }} icon={<PlusCircleIcon className="w-5 h-5" />}>
+            Planifier réunion
+          </ActionButton>
+        ) : undefined
       }
     >
-      {/* Onglets */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">
-                    <button 
-            onClick={() => setActiveTab('staff')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'staff' 
-                ? 'border-blue-500 text-blue-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <UserGroupIcon className="w-5 h-5" />
-              <span>Liste du Staff</span>
-                            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('workload')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'workload' 
-                ? 'border-blue-500 text-blue-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <CalendarDaysIcon className="w-5 h-5" />
-              <span>Jours de Travail</span>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('planning')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'planning' 
-                ? 'border-blue-500 text-blue-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <TrophyIcon className="w-5 h-5" />
-              <span>Planning de Saison</span>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('archives')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'archives' 
-                ? 'border-blue-500 text-blue-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <ArchiveBoxIcon className="w-5 h-5" />
-              <span>Archives</span>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('meetings')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'meetings' 
-                ? 'border-blue-500 text-blue-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <DocumentTextIcon className="w-5 h-5" />
-              <span>Comptes Rendus</span>
-            </div>
-          </button>
+      {/* Navigation par onglets */}
+      <div className="mb-4">
+        <nav className="flex flex-wrap gap-2" aria-label="Onglets staff">
+          {staffTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-gray-200'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-semibold ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
-            </div>
+      </div>
 
       {/* Contenu des onglets */}
-      <div className="p-6 w-full max-w-full overflow-hidden">
+      <div className="w-full max-w-full overflow-hidden">
         {activeTab === 'staff' ? <StaffListTab /> : 
          activeTab === 'workload' ? <StaffWorkloadTab /> : 
          activeTab === 'planning' ? (
            <StaffSeasonPlanning
+             embedded
              staff={staff}
              raceEvents={raceEvents}
              staffEventSelections={staffEventSelections}
@@ -1796,102 +1871,116 @@ export default function StaffSection({
             onOpenEventDetail={(eventId: string) => navigateTo && navigateTo('eventDetail', eventId)}
            />
          ) : 
+         activeTab === 'recruitment' ? (
+           <StaffSearchTab
+             allStaff={recruitableStaff}
+             raceEvents={raceEvents}
+             teamAddress={team?.address}
+             performanceEntries={performanceEntries || []}
+           />
+         ) :
          activeTab === 'meetings' ? <MeetingReportsTab /> :
          <ArchivesTab />}
       </div>
 
       {/* Modales */}
       {isViewModalOpen && selectedStaff && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Détails du Membre du Staff</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Nom complet</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.firstName} {selectedStaff.lastName}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Date de naissance</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.birthDate ? new Date(selectedStaff.birthDate).toLocaleDateString('fr-FR') : 'Non renseignée'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.email}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Téléphone</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.phone || 'Non renseigné'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Rôle</label>
-                  <p className="text-sm text-gray-900">{getStaffRoleDisplayLabel(selectedStaff.role) || 'staff'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Statut</label>
-                  <p className="text-sm text-gray-900">
-                    {selectedStaff.status === 'BENEVOLE' ? 'Bénévole' : 
-                     selectedStaff.status === 'VACATAIRE' ? 'Vacataire' : 
-                     selectedStaff.status === 'SALARIE' ? 'Salarié(e)' : 
-                     'Non défini'}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Adresse postale</label>
-                  <div className="text-sm text-gray-900">
-                    {selectedStaff.address ? (
-                      <div>
-                        <p>{selectedStaff.address.streetName}</p>
-                        <p>{selectedStaff.address.postalCode} {selectedStaff.address.city}</p>
-                        <p>{selectedStaff.address.region} {selectedStaff.address.country}</p>
-                      </div>
-                    ) : (
-                      <p>Non renseignée</p>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Type de contrat</label>
-                  <p className="text-sm text-gray-900">{selectedStaff.contractType || 'Non défini'}</p>
-                </div>
-                {selectedStaff.status === 'VACATAIRE' && selectedStaff.dailyRate && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Tarif journalier</label>
-                    <p className="text-sm text-gray-900">{selectedStaff.dailyRate}€/jour</p>
-                  </div>
-                )}
-                {selectedStaff.status === 'SALARIE' && selectedStaff.salary && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Salaire</label>
-                    <p className="text-sm text-gray-900">{selectedStaff.salary}€/mois</p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Statut actif</label>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    selectedStaff.isActive !== false 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {selectedStaff.isActive !== false ? 'Actif' : 'Inactif'}
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* En-tête profil */}
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <div className="flex items-start gap-4">
+                <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
+                  <span className="text-lg font-bold text-white">
+                    {selectedStaff.firstName?.charAt(0)}{selectedStaff.lastName?.charAt(0)}
                   </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    {selectedStaff.firstName} {selectedStaff.lastName}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">{selectedStaff.email}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                      {getStaffRoleDisplayLabel(selectedStaff.role) || 'Autre'}
+                    </span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStaffStatusBadgeClass(selectedStaff.status)}`}>
+                      {getStaffStatusLabel(selectedStaff.status)}
+                    </span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      selectedStaff.isActive !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                    }`}>
+                      {selectedStaff.isActive !== false ? 'Actif' : 'Inactif'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Calendrier des déplacements prévus et effectués */}
+            <div className="px-6 py-4">
+              {/* Infos essentielles */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                {selectedStaff.phone && (
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Téléphone</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{selectedStaff.phone}</p>
+                  </div>
+                )}
+                {selectedStaff.birthDate && (
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Naissance</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">
+                      {new Date(selectedStaff.birthDate).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                )}
+                {selectedStaff.contractType && (
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Contrat</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{selectedStaff.contractType}</p>
+                  </div>
+                )}
+                {normalizeStaffStatusKey(selectedStaff.status) === 'VACATAIRE' && selectedStaff.dailyRate ? (
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Tarif jour</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{selectedStaff.dailyRate} €</p>
+                  </div>
+                ) : null}
+                {normalizeStaffStatusKey(selectedStaff.status) === 'SALARIE' && selectedStaff.salary ? (
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Salaire</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{selectedStaff.salary} €/mois</p>
+                  </div>
+                ) : null}
+              </div>
+
+              {selectedStaff.address?.streetName && (
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 mb-4 text-sm text-gray-700">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Adresse</p>
+                  {selectedStaff.address.streetName}<br />
+                  {selectedStaff.address.postalCode} {selectedStaff.address.city}
+                  {selectedStaff.address.region && <>, {selectedStaff.address.region}</>}
+                </div>
+              )}
+
             <StaffMemberTravelCalendar
               staffMember={selectedStaff}
               raceEvents={raceEvents}
               eventTransportLegs={eventTransportLegs || appState?.eventTransportLegs || []}
               vehicles={vehicles}
+              onOpenEvent={(eventId) => {
+                setIsViewModalOpen(false);
+                navigateTo?.('eventDetail', eventId);
+              }}
             />
+            </div>
 
-            <div className="flex justify-end gap-3 mt-6">
+            <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-2">
+              <ActionButton onClick={() => { openEditModal(selectedStaff); setIsViewModalOpen(false); }} variant="warning" icon={<PencilIcon className="w-4 h-4" />}>
+                Modifier
+              </ActionButton>
               <ActionButton onClick={() => { setIsViewModalOpen(false); setActiveTab('planning'); }} variant="secondary" icon={<CalendarDaysIcon className="w-4 h-4" />}>
-                Voir le planning complet
+                Planning
               </ActionButton>
               <ActionButton onClick={() => setIsViewModalOpen(false)} variant="secondary">
                 Fermer
@@ -1902,195 +1991,216 @@ export default function StaffSection({
       )}
 
       {isEditModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">
-              {selectedStaff ? 'Modifier le Membre du Staff' : 'Ajouter un Nouveau Membre du Staff'}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Informations personnelles */}
-              <div className="space-y-4">
-                <h4 className="text-md font-medium text-gray-900 border-b pb-2">Informations personnelles</h4>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Prénom *</label>
-                  <input
-                    type="text"
-                    value={formData.firstName || ''}
-                    onChange={(e) => handleInputChange('firstName', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Nom *</label>
-                  <input
-                    type="text"
-                    value={formData.lastName || ''}
-                    onChange={(e) => handleInputChange('lastName', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Date de naissance</label>
-                  <input
-                    type="date"
-                    value={formData.birthDate ? formData.birthDate.split('T')[0] : ''}
-                    onChange={(e) => handleInputChange('birthDate', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Email *</label>
-                  <input
-                    type="email"
-                    value={formData.email || ''}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Téléphone</label>
-                  <input
-                    type="tel"
-                    value={formData.phone || ''}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {selectedStaff ? 'Modifier le membre' : 'Nouveau membre du staff'}
+              </h3>
+              {formData.firstName || formData.lastName ? (
+                <p className="text-sm text-gray-500 mt-1">
+                  {formData.firstName} {formData.lastName}
+                  {formData.role && <> · {getStaffRoleDisplayLabel(formData.role)}</>}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="px-6 py-5 space-y-6">
+              {/* Statut — sélection visuelle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Statut *</label>
+                <div className="flex flex-wrap gap-2">
+                  {STAFF_STATUS_KEYS.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleInputChange('status', key)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                        normalizeStaffStatusKey(formData.status || '') === key
+                          ? 'border-blue-500 ring-2 ring-blue-100 ' + getStaffStatusBadgeClass(key)
+                          : getStaffStatusBadgeClass(key) + ' border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {getStaffStatusLabel(key)}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Informations professionnelles */}
-              <div className="space-y-4">
-                <h4 className="text-md font-medium text-gray-900 border-b pb-2">Informations professionnelles</h4>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Rôle *</label>
-                  <select
-                    value={formData.role || 'AUTRE'}
-                    onChange={(e) => handleInputChange('role', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    required
-                  >
-                    <option value="MANAGER">Manager</option>
-                    <option value="DS">Directeur Sportif</option>
-                    <option value="ASSISTANT">Assistant(e)</option>
-                    <option value="MECANO">Mécanicien</option>
-                    <option value="COMMUNICATION">Communication</option>
-                    <option value="MEDECIN">Médecin</option>
-                    <option value="KINE">Kinésithérapeute</option>
-                    <option value="RESP_PERF">Responsable Performance</option>
-                    <option value="ENTRAINEUR">Entraîneur</option>
-                    <option value="DATA_ANALYST">Data Analyste</option>
-                    <option value="PREPA_PHYSIQUE">Préparateur Physique</option>
-                    <option value="AUTRE">Autre</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Statut *</label>
-                  <select
-                    value={formData.status || 'BENEVOLE'}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    required
-                  >
-                    <option value="BENEVOLE">Bénévole</option>
-                    <option value="VACATAIRE">Vacataire</option>
-                    <option value="SALARIE">Salarié(e)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Type de contrat</label>
-                  <select
-                    value={formData.contractType || ''}
-                    onChange={(e) => handleInputChange('contractType', e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Non applicable</option>
-                    <option value="CDI">CDI (Contrat à Durée Indéterminée)</option>
-                    <option value="CDD">CDD (Contrat à Durée Déterminée)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Tarif journalier (€/jour)</label>
-                  <input
-                    type="number"
-                    value={formData.dailyRate || ''}
-                    onChange={(e) => handleInputChange('dailyRate', parseFloat(e.target.value) || 0)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    placeholder="150"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Salaire (€/mois)</label>
-                  <input
-                    type="number"
-                    value={formData.salary || ''}
-                    onChange={(e) => handleInputChange('salary', parseFloat(e.target.value) || 0)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    placeholder="3000"
-                  />
-                </div>
-              </div>
-
-              {/* Adresse */}
-              <div className="space-y-4 md:col-span-2">
-                <h4 className="text-md font-medium text-gray-900 border-b pb-2">Adresse postale</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-800">Identité</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Prénom *</label>
+                      <input
+                        type="text"
+                        value={formData.firstName || ''}
+                        onChange={(e) => handleInputChange('firstName', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Nom *</label>
+                      <input
+                        type="text"
+                        value={formData.lastName || ''}
+                        onChange={(e) => handleInputChange('lastName', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Rue</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      value={formData.email || ''}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
+                      <input
+                        type="tel"
+                        value={formData.phone || ''}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Naissance</label>
+                      <input
+                        type="date"
+                        value={formData.birthDate ? formData.birthDate.split('T')[0] : ''}
+                        onChange={(e) => handleInputChange('birthDate', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-800">Poste & rémunération</h4>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rôle *</label>
+                    <select
+                      value={formData.role || 'AUTRE'}
+                      onChange={(e) => handleInputChange('role', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      {STAFF_ROLE_KEYS.map((key) => (
+                        <option key={key} value={key}>{getStaffRoleDisplayLabel(key)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {normalizeStaffStatusKey(formData.status || '') === 'SALARIE' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Type de contrat</label>
+                        <select
+                          value={formData.contractType || ''}
+                          onChange={(e) => handleInputChange('contractType', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">—</option>
+                          <option value="CDI">CDI</option>
+                          <option value="CDD">CDD</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Salaire (€/mois)</label>
+                        <input
+                          type="number"
+                          value={formData.salary || ''}
+                          onChange={(e) => handleInputChange('salary', parseFloat(e.target.value) || 0)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                          placeholder="3000"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {normalizeStaffStatusKey(formData.status || '') === 'VACATAIRE' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Tarif journalier (€)</label>
+                      <input
+                        type="number"
+                        value={formData.dailyRate || ''}
+                        onChange={(e) => handleInputChange('dailyRate', parseFloat(e.target.value) || 0)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                        placeholder="150"
+                      />
+                    </div>
+                  )}
+
+                  {normalizeStaffStatusKey(formData.status || '') === 'BENEVOLE' && (
+                    <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                      Aucune rémunération à renseigner pour un bénévole.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Adresse repliable */}
+              <details className="group rounded-xl border border-gray-200">
+                <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">
+                  Adresse postale <span className="text-gray-400 font-normal">(optionnel)</span>
+                </summary>
+                <div className="px-4 pb-4 grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
                     <input
                       type="text"
+                      placeholder="Rue"
                       value={formData.address?.streetName || ''}
                       onChange={(e) => handleAddressChange('streetName', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Code postal</label>
-                    <input
-                      type="text"
-                      value={formData.address?.postalCode || ''}
-                      onChange={(e) => handleAddressChange('postalCode', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Ville</label>
-                    <input
-                      type="text"
-                      value={formData.address?.city || ''}
-                      onChange={(e) => handleAddressChange('city', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Région</label>
-                    <input
-                      type="text"
-                      value={formData.address?.region || ''}
-                      onChange={(e) => handleAddressChange('region', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Pays</label>
-                    <input
-                      type="text"
-                      value={formData.address?.country || ''}
-                      onChange={(e) => handleAddressChange('country', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    placeholder="Code postal"
+                    value={formData.address?.postalCode || ''}
+                    onChange={(e) => handleAddressChange('postalCode', e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Ville"
+                    value={formData.address?.city || ''}
+                    onChange={(e) => handleAddressChange('city', e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Région"
+                    value={formData.address?.region || ''}
+                    onChange={(e) => handleAddressChange('region', e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Pays"
+                    value={formData.address?.country || ''}
+                    onChange={(e) => handleAddressChange('country', e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              </div>
+              </details>
             </div>
-            <div className="flex justify-end space-x-2 mt-6">
+
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
               <ActionButton onClick={() => setIsEditModalOpen(false)} variant="secondary">
                 Annuler
               </ActionButton>
               <ActionButton onClick={handleSaveStaff} variant="primary">
-                {selectedStaff ? 'Sauvegarder' : 'Ajouter'}
+                {selectedStaff ? 'Enregistrer' : 'Ajouter'}
               </ActionButton>
             </div>
           </div>

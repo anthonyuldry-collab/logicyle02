@@ -251,16 +251,31 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                 </thead>
                                 <tbody className="divide-y">
                                     {pendingMemberships.map((membership: TeamMembership) => {
-                                        const user = getUser(membership.userId || '');
+                                        const user = membership.userId
+                                          ? getUser(membership.userId)
+                                          : users.find((u) => u.email?.toLowerCase() === membership.email?.toLowerCase());
                                         const team = getTeam(membership.teamId || '');
-                                        if (!user || !team) return null;
+                                        const displayEmail = user?.email || membership.email;
+                                        if (!displayEmail || !team) return null;
+
+                                        const isEmailInvite = membership.source === 'email_invite';
+                                        const displayName = user
+                                          ? `${user.firstName} ${user.lastName}`
+                                          : isEmailInvite
+                                            ? '(Invitation envoyée)'
+                                            : '(En attente)';
 
                                         return (
-                                            <tr key={membership.userId + membership.teamId}>
-                                                <td className="px-4 py-2 font-medium">{user.firstName} {user.lastName}</td>
-                                                <td className="px-4 py-2 text-gray-600">{user.email}</td>
+                                            <tr key={membership.id || membership.userId + membership.teamId}>
+                                                <td className="px-4 py-2 font-medium">{displayName}</td>
+                                                <td className="px-4 py-2 text-gray-600">{displayEmail}</td>
                                                 <td className="px-4 py-2 text-gray-600">{team.name}</td>
-                                                <td className="px-4 py-2 text-gray-600">{membership.userRole}</td>
+                                                <td className="px-4 py-2 text-gray-600">
+                                                  {membership.userRole || membership.requestedUserRole}
+                                                  {isEmailInvite && (
+                                                    <span className="ml-1 text-xs text-blue-600">(invitation)</span>
+                                                  )}
+                                                </td>
                                                 <td className="px-4 py-2 text-right space-x-2">
                                                     <ActionButton 
                                                         onClick={async () => {
@@ -271,14 +286,15 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                                 const membershipId = membership.id || membership.userId || 'unknown-id';
                                                                 
                                                                 const transformedMembership = {
-                                                                    id: membershipId, // Utiliser l'ID disponible
-                                                                    email: user?.email || 'unknown@email.com', // Récupérer l'email de l'utilisateur
+                                                                    id: membershipId,
+                                                                    userId: membership.userId || user?.id,
+                                                                    email: user?.email || membership.email || 'unknown@email.com',
                                                                     teamId: membership.teamId || 'unknown-team',
                                                                     status: membership.status || 'PENDING',
                                                                     userRole: membership.userRole || 'COUREUR',
                                                                     firstName: user?.firstName || '',
                                                                     lastName: user?.lastName || '',
-                                                                    requestedUserRole: membership.userRole || 'COUREUR',
+                                                                    requestedUserRole: (membership.userRole || 'COUREUR') as UserRole,
                                                                     requestedAt: membership.requestedAt || new Date().toISOString(),
                                                                     requestedBy: membership.requestedBy || 'unknown'
                                                                 };
@@ -310,14 +326,15 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                                 const membershipId = membership.id || membership.userId || 'unknown-id';
                                                                 
                                                                 const transformedMembership = {
-                                                                    id: membershipId, // Utiliser l'ID disponible
-                                                                    email: user?.email || 'unknown@email.com', // Récupérer l'email de l'utilisateur
+                                                                    id: membershipId,
+                                                                    userId: membership.userId || user?.id,
+                                                                    email: user?.email || membership.email || 'unknown@email.com',
                                                                     teamId: membership.teamId || 'unknown-team',
                                                                     status: membership.status || 'PENDING',
                                                                     userRole: membership.userRole || 'COUREUR',
                                                                     firstName: user?.firstName || '',
                                                                     lastName: user?.lastName || '',
-                                                                    requestedUserRole: membership.userRole || 'COUREUR',
+                                                                    requestedUserRole: (membership.userRole || 'COUREUR') as UserRole,
                                                                     requestedAt: membership.requestedAt || new Date().toISOString(),
                                                                     requestedBy: membership.requestedBy || 'unknown'
                                                                 };

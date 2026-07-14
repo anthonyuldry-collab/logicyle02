@@ -11,7 +11,8 @@ import {
   updateDoc,
   runTransaction,
   query,
-  where
+  where,
+  collectionGroup,
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
@@ -40,9 +41,21 @@ import {
   SignupInfo,
   ChecklistRole,
   ChecklistTemplate,
+  PowerProfile,
+  PowerProfileHistory,
+  Mission,
+  MissionStatus,
+  ScoutingRequest,
+  ScoutingRequestStatus,
+  SignupMode,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
-import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState } from '../constants';
+import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState, LEGAL_VERSIONS } from '../constants';
+import { getDefaultPlanForTeamLevel } from '../constants/subscriptionPlans';
+import { buildInitialSubscription } from './billingService';
+import { buildDefaultRider, buildDefaultStaffMember } from '../utils/defaultTeamMemberProfiles';
+import { purgeUserPersonalDataSecure, deleteTeamAndAllDataSecure } from './gdprCloudService';
+import { GdprConsent } from '../types';
 
 // Helper function to check if user has access to mission search based on staff role
 const hasAccessToMissions = (user: User, staff: StaffMember[]): boolean => {
@@ -54,7 +67,7 @@ const hasAccessToMissions = (user: User, staff: StaffMember[]): boolean => {
     
     // Check if the staff role is one of the allowed roles for mission search
     const allowedRoles = [StaffRole.DS, StaffRole.ENTRAINEUR, StaffRole.ASSISTANT, StaffRole.MECANO];
-    return allowedRoles.includes(staffMember.role);
+    return allowedRoles.includes(staffMember.role as StaffRole);
 };
 
 // Reasonable default permissions when no permissions document is configured in Firestore
@@ -142,9 +155,14 @@ const cleanDataForFirebase = (data: any): any => {
 
 
 // --- FILE UPLOAD ---
+export const extractBase64Data = (base64: string): string => {
+    const commaIndex = base64.indexOf(',');
+    return commaIndex >= 0 ? base64.slice(commaIndex + 1) : base64;
+};
+
 export const uploadFile = async (base64: string, path: string, mimeType: string): Promise<string> => {
     const storageRef = ref(storage, path);
-    const base64Data = base64.split(',')[1];
+    const base64Data = extractBase64Data(base64);
     const snapshot = await uploadString(storageRef, base64Data, 'base64', { contentType: mimeType });
     return getDownloadURL(snapshot.ref);
 };
@@ -185,12 +203,13 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
         // Normalisation du sex avec gestion améliorée
         let normalizedSex: Sex | undefined = undefined;
         if (sex !== undefined && sex !== null) {
-            if (sex === 'male' || sex === Sex.MALE) {
+            const sexStr = String(sex);
+            const maleValues = new Set<string>(['male', Sex.MALE, Sex.MALE_SHORT]);
+            const femaleValues = new Set<string>(['female', Sex.FEMALE, Sex.FEMALE_SHORT, Sex.FEMALE_EN]);
+            if (maleValues.has(sexStr)) {
                 normalizedSex = Sex.MALE;
-            } else if (sex === 'female' || sex === Sex.FEMALE) {
+            } else if (femaleValues.has(sexStr)) {
                 normalizedSex = Sex.FEMALE;
-            } else if (sex === Sex.MALE || sex === Sex.FEMALE) {
-                normalizedSex = sex;
             }
         }
 
@@ -202,15 +221,42 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             signupInfo.sex = normalizedSex;
         }
 
+        const now = new Date().toISOString();
+        let gdprConsent: GdprConsent | undefined;
+        if (signupData.acceptLegalConsent) {
+            gdprConsent = {
+                termsAcceptedAt: now,
+                termsVersion: LEGAL_VERSIONS.TERMS_VERSION,
+                privacyPolicyAcceptedAt: now,
+                privacyPolicyVersion: LEGAL_VERSIONS.PRIVACY_POLICY_VERSION,
+                ndaAcceptedAt: now,
+                ndaVersion: LEGAL_VERSIONS.NDA_VERSION,
+            };
+        }
+
+        const isIndependentSignup =
+            signupData.signupMode === SignupMode.INDEPENDENT &&
+            userRole !== UserRole.MANAGER;
+
         const newUser: Omit<User, 'id'> = {
             email,
             firstName,
             lastName,
             permissionRole: TeamRole.VIEWER,
-            userRole: userRole, // Utiliser le rôle sélectionné lors de l'inscription
-            isSearchable: false,
-            openToExternalMissions: false,
+            userRole: userRole,
+            isSearchable: isIndependentSignup && userRole === UserRole.COUREUR,
+            openToExternalMissions: isIndependentSignup && userRole === UserRole.STAFF,
             signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : undefined,
+            gdprConsent,
+            ...(isIndependentSignup
+                ? {
+                      signupMode: SignupMode.INDEPENDENT,
+                      isIndependentProfile: true,
+                      independentActivatedAt: now,
+                  }
+                : {}),
+            createdAt: now,
+            updatedAt: now,
         };
         
         const cleanedNewUser = cleanDataForFirebase(newUser);
@@ -244,7 +290,12 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
     }
 };
 
-export const requestToJoinTeam = async (userId: string, teamId: string, userRole: UserRole) => {
+export const requestToJoinTeam = async (
+    userId: string,
+    teamId: string,
+    userRole: UserRole,
+    userInfo?: { firstName?: string; lastName?: string; email?: string }
+) => {
     try {
         // Vérifier si l'utilisateur a déjà un membership pour cette équipe
         const membershipsColRef = collection(db, 'teamMemberships');
@@ -277,25 +328,132 @@ export const requestToJoinTeam = async (userId: string, teamId: string, userRole
             throw new Error("Cette équipe n'existe pas.");
         }
         
+        const teamData = teamDoc.data() as Team;
+        
         // Créer la demande de membership
         await addDoc(membershipsColRef, {
-            userId: userId,
-            teamId: teamId,
+            userId,
+            teamId,
             status: TeamMembershipStatus.PENDING,
-            userRole: userRole,
+            userRole,
+            firstName: userInfo?.firstName ?? '',
+            lastName: userInfo?.lastName ?? '',
+            email: userInfo?.email ?? '',
+            teamName: teamData.name,
+            source: 'self_join',
             requestedAt: new Date().toISOString(),
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Erreur lors de la demande pour rejoindre l'équipe:", error);
         throw error;
     }
 };
 
-export const createTeamForUser = async (userId: string, teamData: { name: string; level: TeamLevel; country: string; }, userRole: UserRole) => {
+export interface ApproveMembershipInput {
+    membershipId: string;
+    userId: string;
+    teamId: string;
+    userRole: UserRole;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+}
+
+export const approveTeamMembership = async (
+    input: ApproveMembershipInput,
+    approvedBy: string,
+    existingUser?: User | null
+): Promise<{ riderCreated: boolean; staffCreated: boolean }> => {
+    const { membershipId, userId, teamId, userRole, email, firstName, lastName } = input;
+    const now = new Date().toISOString();
+
+    const membershipRef = doc(db, 'teamMemberships', membershipId);
+    await updateDoc(membershipRef, {
+        status: TeamMembershipStatus.ACTIVE,
+        approvedAt: now,
+        approvedBy,
+    });
+
+    const userDocRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userDocRef);
+    const currentUserData = userDoc.exists() ? (userDoc.data() as User) : null;
+
+    await setDoc(
+        userDocRef,
+        {
+            teamId,
+            isActive: true,
+            email: email || currentUserData?.email,
+            firstName: firstName || currentUserData?.firstName || '',
+            lastName: lastName || currentUserData?.lastName || '',
+            userRole,
+            permissionRole: TeamRole.MEMBER,
+            updatedAt: now,
+        },
+        { merge: true }
+    );
+
+    let riderCreated = false;
+    let staffCreated = false;
+
+    if (userRole === UserRole.COUREUR) {
+        const riderRef = doc(db, 'teams', teamId, 'riders', userId);
+        const riderSnap = await getDoc(riderRef);
+        if (!riderSnap.exists()) {
+            const signupInfo = existingUser?.signupInfo ?? currentUserData?.signupInfo;
+            const rider = buildDefaultRider(
+                {
+                    id: userId,
+                    firstName: firstName || currentUserData?.firstName || '',
+                    lastName: lastName || currentUserData?.lastName || '',
+                    email: email || currentUserData?.email || '',
+                },
+                signupInfo
+            );
+            await setDoc(riderRef, rider);
+            riderCreated = true;
+        }
+    } else if (userRole === UserRole.STAFF) {
+        const staffRef = doc(db, 'teams', teamId, 'staff', userId);
+        const staffSnap = await getDoc(staffRef);
+        if (!staffSnap.exists()) {
+            const staffMember = buildDefaultStaffMember({
+                id: userId,
+                firstName: firstName || currentUserData?.firstName || '',
+                lastName: lastName || currentUserData?.lastName || '',
+                email: email || currentUserData?.email || '',
+            });
+            await setDoc(staffRef, staffMember);
+            staffCreated = true;
+        }
+    }
+
+    return { riderCreated, staffCreated };
+};
+
+export const userHasActiveMembership = async (userId: string): Promise<boolean> => {
+    const membershipsColRef = collection(db, 'teamMemberships');
+    const activeMemberships = await getDocs(
+        query(
+            membershipsColRef,
+            where('userId', '==', userId),
+            where('status', '==', TeamMembershipStatus.ACTIVE)
+        )
+    );
+    return !activeMemberships.empty;
+};
+
+export const createTeamForUser = async (userId: string, teamData: { name: string; level: TeamLevel; country: string; planId?: import('../types').SubscriptionPlanId; }, userRole: UserRole) => {
     try {
-        // 1. Créer l'équipe d'abord (hors transaction car addDoc génère un ID)
+        const subscription = buildInitialSubscription(teamData.level, teamData.planId);
         const teamsColRef = collection(db, 'teams');
-        const newTeamRef = await addDoc(teamsColRef, teamData);
+        const newTeamRef = await addDoc(teamsColRef, {
+            name: teamData.name,
+            level: teamData.level,
+            country: teamData.country,
+            subscription,
+            createdAt: new Date().toISOString(),
+        });
         
         // 2. Utiliser une transaction pour garantir l'atomicité des opérations critiques
         await runTransaction(db, async (transaction) => {
@@ -354,6 +512,7 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
         const membershipsSnap = await getDocs(collection(db, 'teamMemberships'));
         const permissionsSnap = await getDocs(collection(db, 'permissions'));
         const permissionRolesSnap = await getDocs(collection(db, 'permissionRoles'));
+        const scoutingRequestsSnap = await getDocs(collection(db, 'scoutingRequests'));
     
     const permissionsDoc = permissionsSnap.empty ? undefined : permissionsSnap.docs[0];
     const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
@@ -366,7 +525,8 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
             teams: teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Team)),
             teamMemberships: membershipsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamMembership)),
             permissions: permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {},
-            permissionRoles
+            permissionRoles,
+            scoutingRequests: scoutingRequestsSnap.docs.map(d => ({ id: d.id, ...d.data() } as ScoutingRequest)),
         };
     } catch (error) {
         console.error('Erreur lors de la récupération des données globales:', error);
@@ -374,7 +534,98 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
     }
 };
 
+/** Missions ouvertes publiées par toutes les équipes (collection group). */
+export const getOpenMissionsGlobal = async (): Promise<Mission[]> => {
+    try {
+        const missionsSnap = await getDocs(
+            query(collectionGroup(db, 'missions'), where('status', '==', MissionStatus.OPEN))
+        );
+        return missionsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Mission));
+    } catch (error) {
+        console.warn('getOpenMissionsGlobal:', error);
+        return [];
+    }
+};
+
+export const applyToMission = async (
+    teamId: string,
+    missionId: string,
+    userId: string
+): Promise<void> => {
+    const missionRef = doc(db, 'teams', teamId, 'missions', missionId);
+    const missionSnap = await getDoc(missionRef);
+    if (!missionSnap.exists()) throw new Error('Mission introuvable');
+    const applicants = (missionSnap.data().applicants as string[]) || [];
+    if (applicants.includes(userId)) return;
+    await updateDoc(missionRef, {
+        applicants: [...applicants, userId],
+        updatedAt: new Date().toISOString(),
+    });
+};
+
+export const createScoutingRequest = async (params: {
+    requesterTeamId: string;
+    athleteId: string;
+    message?: string;
+}): Promise<string> => {
+    const existingSnap = await getDocs(
+        query(
+            collection(db, 'scoutingRequests'),
+            where('requesterTeamId', '==', params.requesterTeamId),
+            where('athleteId', '==', params.athleteId)
+        )
+    );
+    const activeRequest = existingSnap.docs.find((d) => {
+        const status = d.data().status as ScoutingRequestStatus;
+        return (
+            status === ScoutingRequestStatus.PENDING ||
+            status === ScoutingRequestStatus.ACCEPTED
+        );
+    });
+    if (activeRequest) return activeRequest.id;
+
+    const ref = await addDoc(collection(db, 'scoutingRequests'), {
+        requesterTeamId: params.requesterTeamId,
+        athleteId: params.athleteId,
+        status: ScoutingRequestStatus.PENDING,
+        message: params.message || '',
+        requestDate: new Date().toISOString(),
+    });
+    return ref.id;
+};
+
+export const respondToScoutingRequest = async (
+    requestId: string,
+    response: 'accepted' | 'rejected'
+): Promise<void> => {
+    const status =
+        response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED;
+    await updateDoc(doc(db, 'scoutingRequests', requestId), {
+        status,
+        responseDate: new Date().toISOString(),
+    });
+};
+
+export const getIndependentPermissions = (
+    user: User
+): Partial<Record<AppSection, PermissionLevel[]>> => {
+    const base: Partial<Record<AppSection, PermissionLevel[]>> = {
+        independentHub: ['view', 'edit'],
+        myCareer: ['view', 'edit'],
+        career: ['view', 'edit'],
+        userSettings: ['view', 'edit'],
+        myProfile: ['view', 'edit'],
+    };
+    if (user.userRole === UserRole.STAFF) {
+        base.missionSearch = ['view', 'edit'];
+    }
+    return base;
+};
+
 export const getEffectivePermissions = (user: User, basePermissions: AppPermissions, staff: StaffMember[] = []): Partial<Record<AppSection, PermissionLevel[]>> => {
+    if (user.signupMode === SignupMode.INDEPENDENT || user.isIndependentProfile) {
+        return getIndependentPermissions(user);
+    }
     // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager pour tous les utilisateurs avec teamId
     // ou pour les utilisateurs qui ont créé une équipe
     
@@ -540,6 +791,11 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
         if (teamData) {
             Object.assign(teamState, {
                 teamLevel: teamData.level,
+                subscription: teamData.subscription ?? {
+                    planId: getDefaultPlanForTeamLevel(teamData.level as TeamLevel),
+                    status: 'pilot',
+                    pilotEndsAt: new Date(Date.now() + 90 * 86400000).toISOString(),
+                },
                 themePrimaryColor: teamData.themePrimaryColor,
                 themeAccentColor: teamData.themeAccentColor,
                 language: teamData.language,
@@ -599,15 +855,15 @@ export const updateRiderPowerProfiles = async (
   teamId: string,
   riderId: string,
   powerProfiles: {
-    powerProfileFresh?: Record<string, number | undefined>;
-    powerProfile15KJ?: Record<string, number | undefined>;
-    powerProfile30KJ?: Record<string, number | undefined>;
-    powerProfile45KJ?: Record<string, number | undefined>;
+    powerProfileFresh?: PowerProfile;
+    powerProfile15KJ?: PowerProfile;
+    powerProfile30KJ?: PowerProfile;
+    powerProfile45KJ?: PowerProfile;
     profilePRR?: string;
     profile15KJ?: string;
     profile30KJ?: string;
     profile45KJ?: string;
-    powerProfileHistory?: { entries: Array<Record<string, unknown>> };
+    powerProfileHistory?: PowerProfileHistory;
   }
 ): Promise<void> => {
   let cleanedData = cleanDataForFirebase(powerProfiles) as Record<string, unknown>;
@@ -680,7 +936,7 @@ export const deleteData = async (teamId: string, collectionName: string, docId: 
     await deleteDoc(docRef);
 };
 
-export const saveTeamSettings = async (teamId: string, settings: Partial<Team>) => {
+export const saveTeamSettings = async (teamId: string, settings: Record<string, unknown>) => {
     const teamDocRef = doc(db, 'teams', teamId);
     await setDoc(teamDocRef, settings, { merge: true });
 };
@@ -724,33 +980,47 @@ export const deleteUserAccount = async (currentPassword: string) => {
     }
 
     try {
-        // Réauthentifier l'utilisateur avec son mot de passe actuel
         const credential = EmailAuthProvider.credential(user.email!, currentPassword);
         await reauthenticateWithCredential(user, credential);
-        
-        // Supprimer le document utilisateur de Firestore
-        const userDocRef = doc(db, 'users', user.uid);
-        await deleteDoc(userDocRef);
-        
-        // Supprimer le compte Firebase Authentication
+
+        await purgeUserPersonalDataSecure(user.uid, user.uid);
+
         await deleteUser(user);
-        
-        // Déconnecter l'utilisateur
         await signOut(auth);
-        
-        return { success: true, message: 'Compte supprimé avec succès' };
-    } catch (error: any) {
+
+        return { success: true, message: 'Compte et données personnelles supprimés avec succès' };
+    } catch (error: unknown) {
         console.error('Erreur lors de la suppression du compte:', error);
-        
+
         let errorMessage = 'Erreur lors de la suppression du compte';
-        if (error.code === 'auth/wrong-password') {
+        const err = error as { code?: string };
+        if (err.code === 'auth/wrong-password') {
             errorMessage = 'Mot de passe incorrect';
-        } else if (error.code === 'auth/requires-recent-login') {
+        } else if (err.code === 'auth/requires-recent-login') {
             errorMessage = 'Veuillez vous reconnecter avant de supprimer votre compte';
         }
-        
+
         throw new Error(errorMessage);
     }
+};
+
+export const deleteTeamWithAuth = async (teamId: string, currentPassword: string): Promise<void> => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error('Aucun utilisateur connecté');
+    }
+
+    const credential = EmailAuthProvider.credential(user.email!, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+
+    await deleteTeamAndAllDataSecure(teamId, user.uid);
+
+    const userDocRef = doc(db, 'users', user.uid);
+    await setDoc(
+        userDocRef,
+        { teamId: null, updatedAt: new Date().toISOString() },
+        { merge: true }
+    );
 };
 
 export const updateUserProfile = async (userId: string, updatedData: Partial<User>): Promise<void> => {

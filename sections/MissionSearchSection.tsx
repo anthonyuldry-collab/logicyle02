@@ -15,6 +15,7 @@ interface MissionSearchSectionProps {
   teams: Team[];
   currentUser: User;
   setMissions: (updater: React.SetStateAction<Mission[]>) => void;
+  onApplyToMission?: (mission: Mission) => Promise<void>;
 }
 
 const MissionCard: React.FC<{ mission: Mission; teamName: string; onApply: () => void; onDetails: () => void, hasApplied: boolean }> = ({ mission, teamName, onApply, onDetails, hasApplied }) => {
@@ -44,7 +45,7 @@ const MissionCard: React.FC<{ mission: Mission; teamName: string; onApply: () =>
 };
 
 
-const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, teams, currentUser, setMissions }) => {
+const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, teams, currentUser, setMissions, onApplyToMission }) => {
     const [roleFilter, setRoleFilter] = useState<StaffRole | 'all'>('all');
     const [startDateFilter, setStartDateFilter] = useState('');
     
@@ -79,8 +80,11 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
         }).sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
     }, [missions, roleFilter, startDateFilter]);
 
-    const handleApply = (missionToApply: Mission) => {
+    const handleApply = async (missionToApply: Mission) => {
         if (!currentUser?.id) return;
+        if (onApplyToMission) {
+            await onApplyToMission(missionToApply);
+        }
         setMissions(prevMissions => prevMissions.map(m => 
             m.id === missionToApply.id 
             ? { ...m, applicants: [...(m.applicants || []), currentUser.id] } 
