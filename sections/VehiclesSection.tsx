@@ -119,9 +119,9 @@ const VehiclesSection: React.FC<VehiclesSectionProps> = ({
     onSave, 
     onDelete, 
     effectivePermissions,
-    staff,
-    eventTransportLegs,
-    raceEvents,
+    staff: staffProp,
+    eventTransportLegs: eventTransportLegsProp,
+    raceEvents: raceEventsProp,
     navigateTo,
     vehiclePositions = [],
     teamId,
@@ -132,6 +132,9 @@ const VehiclesSection: React.FC<VehiclesSectionProps> = ({
     onVehiclePositionsUpdate,
 }) => {
   const vehicles = vehiclesProp ?? [];
+  const staff = staffProp ?? [];
+  const eventTransportLegs = eventTransportLegsProp ?? [];
+  const raceEvents = raceEventsProp ?? [];
   const { t, language } = useTranslations();
 
   const [isModalOpen, setIsModalOpen] = useState(false);

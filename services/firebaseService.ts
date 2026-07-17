@@ -385,16 +385,16 @@ export const approveTeamMembership = async (
 
     await setDoc(
         userDocRef,
-        {
+        cleanDataForFirebase({
             teamId,
             isActive: true,
-            email: email || currentUserData?.email,
+            email: email || currentUserData?.email || '',
             firstName: firstName || currentUserData?.firstName || '',
             lastName: lastName || currentUserData?.lastName || '',
             userRole,
             permissionRole: TeamRole.MEMBER,
             updatedAt: now,
-        },
+        }),
         { merge: true }
     );
 
@@ -415,7 +415,7 @@ export const approveTeamMembership = async (
                 },
                 signupInfo
             );
-            await setDoc(riderRef, rider);
+            await setDoc(riderRef, cleanDataForFirebase(rider));
             riderCreated = true;
         }
     } else if (userRole === UserRole.STAFF) {
@@ -428,7 +428,7 @@ export const approveTeamMembership = async (
                 lastName: lastName || currentUserData?.lastName || '',
                 email: email || currentUserData?.email || '',
             });
-            await setDoc(staffRef, staffMember);
+            await setDoc(staffRef, cleanDataForFirebase(staffMember));
             staffCreated = true;
         }
     }
@@ -759,17 +759,17 @@ export const applyToMission = async (
         firstName: applicant?.firstName || '',
         lastName: applicant?.lastName || '',
         email: applicant?.email || '',
-        phone: applicant?.phone,
-        message: applicant?.message,
+        phone: applicant?.phone || '',
+        message: applicant?.message || '',
         appliedAt: new Date().toISOString(),
         status: MissionApplicationStatus.RECEIVED,
     };
 
-    await updateDoc(missionRef, {
+    await updateDoc(missionRef, cleanDataForFirebase({
         applicants: [...applicants, userId],
         applications: [...applications, newApp],
         updatedAt: new Date().toISOString(),
-    });
+    }));
 };
 
 export const createScoutingRequest = async (params: {
@@ -841,7 +841,7 @@ export const respondToScoutingRequest = async (
     if (response === 'accepted' && grantedScopes?.length) {
         payload.grantedScopes = grantedScopes;
     }
-    await updateDoc(doc(db, 'scoutingRequests', requestId), payload);
+    await updateDoc(doc(db, 'scoutingRequests', requestId), cleanDataForFirebase(payload));
 };
 
 export const getIndependentPermissions = (
@@ -1164,7 +1164,7 @@ export const deleteData = async (teamId: string, collectionName: string, docId: 
 
 export const saveTeamSettings = async (teamId: string, settings: Record<string, unknown>) => {
     const teamDocRef = doc(db, 'teams', teamId);
-    await setDoc(teamDocRef, settings, { merge: true });
+    await setDoc(teamDocRef, cleanDataForFirebase(settings), { merge: true });
 };
 
 // Fonctions pour la gestion des paramètres utilisateur
@@ -1251,11 +1251,11 @@ export const deleteTeamWithAuth = async (teamId: string, currentPassword: string
 
 export const updateUserProfile = async (userId: string, updatedData: Partial<User>): Promise<void> => {
     const userRef = doc(db, 'users', userId);
-    const updateData = {
+    const updateData = cleanDataForFirebase({
         ...updatedData,
-        updatedAt: new Date().toISOString()
-    };
-    
+        updatedAt: new Date().toISOString(),
+    });
+    if (Object.keys(updateData).length === 0) return;
     await updateDoc(userRef, updateData);
 };
 

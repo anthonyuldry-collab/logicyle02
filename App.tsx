@@ -1002,7 +1002,7 @@ const App: React.FC = () => {
       const finalItem = { ...enrichedItem, id: enrichedItem.id || savedId };
 
       setAppState((prev: AppState) => {
-        const collection = prev.riders;
+        const collection = prev.riders || [];
         const exists = collection.some((i: Rider) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: Rider) => (i.id === finalItem.id ? finalItem : i))
@@ -1045,7 +1045,7 @@ const App: React.FC = () => {
       );
 
       setAppState((prev: AppState) => {
-        const collection = prev.riders;
+        const collection = prev.riders || [];
         const newRiders = collection.filter((i: Rider) => i.id !== item.id);
         return {
           ...prev,
@@ -1074,7 +1074,7 @@ const App: React.FC = () => {
       const finalItem = { ...item, id: item.id || savedId };
 
       setAppState((prev: AppState) => {
-        const collection = prev.staff;
+        const collection = prev.staff || [];
         const exists = collection.some((i: StaffMember) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: StaffMember) => (i.id === finalItem.id ? finalItem : i))
@@ -1097,7 +1097,7 @@ const App: React.FC = () => {
       );
 
       setAppState((prev: AppState) => {
-        const collection = prev.staff;
+        const collection = prev.staff || [];
         return {
           ...prev,
           staff: collection.filter((i: StaffMember) => i.id !== item.id),
@@ -1165,7 +1165,7 @@ const App: React.FC = () => {
       const finalItem = { ...item, id: item.id || savedId };
 
       setAppState((prev: AppState) => {
-        const collection = prev.vehicles;
+        const collection = prev.vehicles || [];
         const exists = collection.some((i: Vehicle) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: Vehicle) => (i.id === finalItem.id ? finalItem : i))
@@ -1188,7 +1188,7 @@ const App: React.FC = () => {
       );
 
       setAppState((prev: AppState) => {
-        const collection = prev.vehicles;
+        const collection = prev.vehicles || [];
         return {
           ...prev,
           vehicles: collection.filter((i: Vehicle) => i.id !== item.id),
@@ -1211,7 +1211,7 @@ const App: React.FC = () => {
       const finalItem = { ...item, id: item.id || savedId };
 
       setAppState((prev: AppState) => {
-        const collection = prev.equipment;
+        const collection = prev.equipment || [];
         const exists = collection.some((i: EquipmentItem) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: EquipmentItem) => (i.id === finalItem.id ? finalItem : i))
@@ -1234,7 +1234,7 @@ const App: React.FC = () => {
       );
 
       setAppState((prev: AppState) => {
-        const collection = prev.equipment;
+        const collection = prev.equipment || [];
         return {
           ...prev,
           equipment: collection.filter((i: EquipmentItem) => i.id !== item.id),
@@ -1257,7 +1257,7 @@ const App: React.FC = () => {
       const finalItem = { ...item, id: item.id || savedId };
 
       setAppState((prev: AppState) => {
-        const collection = prev.raceEvents;
+        const collection = prev.raceEvents || [];
         const exists = collection.some((i: RaceEvent) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: RaceEvent) => (i.id === finalItem.id ? finalItem : i))
@@ -1344,7 +1344,7 @@ const App: React.FC = () => {
       );
 
       setAppState((prev: AppState) => {
-        const collection = prev.raceEvents;
+        const collection = prev.raceEvents || [];
         return {
           ...prev,
           raceEvents: collection.filter((i: RaceEvent) => i.id !== item.id),
@@ -1366,7 +1366,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...item, id: item.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.performanceEntries;
+        const collection = prev.performanceEntries || [];
         const exists = collection.some((i: PerformanceEntry) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: PerformanceEntry) => (i.id === finalItem.id ? finalItem : i))
@@ -1436,7 +1436,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...enriched, id: enriched.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.incomeItems;
+        const collection = prev.incomeItems || [];
         const exists = collection.some((i: IncomeItem) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: IncomeItem) => (i.id === finalItem.id ? finalItem : i))
@@ -1459,7 +1459,7 @@ const App: React.FC = () => {
       );
       setAppState((prev: AppState) => ({
         ...prev,
-        incomeItems: prev.incomeItems.filter((i: IncomeItem) => i.id !== item.id),
+        incomeItems: (prev.incomeItems || []).filter((i: IncomeItem) => i.id !== item.id),
       }));
     } catch (error) {
       console.error("Erreur lors de la suppression du revenu:", error);
@@ -1680,7 +1680,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...enriched, id: enriched.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.eventBudgetItems;
+        const collection = prev.eventBudgetItems || [];
         const exists = collection.some((i: EventBudgetItem) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: EventBudgetItem) => (i.id === finalItem.id ? finalItem : i))
@@ -2008,7 +2008,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...item, id: item.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.scoutingProfiles;
+        const collection = prev.scoutingProfiles || [];
         const exists = collection.some((i: ScoutingProfile) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: ScoutingProfile) => (i.id === finalItem.id ? finalItem : i))
@@ -2053,7 +2053,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...item, id: item.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.stockItems;
+        const collection = prev.stockItems || [];
         const exists = collection.some((i: StockItem) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: StockItem) => (i.id === finalItem.id ? finalItem : i))
@@ -2076,7 +2076,7 @@ const App: React.FC = () => {
       );
       setAppState((prev: AppState) => ({
         ...prev,
-        stockItems: prev.stockItems.filter((i: StockItem) => i.id !== item.id),
+        stockItems: (prev.stockItems || []).filter((i: StockItem) => i.id !== item.id),
       }));
     } catch (error) {
       console.error("Erreur lors de la suppression du stock:", error);
@@ -2176,7 +2176,7 @@ const App: React.FC = () => {
       );
       const finalItem = { ...item, id: item.id || savedId };
       setAppState((prev: AppState) => {
-        const collection = prev.teamProducts;
+        const collection = prev.teamProducts || [];
         const exists = collection.some((i: TeamProduct) => i.id === finalItem.id);
         const newCollection = exists
           ? collection.map((i: TeamProduct) => (i.id === finalItem.id ? finalItem : i))
@@ -2199,7 +2199,7 @@ const App: React.FC = () => {
       );
       setAppState((prev: AppState) => ({
         ...prev,
-        teamProducts: prev.teamProducts.filter((i: TeamProduct) => i.id !== item.id),
+        teamProducts: (prev.teamProducts || []).filter((i: TeamProduct) => i.id !== item.id),
       }));
     } catch (error) {
       console.error("Erreur lors de la suppression du produit:", error);
@@ -2213,7 +2213,7 @@ const App: React.FC = () => {
   ): React.Dispatch<React.SetStateAction<T[]>> =>
     (updater: React.SetStateAction<T[]>) => {
       setAppState((prev: AppState) => {
-        const currentItems = prev[collectionName] as T[];
+        const currentItems = (prev[collectionName] as T[]) || [];
         const newItems =
           typeof updater === "function"
             ? (updater as (prevState: T[]) => T[])(currentItems)
@@ -2452,7 +2452,7 @@ const App: React.FC = () => {
       setCurrentUser(merged);
       setAppState((prev) => ({
         ...prev,
-        users: prev.users.map((u) => (u.id === currentUser.id ? { ...u, ...gatedUpdates } : u)),
+        users: (prev.users || []).map((u) => (u.id === currentUser.id ? { ...u, ...gatedUpdates } : u)),
       }));
     } catch (error) {
       console.error("Erreur sauvegarde profil indépendant:", error);
@@ -3508,7 +3508,9 @@ const App: React.FC = () => {
                           themePrimaryColor: appState.themePrimaryColor,
                           themeAccentColor: appState.themeAccentColor,
                           language: appState.language,
-                          gender: appState.operationalSettings?.gender,
+                          ...(appState.operationalSettings?.gender
+                            ? { gender: appState.operationalSettings.gender }
+                            : {}),
                         });
                         setAppState((prev) => ({
                           ...prev,
@@ -4085,7 +4087,7 @@ const App: React.FC = () => {
                             // Mettre à jour l'état local
                             setAppState((prev: AppState) => ({
                               ...prev,
-                              users: prev.users.map(u => 
+                              users: (prev.users || []).map(u => 
                                 u.id === userId 
                                   ? { ...u, teamId: null, permissionRole: null }
                                   : u
@@ -4128,7 +4130,7 @@ const App: React.FC = () => {
                           // Mettre à jour l'état local des utilisateurs
                           setAppState((prev: AppState) => ({
                             ...prev,
-                            users: prev.users.map(u => 
+                            users: (prev.users || []).map(u => 
                               u.id === userId 
                                 ? { ...u, userRole: newUserRole }
                                 : u
@@ -4246,7 +4248,7 @@ const App: React.FC = () => {
                           // Mettre à jour l'état local
                           setAppState((prev: AppState) => ({
                             ...prev,
-                            users: prev.users.map(u => 
+                            users: (prev.users || []).map(u => 
                               u.id === userId 
                                 ? { ...u, permissionRole: newPermissionRole as TeamRole }
                                 : u
@@ -4268,7 +4270,7 @@ const App: React.FC = () => {
                         await setDoc(userDocRef, payload, { merge: true });
                         setAppState((prev) => ({
                           ...prev,
-                          users: prev.users.map((u) =>
+                          users: (prev.users || []).map((u) =>
                             u.id === userId
                               ? {
                                   ...u,
@@ -4317,7 +4319,7 @@ const App: React.FC = () => {
                             // Mettre à jour l'état local
                             setAppState((prev: AppState) => ({
                               ...prev,
-                              users: prev.users.map(u => 
+                              users: (prev.users || []).map(u => 
                                 u.id === userId 
                                   ? { ...u, teamId: toTeamId }
                                   : u
@@ -4417,7 +4419,7 @@ const App: React.FC = () => {
                             setCurrentUser((prev) => prev ? { ...prev, isSearchable: updates.isSearchable } : prev);
                             setAppState((prev: AppState) => ({
                               ...prev,
-                              users: prev.users.map(u => 
+                              users: (prev.users || []).map(u => 
                                 u.id === currentUser.id 
                                   ? { ...u, isSearchable: updates.isSearchable }
                                   : u
@@ -4434,7 +4436,7 @@ const App: React.FC = () => {
                             setCurrentUser((prev) => prev ? { ...prev, openToExternalMissions: updates.openToMissions } : prev);
                             setAppState((prev: AppState) => ({
                               ...prev,
-                              users: prev.users.map(u =>
+                              users: (prev.users || []).map(u =>
                                 u.id === currentUser.id
                                   ? { ...u, openToExternalMissions: updates.openToMissions }
                                   : u
@@ -4444,9 +4446,13 @@ const App: React.FC = () => {
                           
                           // Mettre à jour le profil coureur si membre d'une équipe
                           if (!userIsIndependent && currentUser.userRole === UserRole.COUREUR && updates.isSearchable !== undefined) {
-                            const riderProfile = appState.riders.find(r => r.email === currentUser.email);
+                            if (!appState.activeTeamId) {
+                              alert('Aucune équipe active. Impossible de mettre à jour la visibilité.');
+                              return;
+                            }
+                            const riderProfile = (appState.riders || []).find(r => r.email === currentUser.email);
                             if (riderProfile) {
-                              const riderRef = doc(db, 'teams', appState.activeTeamId!, 'riders', riderProfile.id);
+                              const riderRef = doc(db, 'teams', appState.activeTeamId, 'riders', riderProfile.id);
                               await updateDoc(riderRef, {
                                 isSearchable: updates.isSearchable,
                                 updatedAt: new Date().toISOString()
@@ -4455,7 +4461,7 @@ const App: React.FC = () => {
                               // Mettre à jour l'état local des coureurs
                               setAppState((prev: AppState) => ({
                                 ...prev,
-                                riders: prev.riders.map(r => 
+                                riders: (prev.riders || []).map(r => 
                                   r.id === riderProfile.id 
                                     ? { ...r, isSearchable: updates.isSearchable }
                                     : r
@@ -4466,9 +4472,13 @@ const App: React.FC = () => {
                           
                           // Mettre à jour le profil staff si membre d'une équipe
                           if (!userIsIndependent && currentUser.userRole !== UserRole.COUREUR && updates.openToMissions !== undefined) {
-                            const staffProfile = appState.staff.find(s => s.email === currentUser.email);
+                            if (!appState.activeTeamId) {
+                              alert('Aucune équipe active. Impossible de mettre à jour la disponibilité.');
+                              return;
+                            }
+                            const staffProfile = (appState.staff || []).find(s => s.email === currentUser.email);
                             if (staffProfile) {
-                              const staffRef = doc(db, 'teams', appState.activeTeamId!, 'staff', staffProfile.id);
+                              const staffRef = doc(db, 'teams', appState.activeTeamId, 'staff', staffProfile.id);
                               await updateDoc(staffRef, {
                                 openToExternalMissions: updates.openToMissions,
                                 updatedAt: new Date().toISOString()
@@ -4477,7 +4487,7 @@ const App: React.FC = () => {
                               // Mettre à jour l'état local du staff
                               setAppState((prev: AppState) => ({
                                 ...prev,
-                                staff: prev.staff.map(s => 
+                                staff: (prev.staff || []).map(s => 
                                   s.id === staffProfile.id 
                                     ? { ...s, openToExternalMissions: updates.openToMissions }
                                     : s
