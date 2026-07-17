@@ -164,7 +164,7 @@ const MobileShell: React.FC<MobileShellProps> = ({
     ) : null;
 
   const isImmersiveDashboard =
-    currentSection === 'myDashboard' || currentSection === 'adminDashboard';
+    currentSection === 'myDashboard';
 
   if (!isMobile) {
     return (

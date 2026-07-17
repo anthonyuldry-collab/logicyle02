@@ -2904,6 +2904,8 @@ export interface Team {
     /** @deprecated Préférer operationalSettings.gender */
     gender?: TeamGender;
     operationalSettings?: TeamOperationalSettings;
+    /** Pack démo « Horizon Atlantique » — accès produit débloqué. */
+    isPresentationDemo?: boolean;
 }
 
 export interface TeamMembership {

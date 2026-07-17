@@ -11,6 +11,7 @@ import {
   UserRole,
 } from '../types';
 import { isSponsorshipIncome } from './financialUtils';
+import { isSuperAdminUser } from './superAdminUtils';
 
 export const ALL_PARTNER_SCOPES: PartnerScope[] = [
   'view_budget',
@@ -146,8 +147,16 @@ export function buildManagerPreviewAccess(
   };
 }
 
-export function canPreviewPartnerPortal(userRole?: string, permissionRole?: string): boolean {
-  return userRole === UserRole.MANAGER || permissionRole === TeamRole.ADMIN;
+export function canPreviewPartnerPortal(
+  userRole?: string,
+  permissionRole?: string,
+  user?: User | null,
+): boolean {
+  if (isSuperAdminUser(user)) return true;
+  if (userRole === UserRole.MANAGER || permissionRole === TeamRole.ADMIN) return true;
+  // Admins équipe parfois stockés avec permissionRole string hors enum.
+  if (String(permissionRole || '').toLowerCase() === 'admin') return true;
+  return false;
 }
 
 const PARTNER_ALLOWED_SECTIONS: AppSection[] = ['partnerPortal', 'userSettings'];
@@ -198,6 +207,7 @@ export function resolvePartnerPortalSession(params: {
   userRole?: string;
   permissionRole?: string;
   previewIncomeItemId?: string | null;
+  previewAsUser?: User | null;
 }): {
   access: PartnerAccess | null;
   incomeItem: IncomeItem | null;
@@ -212,6 +222,7 @@ export function resolvePartnerPortalSession(params: {
     userRole,
     permissionRole,
     previewIncomeItemId,
+    previewAsUser,
   } = params;
 
   const fromFirestore = partnerAccesses.find(
@@ -242,7 +253,7 @@ export function resolvePartnerPortalSession(params: {
   }
 
   const isPartnerRolePreview = userRole === UserRole.PARTNER && !!previewIncomeItemId;
-  const isManagerPreview = canPreviewPartnerPortal(userRole, permissionRole);
+  const isManagerPreview = canPreviewPartnerPortal(userRole, permissionRole, previewAsUser);
 
   if ((isPartnerRolePreview || isManagerPreview) && teamId) {
     const previewIncome =
@@ -250,6 +261,7 @@ export function resolvePartnerPortalSession(params: {
         ? incomeItems.find((i) => i.id === previewIncomeItemId)
         : null)
       || incomeItems.find((i) => isSponsorshipIncome(i))
+      || incomeItems.find((i) => Boolean(i.sponsorCompanyName))
       || null;
 
     if (previewIncome) {

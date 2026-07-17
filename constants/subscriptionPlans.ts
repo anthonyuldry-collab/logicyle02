@@ -239,7 +239,7 @@ export const SECTION_MIN_PLAN: Partial<Record<AppSection, SubscriptionPlanId>> =
   accommodationHistory: SubscriptionPlanId.COMPETITION,
   scouting: SubscriptionPlanId.COMPETITION,
   talentAvailability: SubscriptionPlanId.CONTINENTAL,
-  adminDashboard: SubscriptionPlanId.PRO,
+  // adminDashboard / userSettings / myDashboard : toujours accessibles aux managers (pas de gating plan)
 };
 
 export function getPlanById(planId: SubscriptionPlanId): PlanDefinition {

@@ -23,7 +23,6 @@ import {
 import SectionWrapper from '../components/SectionWrapper';
 import RiderDashboardTab from '../components/riderDetailTabs/RiderDashboardTab';
 import StaffDashboardTab from '../components/StaffDashboardTab';
-import ActionButton from '../components/ActionButton';
 import { getOwnRider } from '../utils/riderAccessUtils';
 import { getStaffMemberForUser } from '../utils/staffMemberUtils';
 
@@ -185,16 +184,7 @@ const MyDashboardSection: React.FC<MyDashboardSectionProps> = ({
   }
 
   if (currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER) {
-    return (
-      <SectionWrapper title="Tableau de bord" variant="immersive">
-        <div className="max-w-lg mx-auto text-center py-10">
-          <p className="text-slate-300 mb-4">Accès encadrement — ouvrez le tableau de bord équipe.</p>
-          <ActionButton onClick={() => navigateTo?.('adminDashboard')}>
-            Tableau de bord administrateur
-          </ActionButton>
-        </div>
-      </SectionWrapper>
-    );
+    return null;
   }
 
   const staffMember = profileData as StaffMember;

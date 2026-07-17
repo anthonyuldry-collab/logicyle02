@@ -31,14 +31,29 @@ export function isHoldingSuperAdminUser(user: User | null | undefined): boolean 
   return normalizeEmail(email) === HOLDING_SUPER_ADMIN_EMAIL.toLowerCase();
 }
 
-/** Équipe de contexte pour tester l'app (scouting, effectif…) sans membership. */
+/** Équipe de contexte optionnelle (aperçu rôle). Jamais d’auto-rattachement à teams[0]. */
 export function resolveSuperAdminTeamId(
   user: User,
-  teams: Team[],
+  _teams: Team[],
   preferredTeamId?: string | null
 ): string | null {
   if (!isSuperAdminUser(user)) return preferredTeamId ?? null;
-  if (preferredTeamId) return preferredTeamId;
-  if (user.teamId) return user.teamId;
-  return teams[0]?.id ?? null;
+  return preferredTeamId ?? null;
 }
+
+/** Mode cockpit plateforme : Super Admin sans équipe active, hors aperçu rôle. */
+export function isSuperAdminPlatformMode(
+  user: User | null | undefined,
+  activeTeamId: string | null | undefined,
+  previewMode: string = 'full'
+): boolean {
+  return isSuperAdminUser(user) && !activeTeamId && previewMode === 'full';
+}
+
+/** Sections autorisées en mode plateforme (sans équipe). */
+export const SUPER_ADMIN_PLATFORM_SECTIONS = [
+  'organizationDashboard',
+  'superAdmin',
+  'userSettings',
+  'pricing',
+] as const;

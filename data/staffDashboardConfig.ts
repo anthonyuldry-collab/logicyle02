@@ -201,7 +201,7 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
       'Anticiper les besoins de la saison',
     ],
     quickActions: [
-      { section: 'adminDashboard', label: 'Tableau de bord équipe', description: 'Vue globale' },
+      { section: 'myDashboard', label: 'Tableau de bord équipe', description: 'Vue globale' },
       { section: 'financial', label: 'Finances', description: 'Budgets' },
       { section: 'staff', label: 'Staff', description: 'Organisation' },
     ],

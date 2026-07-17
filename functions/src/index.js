@@ -173,14 +173,17 @@ exports.gdprPurgeTeam = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'teamId requis.');
   }
 
+  const authEmail = (request.auth.token.email || '').toLowerCase();
+  const isSuperAdmin = authEmail === 'anthony.uldry@hotmail.fr';
+
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
   const userData = userDoc.data() || {};
   const isManager =
     userData.teamId === teamId &&
     (userData.userRole === 'Manager' || userData.permissionRole === 'Administrateur');
 
-  if (!isManager) {
-    throw new HttpsError('permission-denied', 'Seul un manager peut supprimer l\'équipe.');
+  if (!isManager && !isSuperAdmin) {
+    throw new HttpsError('permission-denied', 'Seul un manager ou le Super Admin peut supprimer l\'équipe.');
   }
 
   await purgeTeamData(teamId, performedBy || request.auth.uid);

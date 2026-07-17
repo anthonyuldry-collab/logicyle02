@@ -333,13 +333,12 @@ export const SECTIONS: SectionConfig[] = [
     { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', groupKey: 'finance', group: sectionGroup('finance') },
     { id: 'expenseReceipts', labels: { fr: 'Justificatifs', en: 'Receipts' }, icon: 'DocumentTextIcon', groupKey: 'finance', group: sectionGroup('finance') },
 
-    { id: 'adminDashboard', labels: { fr: 'Tableau de Bord Admin', en: 'Admin Dashboard' }, icon: 'ChartBarIcon', groupKey: 'administration', group: sectionGroup('administration') },
-    { id: 'organizationDashboard', labels: { fr: 'Vue Holding', en: 'Holding View' }, icon: 'BuildingOfficeIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'organizationDashboard', labels: { fr: 'Pilotage PDG', en: 'CEO Cockpit' }, icon: 'BuildingOfficeIcon', groupKey: 'administration', group: sectionGroup('administration') },
     { id: 'partnerPortal', labels: { fr: 'Espace Partenaire', en: 'Partner Portal' }, icon: 'UserGroupIcon', groupKey: 'administration', group: sectionGroup('administration') },
     { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', groupKey: 'administration', group: sectionGroup('administration') },
     { id: 'userManagement', labels: { fr: 'Utilisateurs & Accès', en: 'Users & Access' }, icon: 'UserPlusIcon', groupKey: 'administration', group: sectionGroup('administration') },
     { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', groupKey: 'administration', group: sectionGroup('administration') },
-    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'superAdmin', labels: { fr: 'Super Admin', en: 'Super Admin' }, icon: 'ShieldExclamationIcon', groupKey: 'administration', group: sectionGroup('administration') },
 ];
 
 /** Sections visibles pour les profils indépendants (sans équipe). */
@@ -388,13 +387,12 @@ export const LEGAL_VERSIONS = {
   NDA_VERSION: '2026-01',
 } as const;
 
-/** Comptes plateforme avec accès Super Admin (maintenance globale). */
+/** Unique compte plateforme avec accès Super Admin (maintenance globale). */
 export const SUPER_ADMIN_EMAILS = [
   'anthony.uldry@hotmail.fr',
-  'ds.lanesterwomen@gmail.com',
 ] as const;
 
-/** Seul compte autorisé à la vue holding (pilotage multi-équipes plateforme). */
+/** Même compte — vue holding (pilotage multi-équipes plateforme). */
 export const HOLDING_SUPER_ADMIN_EMAIL = 'anthony.uldry@hotmail.fr' as const;
 
 export const TEAM_STATE_COLLECTIONS = [

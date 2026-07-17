@@ -1263,6 +1263,57 @@ export const deleteTeamWithAuth = async (teamId: string, currentPassword: string
     );
 };
 
+/** Suppression d’équipe réservée au Super Admin (sans re-saisie du mot de passe). */
+export const deleteTeamAsSuperAdmin = async (teamId: string): Promise<void> => {
+    const user = auth.currentUser;
+    if (!user?.email) {
+        throw new Error('Aucun utilisateur connecté');
+    }
+    const email = user.email.trim().toLowerCase();
+    if (email !== 'anthony.uldry@hotmail.fr') {
+        throw new Error('Accès Super Admin requis pour supprimer une équipe.');
+    }
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const userSnap = await getDoc(userDocRef);
+    const prev = userSnap.exists() ? userSnap.data() : {};
+    const alreadyManager =
+        prev.teamId === teamId &&
+        (prev.userRole === 'Manager' || prev.permissionRole === 'Administrateur');
+
+    // Élévation temporaire : les règles / Cloud Function exigent un manager d’équipe
+    // tant que le déploiement Super Admin n’est pas propagé.
+    if (!alreadyManager) {
+        await setDoc(
+            userDocRef,
+            {
+                teamId,
+                userRole: 'Manager',
+                permissionRole: 'Administrateur',
+                updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+        );
+    }
+
+    try {
+        await deleteTeamAndAllDataSecure(teamId, user.uid);
+    } finally {
+        if (!alreadyManager) {
+            await setDoc(
+                userDocRef,
+                {
+                    teamId: prev.teamId === teamId ? null : (prev.teamId ?? null),
+                    userRole: prev.userRole ?? null,
+                    permissionRole: prev.permissionRole ?? null,
+                    updatedAt: new Date().toISOString(),
+                },
+                { merge: true }
+            );
+        }
+    }
+};
+
 export const updateUserProfile = async (userId: string, updatedData: Partial<User>): Promise<void> => {
     const userRef = doc(db, 'users', userId);
     const updateData = cleanDataForFirebase({

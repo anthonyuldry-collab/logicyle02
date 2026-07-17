@@ -355,7 +355,7 @@ export function buildTeamContractSummaries(
   return [...riderSummaries, ...staffSummaries].sort((a, b) => {
     if (a.isExpiringSoon !== b.isExpiringSoon) return a.isExpiringSoon ? -1 : 1;
     if (a.daysRemaining !== null && b.daysRemaining !== null) return a.daysRemaining - b.daysRemaining;
-    return a.name.localeCompare(b.name, 'fr');
+    return (a.name || '').localeCompare(b.name || '', 'fr');
   });
 }
 

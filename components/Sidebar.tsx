@@ -172,7 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const previewMode = superAdminPreview?.mode ?? 'full';
 
-  const canShowHoldingView = canAccessHoldingDashboard(currentUser, {
+  const canShowHoldingView = canAccessHoldingDashboard(realUser || currentUser, {
     realUser,
     previewMode,
   });
@@ -224,6 +224,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     ) {
       return getSuperAdminPreviewLabel(superAdminPreview, riders, staff, incomeItems);
     }
+    if (isSuperAdminUser(realUser || currentUser) && !currentTeamId && previewMode === 'full') {
+      return language === 'fr' ? 'Super Administrateur' : 'Super Administrator';
+    }
     if (isIndependent) {
         return currentUser.userRole || 'Indépendant';
     }
@@ -233,12 +236,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
     const role = permissionRoles.find(r => r.id === currentUser.permissionRole);
     return role?.name || 'Role inconnu';
-  }, [currentUser, isIndependent, permissionRoles, realUser, superAdminPreview, riders, staff, incomeItems]);
+  }, [currentUser, currentTeamId, isIndependent, language, permissionRoles, previewMode, realUser, superAdminPreview, riders, staff, incomeItems]);
 
   const showSuperAdminPreviewControls =
     !!realUser &&
     isSuperAdminUser(realUser) &&
-    !!onSuperAdminPreviewChange;
+    !!onSuperAdminPreviewChange &&
+    !!currentTeamId;
 
   const sidebarClasses = isMobile
     ? `lc-sidebar w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-50 bg-slate-950 transition-transform duration-300 ease-in-out ${
@@ -259,7 +263,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
         )}
         
-        {!isIndependent && (userTeams.length > 1 || isSuperAdminUser(realUser || currentUser)) && userTeams.length > 0 && (
+        {!isIndependent && (userTeams.length > 0 || (isSuperAdminUser(realUser || currentUser) && previewMode === 'full')) && (
             <div>
                 <label htmlFor="team-switcher" className="block text-xs font-medium mb-2" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
                     {t('sidebarContext')}
@@ -270,6 +274,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onChange={(e) => onTeamSwitch(e.target.value)}
                     className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white placeholder-white/70 focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
                 >
+                    {isSuperAdminUser(realUser || currentUser) && previewMode === 'full' && (
+                      <option value="" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                        Super Administrateur
+                      </option>
+                    )}
                     {userTeams.map(team => (
                         <option key={team.id} value={team.id} style={{backgroundColor: 'var(--theme-primary-bg)'}}>
                             {team.name}
@@ -277,6 +286,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                     ))}
                 </select>
             </div>
+        )}
+
+        {isSuperAdminUser(realUser || currentUser) && previewMode === 'full' && !currentTeamId && (
+            <p className="mt-3 text-[11px] uppercase tracking-wide text-emerald-400/90">
+              Super Administrateur · plateforme
+            </p>
         )}
 
         {showSuperAdminPreviewControls && (
@@ -472,12 +487,25 @@ const Sidebar: React.FC<SidebarProps> = ({
             } else if (isPartnerView) {
                 visibleSections = filterPartnerSections(sectionsInGroup);
             } else if (isSuperAdminUser(realUser || currentUser) && previewMode === 'full') {
+                const platformOnly = !currentTeamId;
                 visibleSections = sectionsInGroup.filter((section) => {
                     if (section.id === 'eventDetail') return false;
-                    // Fusionné dans Mon Profil pour le staff — ne pas laisser traîner l’entrée legacy
                     if (section.id === 'adminDossier') return false;
-                    if (section.id === 'organizationDashboard') {
-                        return canShowHoldingView;
+                    // Pilotage PDG + Super Admin : uniquement dans le contexte « Super Administrateur ».
+                    if (section.id === 'superAdmin' || section.id === 'organizationDashboard') {
+                        return platformOnly;
+                    }
+                    if (platformOnly) {
+                        return (
+                          section.id === 'organizationDashboard' ||
+                          section.id === 'superAdmin' ||
+                          section.id === 'userSettings' ||
+                          section.id === 'pricing'
+                        );
+                    }
+                    // Avec une équipe (ex. Horizon Atlantique) : menu équipe, sans onglets plateforme.
+                    if (section.id === 'partnerPortal') {
+                        return !lockedSections.includes('partnerPortal');
                     }
                     return true;
                 });
@@ -497,13 +525,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                     if (section.id === 'pricing') {
                         return false;
                     }
+                    // Onglet Super Admin réservé au contexte plateforme (sélecteur Contexte).
                     if (section.id === 'superAdmin') {
-                        return isSuperAdminUser(realUser || currentUser) && previewMode === 'full';
+                        return false;
                     }
                     if (section.id === 'organizationDashboard') {
-                        return canShowHoldingView;
+                        return canShowHoldingView && !currentTeamId;
                     }
-                    if (section.id === 'adminDashboard') return false;
+                    if (section.id === 'partnerPortal') {
+                        return !lockedSections.includes('partnerPortal');
+                    }
+                    if (section.id === 'userSettings') {
+                        return true;
+                    }
                     return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
                 });
             } else {
@@ -519,10 +553,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     }
                     if (lockedSections.includes(section.id as AppSection)) return false;
                     if (section.id === 'superAdmin') {
-                        return isSuperAdminUser(realUser || currentUser) && previewMode === 'full';
+                        return false;
                     }
                     if (section.id === 'organizationDashboard') {
-                        return canShowHoldingView;
+                        return canShowHoldingView && !currentTeamId;
                     }
                     return hasViewPermission(section.id as AppSection);
                 });

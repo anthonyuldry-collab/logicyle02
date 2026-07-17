@@ -171,18 +171,23 @@ import {
 import { getContrastYIQ, generateId, lightenDarkenColor } from "./utils/themeUtils";
 import { isIndependentUser, userToRiderProfile, userToStaffProfile, resolveRiderForUser, riderProfileToUserUpdates, resolveStaffForUser, staffProfileToUserUpdates } from "./utils/independentUtils";
 import { buildDemoAcceptedMissionsForUser } from "./constants/demoMissions";
-import { isSuperAdminUser, resolveSuperAdminTeamId } from "./utils/superAdminUtils";
+import { isSuperAdminUser, resolveSuperAdminTeamId, isSuperAdminPlatformMode, SUPER_ADMIN_PLATFORM_SECTIONS } from "./utils/superAdminUtils";
 import StageCampPerformancePanel from "./components/performance/StageCampPerformancePanel";
 import { enrichIncomeWithAccounting } from "./utils/invoiceUtils";
 import { enrichBudgetWithAccounting } from "./utils/accountingEntryUtils";
 import { persistActiveTeamId, restoreActiveTeamId, resolveOrganizationForUser, canViewOrgDashboard } from "./utils/organizationUtils";
-import { resolvePartnerPortalSession, resolvePartnerTeamId, getPartnerUserTeamPatch, isPartnerUser, isSectionAllowedForPartner } from "./utils/partnerAccessUtils";
+import { resolvePartnerPortalSession, resolvePartnerTeamId, getPartnerUserTeamPatch, isPartnerUser, isSectionAllowedForPartner, canPreviewPartnerPortal } from "./utils/partnerAccessUtils";
 import { prepareDemoPartnerInstall } from "./utils/demoPartnerUtils";
 import {
   installDemoPresentationTeam,
   teamAlreadyHasDemoPresentation,
 } from "./utils/demoTeamSeedUtils";
 import {
+  getUnlockedPresentationSubscription,
+  isPresentationDemoTeam,
+} from "./utils/presentationDemoAccess";
+import {
+  buildDemoPresentationPack,
   DEMO_PRES_LEVEL,
   DEMO_PRES_TEAM_NAME,
 } from "./constants/demoPresentationTeam";
@@ -423,6 +428,14 @@ const App: React.FC = () => {
   }, [appState.activeTeamId, appState.riders, appState.staff, appState.incomeItems, currentUser]);
 
   useEffect(() => {
+    if (view !== 'app' || !currentUser) return;
+    if (!isSuperAdminPlatformMode(currentUser, appState.activeTeamId, superAdminPreview.mode)) return;
+    if (!(SUPER_ADMIN_PLATFORM_SECTIONS as readonly string[]).includes(currentSection)) {
+      setCurrentSection('organizationDashboard');
+    }
+  }, [view, currentUser, appState.activeTeamId, superAdminPreview.mode, currentSection]);
+
+  useEffect(() => {
     if (!currentUser || !isSuperAdminUser(currentUser)) return;
     if (superAdminPreview.mode !== 'partenaire' || view !== 'app') return;
     setCurrentSection('partnerPortal');
@@ -530,11 +543,8 @@ const App: React.FC = () => {
       }
 
       if (isSuperAdminUser(user)) {
-        finalActiveTeamId = resolveSuperAdminTeamId(
-          user,
-          globalData.teams || [],
-          finalActiveTeamId
-        );
+        // Cockpit plateforme : pas d’équipe rattachée (ni teamId profil, ni 1ʳᵉ équipe globale).
+        finalActiveTeamId = null;
       }
 
       let activeUser = user;
@@ -561,13 +571,23 @@ const App: React.FC = () => {
         if (user.userRole === UserRole.PARTNER) {
           setCurrentSection("partnerPortal");
         }
+      } else if (isSuperAdminUser(user)) {
+        if (!isMountedRef.current) return;
+        setView("app");
+        setCurrentSection("organizationDashboard");
+        if (user.teamId) {
+          try {
+            await firebaseService.updateUserProfile(user.id, { teamId: null });
+            activeUser = { ...user, teamId: null };
+            setCurrentUser(activeUser);
+          } catch (clearTeamError) {
+            console.warn('Nettoyage teamId Super Admin:', clearTeamError);
+          }
+        }
       } else if (
         userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
       ) {
         setView("pending");
-      } else if (isSuperAdminUser(user)) {
-        if (!isMountedRef.current) return;
-        setView("app");
       } else if (isIndependentUser(user)) {
         const globalMissions = await firebaseService.getOpenMissionsGlobal();
         teamData = { ...getInitialTeamState(), missions: globalMissions };
@@ -1724,12 +1744,23 @@ const App: React.FC = () => {
           name: DEMO_PRES_TEAM_NAME,
           level: DEMO_PRES_LEVEL,
           country: 'France',
-          planId: SubscriptionPlanId.CONTINENTAL,
+          planId: SubscriptionPlanId.PRO,
         },
         UserRole.MANAGER
       );
       teamId = created.teamId;
+      const unlockedSub = getUnlockedPresentationSubscription();
+      await firebaseService.saveTeamSettings(teamId, {
+        isPresentationDemo: true,
+        subscription: unlockedSub,
+      });
       await new Promise((resolve) => setTimeout(resolve, 600));
+    } else {
+      const unlockedSub = getUnlockedPresentationSubscription();
+      await firebaseService.saveTeamSettings(teamId, {
+        isPresentationDemo: true,
+        subscription: unlockedSub,
+      });
     }
 
     const globalData = await firebaseService.getGlobalData();
@@ -1745,7 +1776,7 @@ const App: React.FC = () => {
     }));
     setLanguageState(teamData.language || 'fr');
 
-    if (currentUser.teamId !== teamId) {
+    if (currentUser.teamId !== teamId && !isSuperAdminUser(currentUser)) {
       setCurrentUser({ ...currentUser, teamId, userRole: UserRole.MANAGER, permissionRole: TeamRole.ADMIN });
     }
 
@@ -1787,6 +1818,7 @@ const App: React.FC = () => {
         'performanceEntries'
       ),
       applyTeamIdentity: async (patch) => {
+        const unlockedSub = getUnlockedPresentationSubscription();
         await firebaseService.saveTeamSettings(teamId!, {
           name: patch.name,
           level: patch.level,
@@ -1795,12 +1827,14 @@ const App: React.FC = () => {
           address: patch.address,
           isPresentationDemo: true,
           language: 'fr',
+          subscription: unlockedSub,
         });
         setAppState((prev) => ({
           ...prev,
           teamLevel: patch.level,
           themePrimaryColor: patch.primaryColor,
           themeAccentColor: patch.accentColor,
+          subscription: unlockedSub,
           teams: (prev.teams || []).map((t) =>
             t.id === teamId
               ? {
@@ -1809,6 +1843,8 @@ const App: React.FC = () => {
                   level: patch.level,
                   address: patch.address || t.address,
                   country: patch.address?.country || t.country || 'France',
+                  isPresentationDemo: true,
+                  subscription: unlockedSub,
                 }
               : t
           ),
@@ -1933,26 +1969,58 @@ const App: React.FC = () => {
 
   const handleTeamSwitch = useCallback(
     async (teamId: string) => {
-      if (!currentUser || teamId === appState.activeTeamId) return;
+      if (!currentUser) return;
+
+      // Super Admin : retour mode plateforme (sans équipe)
+      if (!teamId && isSuperAdminUser(currentUser)) {
+        setAppState((prev: AppState) => ({
+          ...prev,
+          ...getInitialTeamState(),
+          activeTeamId: null,
+          activeEventId: null,
+        }));
+        setCurrentSection('organizationDashboard');
+        return;
+      }
+
+      if (!teamId || teamId === appState.activeTeamId) return;
       setIsLoading(true);
       try {
         const teamData = await firebaseService.getTeamData(teamId, currentUser);
+        const teamMeta = (appState.teams || []).find((t) => t.id === teamId);
+        const unlocked = isPresentationDemoTeam(teamMeta)
+          ? getUnlockedPresentationSubscription()
+          : null;
         persistActiveTeamId(teamId);
         setAppState((prev: AppState) => ({
           ...prev,
           ...teamData,
           activeTeamId: teamId,
-          activeEventId: null,
+          ...(unlocked
+            ? {
+                subscription: unlocked,
+                teams: (prev.teams || []).map((t) =>
+                  t.id === teamId
+                    ? { ...t, isPresentationDemo: true, subscription: unlocked }
+                    : t
+                ),
+              }
+            : {}),
         }));
-        setLanguageState(teamData.language || 'fr');
+        if (unlocked) {
+          void firebaseService.saveTeamSettings(teamId, {
+            isPresentationDemo: true,
+            subscription: unlocked,
+          });
+        }
+        setCurrentSection('myDashboard');
       } catch (error) {
-        console.error('Erreur lors du changement d\'équipe:', error);
-        alert('Impossible de charger cette équipe.');
+        console.error('Erreur bascule équipe:', error);
       } finally {
         setIsLoading(false);
       }
     },
-    [currentUser, appState.activeTeamId]
+    [currentUser, appState.activeTeamId, appState.teams]
   );
 
   const onSaveExpenseReceipt = useCallback(async (receipt: ExpenseReceipt) => {
@@ -2646,7 +2714,37 @@ const App: React.FC = () => {
     }
     if (section === 'bikeSetup') section = 'riderEquipment';
     if (section === 'talentAvailability') section = 'season-planning';
+    if (section === 'adminDashboard') section = 'myDashboard';
     const accessUser = displayUser ?? currentUser;
+    if (
+      currentUser &&
+      isSuperAdminPlatformMode(currentUser, appState?.activeTeamId, superAdminPreview.mode)
+    ) {
+      if (!(SUPER_ADMIN_PLATFORM_SECTIONS as readonly string[]).includes(section)) {
+        setCurrentSection('organizationDashboard');
+        setSectionTabHint(undefined);
+        setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+        return;
+      }
+    }
+    // Super Admin / Pilotage PDG : uniquement via le contexte « Super Administrateur ».
+    if (
+      currentUser &&
+      isSuperAdminUser(currentUser) &&
+      (section === 'superAdmin' || section === 'organizationDashboard') &&
+      appState?.activeTeamId &&
+      superAdminPreview.mode === 'full'
+    ) {
+      setAppState((prev: AppState) => ({
+        ...prev,
+        ...getInitialTeamState(),
+        activeTeamId: null,
+        activeEventId: null,
+      }));
+      setCurrentSection(section);
+      setSectionTabHint(undefined);
+      return;
+    }
     if (accessUser && isCoureurUser(accessUser) && !isSectionAllowedForCoureur(section)) {
       setCurrentSection("myCareer");
       return;
@@ -2658,13 +2756,30 @@ const App: React.FC = () => {
       return;
     }
     if (currentUser && appState?.activeTeamId && !isIndependentUser(displayUser ?? currentUser)) {
-      const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
-      if (!canAccessSection(section, appState.subscription, fallbackPlan)) {
-        setCurrentSection("pricing");
-        if (section === "eventDetail" && eventId) {
-          setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+      const alwaysAllowed: AppSection[] = [
+        'userSettings',
+        'pricing',
+        'myDashboard',
+        'adminDashboard',
+        'settings',
+        'organizationDashboard',
+        'superAdmin',
+      ];
+      const bypassPlanGate =
+        isSuperAdminUser(currentUser) ||
+        alwaysAllowed.includes(section) ||
+        isPresentationDemoTeam(
+          (appState.teams || []).find((t) => t.id === appState.activeTeamId)
+        );
+      if (!bypassPlanGate) {
+        const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
+        if (!canAccessSection(section, appState.subscription, fallbackPlan)) {
+          setCurrentSection("pricing");
+          if (section === "eventDetail" && eventId) {
+            setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+          }
+          return;
         }
-        return;
       }
     }
     if (section === "eventDetail" && eventId) {
@@ -2885,10 +3000,15 @@ const App: React.FC = () => {
       const uiUser = displayUser ?? currentUser;
       const userIsIndependent = isIndependentUser(uiUser);
       const userIsSuperAdmin = isSuperAdminUser(currentUser);
+      const activeTeam = (appState.teams || []).find((t) => t.id === appState.activeTeamId);
+      const isDemoTeamContext = isPresentationDemoTeam(activeTeam);
       const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
+      const effectiveTeamSubscription = isDemoTeamContext
+        ? getUnlockedPresentationSubscription()
+        : appState.subscription;
       const subscriptionAccess = userIsIndependent
         ? getIndependentSubscriptionAccess(uiUser)
-        : getSubscriptionAccess(appState.subscription, fallbackPlan);
+        : getSubscriptionAccess(effectiveTeamSubscription, fallbackPlan);
       const lockedSections = [
         ...(userIsIndependent
           ? (subscriptionAccess?.isActive
@@ -2896,7 +3016,9 @@ const App: React.FC = () => {
               : uiUser.userRole === UserRole.STAFF
                 ? (['missionSearch'] as AppSection[])
                 : (['teamSearch'] as AppSection[]))
-          : getLockedSections(appState.subscription, fallbackPlan)),
+          : userIsSuperAdmin || isDemoTeamContext
+            ? []
+            : getLockedSections(effectiveTeamSubscription, fallbackPlan)),
       ];
 
       const handleUpgradePlan = async (planId: SubscriptionPlanId, referralCode?: string) => {
@@ -2938,7 +3060,7 @@ const App: React.FC = () => {
           : undefined
       );
 
-      const canAccessHoldingView = canAccessHoldingDashboard(uiUser, {
+      const canAccessHoldingView = canAccessHoldingDashboard(currentUser, {
         realUser: userIsSuperAdmin ? currentUser : undefined,
         previewMode: superAdminPreview.mode,
       });
@@ -2948,18 +3070,42 @@ const App: React.FC = () => {
           ? superAdminPreview.subjectId ?? null
           : partnerPortalPreviewIncomeId;
 
+      const liveIncomeItems = appState.incomeItems || [];
+      const hasLiveSponsorship = liveIncomeItems.some(
+        (i) => isSponsorshipIncome(i) || Boolean(i.sponsorCompanyName),
+      );
+      // Horizon Atlantique : sponsors démo en secours si absents / pas encore hydratés.
+      const incomeItemsForPartnerPortal =
+        hasLiveSponsorship
+          ? liveIncomeItems
+          : isDemoTeamContext
+            ? buildDemoPresentationPack().incomeItems
+            : liveIncomeItems;
+
       const partnerPortalSession = resolvePartnerPortalSession({
         partnerAccesses: appState.partnerAccesses || [],
         userId: currentUser.id,
         userEmail: uiUser.email,
         teamId: appState.activeTeamId,
-        incomeItems: appState.incomeItems || [],
+        incomeItems: incomeItemsForPartnerPortal,
         userRole: uiUser.userRole,
         permissionRole: uiUser.permissionRole,
         previewIncomeItemId: partnerPreviewIncomeId,
+        previewAsUser: currentUser,
       });
 
-      if (partnerPortalSession.access) {
+      const canPreviewPartner = canPreviewPartnerPortal(
+        uiUser.userRole,
+        uiUser.permissionRole,
+        currentUser,
+      );
+      const partnerPortalUnlocked =
+        userIsSuperAdmin ||
+        isDemoTeamContext ||
+        !!partnerPortalSession.access ||
+        (canPreviewPartner && !!appState.activeTeamId);
+
+      if (partnerPortalUnlocked) {
         effectivePermissions = {
           ...effectivePermissions,
           partnerPortal: effectivePermissions.partnerPortal || ['view'],
@@ -3005,16 +3151,21 @@ const App: React.FC = () => {
       const activeEvent = viewAppState.activeEventId
         ? viewAppState.raceEvents.find((e) => e.id === viewAppState.activeEventId)
         : null;
-      const userTeams = userIsSuperAdmin
-        ? appState.teams
-        : appState.teams.filter((team) =>
-        appState.teamMemberships.some(
-          (m) =>
-            m.teamId === team.id &&
-            m.userId === currentUser.id &&
-            m.status === TeamMembershipStatus.ACTIVE
-        )
-      );
+      const userTeams =
+        userIsSuperAdmin && superAdminPreview.mode === 'full'
+          ? (appState.teams || []).filter(
+              (t) => isPresentationDemoTeam(t) || t.id === appState.activeTeamId
+            )
+          : userIsSuperAdmin
+            ? appState.teams
+            : appState.teams.filter((team) =>
+                appState.teamMemberships.some(
+                  (m) =>
+                    m.teamId === team.id &&
+                    m.userId === currentUser.id &&
+                    m.status === TeamMembershipStatus.ACTIVE
+                )
+              );
 
       const resolvedOrganization = canAccessHoldingView
         ? resolveOrganizationForUser({
@@ -3035,12 +3186,11 @@ const App: React.FC = () => {
           isHoldingSuperAdmin: true,
         });
 
-      const resolvedPartnerAccess = partnerPortalSession.access;
-
       if (!canViewOrganization) {
         lockedSections.push('organizationDashboard');
       }
-      if (!resolvedPartnerAccess) {
+      // SA / démo Horizon / aperçu manager : ne jamais verrouiller l’espace partenaire.
+      if (!partnerPortalUnlocked) {
         lockedSections.push('partnerPortal');
       }
 
@@ -3079,7 +3229,16 @@ const App: React.FC = () => {
             incomeItems={appState.incomeItems || []}
             onExitSuperAdminPreview={
               userIsSuperAdmin
-                ? () => setSuperAdminPreview(DEFAULT_SUPER_ADMIN_PREVIEW)
+                ? () => {
+                    setSuperAdminPreview(DEFAULT_SUPER_ADMIN_PREVIEW);
+                    setAppState((prev) => ({
+                      ...prev,
+                      ...getInitialTeamState(),
+                      activeTeamId: null,
+                      activeEventId: null,
+                    }));
+                    setCurrentSection('organizationDashboard');
+                  }
                 : undefined
             }
             notifications={userNotifications}
@@ -3091,7 +3250,10 @@ const App: React.FC = () => {
             onMarkAllNotificationsRead={markAllNotificationsRead}
             onOpenConvocation={handleOpenConvocationNotification}
             subscriptionBanner={
-              subscriptionAccess ? (
+              userIsSuperAdmin &&
+              isSuperAdminPlatformMode(currentUser, appState.activeTeamId, superAdminPreview.mode)
+                ? null
+                : subscriptionAccess ? (
                 <SubscriptionBanner
                   access={subscriptionAccess}
                   onManageBilling={() => setCurrentSection("pricing")}
@@ -3102,7 +3264,11 @@ const App: React.FC = () => {
           >
               <SectionErrorBoundary
                 sectionName="le contenu principal"
-                onRetry={() => navigateTo("myDashboard")}
+                onRetry={() => navigateTo(
+                  isSuperAdminPlatformMode(currentUser, appState.activeTeamId, superAdminPreview.mode)
+                    ? "organizationDashboard"
+                    : "myDashboard"
+                )}
               >
               {activeEvent ? (
                 <SectionSuspense>
@@ -3229,22 +3395,11 @@ const App: React.FC = () => {
                           )}
                         </>
                       )}
-                      {currentSection === "adminDashboard" && uiUser && (
-                        <LazyAdminDashboardSection
-                          riders={appState.riders}
-                          staff={appState.staff}
-                          currentUser={uiUser}
-                          raceEvents={appState.raceEvents}
-                          riderEventSelections={appState.riderEventSelections}
-                          appState={appState}
-                          navigateTo={navigateTo}
-                        />
-                      )}
-                      {currentSection === "organizationDashboard" && uiUser && canViewOrganization && (() => {
-                        if (!resolvedOrganization) {
+                      {currentSection === "organizationDashboard" && uiUser && (() => {
+                        if (!canViewOrganization || !resolvedOrganization) {
                           return (
                             <SectionWrapper title={t('orgDashboardTitle')}>
-                              <p className="text-sm text-gray-500">{t('orgDashboardEmpty')}</p>
+                              <p className="text-sm text-slate-400">{t('orgDashboardNoAccess')}</p>
                             </SectionWrapper>
                           );
                         }
@@ -3252,34 +3407,32 @@ const App: React.FC = () => {
                           <LazyOrganizationDashboardSection
                             organization={resolvedOrganization}
                             teams={appState.teams}
-                            riders={appState.riders}
-                            staff={appState.staff}
-                            raceEvents={appState.raceEvents}
-                            currentUser={uiUser}
-                            memberships={appState.teamMemberships}
-                            activeTeamId={appState.activeTeamId}
+                            currentUser={currentUser}
                             isHoldingSuperAdmin={canAccessHoldingView}
-                            onSelectTeam={handleTeamSwitch}
                             onNavigate={navigateTo}
-                            vehicles={appState.vehicles}
-                            vehiclePositions={appState.vehiclePositions || []}
-                            eventTransportLegs={appState.eventTransportLegs}
+                            users={appState.users || []}
                           />
                         );
                       })()}
                       {currentSection === "partnerPortal" && uiUser && (() => {
                         const { access, incomeItem, isPreview } = partnerPortalSession;
-                        if (!access) {
+                        if (!access || !incomeItem) {
                           return (
                             <SectionWrapper title={t('partnerPortalTitle')}>
-                              <p className="text-sm text-gray-500">{t('partnerPortalNoAccess')}</p>
-                            </SectionWrapper>
-                          );
-                        }
-                        if (!incomeItem) {
-                          return (
-                            <SectionWrapper title={t('partnerPortalTitle')}>
-                              <p className="text-sm text-gray-500">{t('partnerPortalNoSponsor')}</p>
+                              <p className="text-sm text-slate-400">
+                                {!appState.activeTeamId
+                                  ? 'Sélectionnez une équipe (ex. Horizon Atlantique) pour prévisualiser l’espace partenaire.'
+                                  : t('partnerPortalNoSponsor')}
+                              </p>
+                              {appState.activeTeamId && (
+                                <button
+                                  type="button"
+                                  className="mt-3 text-sm text-sky-300 hover:underline"
+                                  onClick={() => navigateTo('financial', 'sponsors')}
+                                >
+                                  Ouvrir Finances → Sponsors
+                                </button>
+                              )}
                             </SectionWrapper>
                           );
                         }
@@ -3594,6 +3747,7 @@ const App: React.FC = () => {
                       onUpgradePlan={handleUpgradePlan}
                       onManageBillingPortal={handleBillingPortal}
                       onInstallPresentationDemo={
+                        userIsSuperAdmin ||
                         uiUser.userRole === UserRole.MANAGER ||
                         uiUser.permissionRole === TeamRole.ADMIN
                           ? onInstallPresentationDemo
@@ -3630,7 +3784,7 @@ const App: React.FC = () => {
                       onSaveInvoiceSettings={onSaveInvoiceSettings}
                       sepaSettings={appState.sepaSettings}
                       invoiceSettings={appState.invoiceSettings}
-                      subscription={appState.subscription}
+                      subscription={effectiveTeamSubscription}
                       fallbackPlanId={getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN)}
                       clientRecords={appState.clientRecords || []}
                       supplierInvoices={appState.supplierInvoices || []}
@@ -4719,6 +4873,19 @@ const App: React.FC = () => {
                       currentUser={currentUser}
                       onDeleteRider={onDeleteRider}
                       onDeleteStaff={onDeleteStaff}
+                      onDeleteTeam={async (teamId) => {
+                        await firebaseService.deleteTeamAsSuperAdmin(teamId);
+                        setAppState((prev) => ({
+                          ...prev,
+                          teams: (prev.teams || []).filter((t) => t.id !== teamId),
+                          teamMemberships: (prev.teamMemberships || []).filter((m) => m.teamId !== teamId),
+                          activeTeamId: prev.activeTeamId === teamId ? null : prev.activeTeamId,
+                          organizations: (prev.organizations || []).map((org) => ({
+                            ...org,
+                            teamIds: (org.teamIds || []).filter((id) => id !== teamId),
+                          })),
+                        }));
+                      }}
                       appState={appState}
                     />
                   )}

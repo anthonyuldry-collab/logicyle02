@@ -66,7 +66,7 @@ export function buildOrgDashboardKpis(params: {
   };
 }
 
-export function getTeamKindLabel(kind: TeamKind, language: 'fr' | 'en' = 'fr'): string {
+export function getTeamKindLabel(kind: TeamKind | string | undefined, language: 'fr' | 'en' = 'fr'): string {
   const labels: Record<TeamKind, { fr: string; en: string }> = {
     root: { fr: 'Équipe principale', en: 'Main team' },
     worldtour: { fr: 'WorldTour', en: 'WorldTour' },
@@ -75,7 +75,8 @@ export function getTeamKindLabel(kind: TeamKind, language: 'fr' | 'en' = 'fr'): 
     femmes: { fr: 'Équipe féminine', en: 'Women\'s team' },
     standard: { fr: 'Standard', en: 'Standard' },
   };
-  return labels[kind][language];
+  const key = (kind && kind in labels ? kind : 'standard') as TeamKind;
+  return labels[key][language];
 }
 
 export function isOrgAdmin(
@@ -109,18 +110,20 @@ export function resolveOrganizationForUser(params: {
   isHoldingSuperAdmin?: boolean;
 }): Organization | null {
   const { organizations, teams, activeTeamId, currentUser, isHoldingSuperAdmin } = params;
-  if (!activeTeamId) return null;
 
-  if (isHoldingSuperAdmin && teams.length > 0) {
+  // Cockpit PDG : toutes les équipes plateforme, même sans équipe active sélectionnée.
+  if (isHoldingSuperAdmin) {
     return {
       id: 'holding-super-admin',
-      name: 'Vue holding',
-      country: teams.find((t) => t.id === activeTeamId)?.country || '',
+      name: 'LogiCycle — Pilotage PDG',
+      country: teams.find((t) => t.id === activeTeamId)?.country || teams[0]?.country || 'FR',
       teamIds: teams.map((t) => t.id),
       adminUserIds: [currentUser.id],
       createdAt: new Date().toISOString(),
     };
   }
+
+  if (!activeTeamId) return null;
 
   const activeTeam = teams.find((t) => t.id === activeTeamId);
 
@@ -207,7 +210,7 @@ export function findCrossTeamRiderConflicts(
     }
   }
 
-  return conflicts.sort((a, b) => a.date.localeCompare(b.date));
+  return conflicts.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
 export const ACTIVE_TEAM_STORAGE_KEY = 'logicyle_active_team_id';

@@ -85,11 +85,24 @@ export function getSubscriptionAccess(subscription: TeamSubscription | undefined
   };
 }
 
+/** Sections toujours accessibles même si l’abonnement est expiré / hors plan. */
+export const ALWAYS_ACCESSIBLE_SECTIONS: AppSection[] = [
+  'userSettings',
+  'settings',
+  'pricing',
+  'myDashboard',
+  'adminDashboard',
+  'organizationDashboard',
+  'superAdmin',
+];
+
 export function canAccessSection(
   section: AppSection,
   subscription: TeamSubscription | undefined,
   fallbackPlan: SubscriptionPlanId
 ): boolean {
+  if (ALWAYS_ACCESSIBLE_SECTIONS.includes(section)) return true;
+
   const access = getSubscriptionAccess(subscription, fallbackPlan);
   if (!access.isActive) return false;
 
