@@ -150,7 +150,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         } ${isCurrent ? (isPublic ? 'ring-2 ring-emerald-400/60' : 'ring-2 ring-emerald-400') : ''}`}
       >
         {(plan.highlighted || isRecommended || isCurrent) && (
-          <div className="absolute -top-3 left-0 right-0 flex justify-center gap-2 px-3">
+          <div className="mb-3 flex flex-wrap justify-center gap-2">
             {plan.highlighted && (
               <span
                 className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
@@ -448,7 +448,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                   ? 'max-w-md mx-auto'
                   : plansToShow.length <= 2
                     ? 'md:grid-cols-2 max-w-3xl mx-auto'
-                    : 'md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5'
+                    : 'md:grid-cols-2 xl:grid-cols-3'
               }`}
             >
               {plansToShow.map((p) => renderPlanCard(p))}

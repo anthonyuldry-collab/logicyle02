@@ -177,7 +177,7 @@ exports.gdprPurgeTeam = onCall(async (request) => {
   const userData = userDoc.data() || {};
   const isManager =
     userData.teamId === teamId &&
-    (userData.userRole === 'MANAGER' || userData.permissionRole === 'ADMIN');
+    (userData.userRole === 'Manager' || userData.permissionRole === 'Administrateur');
 
   if (!isManager) {
     throw new HttpsError('permission-denied', 'Seul un manager peut supprimer l\'équipe.');
@@ -218,7 +218,7 @@ async function assertTeamManager(uid, teamId) {
   const userData = userDoc.data() || {};
   const isManager =
     userData.teamId === teamId &&
-    (userData.userRole === 'MANAGER' || userData.permissionRole === 'ADMIN');
+    (userData.userRole === 'Manager' || userData.permissionRole === 'Administrateur');
   if (!isManager) {
     throw new HttpsError('permission-denied', 'Seul un manager peut gérer l\'abonnement.');
   }
@@ -727,7 +727,11 @@ exports.ingestVehicleGps = onRequest(async (req, res) => {
     return;
   }
   const settings = teamSnap.data().gpsWebhookKey;
-  if (settings && settings !== apiKey) {
+  if (!settings || typeof settings !== 'string' || settings.length < 8) {
+    res.status(403).send('GPS webhook key not configured');
+    return;
+  }
+  if (settings !== apiKey) {
     res.status(403).send('Invalid key');
     return;
   }

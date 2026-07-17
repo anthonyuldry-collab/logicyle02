@@ -60,7 +60,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
   };
 
   const inputClass =
-    'w-full rounded-xl border border-white/15 bg-white/5 px-3.5 py-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/30 transition';
+    'w-full rounded-xl border border-white/15 bg-white/5 px-3.5 py-3 text-sm text-white placeholder:text-slate-300 outline-none focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/30 transition';
 
   return (
     <div className="lc-login relative min-h-screen overflow-hidden text-white">
@@ -167,8 +167,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
       </div>
 
       <div className="relative z-10 min-h-screen flex flex-col lg:flex-row items-stretch">
-        {/* Colonne marque (hero) */}
-        <div className="lc-login-rise flex-1 flex flex-col justify-center items-center text-center px-6 sm:px-10 lg:px-16 py-12 lg:py-16">
+        {/* Colonne marque (hero) — après le formulaire sur mobile */}
+        <div className="lc-login-rise order-2 lg:order-1 flex-1 flex flex-col justify-center items-center text-center px-6 sm:px-10 lg:px-16 py-12 lg:py-16">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-300/90">
             {t('loginEyebrow')}
           </p>
@@ -183,17 +183,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
           </p>
         </div>
 
-        {/* Panneau connexion (interaction) */}
-        <div className="lc-login-rise-delay flex-1 flex items-center justify-center px-4 sm:px-8 pb-12 lg:pb-0 lg:pr-12">
+        {/* Panneau connexion (interaction) — avant le hero sur mobile */}
+        <div className="lc-login-rise-delay order-1 lg:order-2 flex-1 flex items-center justify-center px-4 sm:px-8 pt-16 pb-12 lg:pt-0 lg:pb-0 lg:pr-12">
           <div className="w-full max-w-md rounded-3xl border border-white/12 bg-slate-900/55 backdrop-blur-xl shadow-2xl shadow-black/40 p-7 sm:p-8">
             <div className="mb-6">
               <h2 className="text-xl font-bold text-white">{t('loginWelcome')}</h2>
-              <p className="mt-1 text-sm text-slate-400">{t('loginSubtitle')}</p>
+              <p className="mt-1 text-sm text-slate-300">{t('loginSubtitle')}</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleLoginSubmit}>
               <div>
-                <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+                <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
                   {t('loginEmailLabel')}
                 </label>
                 <input
@@ -212,7 +212,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
                 <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="password"
-                    className="block text-xs font-semibold uppercase tracking-wide text-slate-400"
+                    className="block text-xs font-semibold uppercase tracking-wide text-slate-300"
                   >
                     {t('loginPasswordLabel')}
                   </label>
@@ -251,13 +251,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold py-3.5 shadow-lg shadow-indigo-950/50 transition-colors"
+                className="w-full rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 disabled:text-slate-300 disabled:hover:bg-slate-700 disabled:cursor-not-allowed disabled:shadow-none text-white text-sm font-bold py-3.5 shadow-lg shadow-indigo-950/50 transition-colors"
               >
                 {isLoading ? t('loginLoadingButton') : t('loginSubmitButton')}
               </button>
             </form>
 
-            <div className="mt-6 pt-5 border-t border-white/10 text-sm text-center text-slate-400 space-y-2.5">
+            <div className="mt-6 pt-5 border-t border-white/10 text-sm text-center text-slate-300 space-y-2.5">
               <p>
                 {t('loginNoAccount')}{' '}
                 <button

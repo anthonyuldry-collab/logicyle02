@@ -24,21 +24,27 @@ service cloud.firestore {
       return userData();
     }
 
+    function authEmail() {
+      return request.auth.token.email;
+    }
+
+    /** Super Admin : email Auth (non spoofable via doc Firestore). */
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        authEmail() == 'anthony.uldry@hotmail.fr' ||
+        authEmail() == 'ds.lanesterwomen@gmail.com'
+      );
+    }
+
     function isTeamMember(teamId) {
       return userExists() && userData().teamId == teamId;
     }
 
-    function isSuperAdmin() {
-      return isSignedIn() && (
-        userDoc().email == 'anthony.uldry@hotmail.fr' ||
-        userDoc().email == 'ds.lanesterwomen@gmail.com'
-      );
-    }
-
+    /** Aligné sur types.ts : UserRole.MANAGER = "Manager", TeamRole.ADMIN = "Administrateur". */
     function isTeamManager(teamId) {
       return isTeamMember(teamId) && (
-        userData().userRole == 'MANAGER' ||
-        userData().permissionRole == 'ADMIN'
+        userData().userRole == 'Manager' ||
+        userData().permissionRole == 'Administrateur'
       );
     }
 
@@ -46,17 +52,91 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
     }
 
+    /** Champs que l’utilisateur ne peut pas s’auto-attribuer. */
+    function userSensitiveKeysUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'teamId',
+        'userRole',
+        'permissionRole',
+        'email',
+        'subscription',
+        'customPermissions',
+        'isActive',
+        'isIndependentProfile',
+        'signupMode',
+        'isSuperAdmin'
+      ]);
+    }
+
+    function managerUserUpdateAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'subscription',
+        'email'
+      ]);
+    }
+
+    /** Activation espace indépendant (depuis no_team, sans élévation de rôle). */
+    function canActivateIndependent() {
+      return resource.data.teamId == null
+        && request.resource.data.isIndependentProfile == true
+        && request.resource.data.signupMode == 'independent'
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'email',
+          'userRole',
+          'permissionRole',
+          'customPermissions',
+          'isActive'
+        ]);
+    }
+
+    /** Profil indépendant déjà actif : maj profil / abo, pas les privilèges. */
+    function independentSelfUpdateAllowed() {
+      return resource.data.isIndependentProfile == true
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'teamId',
+          'userRole',
+          'permissionRole',
+          'email',
+          'customPermissions',
+          'isActive',
+          'isIndependentProfile',
+          'signupMode'
+        ]);
+    }
+
+    /** Partenaire : bascule teamId de contexte uniquement. */
+    function partnerTeamIdSwitchAllowed() {
+      return resource.data.userRole == 'Partenaire'
+        && request.resource.data.userRole == 'Partenaire'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId', 'updatedAt']);
+    }
+
     match /users/{userId} {
       allow read: if isSelf(userId)
-        || (userExists() && resource.data.teamId == userData().teamId);
-      allow create: if isSelf(userId);
-      allow update: if isSelf(userId)
-        || isTeamManager(resource.data.teamId)
         || (userExists()
-            && userData().userRole == 'Manager'
-            && request.resource.data.teamId != null
-            && isTeamManager(request.resource.data.teamId));
-      allow delete: if isSelf(userId);
+            && resource.data.teamId != null
+            && resource.data.teamId == userData().teamId)
+        || (isSignedIn() && resource.data.isSearchable == true)
+        || isSuperAdmin();
+
+      allow create: if isSelf(userId)
+        && request.resource.data.email == authEmail();
+
+      allow update: if isSuperAdmin()
+        || (isSelf(userId) && userSensitiveKeysUnchanged())
+        || (isSelf(userId) && canActivateIndependent())
+        || (isSelf(userId) && independentSelfUpdateAllowed())
+        || (isSelf(userId) && partnerTeamIdSwitchAllowed())
+        || (userExists()
+            && managerUserUpdateAllowed()
+            && (
+              isTeamManager(resource.data.teamId)
+              || (resource.data.teamId == null
+                  && request.resource.data.teamId != null
+                  && isTeamManager(request.resource.data.teamId))
+            ));
+
+      allow delete: if isSelf(userId) || isSuperAdmin();
     }
 
     function isCoureur() {
@@ -68,14 +148,25 @@ service cloud.firestore {
         || !isCoureur()
         || subcollection != 'riders'
         || docId == request.auth.uid
-        || (resource.data.email == request.auth.token.email);
+        || (resource.data.email == authEmail());
     }
 
+    /** Collections financières / RH sensibles interdites aux coureurs. */
     function canCoureurReadCollection(subcollection) {
-      return subcollection != 'performanceArchives'
-        && subcollection != 'scoutingProfiles'
-        && subcollection != 'peerRatings'
-        && subcollection != 'riderSelfDebriefs';
+      return !(subcollection in [
+        'performanceArchives',
+        'scoutingProfiles',
+        'incomeItems',
+        'sepaBatches',
+        'bankTransactions',
+        'quotes',
+        'clientRecords',
+        'supplierInvoices',
+        'staff',
+        'missions',
+        'recruitmentOffers',
+        'recruitmentCampaigns'
+      ]);
     }
 
     function isPartnerMember(teamId) {
@@ -84,20 +175,41 @@ service cloud.firestore {
         && userData().teamId == teamId;
     }
 
+    function partnerAllowedSubcollection(subcollection) {
+      return subcollection in [
+        'raceEvents',
+        'partnerNewsletters',
+        'eventDocuments',
+        'eventAccommodations'
+      ];
+    }
+
     function canReadTeam(teamId) {
-      return isTeamMember(teamId) || isPartnerMember(teamId);
+      return isTeamMember(teamId) || isPartnerMember(teamId) || isSuperAdmin();
+    }
+
+    /** Annuaire équipes pour rejoindre / candidater (sans être membre). */
+    function isOpenForApplications() {
+      return !('operationalSettings' in resource.data)
+        || !('acceptRiderApplications' in resource.data.operationalSettings)
+        || resource.data.operationalSettings.acceptRiderApplications == true;
     }
 
     match /teams/{teamId} {
-      allow read: if canReadTeam(teamId);
+      allow read: if canReadTeam(teamId)
+        || (isSignedIn() && isOpenForApplications());
       allow create: if isSignedIn();
       allow update: if isTeamManager(teamId) && subscriptionUnchanged();
       allow delete: if isTeamManager(teamId);
 
-    match /{subcollection}/{docId} {
-        allow read: if canReadTeam(teamId)
-          && canCoureurReadCollection(subcollection)
-          && canReadTeamSubdoc(teamId, subcollection, docId);
+      match /{subcollection}/{docId} {
+        allow read: if (
+            isTeamMember(teamId)
+            && canCoureurReadCollection(subcollection)
+            && canReadTeamSubdoc(teamId, subcollection, docId)
+          )
+          || (isPartnerMember(teamId) && partnerAllowedSubcollection(subcollection))
+          || isSuperAdmin();
         allow write: if isTeamManager(teamId)
           || (isTeamMember(teamId) && isSelf(docId))
           || (subcollection == 'expenseReceipts'
@@ -106,7 +218,7 @@ service cloud.firestore {
       }
 
       match /expenseReceipts/{receiptId} {
-        allow read: if canReadTeam(teamId);
+        allow read: if isTeamMember(teamId) || isTeamManager(teamId);
         allow create: if isTeamMember(teamId)
           && request.resource.data.submittedByUserId == request.auth.uid;
         allow update: if isTeamManager(teamId)
@@ -145,40 +257,60 @@ service cloud.firestore {
     match /teamMemberships/{membershipId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
-        isTeamManager(resource.data.teamId)
-      );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
+        resource.data.email == authEmail() ||
         isTeamManager(resource.data.teamId) ||
-        resource.data.userId == request.auth.uid ||
-        resource.data.email == request.auth.token.email
+        isSuperAdmin()
       );
+
+      // Self-join PENDING, ou invitation manager (email_invite).
+      allow create: if isSignedIn() && (
+        (
+          request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'En Attente'
+          && request.resource.data.source == 'self_join'
+        )
+        || (
+          isTeamManager(request.resource.data.teamId)
+          && request.resource.data.status == 'En Attente'
+          && request.resource.data.source == 'email_invite'
+          && request.resource.data.invitedBy == request.auth.uid
+        )
+      );
+
+      allow update: if isSuperAdmin()
+        || isTeamManager(resource.data.teamId)
+        || (
+          // Lier le compte à une invitation email (sans changer le statut).
+          resource.data.email == authEmail()
+          && resource.data.status == 'En Attente'
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
+          && request.resource.data.userId == request.auth.uid
+        );
+
       allow delete: if isTeamManager(resource.data.teamId)
-        || resource.data.userId == request.auth.uid;
+        || resource.data.userId == request.auth.uid
+        || isSuperAdmin();
     }
 
     match /permissions/{docId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (
-        userDoc().permissionRole == 'Administrateur' ||
-        userDoc().userRole == 'Manager'
-      );
+      allow write: if isSuperAdmin();
     }
 
     match /permissionRoles/{docId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (
-        userDoc().permissionRole == 'Administrateur' ||
-        userDoc().userRole == 'Manager'
-      );
+      allow write: if isSuperAdmin();
     }
 
     match /gdprAuditLogs/{logId} {
       allow read: if isSignedIn() && (
         resource.data.performedBy == request.auth.uid ||
-        resource.data.targetId == request.auth.uid
+        resource.data.targetId == request.auth.uid ||
+        isSuperAdmin()
       );
-      allow create: if isSignedIn();
+      allow create: if false;
       allow update, delete: if false;
     }
 
@@ -188,7 +320,8 @@ service cloud.firestore {
         isTeamManager(resource.data.requesterTeamId) ||
         isSuperAdmin()
       );
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && isTeamManager(request.resource.data.requesterTeamId);
       allow update: if isSignedIn() && (
         isTeamManager(resource.data.requesterTeamId) ||
         resource.data.athleteId == request.auth.uid ||
@@ -209,13 +342,13 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow read: if isSignedIn() && (
         isSuperAdmin() ||
-        request.auth.uid in resource.data.adminUserIds ||
-        userData().userRole == 'Manager'
+        request.auth.uid in resource.data.adminUserIds
       );
-      allow create, update, delete: if isSignedIn() && (
+      allow create: if isSignedIn()
+        && request.auth.uid in request.resource.data.adminUserIds;
+      allow update, delete: if isSignedIn() && (
         isSuperAdmin() ||
-        request.auth.uid in request.resource.data.adminUserIds ||
-        userData().userRole == 'Manager'
+        request.auth.uid in resource.data.adminUserIds
       );
     }
 
@@ -239,7 +372,6 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource.data.isVisible == true ||
         resource.data.userId == request.auth.uid ||
-        userData().userRole == 'Manager' ||
         isSuperAdmin()
       );
       allow create: if isSignedIn()

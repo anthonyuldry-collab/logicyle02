@@ -1,16 +1,34 @@
 import { User, Team } from '../types';
 import { HOLDING_SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS } from '../constants';
+import { auth } from '../firebaseConfig';
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isAllowedSuperAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalized = normalizeEmail(email);
+  return SUPER_ADMIN_EMAILS.some((allowed) => allowed.toLowerCase() === normalized);
+}
+
+/**
+ * Super Admin : privilégie l’email Auth (non spoofable via doc Firestore).
+ * Fallback sur user.email uniquement si Auth n’est pas encore hydraté.
+ */
 export function isSuperAdminUser(user: User | null | undefined): boolean {
+  const authEmail = auth.currentUser?.email;
+  if (authEmail) return isAllowedSuperAdminEmail(authEmail);
   if (!user?.email) return false;
-  const email = user.email.trim().toLowerCase();
-  return SUPER_ADMIN_EMAILS.some((allowed) => allowed.toLowerCase() === email);
+  return isAllowedSuperAdminEmail(user.email);
 }
 
 /** Vue holding réservée au super administrateur plateforme (Anthony). */
 export function isHoldingSuperAdminUser(user: User | null | undefined): boolean {
-  if (!user?.email) return false;
-  return user.email.trim().toLowerCase() === HOLDING_SUPER_ADMIN_EMAIL.toLowerCase();
+  const authEmail = auth.currentUser?.email;
+  const email = authEmail || user?.email;
+  if (!email) return false;
+  return normalizeEmail(email) === HOLDING_SUPER_ADMIN_EMAIL.toLowerCase();
 }
 
 /** Équipe de contexte pour tester l'app (scouting, effectif…) sans membership. */

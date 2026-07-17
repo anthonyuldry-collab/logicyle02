@@ -3,7 +3,7 @@
   command = "chmod +x build.sh && ./build.sh"
 
 [build.environment]
-  NODE_VERSION = "18.19.0"
+  NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps --no-optional"
 
 [[redirects]]

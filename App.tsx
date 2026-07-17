@@ -381,6 +381,17 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const { completeMagicLinkSignInIfPresent } = await import('./services/inviteService');
+        await completeMagicLinkSignInIfPresent();
+      } catch (err) {
+        console.warn('Lien magique invitation:', err);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     saveSuperAdminPreview(superAdminPreview);
   }, [superAdminPreview]);
 

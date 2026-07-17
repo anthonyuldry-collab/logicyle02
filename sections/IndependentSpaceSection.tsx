@@ -277,25 +277,25 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
           <div
             className={`rounded-lg border p-5 ${
               isExpired
-                ? 'border-amber-300 bg-amber-50'
+                ? 'border-amber-500/40 bg-amber-950 text-slate-100'
                 : subscriptionAccess.isTrial
-                  ? 'border-blue-200 bg-blue-50'
-                  : 'border-emerald-200 bg-emerald-50'
+                  ? 'border-blue-500/40 bg-slate-900 text-slate-100'
+                  : 'border-emerald-500/40 bg-slate-900 text-slate-100'
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="font-semibold text-gray-900">{t('independentSubscriptionTitle')}</p>
-                <p className="text-sm text-gray-700 mt-1">
+                <p className="font-semibold text-slate-100">{t('independentSubscriptionTitle')}</p>
+                <p className="text-sm text-slate-300 mt-1">
                   {subscriptionAccess.statusLabel[language]}
                   {subscriptionAccess.daysRemaining !== null && subscriptionAccess.daysRemaining <= 7 && (
-                    <span className="ml-1 font-medium text-amber-700">
+                    <span className="ml-1 font-medium text-amber-300">
                       — {t('independentSubscriptionEndingSoon')}
                     </span>
                   )}
                 </p>
                 {isExpired && (
-                  <p className="text-sm text-amber-800 mt-2">{t('independentSubscriptionExpired')}</p>
+                  <p className="text-sm text-amber-200 mt-2">{t('independentSubscriptionExpired')}</p>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -312,56 +312,56 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
           </div>
         )}
 
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-5">
-          <h2 className="text-lg font-semibold text-blue-900">{t('independentHubWelcome')}</h2>
-          <p className="mt-1 text-sm text-blue-800">{t('independentHubDesc')}</p>
+        <div className="rounded-lg border border-blue-500/40 bg-slate-900 p-5">
+          <h2 className="text-lg font-semibold text-slate-100">{t('independentHubWelcome')}</h2>
+          <p className="mt-1 text-sm text-slate-300">{t('independentHubDesc')}</p>
           <ActionButton onClick={onGoToLobby} variant="secondary" className="mt-4">
             {t('independentJoinTeamCta')}
           </ActionButton>
         </div>
 
         {!isRider && (
-          <div className="rounded-lg border bg-white p-5 shadow-sm space-y-4">
+          <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm space-y-4">
             <div>
-              <h3 className="font-semibold text-gray-800">Dossier administratif</h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <h3 className="font-semibold text-slate-100">Dossier administratif</h3>
+              <p className="text-sm text-slate-400 mt-1">
                 Informations de base et CV visibles par les équipes lors du recrutement.
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Prénom</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Prénom</label>
                 <input
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nom</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Nom</label>
                 <input
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Date de naissance</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Date de naissance</label>
                 <input
                   type="date"
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Sexe</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Sexe</label>
                 <select
                   value={sex}
                   onChange={(e) => setSex(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 >
                   <option value="">— Sélectionner —</option>
                   <option value={Sex.MALE}>Homme</option>
@@ -369,11 +369,11 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nationalité</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Nationalité</label>
                 <select
                   value={nationality}
                   onChange={(e) => setNationality(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 >
                   <option value="">— Nationalité —</option>
                   {ALL_COUNTRIES.map((c) => (
@@ -384,7 +384,7 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Fonction *</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Fonction *</label>
                 <select
                   value={staffRole}
                   onChange={(e) => {
@@ -392,7 +392,7 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                     setStaffRole(value);
                     setCareerForm((prev) => ({ ...prev, role: value }));
                   }}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 >
                   {STAFF_ROLE_KEYS.map((key) => (
                     <option key={key} value={key}>
@@ -400,27 +400,27 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px] text-gray-400">
+                <p className="mt-1 text-[11px] text-slate-400">
                   Poste affiché aux équipes qui recrutent (DS, mécano, kiné…).
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Téléphone</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Téléphone</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Adresse</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Adresse</label>
                 <input
                   type="text"
                   value={address.streetName || ''}
                   onChange={(e) => setAddress((a) => ({ ...a, streetName: e.target.value }))}
                   placeholder="Rue"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm mb-2"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm mb-2"
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -428,38 +428,38 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                     value={address.postalCode || ''}
                     onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
                     placeholder="Code postal"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                   />
                   <input
                     type="text"
                     value={address.city || ''}
                     onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
                     placeholder="Ville"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Contact d&apos;urgence</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Contact d&apos;urgence</label>
                 <input
                   type="text"
                   value={emergencyContactName}
                   onChange={(e) => setEmergencyContactName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Tél. urgence</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Tél. urgence</label>
                 <input
                   type="tel"
                   value={emergencyContactPhone}
                   onChange={(e) => setEmergencyContactPhone(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">CV (PDF, Word ou image)</label>
-                <p className="mb-1 text-[11px] text-gray-400">
+                <label className="block text-xs font-medium text-slate-400 mb-1">CV (PDF, Word ou image)</label>
+                <p className="mb-1 text-[11px] text-slate-400">
                   PDF ou image : remplissage automatique du profil professionnel (compétences, expériences…).
                 </p>
                 <input
@@ -467,14 +467,14 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                   accept=".pdf,.doc,.docx,image/*,application/pdf"
                   onChange={handleCvUpload}
                   disabled={cvExtractStatus === 'loading'}
-                  className="block w-full text-xs text-gray-500 file:mr-2 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700"
+                  className="block w-full text-xs text-slate-400 file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-indigo-200"
                 />
                 {cvFileName && (
-                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-100">
                     <span className="truncate font-medium">{cvFileName}</span>
                     <button
                       type="button"
-                      className="text-rose-600 text-xs hover:underline"
+                      className="text-rose-300 text-xs hover:underline"
                       onClick={() => {
                         setCvFileName('');
                         setCvMimeType('');
@@ -491,10 +491,10 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                   <p
                     className={`mt-2 text-xs rounded-md border px-3 py-2 ${
                       cvExtractStatus === 'loading'
-                        ? 'border-blue-200 bg-blue-50 text-blue-800'
+                        ? 'border-blue-500/40 bg-slate-900 text-slate-200'
                         : cvExtractStatus === 'success'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : 'border-amber-200 bg-amber-50 text-amber-900'
+                          ? 'border-emerald-500/40 bg-emerald-950 text-emerald-200'
+                          : 'border-amber-500/40 bg-amber-950 text-amber-100'
                     }`}
                   >
                     {cvExtractMessage}
@@ -503,7 +503,7 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {adminFeedback && <p className="text-sm text-emerald-600">{adminFeedback}</p>}
+              {adminFeedback && <p className="text-sm text-emerald-400">{adminFeedback}</p>}
               <ActionButton onClick={handleSaveAdmin} disabled={adminSaving}>
                 {adminSaving ? 'Enregistrement…' : 'Enregistrer le dossier'}
               </ActionButton>
@@ -512,26 +512,26 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
         )}
 
         {isRider ? (
-          <div className="rounded-lg border bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800 mb-4">Profil professionnel</h3>
+          <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm">
+            <h3 className="font-semibold text-slate-100 mb-4">Profil professionnel</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Présentation</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Présentation</label>
                 <textarea
                   value={professionalSummary}
                   onChange={(e) => setProfessionalSummary(e.target.value)}
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 px-3 py-2 text-sm text-slate-100"
                   placeholder="Décrivez votre parcours, vos expériences..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Objectifs sportifs</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Objectifs sportifs</label>
                 <textarea
                   value={careerAspirations}
                   onChange={(e) => setCareerAspirations(e.target.value)}
                   rows={2}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 px-3 py-2 text-sm text-slate-100"
                   placeholder="Vos ambitions pour la saison..."
                 />
               </div>
@@ -541,10 +541,10 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border bg-white p-5 shadow-sm space-y-4">
+          <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm space-y-4">
             <div>
-              <h3 className="font-semibold text-gray-800">Profil professionnel</h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <h3 className="font-semibold text-slate-100">Profil professionnel</h3>
+              <p className="text-sm text-slate-400 mt-1">
                 Présentation, message de candidature, compétences, expérience, certifications et
                 langues.
               </p>
@@ -553,11 +553,11 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
               formData={careerForm}
               handleInputChange={handleCareerInputChange}
               formFieldsEnabled
-              theme="light"
+              theme="dark"
               onPatch={(patch) => setCareerForm((prev) => ({ ...prev, ...patch }))}
             />
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {careerFeedback && <p className="text-sm text-emerald-600">{careerFeedback}</p>}
+              {careerFeedback && <p className="text-sm text-emerald-400">{careerFeedback}</p>}
               <ActionButton onClick={() => void handleSaveCareer()} disabled={careerSaving}>
                 {careerSaving ? 'Enregistrement…' : 'Enregistrer le profil pro'}
               </ActionButton>
@@ -565,13 +565,13 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
           </div>
         )}
 
-        <div className="rounded-lg border bg-white p-5 shadow-sm">
+        <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-semibold text-gray-800">
+              <p className="font-semibold text-slate-100">
                 {isRider ? t('independentVisibilityRider') : t('independentVisibilityStaff')}
               </p>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-slate-400 mt-1">
                 {hasActiveSub
                   ? isRider
                     ? 'Les équipes vous verront avec des infos limitées. Vos données détaillées ne sont partagées qu\'après acceptation d\'une demande.'
@@ -585,10 +585,10 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
               disabled={!hasActiveSub}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
                 !hasActiveSub
-                  ? 'cursor-not-allowed bg-gray-200 opacity-60'
+                  ? 'cursor-not-allowed bg-slate-700 opacity-60'
                   : (isRider ? isSearchable : openToMissions)
                     ? 'cursor-pointer bg-green-500'
-                    : 'cursor-pointer bg-gray-300'
+                    : 'cursor-pointer bg-slate-600'
               }`}
             >
               <span
@@ -606,12 +606,12 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
         </div>
 
         {isRider && (
-          <div className="rounded-lg border bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800 mb-3">{t('independentScoutingRequests')}</h3>
+          <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm">
+            <h3 className="font-semibold text-slate-100 mb-3">{t('independentScoutingRequests')}</h3>
             {!hasActiveSub ? (
-              <p className="text-sm text-gray-500">{t('independentScoutingRequiresSub')}</p>
+              <p className="text-sm text-slate-400">{t('independentScoutingRequiresSub')}</p>
             ) : myRequests.length === 0 ? (
-              <p className="text-sm text-gray-500">{t('independentNoScoutingRequests')}</p>
+              <p className="text-sm text-slate-400">{t('independentNoScoutingRequests')}</p>
             ) : (
               <ul className="space-y-3">
                 {myRequests.map((req) => (

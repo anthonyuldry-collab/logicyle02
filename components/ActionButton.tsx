@@ -16,7 +16,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   style: propStyle, // Allow passing custom styles
   ...props 
 }) => {
-  const baseStyle = "font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-opacity-75 transition-all duration-150 ease-in-out flex items-center justify-center gap-2";
+  const baseStyle = "font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-opacity-75 transition-all duration-150 ease-in-out flex items-center justify-center gap-2 disabled:opacity-100 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none";
   
   let variantStyleClasses = "";
   let dynamicStyles: React.CSSProperties = {};
@@ -34,13 +34,13 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       break;
     case 'secondary':
       variantStyleClasses =
-        'bg-white/10 hover:bg-white/15 text-slate-100 border border-white/15 focus:ring-indigo-400/40 shadow-none';
+        'bg-white/10 hover:bg-white/15 disabled:hover:bg-white/10 text-slate-100 border border-white/15 focus:ring-indigo-400/40 shadow-none';
       break;
     case 'danger':
-      variantStyleClasses = "bg-red-500 hover:bg-red-600 text-white focus:ring-red-400";
+      variantStyleClasses = "bg-red-500 hover:bg-red-600 disabled:hover:bg-slate-700 text-white focus:ring-red-400";
       break;
     case 'warning':
-        variantStyleClasses = "bg-yellow-500 hover:bg-yellow-600 text-black focus:ring-yellow-400";
+        variantStyleClasses = "bg-yellow-500 hover:bg-yellow-600 disabled:hover:bg-slate-700 text-black focus:ring-yellow-400";
         break;
     default:
       dynamicStyles = {
@@ -64,21 +64,26 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   }
   
   const [isHovered, setIsHovered] = React.useState(false);
+  const isDisabled = Boolean(props.disabled);
   const finalStyles = { ...dynamicStyles, ...propStyle };
 
-  if (isHovered) {
+  if (isHovered && !isDisabled) {
     if (variant === 'primary') {
         finalStyles.backgroundColor = 'var(--theme-primary-hover-bg)';
     } 
     // Hover effect for secondary is now handled by Tailwind classes like hover:bg-gray-300
   }
 
+  if (isDisabled) {
+    finalStyles.backgroundColor = undefined;
+    finalStyles.color = undefined;
+  }
 
   return (
     <button
       className={`${baseStyle} ${variantStyleClasses} ${sizeStyle} ${className || ''}`}
       style={finalStyles}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={() => !isDisabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       {...props}
     >

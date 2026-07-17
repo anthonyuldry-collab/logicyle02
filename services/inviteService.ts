@@ -1,5 +1,5 @@
 import { auth } from '../firebaseConfig';
-import { sendSignInLinkToEmail } from 'firebase/auth';
+import { isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink } from 'firebase/auth';
 import {
   collection,
   addDoc,
@@ -8,11 +8,9 @@ import {
   where,
   updateDoc,
   doc,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { TeamMembershipStatus, UserRole } from '../types';
-import { approveTeamMembership } from './firebaseService';
 
 const EMAIL_FOR_SIGN_IN_KEY = 'logicyleEmailForSignIn';
 const PENDING_INVITE_KEY = 'logicylePendingInvite';
@@ -46,12 +44,19 @@ export async function sendTeamInvitation(params: {
   const existingInvites = await getDocs(
     query(collection(db, 'teamMemberships'), where('email', '==', normalizedEmail))
   );
-  const duplicate = existingInvites.docs.find(
-    (d) =>
-      d.data().teamId === params.teamId &&
-      d.data().status === TeamMembershipStatus.PENDING
-  );
+  const duplicate = existingInvites.docs.find((d) => {
+    const data = d.data();
+    return (
+      data.teamId === params.teamId &&
+      (data.status === TeamMembershipStatus.PENDING ||
+        data.status === TeamMembershipStatus.ACTIVE)
+    );
+  });
   if (duplicate) {
+    const status = duplicate.data().status;
+    if (status === TeamMembershipStatus.ACTIVE) {
+      throw new Error('Cet email est déjà membre actif de cette équipe.');
+    }
     throw new Error('Une invitation est déjà en attente pour cet email sur cette équipe.');
   }
 
@@ -75,6 +80,8 @@ export async function sendTeamInvitation(params: {
       handleCodeInApp: true,
     };
     await sendSignInLinkToEmail(auth, normalizedEmail, actionCodeSettings);
+    // Stocké pour le destinataire s’il ouvre le lien sur le même navigateur ;
+    // le handler magic link redemandera l’email sinon.
     window.localStorage.setItem(EMAIL_FOR_SIGN_IN_KEY, normalizedEmail);
     window.localStorage.setItem(PENDING_INVITE_KEY, membershipRef.id);
     emailSent = true;
@@ -86,12 +93,16 @@ export async function sendTeamInvitation(params: {
     membershipId: membershipRef.id,
     emailSent,
     message: emailSent
-      ? `Invitation envoyée à ${normalizedEmail}. Un lien de connexion a été expédié.`
+      ? `Invitation envoyée à ${normalizedEmail}. Un lien de connexion a été expédié. L’accès sera actif après validation manager si besoin.`
       : `Invitation enregistrée pour ${normalizedEmail}. L'email n'a pas pu être envoyé — partagez le lien d'inscription manuellement.`,
   };
 }
 
-/** Lie les invitations en attente à un compte après inscription/connexion. */
+/**
+ * Lie les invitations en attente à un compte après inscription/connexion.
+ * N’auto-approuve plus : le statut reste PENDING jusqu’à validation manager
+ * (évite l’auto-join via memberships forgés).
+ */
 export async function processPendingInvitesOnLogin(
   userId: string,
   email: string
@@ -101,39 +112,46 @@ export async function processPendingInvitesOnLogin(
     query(collection(db, 'teamMemberships'), where('email', '==', normalizedEmail))
   );
 
-  let activated = 0;
+  let linked = 0;
 
   for (const inviteDoc of invitesSnap.docs) {
     const data = inviteDoc.data();
     if (data.status !== TeamMembershipStatus.PENDING) continue;
 
-    if (!data.userId) {
+    if (!data.userId || data.userId !== userId) {
       await updateDoc(inviteDoc.ref, { userId });
-    }
-
-    if (data.source === 'email_invite') {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      const userData = userDoc.exists() ? userDoc.data() : null;
-
-      await approveTeamMembership(
-        {
-          membershipId: inviteDoc.id,
-          userId,
-          teamId: data.teamId as string,
-          userRole: (data.userRole || data.requestedUserRole || UserRole.COUREUR) as UserRole,
-          email: normalizedEmail,
-          firstName: userData?.firstName as string | undefined,
-          lastName: userData?.lastName as string | undefined,
-        },
-        (data.invitedBy as string) || userId,
-        userData ? { id: userId, ...userData } as import('../types').User : null
-      );
-      activated++;
+      linked++;
     }
   }
 
   window.localStorage.removeItem(PENDING_INVITE_KEY);
-  return activated;
+  return linked;
+}
+
+/** Finalise une connexion par lien magique si l’URL courante en est un. */
+export async function completeMagicLinkSignInIfPresent(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  const href = window.location.href;
+  if (!isSignInWithEmailLink(auth, href)) return false;
+
+  let email = getStoredEmailForSignIn();
+  if (!email) {
+    email = window.prompt('Confirmez votre email pour finaliser la connexion') || '';
+  }
+  if (!email) {
+    throw new Error('Email requis pour finaliser le lien magique.');
+  }
+
+  await signInWithEmailLink(auth, normalizeEmail(email), href);
+  clearStoredEmailForSignIn();
+
+  const url = new URL(href);
+  url.searchParams.delete('apiKey');
+  url.searchParams.delete('oobCode');
+  url.searchParams.delete('mode');
+  url.searchParams.delete('lang');
+  window.history.replaceState({}, document.title, url.pathname + url.search);
+  return true;
 }
 
 export function storeEmailForSignIn(email: string): void {

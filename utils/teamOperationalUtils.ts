@@ -51,7 +51,7 @@ export function normalizeOperationalSettings(
     ficheProfile: settings?.ficheProfile ?? 'auto',
     eventFocus: settings?.eventFocus ?? 'auto',
     recruitmentTarget: settings?.recruitmentTarget ?? 'auto',
-    acceptRiderApplications: settings?.acceptRiderApplications,
+    acceptRiderApplications: settings?.acceptRiderApplications !== false,
     gender: settings?.gender ?? 'mixed',
   };
 }

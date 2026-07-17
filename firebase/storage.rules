@@ -7,8 +7,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
     function userTeamId() {
-      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.teamId;
+      return userDoc().teamId;
     }
 
     function isTeamMember(teamId) {
@@ -18,8 +22,8 @@ service firebase.storage {
     function isTeamManager(teamId) {
       return isTeamMember(teamId)
         && (
-          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.userRole == 'MANAGER'
-          || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.permissionRole == 'ADMIN'
+          userDoc().userRole == 'Manager'
+          || userDoc().permissionRole == 'Administrateur'
         );
     }
 
@@ -32,7 +36,7 @@ service firebase.storage {
     }
 
     match /users/{userId}/{allPaths=**} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && request.auth.uid == userId;
       allow write, delete: if isSignedIn() && request.auth.uid == userId;
     }
   }

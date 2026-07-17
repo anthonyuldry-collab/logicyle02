@@ -392,7 +392,12 @@ export const approveTeamMembership = async (
             firstName: firstName || currentUserData?.firstName || '',
             lastName: lastName || currentUserData?.lastName || '',
             userRole,
-            permissionRole: TeamRole.MEMBER,
+            permissionRole:
+              userRole === UserRole.COUREUR
+                ? TeamRole.VIEWER
+                : userRole === UserRole.MANAGER
+                  ? TeamRole.ADMIN
+                  : TeamRole.MEMBER,
             updatedAt: now,
         }),
         { merge: true }
@@ -669,7 +674,16 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
 
         return {
             users: usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User)),
-            teams: teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Team)),
+            teams: teamsSnap.docs.map(d => {
+                const raw = { id: d.id, ...d.data() } as Team & {
+                    sepaSettings?: unknown;
+                    gpsWebhookKey?: unknown;
+                    invoiceSettings?: unknown;
+                };
+                // Annuaire global : ne pas exposer secrets financiers / GPS
+                const { sepaSettings: _s, gpsWebhookKey: _g, invoiceSettings: _i, ...safe } = raw;
+                return safe as Team;
+            }),
             teamMemberships: membershipsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamMembership)),
             permissions: mergeConfiguredPermissions(
                 permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {}

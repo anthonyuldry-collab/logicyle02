@@ -328,8 +328,10 @@
   }
 
   .lc-app-shell .main-content .text-gray-400,
-  .lc-modal .text-gray-400 {
-    color: #94a3b8 !important;
+  .lc-modal .text-gray-400,
+  .lc-app-shell .main-content .text-slate-400,
+  .lc-modal .text-slate-400 {
+    color: #cbd5e1 !important;
   }
 
   .lc-app-shell .main-content .border-gray-100,
@@ -381,7 +383,7 @@
   .lc-app-shell .main-content textarea::placeholder,
   .lc-modal input::placeholder,
   .lc-modal textarea::placeholder {
-    color: #94a3b8 !important;
+    color: #cbd5e1 !important;
   }
 
   .lc-app-shell .main-content table thead {

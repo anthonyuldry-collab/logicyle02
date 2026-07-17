@@ -19,7 +19,7 @@ import {
 interface NoTeamViewProps {
   currentUser: User;
   teams: Team[];
-  onJoinTeam: (teamId: string, joinRole: UserRole) => void;
+  onJoinTeam: (teamId: string, joinRole: UserRole) => void | Promise<void>;
   onCreateTeam: (teamData: {
     name: string;
     level: TeamLevel;
@@ -135,8 +135,10 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
     setError('');
     setIsSubmitting(true);
     try {
-      onJoinTeam(selectedTeamId, joinRole);
+      await onJoinTeam(selectedTeamId, joinRole);
     } catch {
+      // Parent handlers surface their own errors
+    } finally {
       setIsSubmitting(false);
     }
   };

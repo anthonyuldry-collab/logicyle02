@@ -99,10 +99,15 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
     if (!formData.birthDate) return t('signupBirthDateRequired');
 
     const birthDate = new Date(formData.birthDate);
-    const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
-
     if (isNaN(birthDate.getTime())) return t('signupBirthDateInvalid');
+
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age -= 1;
+    }
+
     if (age < 10 || age > 100) return t('signupAgeRange');
     return null;
   };
@@ -119,9 +124,14 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
     }
 
     setIsLoading(true);
-    const result = await onRegister({ ...formData, acceptLegalConsent: true });
-    if (result && !result.success) {
-      setError(result.message);
+    try {
+      const result = await onRegister({ ...formData, acceptLegalConsent: true });
+      if (result && !result.success) {
+        setError(result.message);
+        setIsLoading(false);
+      }
+    } catch {
+      setError(t('signupCreatingButton'));
       setIsLoading(false);
     }
   };
@@ -133,12 +143,23 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
   };
 
   const handleAcceptTerms = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setShowTermsModal(false);
+      setError(validationError);
+      return;
+    }
     setHasAcceptedTerms(true);
     setShowTermsModal(false);
     setIsLoading(true);
-    const result = await onRegister({ ...formData, acceptLegalConsent: true });
-    if (result && !result.success) {
-      setError(result.message);
+    try {
+      const result = await onRegister({ ...formData, acceptLegalConsent: true });
+      if (result && !result.success) {
+        setError(result.message);
+        setIsLoading(false);
+      }
+    } catch {
+      setError(t('signupCreatingButton'));
       setIsLoading(false);
     }
   };
@@ -235,76 +256,119 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
           <h3 className="text-lg font-semibold text-slate-200">{t('signupYourInfo')}</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="signup-firstName" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+                {t('signupFirstName')}
+              </label>
+              <input
+                id="signup-firstName"
+                type="text"
+                name="firstName"
+                placeholder={t('signupFirstName')}
+                required
+                value={formData.firstName}
+                onChange={handleInputChange}
+                className="input-field-sm w-full"
+              />
+            </div>
+            <div>
+              <label htmlFor="signup-lastName" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+                {t('signupLastName')}
+              </label>
+              <input
+                id="signup-lastName"
+                type="text"
+                name="lastName"
+                placeholder={t('signupLastName')}
+                required
+                value={formData.lastName}
+                onChange={handleInputChange}
+                className="input-field-sm w-full"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="signup-email" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+              {t('loginEmailLabel')}
+            </label>
             <input
-              type="text"
-              name="firstName"
-              placeholder={t('signupFirstName')}
+              id="signup-email"
+              type="email"
+              name="email"
+              placeholder={t('loginEmailPlaceholder')}
               required
-              value={formData.firstName}
-              onChange={handleInputChange}
-              className="input-field-sm w-full"
-            />
-            <input
-              type="text"
-              name="lastName"
-              placeholder={t('signupLastName')}
-              required
-              value={formData.lastName}
+              value={formData.email}
               onChange={handleInputChange}
               className="input-field-sm w-full"
             />
           </div>
 
-          <input
-            type="email"
-            name="email"
-            placeholder={t('loginEmailPlaceholder')}
-            required
-            value={formData.email}
-            onChange={handleInputChange}
-            className="input-field-sm w-full"
-          />
-
-          <input
-            type="date"
-            name="birthDate"
-            required
-            value={formData.birthDate}
-            onChange={handleInputChange}
-            className="input-field-sm w-full"
-            max={new Date().toISOString().split('T')[0]}
-          />
-
-          <select
-            name="sex"
-            value={formData.sex || ''}
-            onChange={handleInputChange}
-            className="input-field-sm w-full"
-          >
-            <option value="">{t('sexMale')} / {t('sexFemale')} (optionnel)</option>
-            <option value={Sex.MALE}>{t('sexMale')}</option>
-            <option value={Sex.FEMALE}>{t('sexFemale')}</option>
-          </select>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="signup-birthDate" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+              {t('signupBirthDatePlaceholder')}
+            </label>
             <input
-              type="password"
-              name="password"
-              placeholder={t('signupPasswordPlaceholder')}
+              id="signup-birthDate"
+              type="date"
+              name="birthDate"
               required
-              value={formData.password}
+              value={formData.birthDate}
               onChange={handleInputChange}
               className="input-field-sm w-full"
+              style={{ colorScheme: 'dark' }}
+              max={new Date().toISOString().split('T')[0]}
             />
-            <input
-              type="password"
-              name="confirmPassword"
-              placeholder={t('signupConfirmPasswordPlaceholder')}
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+          </div>
+
+          <div>
+            <label htmlFor="signup-sex" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+              {t('sexMale')} / {t('sexFemale')}
+            </label>
+            <select
+              id="signup-sex"
+              name="sex"
+              value={formData.sex || ''}
+              onChange={handleInputChange}
               className="input-field-sm w-full"
-            />
+            >
+              <option value="">{t('sexMale')} / {t('sexFemale')} (optionnel)</option>
+              <option value={Sex.MALE}>{t('sexMale')}</option>
+              <option value={Sex.FEMALE}>{t('sexFemale')}</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="signup-password" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+                {t('signupPasswordPlaceholder')}
+              </label>
+              <input
+                id="signup-password"
+                type="password"
+                name="password"
+                placeholder={t('signupPasswordPlaceholder')}
+                required
+                value={formData.password}
+                onChange={handleInputChange}
+                className="input-field-sm w-full"
+              />
+            </div>
+            <div>
+              <label htmlFor="signup-confirmPassword" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+                {t('signupConfirmPasswordPlaceholder')}
+              </label>
+              <input
+                id="signup-confirmPassword"
+                type="password"
+                name="confirmPassword"
+                placeholder={t('signupConfirmPasswordPlaceholder')}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="input-field-sm w-full"
+              />
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-400 text-center">{error}</p>}
