@@ -14,6 +14,8 @@ export enum SubscriptionPlanId {
     CONTINENTAL = 'continental',
     PRO = 'pro',
     FEDERATION = 'federation',
+    INDEPENDENT_RIDER = 'independent_rider',
+    INDEPENDENT_STAFF = 'independent_staff',
 }
 
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'pilot';
@@ -27,6 +29,8 @@ export interface TeamSubscription {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string;
     billingInterval?: 'month' | 'year';
+    pendingReferralCode?: string;
+    referredByUserId?: string;
 }
 
 export enum Sex {
@@ -59,7 +63,43 @@ export enum ChecklistRole {
   MECANO = "Mécanicien",
   MANAGER = "Manager",
   COMMUNICATION = "Communication",
+  ENTRAINEUR = "Entraîneur",
+  KINE = "Kinésithérapeute",
+  MEDECIN = "Médecin",
   COUREUR = "Coureur",
+}
+
+/** Profil de fiches de poste : auto = déduit du niveau structure */
+export type TeamFicheProfile = 'auto' | 'club' | 'competition' | 'pro';
+
+/** Focus calendrier pour les fiches et missions */
+export type TeamEventFocus = 'auto' | 'mixed' | 'stage' | 'competition';
+
+/** Cible de recrutement sur le marché talents (segmentation coureur ↔ équipe). */
+export type TeamRecruitmentTarget =
+  | 'auto'
+  | 'pro_conti'
+  | 'elite_n1'
+  | 'open_amateur'
+  | 'youth_u19'
+  | 'regional_club';
+
+/** Catégorie de sexe de l’équipe (calendrier / recrutement). */
+export type TeamGender = 'men' | 'women' | 'mixed';
+
+export interface TeamOperationalSettings {
+  /** Rôles actifs dans les checklists et fiches de poste */
+  enabledChecklistRoles?: ChecklistRole[];
+  /** Niveau des fiches importées (auto ou forcé) */
+  ficheProfile?: TeamFicheProfile;
+  /** Priorité stage vs compétition (auto = déduit du calendrier) */
+  eventFocus?: TeamEventFocus;
+  /** Cible de recrutement sur le marché talents (segmentation) */
+  recruitmentTarget?: TeamRecruitmentTarget;
+  /** Accepter les candidatures spontanées de coureurs sur le portail */
+  acceptRiderApplications?: boolean;
+  /** Sexe de l’équipe (Homme / Femme / Mixte) — filtre portail « Chercher une équipe » */
+  gender?: TeamGender;
 }
 
 export enum StaffStatus { 
@@ -117,6 +157,20 @@ export enum DocumentStatus {
   FAIT = "Fait",
   EN_COURS = "En cours",
 }
+
+/** Type de document course (formulaires UCI, roadbook, etc.) */
+export enum EventDocumentKind {
+  UCI_ENGAGEMENT_J20 = 'UCI_ENGAGEMENT_J20',
+  UCI_ENGAGEMENT_J3 = 'UCI_ENGAGEMENT_J3',
+  UCI_HEIGHT_ATTESTATION = 'UCI_HEIGHT_ATTESTATION',
+  UCI_BIKE_COMPLIANCE = 'UCI_BIKE_COMPLIANCE',
+  UCI_CONFIRMATION_PARTANTS = 'UCI_CONFIRMATION_PARTANTS',
+  ROADBOOK = 'ROADBOOK',
+  LICENSES = 'LICENSES',
+  OTHER = 'OTHER',
+}
+
+export type UciFormStepStatus = 'pending' | 'due_soon' | 'overdue' | 'in_progress' | 'done' | 'not_applicable';
 
 export enum BudgetItemCategory {
   TRANSPORT = "Transport",
@@ -263,6 +317,12 @@ export enum ClothingType {
   SURVETEMENT = "Survêtement",
   POLO = "Polo",
   TSHIRT = "T-Shirt",
+  SHORT = "Short",
+  PANTALON = "Pantalon",
+  SWEAT = "Sweat",
+  HOODIE = "Hoodie / Capuche",
+  CASQUETTE = "Casquette / Bonnet",
+  BRASSARD = "Brassard",
   AUTRE = "Autre",
 }
 
@@ -321,7 +381,8 @@ export enum DisciplinePracticed {
     ROUTE = "Route",
     PISTE = "Piste",
     CYCLO_CROSS = "Cyclo-cross",
-    VTT = "VTT", 
+    VTT = "VTT",
+    GRAVEL = "Gravel",
     AUTRE = "Autre",
 }
 
@@ -353,11 +414,76 @@ export enum ScoutingStatus {
     DATA_SHARED = "Données partagées"
 }
 
+/** Niveau de suivi prospect : discret (interne) ou avec demande à l'athlète */
+export enum ProspectLevel {
+    WATCHLIST = "WATCHLIST",
+    CONTACT_REQUEST = "CONTACT_REQUEST",
+}
+
+export enum TeamRecruitmentOfferStatus {
+    OPEN = 'Ouvert',
+    CLOSED = 'Fermé',
+}
+
+export enum TeamRecruitmentCampaignStatus {
+    DRAFT = 'Brouillon',
+    OPEN = 'En cours',
+    CLOSED = 'Clôturée',
+}
+
+/** Critères de recherche pour une campagne ou une offre coureur */
+export interface TeamRecruitmentCriteria {
+    minAge?: number;
+    maxAge?: number;
+    riderSegments?: string[];
+    disciplines?: DisciplinePracticed[];
+    recruitmentTarget?: TeamRecruitmentTarget;
+    qualitativeProfiles?: RiderQualitativeProfile[];
+    notes?: string;
+}
+
+/** Offre de recrutement coureur publiée par l'équipe */
+export interface TeamRecruitmentOffer {
+    id: string;
+    teamId: string;
+    title: string;
+    description: string;
+    status: TeamRecruitmentOfferStatus;
+    criteria?: TeamRecruitmentCriteria;
+    campaignId?: string;
+    createdAt: string;
+    updatedAt?: string;
+    publishedAt?: string;
+}
+
+/** Campagne de recrutement avec critères de ciblage */
+export interface TeamRecruitmentCampaign {
+    id: string;
+    teamId: string;
+    title: string;
+    description: string;
+    status: TeamRecruitmentCampaignStatus;
+    criteria?: TeamRecruitmentCriteria;
+    linkedOfferId?: string;
+    createdAt: string;
+    updatedAt?: string;
+    openedAt?: string;
+    closedAt?: string;
+}
+
+/** Périmètres que l'équipe peut demander — l'athlète choisit ce qu'il accorde */
+export enum ScoutingDataScope {
+    COORDINATION = "COORDINATION",
+    PERFORMANCE_DATA = "PERFORMANCE_DATA",
+    PERFORMANCE_PROJECT = "PERFORMANCE_PROJECT",
+}
+
 export enum Discipline {
     ROUTE = "Route",
     PISTE = "Piste",
     CYCLO_CROSS = "Cyclo-cross",
     VTT = "VTT",
+    GRAVEL = "Gravel",
     TOUS = "Tous",
 }
 
@@ -366,6 +492,8 @@ export enum UserRole {
     STAFF = "Staff",
     COUREUR = "Coureur",
     INVITE = "Invité",
+    PARTNER = "Partenaire",
+    ORG_ADMIN = "Admin Organisation",
 }
 
 export enum TeamMembershipStatus {
@@ -385,6 +513,38 @@ export enum MissionCompensationType {
     VOLUNTEER = "Bénévolat",
     FREELANCE = "Vacataire (Facture)",
     FIXED_AMOUNT = "Montant Fixe",
+    CDD = "CDD",
+    CDI = "CDI",
+    APPRENTICESHIP = "Apprentissage",
+    INTERNSHIP = "Stage",
+}
+
+/** Suivi pipeline recrutement missions / vacations */
+export enum MissionApplicationStatus {
+    RECEIVED = "Reçue",
+    REVIEWING = "En examen",
+    SHORTLISTED = "Présélectionné(e)",
+    INTERVIEW = "Entretien",
+    ACCEPTED = "Accepté(e)",
+    REJECTED = "Refusé(e)",
+    WITHDRAWN = "Retiré(e)",
+}
+
+export interface MissionApplication {
+    id: string;
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    roleLabel?: string;
+    city?: string;
+    dailyRate?: number;
+    message?: string;
+    appliedAt: string;
+    status: MissionApplicationStatus;
+    /** Note interne équipe (non visible candidat) */
+    internalNote?: string;
 }
 
 export enum LanguageProficiency {
@@ -404,8 +564,9 @@ export type AppSection =
   | 'financial' | 'performance' | 'scouting' | 'settings' | 'eventDetail'
   | 'userManagement' | 'permissions' | 'checklist' | 'superAdmin'
   | 'career' | 'nutrition' | 'riderEquipment' | 'adminDossier' | 'myTrips' | 'myPerformance' | 'performanceProject' | 'automatedPerformanceProfile'
-  | 'missionSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability' | 'myDashboard' | 'myProfile' | 'adminDashboard'
-  | 'myResults' | 'bikeSetup' | 'myCareer' | 'independentHub' | 'pricing' | 'expenseReceipts';
+  | 'missionSearch' | 'teamSearch' | 'userSettings' | 'myCalendar' | 'talentAvailability' | 'talentSearch' | 'myDashboard' | 'myProfile' | 'adminDashboard'
+  | 'myResults' | 'bikeSetup' | 'myCareer' | 'myStages' | 'independentHub' | 'pricing' | 'expenseReceipts'
+  | 'organizationDashboard' | 'partnerPortal';
 
 export type PermissionLevel = 'view' | 'edit';
 export type StaffRoleKey =
@@ -441,6 +602,21 @@ export interface MaintenanceRecord {
     garage?: string;
 }
 
+export type GpsTrackingSource = 'manual' | 'driver_app' | 'geotab' | 'traccar' | 'tomtom';
+
+export interface VehiclePosition {
+    id: string;
+    vehicleId: string;
+    latitude: number;
+    longitude: number;
+    speedKmh?: number;
+    heading?: number;
+    recordedAt: string;
+    source: GpsTrackingSource;
+    eventId?: string;
+    transportLegId?: string;
+}
+
 export interface Vehicle {
     id: string;
     name: string;
@@ -454,6 +630,17 @@ export interface Vehicle {
     nextMaintenanceDate?: string;
     maintenanceNotes?: string;
     maintenanceHistory: MaintenanceRecord[];
+    /** Kilométrage courant */
+    currentMileage?: number;
+    /** Identifiant boîtier GPS / télématique */
+    gpsDeviceId?: string;
+    /** Dernière position connue */
+    lastLatitude?: number;
+    lastLongitude?: number;
+    lastPositionAt?: string;
+    lastSpeedKmh?: number;
+    gpsTrackingEnabled?: boolean;
+    gpsSource?: GpsTrackingSource;
 }
 
 export interface PeripheralComponent {
@@ -483,6 +670,45 @@ export interface EquipmentItem {
     components?: PeripheralComponent[];
 }
 
+export type WarehouseType = 'base' | 'camion' | 'hotel' | 'course' | 'atelier';
+
+export interface Warehouse {
+    id: string;
+    name: string;
+    type: WarehouseType;
+    eventId?: string;
+    vehicleId?: string;
+    address?: string;
+    isDefault?: boolean;
+    notes?: string;
+}
+
+export type StockMovementReason =
+    | 'scan_in'
+    | 'scan_out'
+    | 'inventory'
+    | 'transfer'
+    | 'event_consumption'
+    | 'manual_adjustment';
+
+export interface StockMovement {
+    id: string;
+    itemId: string;
+    itemName: string;
+    warehouseId: string;
+    warehouseName: string;
+    delta: number;
+    quantityAfter: number;
+    reason: StockMovementReason;
+    userId?: string;
+    userName?: string;
+    eventId?: string;
+    scannedBarcode?: string;
+    transferToWarehouseId?: string;
+    notes?: string;
+    createdAt: string;
+}
+
 export interface StockItem {
     id: string;
     name: string;
@@ -490,7 +716,11 @@ export interface StockItem {
     unit: string;
     lowStockThreshold: number;
     category: StockCategory;
+    /** Code-barres EAN/GTIN pour scan rapide */
+    barcode?: string;
     notes?: string;
+    /** Quantités par entrepôt (warehouseId → qty) */
+    quantities?: Record<string, number>;
 }
 
 export enum StockCategory {
@@ -524,6 +754,8 @@ export interface EquipmentStockItem {
     category: EquipmentStockCategory;
     reference?: string;
     brand?: string;
+    /** Code-barres EAN/GTIN pour scan rapide */
+    barcode?: string;
     notes?: string;
 }
 export enum EquipmentStockCategory {
@@ -712,6 +944,302 @@ export interface EligibleCategory {
     label: string;
 }
 
+export interface RaceEventOrganizerContact {
+    organizingEntity?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    notes?: string;
+}
+
+export type OrganizerApplicationStatus = 'pending' | 'sent' | 'accepted' | 'declined';
+
+export interface OrganizerApplicationRecord {
+    year: number;
+    status: OrganizerApplicationStatus;
+    sentAt?: string;
+}
+
+/** Contact organisateur conservé pour candidatures saison N+1 */
+export interface OrganizerContact {
+    id: string;
+    eventName: string;
+    organizingEntity?: string;
+    contactName?: string;
+    contactEmail: string;
+    contactPhone?: string;
+    location?: string;
+    uciClass?: string;
+    category?: string;
+    discipline?: Discipline | string;
+    lastEventDate?: string;
+    lastEventId?: string;
+    /** Mois habituel (1-12) déduit de la dernière édition */
+    typicalMonth?: number;
+    /** Jour habituel (1-31) déduit de la dernière édition */
+    typicalDay?: number;
+    /** Date de fin de la dernière édition (course à étapes) */
+    lastEventEndDate?: string;
+    /** Mois de fin habituel (1-12) */
+    typicalEndMonth?: number;
+    /** Jour de fin habituel (1-31) */
+    typicalEndDay?: number;
+    /** Nombre d'étapes (course à étapes) */
+    stageCount?: number;
+    /** Type d'épreuve (Stage, etc.) */
+    eventType?: EventType;
+    participationYears: number[];
+    applications?: OrganizerApplicationRecord[];
+    notes?: string;
+    updatedAt: string;
+    /** Référence ELIGIBLE_CATEGORIES_CONFIG (ex. uci.pro, elite.nat) */
+    categoryId?: string;
+    /** Segment calendrier */
+    genderSegment?: 'men' | 'women' | 'mixed' | 'youth';
+    circuitTier?: string;
+    competitionLevel?: 'pro' | 'elite' | 'amateur' | 'youth';
+    federationScope?: 'uci' | 'ffc' | 'regional' | 'international';
+}
+
+/** Protocole d'exposition altitude / hypoxie (stages). */
+export type AltitudeCampProtocol =
+  | 'live_high_train_high'
+  | 'live_high_train_low'
+  | 'intermittent_hypoxia'
+  | 'none'
+  | 'other';
+
+/** Métadonnées spécifiques aux stages (altitude / hypoxie / chaleur). */
+export interface AltitudeCampMeta {
+  isAltitudeCamp: boolean;
+  /** Stage / protocole d’acclimatation chaleur (seul ou combiné altitude) */
+  isHeatCamp?: boolean;
+  /** Altitude du site / séances (m) */
+  altitudeMeters?: number;
+  /** Altitude de sommeil si différente (LH/TL) */
+  sleepingAltitudeMeters?: number;
+  protocol?: AltitudeCampProtocol;
+  /** Protocole chaleur du stage */
+  heatProtocol?: HeatCampProtocol;
+  /** Température cible ambiante / chambre (°C) */
+  targetTemperatureC?: number;
+  /** Humidité relative cible (%) */
+  targetHumidityPercent?: number;
+  /** Durée type d’exposition chaleur par séance (min) */
+  heatSessionMinutes?: number;
+  /** Jours depuis l'arrivée (suivi acclimatation) — saisie libre / notes */
+  hypoxiaNotes?: string;
+  /** Notes acclimatation chaleur */
+  heatNotes?: string;
+  focusNotes?: string;
+}
+
+/** Protocole d’exposition chaleur (stages). */
+export type HeatCampProtocol =
+  | 'passive_sauna'
+  | 'active_heat_training'
+  | 'heat_chamber'
+  | 'hot_water_immersion'
+  | 'combined_heat_altitude'
+  | 'none'
+  | 'other';
+
+/** Dispositif d’exposition hypoxique individuel. */
+export type HypoxicSetupType =
+  | 'natural'
+  | 'tent'
+  | 'chamber'
+  | 'mask'
+  | 'other';
+
+/** Dispositif d’exposition chaleur individuel. */
+export type HeatSetupType =
+  | 'none'
+  | 'sauna'
+  | 'chamber'
+  | 'hot_room'
+  | 'outdoor'
+  | 'bath'
+  | 'other';
+
+/**
+ * Références environnementales par athlète sur un stage
+ * (altitude / tente hypoxique et/ou protocole chaleur).
+ */
+export interface CampAthleteAltitudeRef {
+  riderId: string;
+  /** Altitude équivalente de référence (m) */
+  referenceAltitudeMeters?: number;
+  hypoxicSetup?: HypoxicSetupType;
+  /** Protocole chaleur individuel */
+  heatSetup?: HeatSetupType;
+  /** Température cible individuelle (°C) */
+  heatTargetTemperatureC?: number;
+  /** Exposition chaleur type (min / séance) */
+  heatExposureMinutes?: number;
+  notes?: string;
+}
+
+export type StageCampSessionType =
+  | 'rest'
+  | 'recovery'
+  | 'endurance'
+  | 'intensity'
+  | 'test'
+  | 'other';
+
+/**
+ * Suivi quotidien athlète pendant un stage (HRV, SpO₂, hydratation, etc.).
+ * Une entrée = un athlète × un jour.
+ */
+export interface StageDayAthleteMetrics {
+  id: string;
+  riderId: string;
+  date: string;
+  /**
+   * Altitude équivalente exposée ce jour (m) — tente / chambre / override
+   * de la référence athlète du stage.
+   */
+  referenceAltitudeMeters?: number;
+  /** Température ambiante / chambre chaleur ce jour (°C) */
+  ambientTemperatureC?: number;
+  /** Exposition chaleur du jour (min) */
+  heatExposureMinutes?: number;
+  /** HRV matin (ms, ex. rMSSD) */
+  hrvMs?: number;
+  restingHrBpm?: number;
+  /** Saturation pulsée (%) */
+  spo2Percent?: number;
+  weightKg?: number;
+  /** Volume hydrique journalier (L) */
+  hydrationLiters?: number;
+  /** Échelle couleur urine 1 (clair) → 8 (foncé) */
+  urineColor?: number;
+  /**
+   * Densité spécifique urinaire (USG) — réfractomètre.
+   * Référence eau distillée = 1.000 (ex. 1.012).
+   */
+  urineSpecificGravity?: number;
+  sleepHours?: number;
+  sleepQuality?: number;
+  fatigue?: number;
+  mood?: number;
+  muscleSoreness?: number;
+  headache?: boolean;
+  appetite?: number;
+  sessionType?: StageCampSessionType;
+  /** Charge (TSS / points internes) */
+  trainingLoad?: number;
+  rpe?: number;
+  sessionNotes?: string;
+  coachNotes?: string;
+  updatedAt?: string;
+}
+
+/** Nature du stage (hors / avec altitude). */
+export type CampStageKind = 'altitude' | 'preseason' | 'training' | 'recovery' | 'other';
+
+/** Colonnes de monitoring quotidien sélectionnables. */
+export type CampMonitorColumnKey =
+  | 'referenceAltitudeMeters'
+  | 'ambientTemperatureC'
+  | 'heatExposureMinutes'
+  | 'hrvMs'
+  | 'restingHrBpm'
+  | 'spo2Percent'
+  | 'weightKg'
+  | 'hydrationLiters'
+  | 'urineColor'
+  | 'urineSpecificGravity'
+  | 'sleepHours'
+  | 'sleepQuality'
+  | 'fatigue'
+  | 'mood'
+  | 'muscleSoreness'
+  | 'headache'
+  | 'appetite'
+  | 'sessionType'
+  | 'trainingLoad'
+  | 'rpe'
+  | 'notes';
+
+/** Configuration du monitoring pour un stage non-altitude (colonnes choisies). */
+export interface CampMonitoringConfig {
+  stageKind?: CampStageKind;
+  /** Métriques affichées dans la grille quotidienne */
+  visibleMetrics?: CampMonitorColumnKey[];
+}
+
+/** Type de test terrain / labo saisi sur un stage. */
+export type CampTestType = 'power' | 'lactate' | 'field' | 'lab' | 'custom';
+
+/**
+ * Test individuel (puissance, lactate, ou protocole libre).
+ * Une entrée = un athlète × une date × un test.
+ */
+export interface CampAthleteTest {
+  id: string;
+  riderId: string;
+  date: string;
+  testType: CampTestType;
+  /** Libellé libre (ex. PMA 5', Seuil lactate, Jump CMJ…) */
+  label: string;
+  /** Puissance moyenne / cible (W) */
+  powerWatts?: number;
+  /** Durée totale du test (secondes — saisie UI en min + s) */
+  durationSec?: number;
+  /** Protocole : continu, paliers, autre */
+  protocolKind?: 'continuous' | 'steps' | 'other';
+  /** Nombre de paliers (protocole par paliers) */
+  stepCount?: number;
+  /** Durée d’un palier (secondes) */
+  stepDurationSec?: number;
+  /** Durée de récupération entre paliers (secondes) */
+  recoveryDurationSec?: number;
+  /** Incrément de puissance entre paliers (W), optionnel */
+  stepIncrementWatts?: number;
+  /** Puissance normalisée (W) */
+  normalizedPower?: number;
+  /** Lactate sanguin ponctuel / pic (mmol/L) */
+  lactateMmol?: number;
+  /** Lactate de repos / baseline avant test (mmol/L) */
+  lactateRestMmol?: number;
+  /** Seuil lactate 1 / LT1 / AeT (mmol/L) */
+  lt1Mmol?: number;
+  /** Puissance au LT1 (W) */
+  lt1PowerWatts?: number;
+  /** FC au LT1 (bpm) */
+  lt1HeartRateBpm?: number;
+  /** Seuil lactate 2 / LT2 / AnT (mmol/L) */
+  lt2Mmol?: number;
+  /** Puissance au LT2 (W) */
+  lt2PowerWatts?: number;
+  /** FC au LT2 (bpm) */
+  lt2HeartRateBpm?: number;
+  /**
+   * V̇La_max — taux max de production de lactate (mmol·L⁻¹·s⁻¹).
+   */
+  vlMax?: number;
+  /**
+   * Clairance lactate — ex. % de baisse en récup, ou mmol·L⁻¹·min⁻¹.
+   */
+  lactateClearance?: number;
+  /** Unité clairance (ex. %, mmol/L/min) */
+  lactateClearanceUnit?: string;
+  /** FC associée (puissance) ou FC max du test lactate (bpm) */
+  heartRateBpm?: number;
+  /** FC de repos avant test (bpm) */
+  restingHeartRateBpm?: number;
+  /** Valeur générique (ex. temps, distance, score) */
+  value?: number;
+  unit?: string;
+  protocolNotes?: string;
+  resultNotes?: string;
+  /** Champs libres pour tests non prévus */
+  customFields?: { key: string; value: string }[];
+  updatedAt?: string;
+}
+
 export interface RaceEvent {
     id: string;
     name: string;
@@ -732,10 +1260,24 @@ export interface RaceEvent {
     isLogisticsValidated?: boolean;
     logisticsValidationDate?: string;
     logisticsSummaryNotes?: string;
+
+    /** Contexte stage altitude / hypoxie (type Stage) */
+    altitudeCampMeta?: AltitudeCampMeta;
+    /** Altitude de référence individuelle (tente / chambre hypoxique) */
+    campAthleteAltitudeRefs?: CampAthleteAltitudeRef[];
+    /** Suivi quotidien athlètes sur le stage */
+    campAthleteDailyMetrics?: StageDayAthleteMetrics[];
+    /** Colonnes de monitoring (stages hors altitude) */
+    campMonitoringConfig?: CampMonitoringConfig;
+    /** Tests puissance / lactate / custom sur le stage */
+    campAthleteTests?: CampAthleteTest[];
     
     // Limites de sélection des athlètes
     minRiders?: number;
     maxRiders?: number;
+
+    /** Contact organisateur (conservé pour demandes participation N+1) */
+    organizerContact?: RaceEventOrganizerContact;
 
     // Staff roles
     managerId?: string[];
@@ -792,6 +1334,8 @@ export interface AvailabilityPeriod {
 
 export interface StaffMember {
     id: string;
+    /** Lien compte utilisateur Firebase (si différent de id) */
+    userId?: string;
     firstName: string;
     lastName: string;
     name?: string;
@@ -803,6 +1347,12 @@ export interface StaffMember {
     openToExternalMissions?: boolean;
     skills: string[];
     professionalSummary?: string;
+    /** Message type / pitch de candidature (missions) */
+    defaultApplicationMessage?: string;
+    /** Années d'expérience (aperçu recrutement) */
+    experienceYears?: number;
+    /** Certifications / titres courts */
+    certifications?: string[];
     address?: Address;
     weeklyAvailability?: WeeklyAvailability;
     availability?: AvailabilityPeriod[];
@@ -820,6 +1370,14 @@ export interface StaffMember {
     salary?: number;
     contractType?: ContractType;
     contractEndDate?: string;
+    bankDetails?: BankDetails;
+    /** Dernier virement SEPA salaire */
+    sepaLastPaidAt?: string;
+    /** Position GPS partagée depuis l'app (chauffeur) */
+    lastLatitude?: number;
+    lastLongitude?: number;
+    lastPositionAt?: string;
+    lastSpeedKmh?: number;
     birthDate?: string;
     nationality?: string;
     photoUrl?: string;
@@ -827,6 +1385,11 @@ export interface StaffMember {
     licenseNumber?: string;
     licenseImageBase64?: string;
     licenseImageMimeType?: string;
+    /** CV / dossier de candidature (PDF, Word ou image) */
+    cvFileName?: string;
+    cvMimeType?: string;
+    cvFileBase64?: string;
+    socialSecurityNumber?: string;
     emergencyContactName?: string;
     emergencyContactPhone?: string;
     heightCm?: number;
@@ -892,6 +1455,11 @@ export interface EventTransportLeg {
   arrivalTime?: string;
   departureLocation?: string;
   arrivalLocation?: string;
+  /** Adresses textuelles ; lat/lng optionnels (géocodés auto pour ETA GPS flotte) */
+  departureLatitude?: number;
+  departureLongitude?: number;
+  arrivalLatitude?: number;
+  arrivalLongitude?: number;
   details?: string;
   personName?: string; // Legacy/simple mode
   isAuroreFlight?: boolean;
@@ -921,6 +1489,9 @@ export interface EventAccommodation {
   /** Retour d'expérience (pour retrouver d'une année sur l'autre) */
   reviewOutcome?: 'good' | 'neutral' | 'bad';
   reviewNote?: string;
+  /** Coordonnées optionnelles (carte par lieux) */
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface EventRaceDocument {
@@ -930,6 +1501,10 @@ export interface EventRaceDocument {
   status: DocumentStatus;
   fileLinkOrPath: string;
   notes?: string;
+  /** Catégorie pour workflow UCI / documents standards */
+  kind?: EventDocumentKind | string;
+  /** Échéance réglementaire (ISO date) */
+  dueDate?: string;
 }
 
 export interface EventRadioEquipment {
@@ -990,6 +1565,8 @@ export interface ExpenseReceipt {
   validatedAt?: string;
   validatedByUserId?: string;
   notes?: string;
+  /** Date d'export / paiement SEPA */
+  sepaPaidAt?: string;
 }
 
 export interface EventChecklistItem {
@@ -1012,6 +1589,8 @@ export interface PeerRating {
     id: string;
     eventId: string;
     raterRiderId: string;
+    /** UID Firebase — règles Firestore & anonymat côté client */
+    raterUserId?: string;
     ratedRiderId: string;
     /** Apport au résultat / collaboration (1–10) */
     rating?: number;
@@ -1019,6 +1598,24 @@ export interface PeerRating {
     technicalScore?: number;
     /** Niveau physique du jour (1–10) */
     physicalScore?: number;
+}
+
+/** Débriefing personnel d'un coureur après un événement (visible staff + auteur). */
+export interface RiderSelfDebrief {
+    id: string;
+    eventId: string;
+    riderId: string;
+    userId: string;
+    personalRanking?: string;
+    selfSummary?: string;
+    selfHighlights?: string;
+    selfImprovements?: string;
+    selfPhysicalFeel?: number;
+    selfTechnicalFeel?: number;
+    didNotStart?: boolean;
+    didNotFinish?: boolean;
+    crashed?: boolean;
+    submittedAt?: string;
 }
 
 export interface RiderRating {
@@ -1204,6 +1801,12 @@ export interface StaffEventSelection {
   staffAvailability: StaffAvailability;
   staffObjectives: string;
   notes: string;
+  /** Date de candidature du staff */
+  candidatureAt?: string;
+  /** Validation par DS / manager */
+  validatedAt?: string;
+  validatedByUserId?: string;
+  validatedByName?: string;
 }
 
 export enum StaffEventStatus {
@@ -1229,6 +1832,68 @@ export enum StaffAvailability {
   A_CONFIRMER = 'A_CONFIRMER'
 }
 
+export interface BankDetails {
+    iban: string;
+    bic?: string;
+    accountHolderName?: string;
+}
+
+export interface TeamSepaSettings {
+    debtorName: string;
+    debtorIban: string;
+    debtorBic?: string;
+    /** Identifiant Créancier SEPA (ICS) pour prélèvements */
+    creditorIdentifier?: string;
+}
+
+export type SepaPaymentType = 'salary' | 'reimbursement';
+
+export interface SepaPaymentOrder {
+    id: string;
+    type: SepaPaymentType;
+    beneficiaryName: string;
+    beneficiaryIban: string;
+    beneficiaryBic?: string;
+    amount: number;
+    reference: string;
+    /** ID coureur/staff ou justificatif */
+    sourceId: string;
+    sourceLabel?: string;
+    hasValidIban: boolean;
+}
+
+export enum InvoiceStatus {
+  DRAFT = 'Brouillon',
+  ISSUED = 'Émise',
+  PAID = 'Payée',
+  CANCELLED = 'Annulée',
+}
+
+export interface TeamInvoiceSettings {
+  issuerName: string;
+  issuerAddress?: string;
+  issuerSiret?: string;
+  issuerVatNumber?: string;
+  issuerIban?: string;
+  invoicePrefix?: string;
+  nextInvoiceNumber?: number;
+  nextQuoteNumber?: number;
+  defaultVatRate?: number;
+  /** Association / documents partenariat & CERFA */
+  legalRepresentative?: string;
+  legalRepresentativeTitle?: string;
+  rnaNumber?: string;
+  associationObject?: string;
+  isGeneralInterest?: boolean;
+  prefecturalDecree?: string;
+  cerfaReceiptPrefix?: string;
+  nextCerfaNumber?: number;
+  conventionPrefix?: string;
+  nextConventionNumber?: number;
+}
+
+export type DonationForm = 'numéraire' | 'nature' | 'mise à disposition';
+
 export interface IncomeItem {
     id: string;
     description: string;
@@ -1241,6 +1906,145 @@ export interface IncomeItem {
     sponsorshipContactPhone?: string;
     sponsorshipContractStart?: string;
     sponsorshipContractEnd?: string;
+    /** Partenaire / sponsor */
+    sponsorCompanyName?: string;
+    sponsorSiret?: string;
+    sponsorRepresentative?: string;
+    sponsorLegalForm?: string;
+    partnershipCounterparts?: string;
+    partnershipDeliverables?: PartnerCounterpartDeliverable[];
+    donationForm?: DonationForm | string;
+    conventionNumber?: string;
+    conventionGeneratedAt?: string;
+    cerfaReceiptNumber?: string;
+    cerfaGeneratedAt?: string;
+    /** Code comptable PCG (auto depuis la catégorie) */
+    accountingCode?: string;
+    accountingLabel?: string;
+    accountingJournal?: string;
+    /** Facturation */
+    invoiceNumber?: string;
+    invoiceStatus?: InvoiceStatus | string;
+    issuedAt?: string;
+    paidAt?: string;
+    clientName?: string;
+    clientAddress?: string;
+    clientVatNumber?: string;
+    vatRate?: number;
+    amountHT?: number;
+    /** Lien carnet client */
+    clientId?: string;
+    /** Devis source */
+    quoteId?: string;
+    /** Avoir lié (ID revenu d'avoir) */
+    creditNoteForInvoiceId?: string;
+    /** URL archivage PDF facture */
+    invoicePdfUrl?: string;
+}
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
+
+export interface Quote {
+    id: string;
+    quoteNumber: string;
+    clientId?: string;
+    clientName: string;
+    clientAddress?: string;
+    description: string;
+    amount: number;
+    vatRate: number;
+    amountHT: number;
+    status: QuoteStatus;
+    validUntil: string;
+    createdAt: string;
+    convertedInvoiceId?: string;
+    notes?: string;
+}
+
+export interface ClientRecord {
+    id: string;
+    companyName: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    siret?: string;
+    vatNumber?: string;
+    iban?: string;
+    paymentTermsDays?: number;
+    notes?: string;
+    createdAt: string;
+}
+
+export type SupplierInvoiceStatus = 'received' | 'validated' | 'paid' | 'disputed';
+
+export interface SupplierInvoice {
+    id: string;
+    supplierName: string;
+    supplierSiret?: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    dueDate: string;
+    amountHT: number;
+    vatRate: number;
+    amountTTC: number;
+    accountingCode?: string;
+    accountingLabel?: string;
+    budgetItemId?: string;
+    expenseReceiptId?: string;
+    status: SupplierInvoiceStatus;
+    paidAt?: string;
+    sepaBatchId?: string;
+    notes?: string;
+    attachmentUrl?: string;
+}
+
+export interface SepaBatch {
+    id: string;
+    batchReference: string;
+    executionDate: string;
+    totalAmount: number;
+    orderCount: number;
+    exportedAt: string;
+    exportedByUserId?: string;
+    exportedByName?: string;
+    orderIds: string[];
+    salarySourceIds: string[];
+    reimbursementReceiptIds: string[];
+    xmlFileName?: string;
+}
+
+export type BankTransactionType = 'credit' | 'debit';
+
+export interface BankTransaction {
+    id: string;
+    date: string;
+    label: string;
+    amount: number;
+    type: BankTransactionType;
+    iban?: string;
+    reference?: string;
+    /** Liens rapprochement */
+    matchedIncomeItemId?: string;
+    matchedSupplierInvoiceId?: string;
+    matchedSepaBatchId?: string;
+    matchedExpenseReceiptId?: string;
+    isReconciled: boolean;
+    importedAt: string;
+}
+
+export interface AccountingEntry {
+    id: string;
+    date: string;
+    journal: string;
+    accountCode: string;
+    accountLabel: string;
+    pieceRef: string;
+    label: string;
+    debit: number;
+    credit: number;
+    sourceType: 'income' | 'expense' | 'supplier' | 'sepa' | 'bank';
+    sourceId: string;
 }
 
 export interface RiderEventSelection {
@@ -1287,11 +2091,13 @@ export interface TeamProduct {
     name: string;
     type: 'gel' | 'bar' | 'drink';
     brand?: string;
+    barcode?: string;
     carbs?: number; // Total carbs, auto-calculated
     glucose?: number;
     fructose?: number;
     caffeine?: number; // in mg
     sodium?: number; // in mg
+    composition?: string; // Liste des ingrédients
     notes?: string;
 }
 
@@ -1353,11 +2159,63 @@ export interface FavoriteRace {
   notes: string;
 }
 
+/** Entrée calendrier courses (athlète indépendant) */
+export type AthleteCalendarEntryStatus = 'planned' | 'confirmed' | 'done' | 'cancelled';
+
+export interface AthleteCalendarEntry {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate?: string;
+  location?: string;
+  discipline?: DisciplinePracticed | string;
+  notes?: string;
+  status: AthleteCalendarEntryStatus;
+  source?: 'manual' | 'result' | 'demo';
+}
+
+export interface PerformanceProjectEntry {
+  id: string;
+  content: string;
+  /** Date de revue ou objectif (YYYY-MM-DD) */
+  targetDate?: string;
+  status: 'active' | 'achieved';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PerformanceActionItem {
+  id: string;
+  title: string;
+  description?: string;
+  /** Date cible (YYYY-MM-DD) */
+  targetDate?: string;
+  status: 'planned' | 'in_progress' | 'done' | 'cancelled';
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface PerformanceProjectHistoryEntry {
+  id: string;
+  savedAt: string;
+  label: string;
+  performanceGoals?: string;
+  /** Snapshot des 5 facteurs au moment de la sauvegarde */
+  factors: Partial<Record<string, PerformanceFactorDetail>>;
+}
+
 export interface PerformanceFactorDetail {
     forces: string;
     aOptimiser: string;
     aDevelopper: string;
     besoinsActions: string;
+    /** Entrées datées — document vivant */
+    forcesEntries?: PerformanceProjectEntry[];
+    aOptimiserEntries?: PerformanceProjectEntry[];
+    aDevelopperEntries?: PerformanceProjectEntry[];
+    /** Actions datées avec suivi d'avancement */
+    actionItems?: PerformanceActionItem[];
     score?: number;
     objective?: string;
     actions?: string;
@@ -1399,11 +2257,42 @@ export interface PerformanceNutrition {
     recoveryNutrition?: string;
 }
 
+export interface BikeComponentWear {
+  currentKm: number;
+  maxKm: number;
+  installedAt?: string;
+  brand?: string;
+  model?: string;
+  notes?: string;
+}
+
+export interface BikeWearTracking {
+  chain?: BikeComponentWear;
+  tireFront?: BikeComponentWear;
+  tireRear?: BikeComponentWear;
+  brakePads?: BikeComponentWear;
+}
+
 export interface BikeFitMeasurements {
   hauteurSelle?: string;
   reculSelle?: string;
   longueurBecSelleAxeCintre?: string;
   hauteurGuidonAxeRoueCentreCintre?: string;
+  /** CLM — distance horizontale axe pédalier → extrémité prolongateurs (E) */
+  distanceExtensionE?: string;
+  /** CLM — distance verticale support avant-bras → point haut/bas prolongateurs (H) */
+  hauteurProlongateursH?: string;
+}
+
+/** Pression pneu AV/AR pour une combinaison route × météo */
+export interface TirePressureCell {
+  front?: string;
+  rear?: string;
+}
+
+/** Grille de pressions — clé `${surface}_${weather}` (ex. dry_mild) */
+export interface BikeTirePressureGrid {
+  cells?: Record<string, TirePressureCell>;
 }
 
 export interface BikeSpecificMeasurements {
@@ -1418,6 +2307,9 @@ export interface BikeSpecificMeasurements {
 export interface BikeSetup {
     specifics: BikeSpecificMeasurements;
     cotes: BikeFitMeasurements;
+    /** Pressions pneus selon type de route et météo */
+    tirePressures?: BikeTirePressureGrid;
+    wear?: BikeWearTracking;
     bikeType?: string;
     name?: string;
     brand?: string;
@@ -1427,6 +2319,8 @@ export interface BikeSetup {
     wheels?: string;
     weight?: string | number;
     model?: string;
+    /** Inscrit sur la liste UCI catégories de taille 2 ou 3 */
+    uciHeightListRegistered?: boolean;
 }
 
 export interface PprData {
@@ -1467,6 +2361,9 @@ export interface Rider {
     signingBonus?: number;
     performanceBonusNotes?: string;
     nextSeasonTeam?: string;
+    bankDetails?: BankDetails;
+    /** Dernier virement SEPA salaire */
+    sepaLastPaidAt?: string;
     
     // Gestion des saisons
     currentSeason?: number; // Saison active du coureur
@@ -1485,6 +2382,10 @@ export interface Rider {
     favoriteRaces: FavoriteRace[];
     resultsHistory: ResultItem[];
     teamsHistory?: TeamHistory[];
+    /** URL profil ProCyclingStats */
+    pcsUrl?: string;
+    /** URL profil DirectVélo */
+    directVeloUrl?: string;
     agency?: { name?: string; agentName?: string; agentPhone?: string; agentEmail?: string; };
 
     // Performance Project
@@ -1494,6 +2395,8 @@ export interface Rider {
     mentalPerformanceProject: PerformanceFactorDetail;
     environnementPerformanceProject: PerformanceFactorDetail;
     tactiquePerformanceProject: PerformanceFactorDetail;
+    /** Historique des versions du projet (document vivant) */
+    performanceProjectHistory?: PerformanceProjectHistoryEntry[];
     
     // Global Preferences
     globalWishes?: string; // Souhaits généraux pour la saison
@@ -1632,6 +2535,12 @@ export interface ScoutingProfile {
   personalValues?: string;
   challengesFaced?: string;
   supportNeeds?: string;
+
+  /** Suivi discret ou demande de contact (recrutement plateforme) */
+  prospectLevel?: ProspectLevel;
+  /** Lien vers le compte coureur si prospect issu de la recherche talents */
+  linkedAthleteUserId?: string;
+  internalWatchNotes?: string;
 }
 export enum ScoutingRequestStatus {
     PENDING = "En attente",
@@ -1647,6 +2556,11 @@ export interface ScoutingRequest {
     requestDate: string;
     responseDate?: string;
     message?: string;
+    prospectLevel?: ProspectLevel;
+    /** Périmètres demandés par l'équipe (niveau contact) */
+    requestedScopes?: ScoutingDataScope[];
+    /** Périmètres accordés par l'athlète à l'acceptation */
+    grantedScopes?: ScoutingDataScope[];
 }
 
 
@@ -1698,6 +2612,9 @@ export interface User {
     permissionRole: TeamRole;
     customPermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
     userRole: UserRole | string;
+    /** Aperçu super-admin : profil staff ou coureur simulé */
+    previewSubjectId?: string;
+    previewSubjectKind?: 'staff' | 'rider' | 'partner';
     teamId?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -1715,6 +2632,29 @@ export interface User {
     resultsHistory?: ResultItem[];
     favoriteRaces?: FavoriteRace[];
     teamsHistory?: TeamHistory[];
+    /** Données athlète indépendant (matériel, perf., nutrition…) */
+    allergies?: AllergyItem[];
+    performanceNutrition?: Rider['performanceNutrition'];
+    roadBikeSetup?: BikeSetup;
+    ttBikeSetup?: BikeSetup;
+    clothing?: ClothingItem[];
+    weightKg?: number;
+    heightCm?: number;
+    powerProfileFresh?: PowerProfile;
+    powerProfile15KJ?: PowerProfile;
+    powerProfile30KJ?: PowerProfile;
+    powerProfile45KJ?: PowerProfile;
+    physiquePerformanceProject?: PerformanceFactorDetail;
+    techniquePerformanceProject?: PerformanceFactorDetail;
+    mentalPerformanceProject?: PerformanceFactorDetail;
+    environnementPerformanceProject?: PerformanceFactorDetail;
+    tactiquePerformanceProject?: PerformanceFactorDetail;
+    pcsUrl?: string;
+    directVeloUrl?: string;
+    /** Notes de frais personnelles (staff indépendant) */
+    personalExpenseReceipts?: ExpenseReceipt[];
+    /** Calendrier courses personnelles (athlète indépendant) */
+    personalRaceCalendar?: AthleteCalendarEntry[];
     emergencyContactName?: string;
     emergencyContactPhone?: string;
     socialSecurityNumber?: string;
@@ -1741,6 +2681,214 @@ export interface User {
     professionalSummary?: string;
     skills?: string[];
     careerAspirations?: string;
+    /** Pitch de candidature (staff indépendant) */
+    defaultApplicationMessage?: string;
+    /** Fonction / poste (staff indépendant) — DS, mécano, kiné… */
+    staffRole?: StaffRole | string;
+    experienceYears?: number;
+    certifications?: string[];
+    workHistory?: WorkExperience[];
+    education?: EducationOrCertification[];
+    languages?: SpokenLanguage[];
+    /** CV (profil staff indépendant) */
+    cvFileName?: string;
+    cvMimeType?: string;
+    cvFileBase64?: string;
+    birthDate?: string;
+    nationality?: string;
+    sex?: Sex;
+    /** Compte Nolio lié (tokens côté serveur uniquement) */
+    nolioConnected?: boolean;
+    nolioConnectedAt?: string;
+    /** Parrainage — code unique partageable */
+    referralCode?: string;
+    referralTotalCount?: number;
+    referralConvertedCount?: number;
+    referralPendingCredits?: number;
+    /** Tokens FCM / Web Push pour notifications mobiles */
+    pushTokens?: string[];
+    /** Préférences notifications */
+    pushNotificationsEnabled?: boolean;
+    /** Abonnement profil indépendant (coureur/staff sans équipe) */
+    subscription?: TeamSubscription;
+}
+
+export enum UserNotificationType {
+    CONVOCATION = 'CONVOCATION',
+    SYSTEM = 'SYSTEM',
+}
+
+export type ConvocationDispatchMode = 'athlete' | 'staff' | 'general';
+
+export interface UserNotification {
+    id: string;
+    userId: string;
+    teamId: string;
+    type: UserNotificationType;
+    title: string;
+    body: string;
+    eventId: string;
+    eventName: string;
+    convocationMode?: ConvocationDispatchMode;
+    read: boolean;
+    createdAt: string;
+    sentByUserId?: string;
+    /** Lien navigation in-app */
+    targetSection?: AppSection;
+}
+
+export type ConvocationResponseStatus = 'pending' | 'accepted' | 'declined';
+
+export interface ConvocationResponse {
+    id: string;
+    eventId: string;
+    teamId: string;
+    userId: string;
+    status: ConvocationResponseStatus;
+    respondedAt: string;
+    comment?: string;
+}
+
+export type TeamKind = 'root' | 'worldtour' | 'development' | 'espoirs' | 'femmes' | 'standard';
+
+export interface Organization {
+    id: string;
+    name: string;
+    country: string;
+    teamIds: string[];
+    adminUserIds: string[];
+    billingEmail?: string;
+    siret?: string;
+    notes?: string;
+    createdAt: string;
+}
+
+export interface PartnerAccess {
+    id: string;
+    userId: string;
+    teamId: string;
+    incomeItemId: string;
+    sponsorCompanyName: string;
+    scopes: PartnerScope[];
+    grantedAt: string;
+    grantedByUserId?: string;
+    expiresAt?: string;
+    isActive: boolean;
+}
+
+export type PartnershipMatchStatus =
+    | 'pending'
+    | 'accepted'
+    | 'declined'
+    | 'contracted'
+    | 'cancelled';
+
+/** Profil sponsor visible sur la marketplace LogiCycle (partenaires sans équipe). */
+export interface PartnerMarketplaceProfile {
+    id: string;
+    userId: string;
+    companyName: string;
+    sector?: string;
+    contactName?: string;
+    contactEmail?: string;
+    budgetMinEur?: number;
+    budgetMaxEur?: number;
+    objectives?: string;
+    targetDisciplines?: string[];
+    targetRegions?: string[];
+    isVisible: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+/** Besoin de sponsoring publié par une équipe / club. */
+export interface TeamSponsorshipNeed {
+    id: string;
+    teamId: string;
+    teamName: string;
+    title: string;
+    description: string;
+    budgetMinEur?: number;
+    budgetMaxEur?: number;
+    objectives?: string;
+    disciplines?: string[];
+    isOpen: boolean;
+    createdAt: string;
+    createdByUserId?: string;
+}
+
+/** Demande de mise en relation sponsor ↔ équipe (commission LogiCycle si contractualisation). */
+export interface PartnershipMatchRequest {
+    id: string;
+    partnerUserId: string;
+    partnerProfileId: string;
+    teamId: string;
+    needId?: string;
+    status: PartnershipMatchStatus;
+    message?: string;
+    proposedBudgetEur?: number;
+    platformFeePercent: number;
+    contractedAmountEur?: number;
+    createdAt: string;
+    respondedAt?: string;
+    respondedByUserId?: string;
+}
+
+export type PartnerScope =
+    | 'view_budget'
+    | 'view_counterparts'
+    | 'view_documents'
+    | 'view_payment_status'
+    | 'view_events'
+    | 'view_comms';
+
+export type PartnerNewsletterStatus = 'draft' | 'published' | 'archived';
+
+export type PartnerNewsletterBlockType =
+    | 'heading'
+    | 'paragraph'
+    | 'highlight'
+    | 'eventList'
+    | 'results'
+    | 'cta'
+    | 'quote'
+    | 'interview'
+    | 'sponsorSpotlight';
+
+export interface PartnerNewsletterBlock {
+    id: string;
+    type: PartnerNewsletterBlockType;
+    content: string;
+}
+
+export interface PartnerNewsletter {
+    id: string;
+    teamId: string;
+    /** Si défini, visible uniquement pour ce partenariat */
+    incomeItemId?: string;
+    title: string;
+    subject: string;
+    previewText?: string;
+    blocks: PartnerNewsletterBlock[];
+    status: PartnerNewsletterStatus;
+    createdAt: string;
+    publishedAt?: string;
+    createdByUserId?: string;
+}
+
+export enum CounterpartDeliverableStatus {
+    PLANNED = 'planned',
+    IN_PROGRESS = 'in_progress',
+    DELIVERED = 'delivered',
+    VALIDATED = 'validated',
+}
+
+export interface PartnerCounterpartDeliverable {
+    id: string;
+    label: string;
+    dueDate?: string;
+    status: CounterpartDeliverableStatus;
+    notes?: string;
 }
 
 export interface Team {
@@ -1750,6 +2898,12 @@ export interface Team {
     level: TeamLevel;
     address?: Address;
     subscription?: TeamSubscription;
+    organizationId?: string;
+    parentTeamId?: string;
+    teamKind?: TeamKind;
+    /** @deprecated Préférer operationalSettings.gender */
+    gender?: TeamGender;
+    operationalSettings?: TeamOperationalSettings;
 }
 
 export interface TeamMembership {
@@ -1792,7 +2946,12 @@ export interface Mission {
     compensation: string; // "Logement et repas pris en charge"
     dailyRate?: number; // 150
     status: MissionStatus;
-    applicants?: string[]; // Array of user IDs
+    /** Course / événement équipe lié (week-end) — alimente le calendrier du vacataire accepté */
+    eventId?: string;
+    /** @deprecated Préférer applications — IDs utilisateur candidats */
+    applicants?: string[];
+    /** Candidatures avec suivi de statut */
+    applications?: MissionApplication[];
 }
 
 // --- APP STATE ---
@@ -1804,6 +2963,12 @@ export interface GlobalState {
     permissions: AppPermissions;
     permissionRoles: PermissionRole[];
     scoutingRequests: ScoutingRequest[];
+    userNotifications?: UserNotification[];
+    organizations?: Organization[];
+    partnerAccesses?: PartnerAccess[];
+    partnerMarketplaceProfiles?: PartnerMarketplaceProfile[];
+    teamSponsorshipNeeds?: TeamSponsorshipNeed[];
+    partnershipMatchRequests?: PartnershipMatchRequest[];
 }
 
 export enum MeetingRecurrence {
@@ -1814,6 +2979,18 @@ export enum MeetingRecurrence {
     MONTHLY = "Mensuelle",
     QUARTERLY = "Trimestrielle",
     YEARLY = "Annuelle"
+}
+
+/** Listes de diffusion pour la visibilité des comptes rendus de réunion */
+export enum MeetingReportAudience {
+    COMITE_DIRECTEUR = "COMITE_DIRECTEUR",
+    DIRECTION_SPORTIVE = "DIRECTION_SPORTIVE",
+    STAFF_PERFORMANCE = "STAFF_PERFORMANCE",
+    STAFF_LOGISTIQUE = "STAFF_LOGISTIQUE",
+    STAFF_COMMUNICATION = "STAFF_COMMUNICATION",
+    STAFF_MEDICAL = "STAFF_MEDICAL",
+    VACATAIRES = "VACATAIRES",
+    PARTICIPANTS = "PARTICIPANTS",
 }
 
 export interface MeetingReport {
@@ -1852,10 +3029,13 @@ export interface MeetingReport {
     isScheduled?: boolean; // Si la réunion est planifiée dans le calendrier
     meetingSeriesId?: string; // ID pour regrouper les réunions récurrentes
     previousMeetingReportId?: string; // ID du compte rendu de la réunion précédente
+    /** Qui peut consulter le compte rendu (listes éditables par réunion) */
+    visibilityAudiences?: MeetingReportAudience[];
 }
 
 export interface TeamState {
     teamLevel?: TeamLevel;
+    operationalSettings?: TeamOperationalSettings;
     subscription?: TeamSubscription;
     themePrimaryColor?: string;
     themeAccentColor?: string;
@@ -1882,20 +3062,40 @@ export interface TeamState {
     incomeItems: IncomeItem[];
     checklistTemplates: Record<ChecklistRole, ChecklistTemplate[]>;
     categoryBudgets: Partial<Record<BudgetItemCategory, number>>;
+    sepaSettings?: TeamSepaSettings;
+    invoiceSettings?: TeamInvoiceSettings;
+    /** Clé webhook Traccar / télématique (doc team Firestore) */
+    gpsWebhookKey?: string;
     scoutingProfiles: ScoutingProfile[];
     teamProducts: TeamProduct[];
     stockItems: StockItem[];
     equipmentStockItems: EquipmentStockItem[];
+    warehouses: Warehouse[];
+    stockMovements: StockMovement[];
+    vehiclePositions: VehiclePosition[];
+    partnerNewsletters: PartnerNewsletter[];
+    clientRecords: ClientRecord[];
+    supplierInvoices: SupplierInvoice[];
+    sepaBatches: SepaBatch[];
+    bankTransactions: BankTransaction[];
+    quotes: Quote[];
+    convocationResponses: ConvocationResponse[];
     peerRatings: PeerRating[];
+    riderSelfDebriefs: RiderSelfDebrief[];
     teamEventReviews: any[];
     debriefings: any[];
     dietaryPlans: any[];
     missions: Mission[];
+    recruitmentOffers: TeamRecruitmentOffer[];
+    recruitmentCampaigns: TeamRecruitmentCampaign[];
     performanceArchives: PerformanceArchive[];
     meetingReports: MeetingReport[];
+    organizerContacts: OrganizerContact[];
 }
 
 export interface AppState extends GlobalState, TeamState {
     activeEventId: string | null;
     activeTeamId: string | null;
+    /** Offres coureur ouvertes (toutes équipes) pour le portail recherche */
+    openRecruitmentOffers?: TeamRecruitmentOffer[];
 }

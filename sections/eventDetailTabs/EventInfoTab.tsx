@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RaceEvent, RaceInformation, EventRadioEquipment, EventRadioAssignment, EventType, Discipline, AppState, StageDayLogistics, Rider } from '../../types';
+import { RaceEvent, RaceInformation, EventRadioEquipment, EventRadioAssignment, EventType, Discipline, AppState, StageDayLogistics, Rider, AltitudeCampMeta, AltitudeCampProtocol, HypoxicSetupType, HeatCampProtocol, HeatSetupType } from '../../types';
 import { saveData, deleteData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal'; 
@@ -8,7 +8,23 @@ import PencilIcon from '../../components/icons/PencilIcon';
 import TrashIcon from '../../components/icons/TrashIcon';
 import { emptyEventRadioEquipment, ELIGIBLE_CATEGORIES_CONFIG } from '../../constants';
 import { formatEventDateRange } from '../../utils/dateUtils';
-import { ensureStageRaceLogistics, formatStageDateLabel, isStageRace, syncRiderStartTimes } from '../../utils/stageRaceUtils';
+import { useTranslations } from '../../hooks/useTranslations';
+import { RaceEventOrganizerContact } from '../../types';
+import { ensureStageRaceLogistics, syncRiderStartTimes } from '../../utils/stageRaceUtils';
+import {
+  ALTITUDE_PROTOCOL_LABELS,
+  emptyAltitudeCampMeta,
+  EVENT_TYPE_FORM_OPTIONS,
+  findAthleteAltitudeRef,
+  HEAT_PROTOCOL_LABELS,
+  HEAT_SETUP_LABELS,
+  HYPOXIC_SETUP_LABELS,
+  isCompetitiveEvent,
+  isCompetitiveStageRace,
+  isTrainingCamp,
+  normalizeEventType,
+  upsertAthleteAltitudeRef,
+} from '../../utils/trainingCampUtils';
 import { stageDayLocationFields, getVisibleStageDayRaceFields } from './stageRaceFields';
 import StageRaceSubTabs from './StageRaceSubTabs';
 import StageTimeTrialDepartures from './StageTimeTrialDepartures'; 
@@ -46,6 +62,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     setRadioAssignments,
     appState
 }) => {
+  const { t } = useTranslations();
   const [formData, setFormData] = useState<RaceEvent>(event);
   const [isEditing, setIsEditing] = useState(false);
   const [activeStageTab, setActiveStageTab] = useState(0);
@@ -60,14 +77,57 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   );
 
   useEffect(() => {
-    setFormData(isStageRace(event) ? ensureStageRaceLogistics(event) : event);
+    setFormData(isCompetitiveStageRace(event) ? ensureStageRaceLogistics(event) : event);
     setLocalRadioEquipment(initialRadioEquipment || emptyEventRadioEquipment(eventId, `${eventId}_radioequip_info_effect`));
   }, [event, initialRadioEquipment, eventId]);
 
   const applyStageRaceSync = useCallback((data: RaceEvent): RaceEvent => {
-    if (!isStageRace(data)) return data;
+    if (!isCompetitiveStageRace(data)) return data;
     return ensureStageRaceLogistics(data);
   }, []);
+
+  const handleAltitudeCampChange = <K extends keyof AltitudeCampMeta>(
+    field: K,
+    value: AltitudeCampMeta[K],
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      altitudeCampMeta: {
+        ...(prev.altitudeCampMeta || emptyAltitudeCampMeta()),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleAthleteAltitudeRefChange = (
+    riderId: string,
+    patch: {
+      referenceAltitudeMeters?: number;
+      hypoxicSetup?: HypoxicSetupType;
+      heatSetup?: HeatSetupType;
+      heatTargetTemperatureC?: number;
+      heatExposureMinutes?: number;
+      notes?: string;
+    },
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      campAthleteAltitudeRefs: upsertAthleteAltitudeRef(prev.campAthleteAltitudeRefs, {
+        riderId,
+        ...(findAthleteAltitudeRef(prev.campAthleteAltitudeRefs, riderId) || {}),
+        ...patch,
+      }),
+    }));
+  };
+
+  const selectedCampRiders = useMemo(() => {
+    const ids = formData.selectedRiderIds || [];
+    return (appState.riders || [])
+      .filter((r) => ids.includes(r.id))
+      .sort((a, b) =>
+        `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'fr'),
+      );
+  }, [appState.riders, formData.selectedRiderIds]);
 
   const handleMainFormInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>, section?: keyof RaceEvent) => {
     const { name, value } = e.target;
@@ -102,7 +162,10 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     } else {
         setFormData(prev => ({
             ...prev,
-            [name]: value,
+            [name]: name === 'eventType' ? normalizeEventType(value as EventType) : value,
+            ...(name === 'eventType' && normalizeEventType(value as EventType) === EventType.STAGE && !prev.altitudeCampMeta
+              ? { altitudeCampMeta: emptyAltitudeCampMeta() }
+              : {}),
         }));
     }
   };
@@ -347,6 +410,16 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   };
 
 
+  const handleOrganizerInputChange = (field: keyof RaceEventOrganizerContact, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      organizerContact: {
+        ...(prev.organizerContact || {}),
+        [field]: value,
+      },
+    }));
+  };
+
   const handleSaveAll = async () => {
     try {
       const eventToSave = applyStageRaceSync({
@@ -404,7 +477,9 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
 
   const lightInputClass = "mt-1 block w-full px-3 py-2 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500";
 
-  const stageRace = isStageRace(formData);
+  const competitiveStageRace = isCompetitiveStageRace(formData);
+  const trainingCamp = isTrainingCamp(formData);
+  const campMeta = formData.altitudeCampMeta || emptyAltitudeCampMeta();
   const stageDays = formData.raceInfo?.stageDays || [];
   const transfers = formData.raceInfo?.transfers || [];
 
@@ -526,12 +601,486 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     </div>
   );
 
-
+  const renderTrainingCampSection = (mode: 'edit' | 'view') => (
+    <div className="rounded-xl border border-sky-500/35 bg-slate-900 p-5 space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-sky-200 tracking-tight">
+          Contexte stage · altitude & chaleur
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-300">
+          Stage d’entraînement — pas de permanence, départs course ni radio d’épreuve.
+          Le suivi HRV / SpO₂ / hydratation / chaleur se fait dans l’onglet « Suivi stage ».
+        </p>
+      </div>
+      {mode === 'edit' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`altitude_camp_${eventId}`}
+                checked={Boolean(campMeta.isAltitudeCamp)}
+                onChange={(e) => handleAltitudeCampChange('isAltitudeCamp', e.target.checked)}
+                className="h-5 w-5 text-sky-600 border-gray-300 rounded"
+              />
+              <label htmlFor={`altitude_camp_${eventId}`} className="text-sm font-medium text-slate-200">
+                Stage altitude / hypoxie
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`heat_camp_${eventId}`}
+                checked={Boolean(campMeta.isHeatCamp)}
+                onChange={(e) => {
+                  handleAltitudeCampChange('isHeatCamp', e.target.checked);
+                  if (e.target.checked && campMeta.isAltitudeCamp) {
+                    handleAltitudeCampChange('heatProtocol', 'combined_heat_altitude');
+                  }
+                }}
+                className="h-5 w-5 text-orange-600 border-gray-300 rounded"
+              />
+              <label htmlFor={`heat_camp_${eventId}`} className="text-sm font-medium text-slate-200">
+                Protocole chaleur
+              </label>
+            </div>
+          </div>
+          {!campMeta.isAltitudeCamp && !campMeta.isHeatCamp && (
+            <p className="md:col-span-2 text-xs text-amber-100 bg-amber-950 border border-amber-700/50 rounded-lg px-3 py-2.5 leading-relaxed">
+              Stage hors altitude / chaleur (pré-saison, récup…) : dans « Suivi stage », utilisez
+              « Choisir les données » et l’onglet « Tests ».
+            </p>
+          )}
+          {campMeta.isAltitudeCamp && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Altitude site / séances (m)</label>
+                <input
+                  type="number"
+                  value={campMeta.altitudeMeters ?? ''}
+                  onChange={(e) =>
+                    handleAltitudeCampChange(
+                      'altitudeMeters',
+                      e.target.value === '' ? undefined : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className={lightInputClass}
+                  placeholder="Ex: 1800"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Altitude sommeil (m)</label>
+                <input
+                  type="number"
+                  value={campMeta.sleepingAltitudeMeters ?? ''}
+                  onChange={(e) =>
+                    handleAltitudeCampChange(
+                      'sleepingAltitudeMeters',
+                      e.target.value === '' ? undefined : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className={lightInputClass}
+                  placeholder="Si différente (LH/TL)"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Protocole altitude</label>
+                <select
+                  value={campMeta.protocol || 'live_high_train_high'}
+                  onChange={(e) =>
+                    handleAltitudeCampChange('protocol', e.target.value as AltitudeCampProtocol)
+                  }
+                  className={`${lightInputClass} w-full`}
+                >
+                  {(Object.keys(ALTITUDE_PROTOCOL_LABELS) as AltitudeCampProtocol[]).map((key) => (
+                    <option key={key} value={key}>
+                      {ALTITUDE_PROTOCOL_LABELS[key]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Notes hypoxie / acclimatation</label>
+                <textarea
+                  value={campMeta.hypoxiaNotes || ''}
+                  onChange={(e) => handleAltitudeCampChange('hypoxiaNotes', e.target.value)}
+                  rows={2}
+                  className={lightInputClass}
+                  placeholder="Ex: J1–J3 charge légère, cible SpO₂ matin, fer / hydratation…"
+                />
+              </div>
+            </>
+          )}
+          {campMeta.isHeatCamp && (
+            <>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Protocole chaleur</label>
+                <select
+                  value={campMeta.heatProtocol || 'active_heat_training'}
+                  onChange={(e) =>
+                    handleAltitudeCampChange('heatProtocol', e.target.value as HeatCampProtocol)
+                  }
+                  className={`${lightInputClass} w-full`}
+                >
+                  {(Object.keys(HEAT_PROTOCOL_LABELS) as HeatCampProtocol[]).map((key) => (
+                    <option key={key} value={key}>
+                      {HEAT_PROTOCOL_LABELS[key]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Température cible (°C)</label>
+                <input
+                  type="number"
+                  step={0.5}
+                  value={campMeta.targetTemperatureC ?? ''}
+                  onChange={(e) =>
+                    handleAltitudeCampChange(
+                      'targetTemperatureC',
+                      e.target.value === '' ? undefined : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className={lightInputClass}
+                  placeholder="Ex: 35"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Humidité cible (%)</label>
+                <input
+                  type="number"
+                  value={campMeta.targetHumidityPercent ?? ''}
+                  onChange={(e) =>
+                    handleAltitudeCampChange(
+                      'targetHumidityPercent',
+                      e.target.value === '' ? undefined : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className={lightInputClass}
+                  placeholder="Ex: 40"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Durée expo. type (min)</label>
+                <input
+                  type="number"
+                  value={campMeta.heatSessionMinutes ?? ''}
+                  onChange={(e) =>
+                    handleAltitudeCampChange(
+                      'heatSessionMinutes',
+                      e.target.value === '' ? undefined : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className={lightInputClass}
+                  placeholder="Ex: 45"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Notes chaleur / acclimatation</label>
+                <textarea
+                  value={campMeta.heatNotes || ''}
+                  onChange={(e) => handleAltitudeCampChange('heatNotes', e.target.value)}
+                  rows={2}
+                  className={lightInputClass}
+                  placeholder="Ex: sauna post-séance 3×/sem · hydratation + sodium · surveillance FC / USG…"
+                />
+              </div>
+            </>
+          )}
+          {(campMeta.isAltitudeCamp || campMeta.isHeatCamp) && (
+              <div className="md:col-span-2 rounded-lg border border-slate-600 bg-slate-800/80 p-4 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">
+                    Références athlètes (altitude / chaleur)
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Altitude équivalente (tente / chambre) et/ou protocole chaleur individuel.
+                  </p>
+                </div>
+                {selectedCampRiders.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">
+                    Sélectionnez des athlètes sur le stage pour définir leurs altitudes de référence.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs text-slate-200">
+                      <thead className="text-slate-300 bg-slate-700/80">
+                        <tr>
+                          <th className="text-left px-2 py-1.5 font-semibold">Athlète</th>
+                          {campMeta.isAltitudeCamp && (
+                            <>
+                              <th className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">
+                                Alt. réf. (m)
+                              </th>
+                              <th className="text-left px-2 py-1.5 font-semibold">Hypoxie</th>
+                            </>
+                          )}
+                          {campMeta.isHeatCamp && (
+                            <>
+                              <th className="text-left px-2 py-1.5 font-semibold">Chaleur</th>
+                              <th className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">
+                                Temp. (°C)
+                              </th>
+                              <th className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">
+                                Expo. (min)
+                              </th>
+                            </>
+                          )}
+                          <th className="text-left px-2 py-1.5 font-semibold">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-sky-100">
+                        {selectedCampRiders.map((rider) => {
+                          const ref = findAthleteAltitudeRef(
+                            formData.campAthleteAltitudeRefs,
+                            rider.id,
+                          );
+                          return (
+                            <tr key={rider.id}>
+                              <td className="px-2 py-1.5 font-medium text-gray-800 whitespace-nowrap">
+                                {rider.firstName} {rider.lastName}
+                              </td>
+                              {campMeta.isAltitudeCamp && (
+                                <>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="number"
+                                  value={ref?.referenceAltitudeMeters ?? ''}
+                                  onChange={(e) =>
+                                    handleAthleteAltitudeRefChange(rider.id, {
+                                      referenceAltitudeMeters:
+                                        e.target.value === ''
+                                          ? undefined
+                                          : parseFloat(e.target.value) || 0,
+                                    })
+                                  }
+                                  className={`${lightInputClass} w-24`}
+                                  placeholder={
+                                    campMeta.sleepingAltitudeMeters != null
+                                      ? String(campMeta.sleepingAltitudeMeters)
+                                      : campMeta.altitudeMeters != null
+                                        ? String(campMeta.altitudeMeters)
+                                        : 'Ex: 2500'
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <select
+                                  value={ref?.hypoxicSetup || 'natural'}
+                                  onChange={(e) =>
+                                    handleAthleteAltitudeRefChange(rider.id, {
+                                      hypoxicSetup: e.target.value as HypoxicSetupType,
+                                    })
+                                  }
+                                  className={`${lightInputClass} min-w-[9rem]`}
+                                >
+                                  {(Object.keys(HYPOXIC_SETUP_LABELS) as HypoxicSetupType[]).map(
+                                    (key) => (
+                                      <option key={key} value={key}>
+                                        {HYPOXIC_SETUP_LABELS[key]}
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+                              </td>
+                                </>
+                              )}
+                              {campMeta.isHeatCamp && (
+                                <>
+                                  <td className="px-2 py-1.5">
+                                    <select
+                                      value={ref?.heatSetup || 'none'}
+                                      onChange={(e) =>
+                                        handleAthleteAltitudeRefChange(rider.id, {
+                                          heatSetup: e.target.value as HeatSetupType,
+                                        })
+                                      }
+                                      className={`${lightInputClass} min-w-[9rem]`}
+                                    >
+                                      {(Object.keys(HEAT_SETUP_LABELS) as HeatSetupType[]).map(
+                                        (key) => (
+                                          <option key={key} value={key}>
+                                            {HEAT_SETUP_LABELS[key]}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <input
+                                      type="number"
+                                      step={0.5}
+                                      value={ref?.heatTargetTemperatureC ?? ''}
+                                      onChange={(e) =>
+                                        handleAthleteAltitudeRefChange(rider.id, {
+                                          heatTargetTemperatureC:
+                                            e.target.value === ''
+                                              ? undefined
+                                              : parseFloat(e.target.value) || 0,
+                                        })
+                                      }
+                                      className={`${lightInputClass} w-20`}
+                                      placeholder={
+                                        campMeta.targetTemperatureC != null
+                                          ? String(campMeta.targetTemperatureC)
+                                          : '°C'
+                                      }
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <input
+                                      type="number"
+                                      value={ref?.heatExposureMinutes ?? ''}
+                                      onChange={(e) =>
+                                        handleAthleteAltitudeRefChange(rider.id, {
+                                          heatExposureMinutes:
+                                            e.target.value === ''
+                                              ? undefined
+                                              : parseFloat(e.target.value) || 0,
+                                        })
+                                      }
+                                      className={`${lightInputClass} w-20`}
+                                      placeholder={
+                                        campMeta.heatSessionMinutes != null
+                                          ? String(campMeta.heatSessionMinutes)
+                                          : 'min'
+                                      }
+                                    />
+                                  </td>
+                                </>
+                              )}
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  value={ref?.notes || ''}
+                                  onChange={(e) =>
+                                    handleAthleteAltitudeRefChange(rider.id, {
+                                      notes: e.target.value,
+                                    })
+                                  }
+                                  className={lightInputClass}
+                                  placeholder="FiO₂, sauna, heures…"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+          )}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700">Objectifs / focus du stage</label>
+            <textarea
+              value={campMeta.focusNotes || ''}
+              onChange={(e) => handleAltitudeCampChange('focusNotes', e.target.value)}
+              rows={2}
+              className={lightInputClass}
+              placeholder="Ex: volume aérobie, acclimatation chaleur, tests PPR…"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-slate-300 space-y-2">
+          <p>
+            <strong className="text-white">Altitude :</strong>{' '}
+            {campMeta.isAltitudeCamp
+              ? `Oui${campMeta.altitudeMeters ? ` · ${campMeta.altitudeMeters} m` : ''}${
+                  campMeta.sleepingAltitudeMeters
+                    ? ` · sommeil ${campMeta.sleepingAltitudeMeters} m`
+                    : ''
+                }`
+              : 'Non'}
+          </p>
+          {campMeta.isAltitudeCamp && campMeta.protocol && (
+            <p>
+              <strong className="text-white">Protocole altitude :</strong> {ALTITUDE_PROTOCOL_LABELS[campMeta.protocol]}
+            </p>
+          )}
+          {campMeta.hypoxiaNotes && (
+            <p>
+              <strong className="text-white">Hypoxie / acclimatation :</strong> {campMeta.hypoxiaNotes}
+            </p>
+          )}
+          <p>
+            <strong className="text-white">Chaleur :</strong>{' '}
+            {campMeta.isHeatCamp
+              ? `Oui${
+                  campMeta.targetTemperatureC != null
+                    ? ` · ${campMeta.targetTemperatureC} °C`
+                    : ''
+                }${
+                  campMeta.targetHumidityPercent != null
+                    ? ` · ${campMeta.targetHumidityPercent} % HR`
+                    : ''
+                }${
+                  campMeta.heatSessionMinutes != null
+                    ? ` · ${campMeta.heatSessionMinutes} min`
+                    : ''
+                }`
+              : 'Non'}
+          </p>
+          {campMeta.isHeatCamp && campMeta.heatProtocol && (
+            <p>
+              <strong className="text-white">Protocole chaleur :</strong> {HEAT_PROTOCOL_LABELS[campMeta.heatProtocol]}
+            </p>
+          )}
+          {campMeta.heatNotes && (
+            <p>
+              <strong className="text-white">Notes chaleur :</strong> {campMeta.heatNotes}
+            </p>
+          )}
+          {(formData.campAthleteAltitudeRefs || []).some(
+            (r) => r.referenceAltitudeMeters != null || (r.hypoxicSetup && r.hypoxicSetup !== 'natural'),
+          ) && (
+            <div className="mt-2 pt-3 border-t border-slate-700">
+              <p className="font-medium text-white mb-1">Altitude de référence athlètes</p>
+              <ul className="space-y-0.5 text-slate-300">
+                {selectedCampRiders.map((rider) => {
+                  const ref = findAthleteAltitudeRef(formData.campAthleteAltitudeRefs, rider.id);
+                  if (
+                    !ref ||
+                    (ref.referenceAltitudeMeters == null &&
+                      (!ref.hypoxicSetup || ref.hypoxicSetup === 'natural'))
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <li key={rider.id}>
+                      {rider.firstName} {rider.lastName}
+                      {ref.referenceAltitudeMeters != null
+                        ? ` · ${ref.referenceAltitudeMeters} m`
+                        : ''}
+                      {ref.hypoxicSetup
+                        ? ` · ${HYPOXIC_SETUP_LABELS[ref.hypoxicSetup]}`
+                        : ''}
+                      {ref.notes ? ` — ${ref.notes}` : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {campMeta.focusNotes && (
+            <p>
+              <strong className="text-white">Focus :</strong> {campMeta.focusNotes}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-semibold text-gray-700">Informations Générales, Course & Radio</h3>
+        <h3 className="text-xl font-semibold text-gray-700">
+          {trainingCamp
+            ? 'Informations du stage'
+            : 'Informations Générales, Course & Radio'}
+        </h3>
         {!isEditing && (
           <ActionButton onClick={() => { setFormData(prev => applyStageRaceSync(prev)); setIsEditing(true); }} variant="primary">
             Modifier les Informations
@@ -553,9 +1102,15 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 <input type="date" name="date" id="date" value={formData.date} onChange={handleMainFormInputChange} required className={lightInputClass} />
               </div>
               <div>
-                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">Date de fin (course à étapes)</label>
+                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
+                  {trainingCamp ? 'Date de fin du stage' : 'Date de fin (course à étapes)'}
+                </label>
                 <input type="date" name="endDate" id="endDate" value={formData.endDate || ''} onChange={handleMainFormInputChange} min={formData.date} className={lightInputClass} />
-                <p className="mt-1 text-xs text-gray-500">Date de fin différente du début pour activer la logistique par étape.</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {trainingCamp
+                    ? 'Durée du camp (arrivée → départ).'
+                    : 'Date de fin différente du début pour activer la logistique par étape.'}
+                </p>
               </div>
               <div>
                 <label htmlFor="location" className="block text-sm font-medium text-gray-700">Lieu (référence / ville hôte)</label>
@@ -569,12 +1124,21 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
               </div>
               <div>
                 <label htmlFor="eventType" className="block text-sm font-medium text-gray-700">Type Événement</label>
-                <select name="eventType" id="eventType" value={formData.eventType} onChange={(e) => handleMainFormInputChange(e, 'eventType')} required className={`${lightInputClass} w-full`}>
-                    {Object.values(EventType).map(type => <option key={type} value={type}>{type}</option>)}
+                <select
+                  name="eventType"
+                  id="eventType"
+                  value={normalizeEventType(formData.eventType)}
+                  onChange={(e) => handleMainFormInputChange(e, 'eventType')}
+                  required
+                  className={`${lightInputClass} w-full`}
+                >
+                    {EVENT_TYPE_FORM_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}
                 </select>
               </div>
               <div className="lg:col-span-2">
-                <label htmlFor="eligibleCategory" className="block text-sm font-medium text-gray-700">Catégorie de l'épreuve</label>
+                <label htmlFor="eligibleCategory" className="block text-sm font-medium text-gray-700">
+                  {trainingCamp ? 'Public / catégorie concernée' : "Catégorie de l'épreuve"}
+                </label>
                 <input 
                   type="text"
                   name="eligibleCategory" 
@@ -583,7 +1147,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                   onChange={(e) => handleMainFormInputChange(e, 'eligibleCategory')} 
                   required 
                   className={`${lightInputClass} w-full`} 
-                  placeholder="Ex: Elite Nationale, UCI 1.1, etc."
+                  placeholder={trainingCamp ? 'Ex: Effectif pro, Espoirs…' : 'Ex: Elite Nationale, UCI 1.1, etc.'}
                 />
               </div>
             </div>
@@ -626,7 +1190,11 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             </div>
           </fieldset>
           
-          {stageRace ? renderStageRaceSection('edit') : (
+          {trainingCamp
+            ? renderTrainingCampSection('edit')
+            : competitiveStageRace
+              ? renderStageRaceSection('edit')
+              : (
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-1">Informations Spécifiques Course</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
@@ -659,6 +1227,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             </fieldset>
           )}
 
+          {!trainingCamp && (
           <fieldset className="border p-4 rounded-md">
             <legend className="text-lg font-medium text-gray-700 px-1">Communication Radio</legend>
             <div className="mb-3">
@@ -727,6 +1296,52 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                 )}
             </div>
           </fieldset>
+          )}
+
+          {isCompetitiveEvent(formData) && (
+          <fieldset className="border p-4 rounded-md bg-gray-50 mt-4">
+            <legend className="text-md font-semibold text-gray-600 px-1">{t('organizerSectionTitle')}</legend>
+            <p className="text-xs text-gray-500 mb-3">{t('organizerSectionHelp')}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">{t('organizerEntity')}</label>
+                <input
+                  type="text"
+                  value={formData.organizerContact?.organizingEntity || ''}
+                  onChange={(e) => handleOrganizerInputChange('organizingEntity', e.target.value)}
+                  className={lightInputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactName')}</label>
+                <input
+                  type="text"
+                  value={formData.organizerContact?.contactName || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactName', e.target.value)}
+                  className={lightInputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactEmail')}</label>
+                <input
+                  type="email"
+                  value={formData.organizerContact?.contactEmail || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactEmail', e.target.value)}
+                  className={lightInputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactPhone')}</label>
+                <input
+                  type="tel"
+                  value={formData.organizerContact?.contactPhone || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactPhone', e.target.value)}
+                  className={lightInputClass}
+                />
+              </div>
+            </div>
+          </fieldset>
+          )}
 
           <div className="flex justify-end space-x-3 pt-4">
             <ActionButton type="button" variant="secondary" onClick={handleCancelAll}>Annuler</ActionButton>
@@ -742,11 +1357,23 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                     <div><p><strong>Date:</strong> {formatEventDateRange(formData)}</p></div>
                     <div className="lg:col-span-1"><p><strong>Lieu:</strong> {formData.location}</p></div>
                     <div><p><strong>Discipline:</strong> {formData.discipline || 'N/A'}</p></div>
-                    <div><p><strong>Type:</strong> {formData.eventType}</p></div>
+                    <div><p><strong>Type:</strong> {normalizeEventType(formData.eventType)}</p></div>
                 </div>
                  <div className="mt-2 pt-2 border-t text-sm">
-                    <p><strong>Catégorie Épreuve:</strong> {getCategoryLabel(formData.eligibleCategory) || 'N/A'}</p>
+                    <p><strong>{trainingCamp ? 'Public / catégorie :' : 'Catégorie Épreuve :'}</strong> {getCategoryLabel(formData.eligibleCategory) || 'N/A'}</p>
                  </div>
+                 {isCompetitiveEvent(formData) && formData.organizerContact?.contactEmail && (
+                   <div className="mt-3 pt-3 border-t text-sm">
+                     <p className="font-semibold text-gray-600 mb-1">{t('organizerSectionTitle')}</p>
+                     <p><strong>{t('organizerEntity')}:</strong> {formData.organizerContact.organizingEntity || '—'}</p>
+                     <p><strong>{t('organizerContactName')}:</strong> {formData.organizerContact.contactName || '—'}</p>
+                     <p><strong>{t('organizerContactEmail')}:</strong>{' '}
+                       <a href={`mailto:${formData.organizerContact.contactEmail}`} className="text-blue-600 hover:underline">
+                         {formData.organizerContact.contactEmail}
+                       </a>
+                     </p>
+                   </div>
+                 )}
                  
                  {/* Affichage des limites de sélection des athlètes */}
                  <div className="mt-3 pt-3 border-t border-gray-200">
@@ -771,7 +1398,11 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                  </div>
             </fieldset>
             
-            {stageRace ? renderStageRaceSection('view') : (
+            {trainingCamp
+              ? renderTrainingCampSection('view')
+              : competitiveStageRace
+                ? renderStageRaceSection('view')
+                : (
               <fieldset className="border p-4 rounded-md bg-gray-50">
                   <legend className="text-md font-semibold text-gray-600 px-1">Informations Spécifiques Course</legend>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-700">
@@ -795,6 +1426,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
               </fieldset>
             )}
 
+            {!trainingCamp && (
             <fieldset className="border p-4 rounded-md bg-gray-50">
                 <legend className="text-md font-semibold text-gray-600 px-1">Communication Radio</legend>
                 <div className="text-sm text-gray-700 space-y-1">
@@ -815,6 +1447,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
                     </div>
                 </div>
             </fieldset>
+            )}
         </div>
       )}
 

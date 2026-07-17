@@ -6,6 +6,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import { TrashIcon, UserGroupIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { deleteData } from '../services/firebaseService';
 import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
+import { isSuperAdminUser } from '../utils/superAdminUtils';
 
 interface SuperAdminSectionProps {
   riders: Rider[];
@@ -31,10 +32,7 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [showDuplicates, setShowDuplicates] = useState(false);
 
-  // Vérifier si l'utilisateur est super admin (basé sur l'email)
-  const isSuperAdmin = currentUser?.email === 'ds.lanesterwomen@gmail.com' || 
-                      currentUser?.email === 'anthony.uldry@example.com' ||
-                      currentUser?.email?.includes('admin');
+  const isSuperAdmin = isSuperAdminUser(currentUser);
 
   if (!isSuperAdmin) {
     return (

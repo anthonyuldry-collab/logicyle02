@@ -1,0 +1,8 @@
+hypothese,mois_reference,seuil_equipes_base,seuil_equipes_stresse,delta_equipes,delta_pct
+ARPU −20 % (discount / mix Club),24,223,278,55,25.0
+ARPU +20 % (upsell Pro),24,223,186,-37,-17.0
+COGS −20 % (optimisation infra),24,223,214,-9,-4.0
+COGS +20 % (usage Gemini ↑),24,223,232,9,4.0
+Fixes −20 % (bootstrap),24,223,178,-45,-20.0
+Fixes +20 % (embauche anticipée),24,223,267,44,20.0
+Churn +15 % (rétention ↓),24,223,257,34,15.0

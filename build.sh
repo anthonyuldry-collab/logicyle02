@@ -137,6 +137,13 @@ if [ -d "dist" ]; then
         echo "❌ Dossier assets manquant"
         exit 1
     fi
+
+    if [ -f "dist/sw.js" ] || [ -f "dist/service-worker.js" ]; then
+        echo "✅ Service worker PWA généré"
+    else
+        echo "❌ Service worker PWA manquant"
+        exit 1
+    fi
 else
     echo "❌ Build échoué !"
     exit 1

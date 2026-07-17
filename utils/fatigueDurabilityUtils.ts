@@ -285,8 +285,10 @@ export function computeDurabilityBenchmarks(
 }
 
 /** Rapport complet : stats globales + découpage par catégorie d'âge */
+type FatigueAnalysisRider = FatigueAnalysisSubject & { id: string; birthDate?: string; firstName?: string; lastName?: string };
+
 export function computeFatigueAnalysisReport(
-  riders: Rider[],
+  riders: FatigueAnalysisRider[],
   season: number,
   winnerRiderIds: Set<string>
 ): FatigueAnalysisReport {
@@ -314,7 +316,7 @@ export function computeFatigueAnalysisReport(
 
 /** Détecte les coureuses au-dessus des repères (avec justification chiffrée) */
 export function detectDurabilityPotentials(
-  riders: Rider[],
+  riders: FatigueAnalysisRider[],
   benchmarks: DurabilityBenchmarkCell[],
   winnerRiderIds: Set<string>,
   categoryFilter: string = 'all',

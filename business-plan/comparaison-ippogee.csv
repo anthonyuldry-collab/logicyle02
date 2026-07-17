@@ -1,0 +1,9 @@
+mois,annee,ippogee_arr_estime,ippogee_valorisation_estime,logicycle_arr,logicycle_valorisation,logicycle_equipes,logicycle_independants,leader_valorisation,leader_arr,notes
+12,Y1,0,500000,111023.0,999209.0,69.0,492.0,LogiCycle,LogiCycle,Ippogee mature · LC : go-live FR+EN · ~70 équipes
+24,Y2,1200000,3000000,357078.0,4320648.0,191.9,1527.0,LogiCycle,Ippogee,LC : Seed · wedge WT · val > Ippogee
+36,Y3,2500000,8000000,770397.0,11247799.0,358.4,2944.0,LogiCycle,Ippogee,LC : marketplace mature · ARR < Ippogee · val >
+48,Y4,3500000,12000000,1586530.0,27129662.0,607.3,4926.0,LogiCycle,Ippogee,LC : Series A · val ~2× Ippogee · ARR encore <
+60,Y5,4500000,16000000,2426720.0,38584844.0,855.5,6771.0,LogiCycle,Ippogee,"LC : ~2,4 M€ ARR · ~38 M€ val · Ippogee leader ARR WT"
+72,Y6,5500000,18000000,3024416.0,47180894.0,1022.6,7522.0,LogiCycle,Ippogee,"LC : rattrapage ARR via clubs+indép. · val ×2,5"
+84,Y7,6000000,20000000,3462240.0,54010945.0,1195.4,8301.0,LogiCycle,Ippogee,"Ippogee plafond ~6 M€ · LC ~3,5 M€ ARR · ~53 M€ val"
+120,Y10,6000000,20000000,4980117.0,77689820.0,1672.1,10194.0,LogiCycle,Ippogee,Y10 : LC ~5 M€ ARR + camp/wellness · ~78–80 M€ val

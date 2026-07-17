@@ -10,11 +10,13 @@ export const isValidRidersArray = (riders: any): riders is Rider[] => {
 /**
  * Trouve un coureur par email de manière sécurisée
  */
-export const findRiderByEmail = (riders: any, email: string): Rider | undefined => {
+export const findRiderByEmail = (riders: any, email: string, userId?: string): Rider | undefined => {
     if (!isValidRidersArray(riders)) {
         return undefined;
     }
-    return riders.find(r => r.email === email);
+    return riders.find(
+      (r) => r.email === email || (userId != null && r.id === userId)
+    );
 };
 
 export const getRiderCharacteristic = (rider: Rider, key: string): number => {
@@ -32,7 +34,10 @@ export const getRiderCharacteristic = (rider: Rider, key: string): number => {
     return 0;
 };
 
-export const getRiderCharacteristicSafe = (rider: Rider | null | undefined, key: string): number => {
+export const getRiderCharacteristicSafe = (
+    rider: object | null | undefined,
+    key: string,
+): number => {
     if (!rider) return 0;
-    return getRiderCharacteristic(rider, key);
+    return getRiderCharacteristic(rider as Rider, key);
 };

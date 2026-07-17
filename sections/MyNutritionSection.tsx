@@ -3,6 +3,7 @@ import { Rider, User, TeamProduct, AllergyItem } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import BeakerIcon from '../components/icons/BeakerIcon';
+import { formatProductNutritionSummary, formatGlucoseFructoseRatio } from '../utils/nutritionProductUtils';
 import PlusCircleIcon from '../components/icons/PlusCircleIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 
@@ -50,8 +51,11 @@ const MyNutritionSection: React.FC<MyNutritionSectionProps> = ({
     
     const newAllergy: AllergyItem = {
       id: `allergy_${Date.now()}`,
-      allergen,
-      severity: severity as any,
+      allergenKey: 'CUSTOM',
+      customAllergenName: allergen,
+      severity: severity as AllergyItem['severity'],
+      regimeDetails: '',
+      isCeliacDisease: false,
       notes: notes || ''
     };
     
@@ -343,15 +347,23 @@ const MyNutritionSection: React.FC<MyNutritionSectionProps> = ({
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Produits de l'Équipe</h3>
         {teamProducts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teamProducts.map(product => (
+            {teamProducts.map(product => {
+              const summary = formatProductNutritionSummary(product);
+              const ratio = formatGlucoseFructoseRatio(product.glucose, product.fructose);
+              return (
               <div key={product.id} className="p-4 border border-gray-200 rounded-lg">
                 <h4 className="font-medium text-gray-900">{product.name}</h4>
                 <p className="text-sm text-gray-600">{product.brand}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {product.type} • {product.carbs}g glucides
+                  {product.type}
+                  {summary && ` • ${summary}`}
+                  {ratio && ` • ratio G:F ${ratio}`}
                 </p>
+                {product.composition && (
+                  <p className="text-xs text-gray-500 mt-2 line-clamp-3">{product.composition}</p>
+                )}
               </div>
-            ))}
+            );})}
           </div>
         ) : (
           <p className="text-gray-500 text-center py-4">Aucun produit disponible</p>

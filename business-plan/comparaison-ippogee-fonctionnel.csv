@@ -1,0 +1,20 @@
+domaine,ippogee,logicycle,verdict,priorite_commerciale
+Planning saison,"Multi-équipes, congés",Season planning + holding + archives,LogiCycle,Haute
+Convocations,Digitales + suivi,PDF + push FCM + accepter/refuser,LogiCycle,Haute
+Logistique course,Summons + transport,12 onglets événement,LogiCycle,Haute
+RH / contrats / paie,Profond WT · contrats · SEPA,Contrats + paie + OCR + SEPA pain.001/008,Égal,Haute
+Facturation ERP,"Devis, factures, prélèvements",Devis → facture → FEC → rapprochement,LogiCycle,Haute
+Performance / PPR,Basique,"PPR, peer review, spider, fatigue/durabilité",LogiCycle,Critique WT
+Suivi stage / camp,Basique ou absent,Wellness 1–5 · urine/USG · SpO2 · tests PMA · altitude,LogiCycle,Unique
+Scouting inter-équipes,Non,Demandes consent-based · profils indép.,LogiCycle,Unique
+Profils indépendants,Non,Coureur 9 € · Staff 12 €/mois,LogiCycle,Unique
+Marketplace vacataires,Non,12 % GMV · Stripe Connect,LogiCycle,Unique
+Flotte / GPS,GPS natif intégré WT,GPS mobile + Traccar webhook + carte live,Ippogee,Moyenne
+Stocks / matériel,Codes-barres · multi-entrepôts WT,Scan web + transferts + bike fit UCI,Égal,Moyenne
+Formulaires UCI,Workflows WT intégrés,Workflow 5 étapes + PDF J-20/J-3,Égal,Moyenne
+App mobile,Native iOS / Android,PWA + FCM · Capacitor stores T2 2026,Ippogee,Moyenne
+Portail partenaires,Ipogee Partner app,Portail web 3 onglets + PDF sponsor,LogiCycle,Moyenne
+Multi-équipes / holding,Holding intégré WT,Vue holding + conflits sélections,LogiCycle,Haute
+RGPD,Partiel,Export · purge · audit cloud · GDPR panel,LogiCycle,Haute
+International / EN,FR uniquement,UI EN · double voie FR+WT · UK/US/AU,LogiCycle,Critique WT
+Prix / self-serve,12–50 K€/an · devis,390–2 990 €/an · Stripe · essai 14 j,LogiCycle,Critique

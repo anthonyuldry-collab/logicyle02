@@ -6,6 +6,8 @@ import ActionButton from '../../components/ActionButton';
 import { STAFF_ROLES_CONFIG } from '../../constants';
 import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
 import * as firebaseService from '../../services/firebaseService';
+import { exportUciStartListPdf } from '../../utils/uciFormExport';
+import { useTranslations } from '../../hooks/useTranslations';
 
 const EVENT_ROLE_KEYS: StaffRoleKey[] = [
   'managerId', 'directeurSportifId', 'assistantId', 'mecanoId', 'kineId', 'medecinId',
@@ -50,7 +52,7 @@ function getEventRoleKeyForStaffRole(role: StaffRole | string): StaffRoleKey | u
 
 function getStaffRoleKeyInEvent(event: RaceEvent, staffId: string): StaffRoleKey | null {
   for (const key of EVENT_ROLE_KEYS) {
-    const arr = (event as Record<string, unknown>)[key];
+    const arr = (event as unknown as Record<string, unknown>)[key];
     if (Array.isArray(arr) && arr.includes(staffId)) return key;
   }
   return null;
@@ -67,9 +69,19 @@ interface EventParticipantsTabProps {
   appState: AppState;
   riderEventSelections?: RiderEventSelection[];
   setRiderEventSelections?: React.Dispatch<React.SetStateAction<RiderEventSelection[]>>;
+  readOnly?: boolean;
 }
 
-const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, updateEvent, appState, riderEventSelections = [], setRiderEventSelections }) => {
+const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
+  event,
+  updateEvent,
+  appState,
+  riderEventSelections = [],
+  setRiderEventSelections,
+  readOnly = false,
+}) => {
+  const { t } = useTranslations();
+  const activeTeam = appState.teams?.find((tm) => tm.id === appState.activeTeamId);
   const [selectedRiderIds, setSelectedRiderIds] = useState<string[]>(event.selectedRiderIds || []);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>(event.selectedStaffIds || []);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>(event.selectedVehicleIds || []);
@@ -310,7 +322,7 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
                 )}
               </div>
             )}
-            <div className="max-h-48 overflow-y-auto space-y-1 p-2 border rounded-md bg-gray-50">
+            <div className="max-h-64 overflow-y-auto space-y-1 p-2 border rounded-md bg-gray-50">
               {filteredParticipants.length === 0 && (
                 <p className="text-sm text-gray-400 italic">
                   {allAvailableParticipants.length === 0
@@ -318,7 +330,59 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
                     : 'Aucun résultat pour ce filtre.'}
                 </p>
               )}
-              {filteredParticipants.map(p => (
+              {type === 'riders'
+                ? (() => {
+                    const principal = filteredParticipants.filter(
+                      (p) => (p as { rosterRole?: string }).rosterRole !== 'reserve',
+                    );
+                    const reserve = filteredParticipants.filter(
+                      (p) => (p as { rosterRole?: string }).rosterRole === 'reserve',
+                    );
+                    const sections = [
+                      { key: 'principal', label: 'Équipe 1', list: principal, accent: 'blue' },
+                      { key: 'reserve', label: 'Réserve', list: reserve, accent: 'amber' },
+                    ].filter((s) => s.list.length > 0);
+                    const renderRiderRow = (p: T) => (
+                      <div key={p.id} className="flex items-center gap-2 flex-wrap">
+                        <input
+                          type="checkbox"
+                          id={`${type}-${p.id}`}
+                          checked={selectedIds.includes(p.id)}
+                          onChange={() => onChange && type && onChange(p.id, type)}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 shrink-0"
+                          aria-labelledby={`label-${type}-${p.id}`}
+                        />
+                        <label
+                          id={`label-${type}-${p.id}`}
+                          htmlFor={`${type}-${p.id}`}
+                          className="ml-1 text-sm text-gray-700 shrink-0"
+                        >
+                          {p.name} {getParticipantDetails(p)}
+                        </label>
+                      </div>
+                    );
+                    if (sections.length <= 1) {
+                      return filteredParticipants.map(renderRiderRow);
+                    }
+                    return sections.map((section) => (
+                      <div key={section.key} className="space-y-1">
+                        <div
+                          className={`sticky top-0 z-[1] -mx-1 px-2 py-1 text-[11px] font-bold uppercase tracking-wide rounded ${
+                            section.accent === 'blue'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-900'
+                          }`}
+                        >
+                          {section.label}
+                          <span className="ml-1.5 font-semibold normal-case tracking-normal opacity-80">
+                            · {section.list.length}
+                          </span>
+                        </div>
+                        {section.list.map(renderRiderRow)}
+                      </div>
+                    ));
+                  })()
+                : filteredParticipants.map((p) => (
                 <div key={p.id} className="flex items-center gap-2 flex-wrap">
                   <input
                     type="checkbox"
@@ -348,30 +412,101 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({ event, upda
             </div>
           </>
         ) : (
-          <ul className="list-disc list-inside pl-1">
-            {selectedParticipants.map(participant => (
-              <li key={participant.id} className="text-sm text-gray-700">
-                {participant.name} {getParticipantDetails(participant)}
-              </li>
-            ))}
+          <ul className="list-none space-y-2 pl-0">
+            {type === 'riders' ? (
+              (() => {
+                const principal = selectedParticipants.filter(
+                  (p) => (p as { rosterRole?: string }).rosterRole !== 'reserve',
+                );
+                const reserve = selectedParticipants.filter(
+                  (p) => (p as { rosterRole?: string }).rosterRole === 'reserve',
+                );
+                return (
+                  <>
+                    {principal.length > 0 && (
+                      <li>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700 mb-1">
+                          Équipe 1 · {principal.length}
+                        </p>
+                        <ul className="list-disc list-inside pl-1 space-y-0.5">
+                          {principal.map((participant) => (
+                            <li key={participant.id} className="text-sm text-gray-700">
+                              {participant.name} {getParticipantDetails(participant)}
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    )}
+                    {reserve.length > 0 && (
+                      <li>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-amber-800 mb-1">
+                          Réserve · {reserve.length}
+                        </p>
+                        <ul className="list-disc list-inside pl-1 space-y-0.5">
+                          {reserve.map((participant) => (
+                            <li key={participant.id} className="text-sm text-gray-700">
+                              {participant.name} {getParticipantDetails(participant)}
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    )}
+                  </>
+                );
+              })()
+            ) : (
+              selectedParticipants.map((participant) => (
+                <li key={participant.id} className="text-sm text-gray-700 list-disc list-inside">
+                  {participant.name} {getParticipantDetails(participant)}
+                </li>
+              ))
+            )}
           </ul>
         )}
       </div>
     );
   }
 
-  const ridersWithNames = appState.riders.map(r => ({ ...r, name: `${r.firstName} ${r.lastName}` }));
+  const ridersWithNames = [...appState.riders]
+    .sort((a, b) => {
+      const aRole = a.rosterRole === 'reserve' ? 1 : 0;
+      const bRole = b.rosterRole === 'reserve' ? 1 : 0;
+      if (aRole !== bRole) return aRole - bRole;
+      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`, 'fr');
+    })
+    .map((r) => ({ ...r, name: `${r.firstName} ${r.lastName}` }));
   const staffWithNames = appState.staff.map(s => ({ ...s, name: `${s.firstName} ${s.lastName}` }));
 
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center">
+       <div className="flex justify-between items-center flex-wrap gap-2">
         <h3 className="text-xl font-semibold text-gray-700">Participants à l'Événement</h3>
-        {!isEditing && (
+        <div className="flex gap-2">
+          {!readOnly && activeTeam && selectedRiderIds.length > 0 && (
+            <ActionButton
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const riders = appState.riders.filter((r) => selectedRiderIds.includes(r.id));
+                const staff = appState.staff.filter((s) => selectedStaffIds.includes(s.id));
+                exportUciStartListPdf(
+                  activeTeam,
+                  event,
+                  riders,
+                  staff,
+                  riderEventSelections
+                );
+              }}
+            >
+              {t('exportUciStartList')}
+            </ActionButton>
+          )}
+        {!readOnly && !isEditing && (
           <ActionButton onClick={() => setIsEditing(true)} variant="primary">
             Modifier les Participants
           </ActionButton>
         )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -1,0 +1,8 @@
+scenario,lancement,horizon_mois,mois_objectif_15k,date_objectif_15k,mois_objectif_100M,date_objectif_100M,arr_final,equipes_final,independants_final,clients_multisport_final,organisateurs_final,coachs_tri_final,coachs_running_final,mrr_multisport_final,part_mrr_multisport_final,mrr_independants_final,mrr_marketplace_final,gmv_marketplace_annuel,part_mrr_international_final,marge_brute_pct_final,valorisation_final,depasse_ippogee,depasse_100M,effectif_final,salaire_fondateur_final
+Accéléré (objectif 15K),décembre 2027,60,41,avr. 2031,>horizon,>horizon,1474348.0,682.8,4239.0,0,0,0,0,0,0,34761.0,10031.0,1216752.0,22.0,84.9,19019089.0,OUI,NON,8,15000
+Leader Europe (objectif 100M€),décembre 2027,120,39,fév. 2031,89,avr. 2035,9780633.0,3675.6,22939.0,0,0,0,0,0,0,188100.0,72432.0,9006192.0,54.0,85.3,172139146.0,OUI,OUI,14,18000
+Leader Dual-Track (FR + EN/WT),décembre 2027,120,45,août 2031,>horizon,>horizon,4980117.0,1672.1,10194.0,0,0,0,0,0,0,83588.0,32949.0,4096956.0,58.0,86.6,77689820.0,OUI,NON,11,5000
+Upside international (stretch),décembre 2027,120,33,août 2030,73,déc. 2033,11494521.0,4134.6,24926.0,0,0,0,0,0,0,204394.0,81476.0,10130724.0,68.0,86.1,229890429.0,OUI,OUI,4,5000
+Leader Multisport (cyclisme + tri + run),décembre 2027,120,45,août 2031,102,mai 2036,6444305.0,1672.1,10194.0,4552.0,323.0,1094.0,1450.0,122016.0,22.7,83588.0,32949.0,4096956.0,58.0,87.1,117608570.0,OUI,OUI,11,5000
+Bootstrap solo,décembre 2027,60,41,avr. 2031,>horizon,>horizon,1001758.0,495.3,2386.0,0,0,0,0,0,0,19567.0,7277.0,882684.0,22.0,85.0,12421793.0,NON,NON,4,15000
+Optimiste,décembre 2027,60,37,déc. 2030,>horizon,>horizon,2218609.0,1054.1,5960.0,0,0,0,0,0,0,48872.0,15487.0,1878432.0,22.0,85.0,33057272.0,OUI,NON,4,15000

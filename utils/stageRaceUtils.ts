@@ -15,6 +15,12 @@ import { isStageRace, parseEventDate } from './dateUtils';
 
 export { isStageRace };
 
+/** Course avec étape(s) ou journée en contre-la-montre. */
+export function eventHasTimeTrial(event: Pick<RaceEvent, 'raceInfo'>): boolean {
+  if (event.raceInfo?.isTimeTrial) return true;
+  return Boolean(event.raceInfo?.stageDays?.some(stage => stage.isTimeTrial));
+}
+
 /** Marge d'arrivée équipe sur site avant le 1er départ d'un chrono (1h30). */
 export const TIME_TRIAL_TEAM_ARRIVAL_LEAD_MINUTES = 90;
 
@@ -171,7 +177,7 @@ export const createRaceFollowerVehicle = (event: RaceEvent): StageRavitoVehicle 
   return {
     ...createEmptyRavitoVehicle(StageRaceVehicleKind.RACE_FOLLOWER),
     directeurSportifStaffId: dsId,
-    mecanoStaffId,
+    mecanoStaffId: mecanoId,
     staffOccupantIds,
   };
 };

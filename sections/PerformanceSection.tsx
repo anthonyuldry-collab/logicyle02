@@ -366,7 +366,11 @@ export const PerformanceSection: React.FC<{ appState: AppState }> = ({ appState 
 
             {/* Contenu des onglets du coureur */}
             {activeRiderTab === 'ppr' && (
-              <PerformanceProjectTab rider={selectedRider} />
+              <PerformanceProjectTab
+                formData={selectedRider}
+                handleInputChange={() => {}}
+                formFieldsEnabled={false}
+              />
             )}
             {activeRiderTab === 'project' && (
               <div className="p-4">
@@ -374,7 +378,11 @@ export const PerformanceSection: React.FC<{ appState: AppState }> = ({ appState 
               </div>
             )}
             {activeRiderTab === 'results' && (
-              <ResultsTab rider={selectedRider} />
+              <ResultsTab
+                formData={selectedRider}
+                formFieldsEnabled={false}
+                setFormData={() => {}}
+              />
             )}
           </div>
         </Modal>

@@ -1,0 +1,9 @@
+phase,mois,couts_fixes_hors_fondateur,cout_fondateur_employeur,couts_fixes_total,arpu_equipe_blended,cogs_variable_equipe,contribution_marge_equipe,contribution_marge_indep,seuil_equipes_seules,seuil_mixte_65_35,seuil_equipes_avec_fondateur,seuil_mixte_avec_fondateur,mrr_seuil_point_mort,commentaire
+Y1 solo (M6),6,3750.0,4667.0,8417.0,74.0,12.0,62.0,6.9,61,88,136,198,9787.0,Point mort opérationnel ~198 clients mixtes · 15K net réel M45 (dividendes)
+Y1 fin (M12),12,3750.0,4667.0,8417.0,74.0,12.0,62.0,6.9,61,88,136,198,9787.0,Point mort opérationnel ~198 clients mixtes · 15K net réel M45 (dividendes)
+Y2 lean (M18),18,6350.0,4667.0,11017.0,79.0,13.0,66.0,6.9,97,140,167,243,12810.0,Point mort opérationnel ~243 clients mixtes · 15K net réel M45 (dividendes)
+Y2 Seed (M24),24,10946.0,4667.0,15613.0,84.0,14.0,70.0,6.9,156,228,223,325,18154.0,Point mort opérationnel ~325 clients mixtes · 15K net réel M45 (dividendes)
+Y3 équipe (M30),30,19690.0,9333.0,29023.0,91.0,15.0,76.0,6.9,259,380,382,560,33748.0,Point mort opérationnel ~560 clients mixtes · 15K net réel M45 (dividendes)
+Y3 scale (M36),36,23360.0,9333.0,32693.0,98.0,16.0,82.0,6.9,285,419,399,587,38016.0,Point mort opérationnel ~587 clients mixtes · 15K net réel M45 (dividendes)
+Y4 Series A (M48),48,41970.0,9333.0,51303.0,106.0,17.0,89.0,6.9,472,696,576,851,59655.0,Point mort opérationnel ~851 clients mixtes · 15K net réel M45 (dividendes)
+Y5 leader (M60),60,42437.0,9333.0,51770.0,114.0,18.0,96.0,6.9,442,654,539,798,60198.0,Point mort opérationnel ~798 clients mixtes · 15K net réel M45 (dividendes)

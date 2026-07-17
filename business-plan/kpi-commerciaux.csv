@@ -1,0 +1,5 @@
+horizon,equipes_nouvelles_mois,missions_publiees_mois,missions_payees_mois,gmv_marketplace_mois_eur,independants_net_new_mois,churn_equipes_pct,pipeline_arr_90j_eur
+M6,2,5,2,1500,25,1.0,30000
+M18,3,20,15,12000,45,0.8,150000
+M36,5,80,60,50000,70,0.6,400000
+M60,6,200,150,100000,90,0.5,800000

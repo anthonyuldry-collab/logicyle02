@@ -1,0 +1,41 @@
+variante_id,variante,annee,date_fin,salaire_net_annuel,dividendes_net_annuel,total_net_fondateur,equivalent_mensuel,mode_remuneration
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y1,nov. 2028,5748.0,0.0,5748.0,479.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y2,nov. 2029,17793.0,7737.0,25530.0,2128.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y3,nov. 2030,30000.0,24306.0,54306.0,4526.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y4,nov. 2031,30000.0,45923.0,75923.0,6327.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y5,nov. 2032,30000.0,125984.0,155984.0,12999.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y6,nov. 2033,30000.0,164369.0,194369.0,16197.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y7,nov. 2034,30000.0,199207.0,229207.0,19101.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y8,nov. 2035,30000.0,240121.0,270121.0,22510.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y9,nov. 2036,30000.0,273959.0,303959.0,25330.0,dividendes
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",Y10,nov. 2037,30000.0,319665.0,349665.0,29139.0,dividendes
+mix_5k,Mix 5 K€ salaire + dividendes,Y1,nov. 2028,5748.0,0.0,5748.0,479.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y2,nov. 2029,17793.0,7737.0,25530.0,2128.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y3,nov. 2030,60000.0,18188.0,78188.0,6516.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y4,nov. 2031,60000.0,41553.0,101553.0,8463.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y5,nov. 2032,60000.0,120120.0,180120.0,15010.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y6,nov. 2033,60000.0,158503.0,218503.0,18209.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y7,nov. 2034,60000.0,193341.0,253341.0,21112.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y8,nov. 2035,60000.0,234255.0,294255.0,24521.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y9,nov. 2036,60000.0,268095.0,328095.0,27341.0,mix
+mix_5k,Mix 5 K€ salaire + dividendes,Y10,nov. 2037,60000.0,313800.0,373800.0,31150.0,mix
+holding_m24,Holding créée M24 · mère-fille M48,Y1,nov. 2028,5748.0,0.0,5748.0,479.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y2,nov. 2029,17793.0,7721.0,25514.0,2126.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y3,nov. 2030,30000.0,24108.0,54108.0,4509.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y4,nov. 2031,30000.0,46225.0,76225.0,6352.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y5,nov. 2032,30000.0,134870.0,164870.0,13739.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y6,nov. 2033,30000.0,176025.0,206025.0,17169.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y7,nov. 2034,30000.0,213375.0,243375.0,20281.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y8,nov. 2035,30000.0,257241.0,287241.0,23937.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y9,nov. 2036,30000.0,293522.0,323522.0,26960.0,dividendes
+holding_m24,Holding créée M24 · mère-fille M48,Y10,nov. 2037,30000.0,342524.0,372524.0,31044.0,dividendes
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y1,nov. 2028,5748.0,0.0,5748.0,479.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y2,nov. 2029,28012.0,5637.0,33649.0,2804.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y3,nov. 2030,60000.0,13490.0,73490.0,6124.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y4,nov. 2031,60000.0,35824.0,95824.0,7985.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y5,nov. 2032,60000.0,122582.0,182582.0,15215.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y6,nov. 2033,60000.0,163737.0,223737.0,18645.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y7,nov. 2034,60000.0,201087.0,261087.0,21757.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y8,nov. 2035,60000.0,244953.0,304953.0,25413.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y9,nov. 2036,60000.0,281234.0,341234.0,28436.0,optimal
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),Y10,nov. 2037,60000.0,330236.0,390236.0,32520.0,optimal

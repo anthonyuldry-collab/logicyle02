@@ -1,7 +1,7 @@
 
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { User, ResultItem, DisciplinePracticed, Rider, Team, ScoutingRequest, ScoutingRequestStatus, StaffMember, UserRole, TeamMembership, TeamMembershipStatus } from '../types';
+import { User, ResultItem, DisciplinePracticed, Rider, Team, ScoutingRequest, ScoutingRequestStatus, StaffMember, UserRole, TeamMembership, TeamMembershipStatus, ScoutingDataScope } from '../types';
 import { userToRiderProfile, userToStaffProfile } from '../utils/independentUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import TrophyIcon from '../components/icons/TrophyIcon';
@@ -11,7 +11,8 @@ import Modal from '../components/Modal';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
-import CheckCircleIcon from '../components/icons/CheckCircleIcon';
+import ScoutingRequestResponseCard from '../components/ScoutingRequestResponseCard';
+import { isContactScoutingRequest } from '../utils/scoutingProspectUtils';
 import XCircleIcon from '../components/icons/XCircleIcon';
 import EyeIcon from '../components/icons/EyeIcon';
 import { ResultFormModal } from '../components/riderDetailTabs/ResultsTab';
@@ -27,7 +28,11 @@ interface CareerSectionProps {
   currentTeamId: string | null;
   onRequestTransfer: (destinationTeamId: string) => void;
   scoutingRequests: ScoutingRequest[];
-  onRespondToScoutingRequest: (requestId: string, response: 'accepted' | 'rejected') => void;
+  onRespondToScoutingRequest: (
+    requestId: string,
+    response: 'accepted' | 'rejected',
+    grantedScopes?: ScoutingDataScope[],
+  ) => void;
   onUpdateVisibility: (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => void;
   teamMemberships: TeamMembership[];
   onSaveIndependentProfile?: (updates: Partial<User>) => Promise<void>;
@@ -67,26 +72,18 @@ const CareerSection: React.FC<CareerSectionProps> = ({
   const [currentSkill, setCurrentSkill] = useState('');
   const [selectedSeason, setSelectedSeason] = useState<string | null>(null);
 
-  // Vérification de sécurité pour currentUser
-  if (!currentUser) {
-    return (
-      <SectionWrapper title="Ma Carrière">
-        <div className="text-center p-8 bg-gray-50 rounded-lg border">
-          <p>Chargement des informations utilisateur...</p>
-        </div>
-      </SectionWrapper>
-    );
-  }
-
-  const isRider = currentUser.userRole === UserRole.COUREUR;
+  const isRider =
+    !!currentUser &&
+    (currentUser.userRole === UserRole.COUREUR ||
+      String(currentUser.userRole).toLowerCase() === 'coureur');
   const isIndependent = !currentTeamId;
   const riderProfile = useMemo(() => {
-    if (!isRider) return null;
+    if (!currentUser || !isRider) return null;
     if (isIndependent) return userToRiderProfile(currentUser);
     return riders.find((r) => r.email === currentUser.email) || null;
   }, [isRider, isIndependent, riders, currentUser]);
   const staffProfile = useMemo(() => {
-    if (isRider) return null;
+    if (!currentUser || isRider) return null;
     if (isIndependent) return userToStaffProfile(currentUser);
     return staff.find((s) => s.email === currentUser.email) || null;
   }, [isRider, isIndependent, staff, currentUser]);
@@ -155,11 +152,40 @@ const CareerSection: React.FC<CareerSectionProps> = ({
   }, [teamMemberships, currentUser, teams, currentTeamId]);
   
   const pendingScoutingRequests = useMemo(() => {
-    if (!scoutingRequests) return [];
+    if (!scoutingRequests || !currentUser) return [];
     return scoutingRequests.filter(
-        req => req.athleteId === currentUser.id && req.status === ScoutingRequestStatus.PENDING
+        req =>
+          req.athleteId === currentUser.id &&
+          req.status === ScoutingRequestStatus.PENDING &&
+          isContactScoutingRequest(req),
     );
-  }, [scoutingRequests, currentUser.id]);
+  }, [scoutingRequests, currentUser]);
+
+  // Filtrer les équipes disponibles pour le transfert
+  const availableTeams = useMemo(() => {
+    return teams
+      .filter((team) => team.id !== currentTeamId && team.name?.trim())
+      .filter((team) => {
+        if (!teamSearchFilter) return true;
+        const searchTerm = teamSearchFilter.toLowerCase();
+        return (
+          (team.name ?? '').toLowerCase().includes(searchTerm) ||
+          (team.country ?? '').toLowerCase().includes(searchTerm) ||
+          (team.level ?? '').toLowerCase().includes(searchTerm)
+        );
+      })
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'fr'));
+  }, [teams, currentTeamId, teamSearchFilter]);
+
+  if (!currentUser) {
+    return (
+      <SectionWrapper title="Ma Carrière">
+        <div className="text-center p-8 bg-gray-50 rounded-lg border">
+          <p>Chargement des informations utilisateur...</p>
+        </div>
+      </SectionWrapper>
+    );
+  }
 
   const persistIndependent = async (updates: Partial<User>) => {
     if (isIndependent && onSaveIndependentProfile) {
@@ -208,22 +234,6 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     setTeamSearchFilter(''); // Reset filter when opening modal
     setIsTransferModalOpen(true);
   };
-
-  // Filtrer les équipes disponibles pour le transfert
-  const availableTeams = useMemo(() => {
-    return teams
-      .filter(team => team.id !== currentTeamId) // Exclure l'équipe actuelle
-      .filter(team => {
-        if (!teamSearchFilter) return true;
-        const searchTerm = teamSearchFilter.toLowerCase();
-        return (
-          team.name.toLowerCase().includes(searchTerm) ||
-          team.country.toLowerCase().includes(searchTerm) ||
-          team.level.toLowerCase().includes(searchTerm)
-        );
-      })
-      .sort((a, b) => a.name.localeCompare(b.name)); // Trier par nom
-  }, [teams, currentTeamId, teamSearchFilter]);
 
   const handleRequestTransferConfirm = () => {
     if (destinationTeamId) {
@@ -370,7 +380,9 @@ const CareerSection: React.FC<CareerSectionProps> = ({
             Visibilité de Mon Profil
           </h3>
           <p className="text-sm text-gray-600 mb-3">
-            Rendez votre profil visible pour que d'autres équipes puissent découvrir vos talents et potentiellement vous contacter pour des opportunités.
+            Rendez votre profil visible pour être découvert par les recruteurs. Seules vos informations
+            de base (nom, âge, nationalité, discipline) sont affichées tant qu&apos;une équipe n&apos;a pas
+            reçu votre accord pour consulter vos données de performance.
           </p>
           <div className="flex items-center cursor-pointer" onClick={handleVisibilityChangeRequest}>
             <input
@@ -387,21 +399,17 @@ const CareerSection: React.FC<CareerSectionProps> = ({
 
         {pendingScoutingRequests.length > 0 && (
             <div className="p-4 bg-blue-50 rounded-lg shadow-md border border-blue-200">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Demandes de Suivi</h3>
-                <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-blue-800 mb-2">Demandes de contact reçues</h3>
+                <div className="space-y-3">
                     {pendingScoutingRequests.map(req => {
                         const team = teams.find(t => t.id === req.requesterTeamId);
                         return (
-                            <div key={req.id} className="p-3 bg-white rounded-md flex justify-between items-center">
-                                <div>
-                                    <p>L'équipe <strong>{team?.name || "Inconnue"}</strong> souhaite accéder à vos données de performance.</p>
-                                    <p className="text-xs text-gray-500">Date de la demande: {new Date(req.requestDate + 'T12:00:00').toLocaleDateString('fr-FR')}</p>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <ActionButton onClick={() => onRespondToScoutingRequest(req.id, 'accepted')} variant="primary" size="sm" icon={<CheckCircleIcon className="w-4 h-4"/>}>Accepter</ActionButton>
-                                    <ActionButton onClick={() => onRespondToScoutingRequest(req.id, 'rejected')} variant="danger" size="sm" icon={<XCircleIcon className="w-4 h-4"/>}>Refuser</ActionButton>
-                                </div>
-                            </div>
+                            <ScoutingRequestResponseCard
+                              key={req.id}
+                              request={req}
+                              teamName={team?.name || 'Équipe inconnue'}
+                              onRespond={onRespondToScoutingRequest}
+                            />
                         );
                     })}
                 </div>

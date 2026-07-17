@@ -1,0 +1,4 @@
+structure,couts_fixes_mois,cout_employeur_15k,mrr_minimum,arr_minimum,equipes_minimum_arpu,arpu_hypothese
+Bootstrap solo,12000,28000,48780.0,585366.0,376,130
+Équipe lean (1 dev),22000,28000,60976.0,731707.0,470,130
+Équipe complète (3 ETP),38000,28000,80488.0,965854.0,575,140

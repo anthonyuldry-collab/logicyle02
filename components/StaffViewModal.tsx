@@ -8,6 +8,7 @@ import UserCircleIcon from './icons/UserCircleIcon';
 import StarIcon from './icons/StarIcon';
 import CalendarDaysIcon from './icons/CalendarDaysIcon';
 import EyeIcon from './icons/EyeIcon';
+import { buildStaffCvDataUrl } from '../utils/staffDossierUtils';
 
 interface StaffViewModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
   performanceEntries,
   daysAssigned,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'career' | 'skills' | 'calendar' | 'availability' | 'admin'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'career' | 'calendar' | 'availability' | 'admin'>('general');
 
   if (!staffMember) return null;
 
@@ -67,8 +68,7 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
       <div className="bg-slate-800 text-white -m-6 p-4 rounded-lg">
         <div className="flex border-b border-slate-600 mb-4 overflow-x-auto">
           <button type="button" onClick={() => setActiveTab('general')} className={tabButtonStyle('general')}>Général</button>
-          <button type="button" onClick={() => setActiveTab('career')} className={tabButtonStyle('career')}>Parcours</button>
-          <button type="button" onClick={() => setActiveTab('skills')} className={tabButtonStyle('skills')}>Compétences</button>
+          <button type="button" onClick={() => setActiveTab('career')} className={tabButtonStyle('career')}>Profil pro</button>
           <button type="button" onClick={() => setActiveTab('calendar')} className={tabButtonStyle('calendar')}>Calendrier</button>
           <button type="button" onClick={() => setActiveTab('availability')} className={tabButtonStyle('availability')}>Disponibilités</button>
           <button type="button" onClick={() => setActiveTab('admin')} className={tabButtonStyle('admin')}>Admin</button>
@@ -180,16 +180,76 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
 
           {activeTab === 'career' && (
             <div className="space-y-6">
+              <div className="bg-slate-700 p-4 rounded-md space-y-3">
+                <h4 className="font-semibold text-slate-200">Présentation & message de candidature</h4>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Présentation</div>
+                  <div className="text-slate-200 text-sm whitespace-pre-wrap">
+                    {staffMember.professionalSummary || (
+                      <span className="italic text-slate-400">Non renseignée</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Message type de candidature</div>
+                  <div className="text-slate-200 text-sm whitespace-pre-wrap">
+                    {staffMember.defaultApplicationMessage || (
+                      <span className="italic text-slate-400">Non renseigné</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Années d&apos;expérience</div>
+                  <div className="text-slate-200">
+                    {staffMember.experienceYears != null ? `${staffMember.experienceYears} ans` : '—'}
+                  </div>
+                </div>
+              </div>
+
               <div>
-                <h4 className="font-semibold text-slate-200 mb-3">Expériences Professionnelles</h4>
+                <h4 className="font-semibold text-slate-200 mb-3">Compétences</h4>
+                {staffMember.skills && staffMember.skills.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {staffMember.skills.map((skill) => (
+                      <span key={skill} className="rounded-full bg-slate-700 px-3 py-1 text-sm text-slate-200">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-400 italic">Aucune compétence renseignée.</div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-200 mb-3">Certifications</h4>
+                {staffMember.certifications && staffMember.certifications.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {staffMember.certifications.map((cert) => (
+                      <span
+                        key={cert}
+                        className="rounded bg-emerald-900/40 px-2 py-0.5 text-xs font-medium text-emerald-200"
+                      >
+                        {cert}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-400 italic">Aucune certification renseignée.</div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-200 mb-3">Expériences professionnelles</h4>
                 {staffMember.workHistory && staffMember.workHistory.length > 0 ? (
                   <div className="space-y-3">
-                    {staffMember.workHistory.map((exp, index) => (
+                    {staffMember.workHistory.map((exp) => (
                       <div key={exp.id} className="bg-slate-700 p-4 rounded-md">
                         <div className="flex justify-between items-start mb-2">
                           <div className="font-medium text-slate-200">{exp.position}</div>
                           <div className="text-sm text-slate-400">
-                            {exp.startDate && formatDate(exp.startDate)} - {exp.endDate ? formatDate(exp.endDate) : 'Présent'}
+                            {exp.startDate && formatDate(exp.startDate)} -{' '}
+                            {exp.endDate ? formatDate(exp.endDate) : 'Présent'}
                           </div>
                         </div>
                         <div className="text-slate-300 mb-2">{exp.company}</div>
@@ -205,20 +265,15 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
               </div>
 
               <div>
-                <h4 className="font-semibold text-slate-200 mb-3">Éducation & Certifications</h4>
+                <h4 className="font-semibold text-slate-200 mb-3">Formations</h4>
                 {staffMember.education && staffMember.education.length > 0 ? (
                   <div className="space-y-3">
-                    {staffMember.education.map((edu, index) => (
+                    {staffMember.education.map((edu) => (
                       <div key={edu.id} className="bg-slate-700 p-4 rounded-md">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="font-medium text-slate-200">{edu.degree}</div>
-                          <div className="text-sm text-slate-400">
-                            {edu.startDate && formatDate(edu.startDate)} - {edu.endDate ? formatDate(edu.endDate) : 'Présent'}
-                          </div>
-                        </div>
-                        <div className="text-slate-300 mb-2">{edu.institution}</div>
-                        {edu.description && (
-                          <div className="text-sm text-slate-400">{edu.description}</div>
+                        <div className="font-medium text-slate-200">{edu.degree}</div>
+                        <div className="text-slate-300">{edu.institution}</div>
+                        {edu.year != null && (
+                          <div className="text-sm text-slate-400 mt-1">{edu.year}</div>
                         )}
                       </div>
                     ))}
@@ -227,48 +282,18 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
                   <div className="text-slate-400 italic">Aucune formation renseignée.</div>
                 )}
               </div>
-            </div>
-          )}
-
-          {activeTab === 'skills' && (
-            <div className="space-y-6">
-              <div>
-                <h4 className="font-semibold text-slate-200 mb-3">Compétences Techniques</h4>
-                {staffMember.skills && staffMember.skills.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {staffMember.skills.map((skill, index) => (
-                      <div key={index} className="bg-slate-700 p-3 rounded-md">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-200">{skill.name}</span>
-                          <div className="flex items-center space-x-1">
-                            {[...Array(5)].map((_, i) => (
-                              <StarIcon 
-                                key={i} 
-                                className={`w-4 h-4 ${i < skill.level ? 'text-yellow-400' : 'text-slate-600'}`} 
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        {skill.description && (
-                          <div className="text-sm text-slate-400 mt-1">{skill.description}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-slate-400 italic">Aucune compétence technique renseignée.</div>
-                )}
-              </div>
 
               <div>
-                <h4 className="font-semibold text-slate-200 mb-3">Langues Parlées</h4>
+                <h4 className="font-semibold text-slate-200 mb-3">Langues</h4>
                 {staffMember.languages && staffMember.languages.length > 0 ? (
                   <div className="space-y-3">
-                    {staffMember.languages.map((lang, index) => (
-                      <div key={index} className="bg-slate-700 p-3 rounded-md">
+                    {staffMember.languages.map((lang) => (
+                      <div key={lang.id} className="bg-slate-700 p-3 rounded-md">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-200">{lang.language}</span>
-                          <span className="text-slate-400 text-sm">{getLanguageProficiencyText(lang.proficiency)}</span>
+                          <span className="text-slate-400 text-sm">
+                            {getLanguageProficiencyText(lang.proficiency)}
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -403,26 +428,99 @@ const StaffViewModal: React.FC<StaffViewModalProps> = ({
 
           {activeTab === 'admin' && (
             <div className="space-y-6">
-              <h4 className="font-semibold text-slate-200 mb-3">Zone Admin (Manager)</h4>
-              <div className="bg-slate-700 p-4 rounded-md space-y-4">
-                <div>
-                  <div className="text-sm text-slate-400 mb-1">UCI ID</div>
-                  <div className="text-slate-200 font-medium">{staffMember.uciId || '-'}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-400 mb-1">N° de Licence</div>
-                  <div className="text-slate-200 font-medium">{staffMember.licenseNumber || '-'}</div>
-                </div>
-                {staffMember.licenseImageBase64 && (
+              <h4 className="font-semibold text-slate-200 mb-3">Dossier administratif</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-700 p-4 rounded-md space-y-3">
+                  <h5 className="text-sm font-medium text-slate-300">Identité</h5>
                   <div>
-                    <div className="text-sm text-slate-400 mb-2">Image de la Licence</div>
-                    <img 
-                      src={`data:${staffMember.licenseImageMimeType};base64,${staffMember.licenseImageBase64}`} 
-                      alt="licence" 
+                    <div className="text-xs text-slate-400">Date de naissance</div>
+                    <div className="text-slate-200">{staffMember.birthDate || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Sexe</div>
+                    <div className="text-slate-200">{staffMember.sex || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Nationalité</div>
+                    <div className="text-slate-200">
+                      {ALL_COUNTRIES.find((c) => c.code === staffMember.nationality)?.name ||
+                        staffMember.nationality ||
+                        '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">N° sécurité sociale</div>
+                    <div className="text-slate-200">{staffMember.socialSecurityNumber || '-'}</div>
+                  </div>
+                </div>
+                <div className="bg-slate-700 p-4 rounded-md space-y-3">
+                  <h5 className="text-sm font-medium text-slate-300">Contact & urgence</h5>
+                  <div>
+                    <div className="text-xs text-slate-400">Téléphone</div>
+                    <div className="text-slate-200">{staffMember.phone || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Adresse</div>
+                    <div className="text-slate-200">
+                      {[
+                        staffMember.address?.streetName,
+                        [staffMember.address?.postalCode, staffMember.address?.city]
+                          .filter(Boolean)
+                          .join(' '),
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Contact d&apos;urgence</div>
+                    <div className="text-slate-200">
+                      {staffMember.emergencyContactName
+                        ? `${staffMember.emergencyContactName}${staffMember.emergencyContactPhone ? ` · ${staffMember.emergencyContactPhone}` : ''}`
+                        : '-'}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-slate-700 p-4 rounded-md space-y-3">
+                  <h5 className="text-sm font-medium text-slate-300">CV</h5>
+                  {staffMember.cvFileName ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-200 truncate">{staffMember.cvFileName}</span>
+                      {buildStaffCvDataUrl(staffMember) && (
+                        <a
+                          href={buildStaffCvDataUrl(staffMember)!}
+                          download={staffMember.cvFileName}
+                          className="text-blue-300 text-sm hover:underline shrink-0"
+                        >
+                          Télécharger
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-slate-400 italic">Aucun fichier CV</div>
+                  )}
+                  {staffMember.professionalSummary && (
+                    <p className="text-sm text-slate-300 mt-2">{staffMember.professionalSummary}</p>
+                  )}
+                </div>
+                <div className="bg-slate-700 p-4 rounded-md space-y-3">
+                  <h5 className="text-sm font-medium text-slate-300">Licence</h5>
+                  <div>
+                    <div className="text-xs text-slate-400">UCI ID</div>
+                    <div className="text-slate-200 font-medium">{staffMember.uciId || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">N° de Licence</div>
+                    <div className="text-slate-200 font-medium">{staffMember.licenseNumber || '-'}</div>
+                  </div>
+                  {staffMember.licenseImageBase64 && (
+                    <img
+                      src={`data:${staffMember.licenseImageMimeType};base64,${staffMember.licenseImageBase64}`}
+                      alt="licence"
                       className="max-h-32 rounded border border-slate-500"
                     />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}

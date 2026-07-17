@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-    EquipmentItem, EquipmentType, EquipmentStatus, Rider, PeripheralComponent, BikeSetup, BikeSpecificMeasurements, BikeFitMeasurements, User, TeamRole,
+    EquipmentItem, EquipmentType, EquipmentStatus, Rider, PeripheralComponent, User, TeamRole,
     EquipmentStockItem, EquipmentStockCategory
 } from '../types';
-import { initialEquipmentFormState, EQUIPMENT_TYPE_COLORS, EQUIPMENT_STATUS_COLORS, BIKE_SETUP_SPECIFIC_FIELDS, BIKE_SETUP_COTES_FIELDS } from '../constants';
+import { initialEquipmentFormState, EQUIPMENT_TYPE_COLORS, EQUIPMENT_STATUS_COLORS } from '../constants';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -16,6 +16,9 @@ import SearchIcon from '../components/icons/SearchIcon';
 import WrenchScrewdriverIcon from '../components/icons/WrenchScrewdriverIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useTranslations } from '../hooks/useTranslations';
+import { findEquipmentStockByBarcode, isValidBarcode, normalizeBarcode } from '../utils/stockBarcodeUtils';
+import BarcodeScannerModal from '../components/BarcodeScannerModal';
+import RiderBikeFitWorkspace from '../components/bike/RiderBikeFitWorkspace';
 
 interface EquipmentSectionProps {
   equipment: EquipmentItem[];
@@ -23,6 +26,10 @@ interface EquipmentSectionProps {
   onDelete: (itemId: string) => void;
   effectivePermissions?: any;
   equipmentStockItems?: EquipmentStockItem[];
+  setEquipmentStockItems?: React.Dispatch<React.SetStateAction<EquipmentStockItem[]>>;
+  riders?: Rider[];
+  setRiders?: React.Dispatch<React.SetStateAction<Rider[]>>;
+  onSaveRider?: (rider: Rider) => Promise<void> | void;
   currentUser?: User;
 }
 
@@ -36,33 +43,16 @@ const initialEquipmentStockItemFormState: Omit<EquipmentStockItem, 'id'> = {
     category: EquipmentStockCategory.CONSOMMABLES,
     reference: '',
     brand: '',
+    barcode: '',
     notes: '',
 };
 
 const EquipmentSection: React.FC<EquipmentSectionProps> = ({ 
-    equipment, onSave, onDelete, effectivePermissions, equipmentStockItems = [], currentUser
+    equipment, onSave, onDelete, effectivePermissions, equipmentStockItems = [], setEquipmentStockItems,
+    riders = [], setRiders, onSaveRider, currentUser,
 }) => {
-  // Protection minimale - seulement equipment est requis
-  if (!equipment) {
-    return (
-      <SectionWrapper title="Gestion de l'Équipement">
-        <div className="text-center p-8 bg-gray-50 rounded-lg border">
-          <h3 className="text-xl font-semibold text-gray-700">Chargement...</h3>
-          <p className="mt-2 text-gray-500">Initialisation des données de l'équipement...</p>
-        </div>
-      </SectionWrapper>
-    );
-  }
-
-  // Protection pour currentUser
-  if (!currentUser) {
-    console.warn('⚠️ currentUser non défini dans EquipmentSection');
-  }
-
-  // Protection pour equipmentStockItems
-  if (!equipmentStockItems) {
-    console.warn('⚠️ equipmentStockItems non défini, utilisation d\'un tableau vide');
-  }
+  const equipmentList = equipment ?? [];
+  const isLoading = equipment == null;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<EquipmentItem, 'id'> | EquipmentItem>(initialEquipmentFormState);
@@ -83,11 +73,22 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
   const [stockCategoryFilter, setStockCategoryFilter] = useState<EquipmentStockCategory | 'all'>('all');
   const [stockSortConfig, setStockSortConfig] = useState<{ key: string, direction: 'ascending' | 'descending' } | null>(null);
   const [stockItemToDelete, setStockItemToDelete] = useState<EquipmentStockItem | null>(null);
+  const [isStockScannerOpen, setIsStockScannerOpen] = useState(false);
+  const [stockScanFeedback, setStockScanFeedback] = useState<string | null>(null);
 
 
   const [selectedRiderForSetup, setSelectedRiderForSetup] = useState<string>('');
-  const [currentBikeSetup, setCurrentBikeSetup] = useState<{ roadBikeSetup?: BikeSetup, ttBikeSetup?: BikeSetup }>({});
   const { t } = useTranslations();
+
+  const sortedRiders = useMemo(
+    () => [...riders].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)),
+    [riders],
+  );
+
+  const selectedRider = useMemo(
+    () => sortedRiders.find(r => r.id === selectedRiderForSetup) ?? null,
+    [sortedRiders, selectedRiderForSetup],
+  );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -171,60 +172,35 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
   
   const getRiderNameById = (riderId?: string) => {
     if (!riderId) return 'N/A';
-    // TODO: Implémenter la récupération du nom du coureur via une prop riders
-    return 'Coureur Inconnu';
+    const rider = riders.find(r => r.id === riderId);
+    return rider ? `${rider.firstName} ${rider.lastName}` : 'Coureur inconnu';
   };
 
   const filteredEquipment = useMemo(() => {
-    if (!equipment) return [];
-    
-    // Pour l'instant, afficher tout l'équipement
-    // TODO: Implémenter le filtrage par coureur si nécessaire
-    return equipment.filter(item => {
+    return equipmentList.filter(item => {
         const nameMatch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
         const typeMatch = typeFilter === 'all' || item.type === typeFilter;
         const statusMatch = statusFilter === 'all' || item.status === statusFilter;
         return nameMatch && typeMatch && statusMatch;
     }).sort((a,b) => a.name.localeCompare(b.name));
-  }, [equipment, searchTerm, typeFilter, statusFilter]);
+  }, [equipmentList, searchTerm, typeFilter, statusFilter]);
 
-  useEffect(() => {
-    if (selectedRiderForSetup) {
-      // TODO: Implémenter la récupération des réglages du coureur via une prop riders
-      setCurrentBikeSetup({
-        roadBikeSetup: { specifics: {}, cotes: {} },
-        ttBikeSetup: { specifics: {}, cotes: {} },
-      });
-    } else {
-      setCurrentBikeSetup({});
-    }
-  }, [selectedRiderForSetup]);
+  const equipmentSummary = useMemo(() => {
+    const assigned = equipmentList.filter((item) => item.assignedToRiderId).length;
+    const maintenance = equipmentList.filter((item) => item.status === EquipmentStatus.EN_MAINTENANCE).length;
+    const lowStock = equipmentStockItems.filter(
+      (item) => item.quantity <= item.lowStockThreshold,
+    ).length;
+    return {
+      total: equipmentList.length,
+      assigned,
+      maintenance,
+      lowStock,
+      stockItems: equipmentStockItems.length,
+    };
+  }, [equipmentList, equipmentStockItems]);
 
-  const handleBikeSetupChange = (
-    bikeType: 'roadBikeSetup' | 'ttBikeSetup',
-    section: 'specifics' | 'cotes',
-    field: keyof BikeSpecificMeasurements | keyof BikeFitMeasurements,
-    value: string
-  ) => {
-    setCurrentBikeSetup(prev => ({
-      ...prev,
-      [bikeType]: {
-        ...(prev[bikeType] || { specifics: {}, cotes: {} }),
-        [section]: {
-          ...((prev[bikeType] as BikeSetup)?.[section] || {}),
-          [field]: value,
-        },
-      },
-    }));
-  };
 
-  const handleSaveBikeSetup = () => {
-    if (!selectedRiderForSetup) return;
-    // TODO: Implémenter la sauvegarde des réglages du coureur via une prop onSaveRider
-    console.log('Sauvegarder réglages pour coureur:', selectedRiderForSetup, currentBikeSetup);
-    alert('Réglages sauvegardés (fonctionnalité à implémenter)');
-  };
-  
   // --- Stock Management Logic ---
   const getStockStatus = (item: EquipmentStockItem): { text: string; colorClass: string } => {
     if (item.quantity <= item.lowStockThreshold) return { text: 'Faible', colorClass: 'bg-red-200 text-red-800' };
@@ -248,7 +224,9 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
   const sortedStockItems = useMemo(() => {
     if (!equipmentStockItems) return [];
     let sortableItems = [...equipmentStockItems].filter(item => 
-      (item.name.toLowerCase().includes(stockSearchTerm.toLowerCase())) &&
+      (item.name.toLowerCase().includes(stockSearchTerm.toLowerCase()) ||
+        (item.barcode && item.barcode.includes(normalizeBarcode(stockSearchTerm))) ||
+        (item.reference && item.reference.toLowerCase().includes(stockSearchTerm.toLowerCase()))) &&
       (stockCategoryFilter === 'all' || item.category === stockCategoryFilter)
     );
 
@@ -289,14 +267,34 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
 
   const handleStockSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!setEquipmentStockItems) return;
     if (isEditingStockItem && 'id' in currentStockItem) {
-              // TODO: Implémenter la sauvegarde des items de stock
-        console.log('Sauvegarder item de stock:', currentStockItem);
+      setEquipmentStockItems(prev => prev.map(item => item.id === currentStockItem.id ? currentStockItem : item));
     } else {
-      // TODO: Implémenter l'ajout d'item de stock
-      console.log('Ajouter item de stock:', { ...currentStockItem, id: generateId() });
+      setEquipmentStockItems(prev => [...prev, { ...currentStockItem, id: generateId() } as EquipmentStockItem]);
     }
     setIsStockModalOpen(false);
+  };
+
+  const handleStockBarcodeScan = (raw: string) => {
+    const code = normalizeBarcode(raw);
+    if (!isValidBarcode(code)) {
+      setStockScanFeedback('Code-barres invalide (minimum 8 chiffres).');
+      return;
+    }
+    setStockScanFeedback(null);
+    const existing = findEquipmentStockByBarcode(equipmentStockItems, code);
+    if (existing && setEquipmentStockItems) {
+      setEquipmentStockItems(prev => prev.map(item =>
+        item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+      setStockScanFeedback(`+1 ${existing.name} — stock : ${existing.quantity + 1} ${existing.unit}`);
+    } else {
+      setCurrentStockItem({ ...initialEquipmentStockItemFormState, barcode: code, quantity: 1 });
+      setIsEditingStockItem(false);
+      setIsStockModalOpen(true);
+      setStockScanFeedback(`Pièce inconnue (${code}) — création d'une fiche.`);
+    }
   };
   
   const openAddStockModal = () => {
@@ -316,14 +314,14 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
   };
   
   const confirmDeleteStockItem = () => {
-    if(stockItemToDelete) {
-        // TODO: Implémenter la suppression d'item de stock
-        console.log('Supprimer item de stock:', stockItemToDelete.id);
-        setStockItemToDelete(null);
+    if (stockItemToDelete && setEquipmentStockItems) {
+      setEquipmentStockItems(prev => prev.filter(item => item.id !== stockItemToDelete.id));
+      setStockItemToDelete(null);
     }
   };
 
   const handleStockQuantityChange = (itemId: string, change: number) => {
+    if (!setEquipmentStockItems) return;
     const itemToUpdate = equipmentStockItems.find(item => item.id === itemId);
     if (!itemToUpdate) return;
     
@@ -334,12 +332,34 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
       alert(`ALERTE STOCK FAIBLE: ${itemToUpdate.name} a atteint le niveau ${newQuantity} (seuil: ${itemToUpdate.lowStockThreshold}).`);
     }
 
-    // TODO: Implémenter la mise à jour de la quantité
-    console.log('Mettre à jour quantité item:', itemId, 'nouvelle quantité:', newQuantity);
+    // Mise à jour quantité
+    setEquipmentStockItems(prevItems =>
+      prevItems.map(item =>
+        item.id === itemId ? { ...item, quantity: newQuantity } : item
+      )
+    );
   };
 
   const renderGeneralTab = () => (
     <>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg bg-slate-700 px-3 py-2">
+            <p className="text-xs text-slate-400">Total</p>
+            <p className="text-lg font-semibold text-slate-100">{equipmentSummary.total}</p>
+          </div>
+          <div className="rounded-lg bg-slate-700 px-3 py-2">
+            <p className="text-xs text-slate-400">Assignés</p>
+            <p className="text-lg font-semibold text-emerald-300">{equipmentSummary.assigned}</p>
+          </div>
+          <div className="rounded-lg bg-slate-700 px-3 py-2">
+            <p className="text-xs text-slate-400">En maintenance</p>
+            <p className="text-lg font-semibold text-amber-300">{equipmentSummary.maintenance}</p>
+          </div>
+          <div className="rounded-lg bg-slate-700 px-3 py-2">
+            <p className="text-xs text-slate-400">Stock faible</p>
+            <p className="text-lg font-semibold text-red-300">{equipmentSummary.lowStock}</p>
+          </div>
+        </div>
         <div className="mb-6 p-4 bg-slate-700 rounded-lg shadow-md">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div>
@@ -450,8 +470,11 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
                                 <label htmlFor="assignedToRiderId" className="block text-sm font-medium">Assigné à (Coureur)</label>
                                 <select name="assignedToRiderId" id="assignedToRiderId" value={currentItem.assignedToRiderId || ''} onChange={handleInputChange} className="input-field-sm">
                                     <option value="" className="bg-slate-700">Non assigné</option>
-                                    {/* TODO: Implémenter la liste des coureurs via une prop riders */}
-                                    <option value="" className="bg-slate-700" disabled>Aucun coureur disponible</option>
+                                    {sortedRiders.map(rider => (
+                                      <option key={rider.id} value={rider.id} className="bg-slate-700">
+                                        {rider.firstName} {rider.lastName}
+                                      </option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
@@ -542,6 +565,11 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
                 </div>
             </div>
         </div>
+        {stockScanFeedback && (
+          <div className="mb-4 p-3 bg-blue-900/40 border border-blue-500/40 rounded-lg text-sm text-blue-200">
+            {stockScanFeedback}
+          </div>
+        )}
         <div className="overflow-x-auto">
             <table className="min-w-full text-sm bg-slate-800 text-slate-300">
                 <thead className="bg-slate-700 text-slate-200">
@@ -557,7 +585,12 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
                 <tbody className="divide-y divide-slate-700">
                     {sortedStockItems.length > 0 ? sortedStockItems.map(item => (
                         <tr key={item.id} className="hover:bg-slate-700/50">
-                            <td className="py-2 px-3 font-medium text-slate-100">{item.name}</td>
+                            <td className="py-2 px-3 font-medium text-slate-100">
+                              {item.name}
+                              {item.barcode && (
+                                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{item.barcode}</div>
+                              )}
+                            </td>
                             <td className="py-2 px-3">{item.category}</td>
                             <td className="py-2 px-3">{item.brand || ''}{item.reference ? ` - ${item.reference}` : ''}</td>
                             <td className="py-2 px-3">
@@ -600,6 +633,20 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
                     <div><label>Marque</label><input type="text" name="brand" value={currentStockItem.brand || ''} onChange={handleStockInputChange} className="input-field-sm"/></div>
                     <div><label>Référence</label><input type="text" name="reference" value={currentStockItem.reference || ''} onChange={handleStockInputChange} className="input-field-sm"/></div>
                 </div>
+                <div>
+                  <label>Code-barres (EAN/GTIN)</label>
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      type="text"
+                      name="barcode"
+                      value={currentStockItem.barcode || ''}
+                      onChange={handleStockInputChange}
+                      placeholder="3560070460097"
+                      className="input-field-sm flex-1 font-mono"
+                    />
+                    <ActionButton type="button" variant="secondary" onClick={() => setIsStockScannerOpen(true)}>📷</ActionButton>
+                  </div>
+                </div>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      <div><label>Quantité</label><input type="number" name="quantity" value={currentStockItem.quantity} onChange={handleStockInputChange} required className="input-field-sm"/></div>
                      <div><label>Unité</label><input type="text" name="unit" value={currentStockItem.unit} onChange={handleStockInputChange} required placeholder="pièce, paire..." className="input-field-sm"/></div>
@@ -614,10 +661,10 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
   };
 
   const renderRiderSpecificTab = () => (
-    <div className="text-slate-300">
-      <div className="mb-4 p-3 bg-slate-700 rounded-md">
+    <div className="text-slate-300 space-y-4">
+      <div className="p-3 bg-slate-700 rounded-md">
         <label htmlFor="riderSelectForSetup" className="block text-sm font-medium text-slate-300 mb-1">
-          Sélectionner un Coureur pour voir/modifier ses réglages vélo:
+          Sélectionner un coureur pour voir / modifier ses réglages vélo
         </label>
         <select
           id="riderSelectForSetup"
@@ -625,72 +672,34 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
           onChange={(e) => setSelectedRiderForSetup(e.target.value)}
           className="input-field-sm"
         >
-          <option value="" className="bg-slate-700">-- Choisir un coureur --</option>
-          {/* TODO: Implémenter la liste des coureurs via une prop riders */}
-          <option value="" className="bg-slate-700" disabled>Aucun coureur disponible</option>
+          <option value="" className="bg-slate-700">— Choisir un coureur —</option>
+          {sortedRiders.length === 0 ? (
+            <option value="" disabled className="bg-slate-700">Aucun coureur dans l&apos;effectif</option>
+          ) : (
+            sortedRiders.map(rider => (
+              <option key={rider.id} value={rider.id} className="bg-slate-700">
+                {rider.firstName} {rider.lastName}
+                {rider.heightCm ? ` (${rider.heightCm} cm)` : ''}
+              </option>
+            ))
+          )}
         </select>
       </div>
 
-      {selectedRiderForSetup && currentBikeSetup.roadBikeSetup && currentBikeSetup.ttBikeSetup && (
-        <div className="bg-slate-800 p-4 rounded-lg shadow-md">
-          <h4 className="text-lg font-semibold text-slate-100 mb-2">
-            Réglages Vélo pour: {getRiderNameById(selectedRiderForSetup)}
-            <span className="text-sm text-slate-400 ml-2">
-              (Taille: N/A cm)
-            </span>
-          </h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {(['roadBikeSetup', 'ttBikeSetup'] as const).map(bikeType => (
-              <div key={bikeType} className="space-y-3">
-                <h5 className={`text-md font-semibold p-2 rounded-t-md ${bikeType === 'roadBikeSetup' ? 'bg-pink-600 text-white' : 'bg-orange-500 text-white'}`}>
-                  {bikeType === 'roadBikeSetup' ? 'Vélo Route' : 'Vélo CLM'}
-                </h5>
-                
-                <div className="bg-slate-700 p-3 rounded-b-md space-y-2">
-                    <h6 className="text-sm font-medium text-slate-300 border-b border-slate-600 pb-1">Spécifique Vélo</h6>
-                    {BIKE_SETUP_SPECIFIC_FIELDS.map(field => (
-                        <div key={String(field.key)} className="grid grid-cols-2 items-center">
-                            <label htmlFor={`${bikeType}-specifics-${String(field.key)}`} className="text-xs text-slate-400">
-                                {field.label}:
-                            </label>
-                            <input
-                                type="text"
-                                id={`${bikeType}-specifics-${String(field.key)}`}
-                                name={`${bikeType}-specifics-${String(field.key)}`}
-                                value={(currentBikeSetup[bikeType]?.specifics as any)?.[field.key] || ''}
-                                onChange={e => handleBikeSetupChange(bikeType, 'specifics', field.key, e.target.value)}
-                                className="input-field-sm text-xs py-1"
-                            />
-                        </div>
-                    ))}
-                </div>
-
-                <div className="bg-slate-700 p-3 rounded-md space-y-2 mt-3">
-                     <h6 className="text-sm font-medium text-slate-300 border-b border-slate-600 pb-1">Cotes</h6>
-                    {BIKE_SETUP_COTES_FIELDS.map(field => (
-                         <div key={String(field.key)} className="grid grid-cols-2 items-center">
-                            <label htmlFor={`${bikeType}-cotes-${String(field.key)}`} className="text-xs text-slate-400">
-                                {field.label}:
-                            </label>
-                            <input
-                                type="text"
-                                id={`${bikeType}-cotes-${String(field.key)}`}
-                                name={`${bikeType}-cotes-${String(field.key)}`}
-                                value={(currentBikeSetup[bikeType]?.cotes as any)?.[field.key] || ''}
-                                onChange={e => handleBikeSetupChange(bikeType, 'cotes', field.key, e.target.value)}
-                                className="input-field-sm text-xs py-1"
-                            />
-                        </div>
-                    ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 flex justify-end">
-            <ActionButton onClick={handleSaveBikeSetup}>Sauvegarder Réglages Vélo</ActionButton>
-          </div>
+      {selectedRider && onSaveRider ? (
+        <div className="bg-white rounded-xl p-4 text-gray-900">
+          <RiderBikeFitWorkspace
+            rider={selectedRider}
+            onSaveRider={onSaveRider}
+            onRiderUpdated={updated => {
+              setRiders?.(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+            }}
+          />
         </div>
+      ) : selectedRiderForSetup ? (
+        <p className="text-sm text-amber-300">Impossible de charger les réglages (sauvegarde non disponible).</p>
+      ) : (
+        <p className="text-sm text-slate-400">Choisissez un coureur pour accéder aux cotes, pressions et usure.</p>
       )}
     </div>
   );
@@ -710,7 +719,12 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
       return <ActionButton onClick={openAddModal} icon={<PlusCircleIcon className="w-5 h-5" />}>Ajouter Équipement</ActionButton>
     }
     if (activeEquipmentTab === 'stock') {
-      return <ActionButton onClick={openAddStockModal} icon={<PlusCircleIcon className="w-5 h-5" />}>Ajouter Pièce</ActionButton>
+      return (
+        <div className="flex flex-wrap gap-2">
+          <ActionButton onClick={() => setIsStockScannerOpen(true)} variant="secondary">📷 Scanner</ActionButton>
+          <ActionButton onClick={openAddStockModal} icon={<PlusCircleIcon className="w-5 h-5" />}>Ajouter Pièce</ActionButton>
+        </div>
+      );
     }
     return null;
   }
@@ -720,6 +734,13 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
       title="Gestion du Matériel"
       actionButton={getActionButton()}
     >
+      {isLoading ? (
+        <div className="text-center p-8 bg-gray-50 rounded-lg border">
+          <h3 className="text-xl font-semibold text-gray-700">Chargement...</h3>
+          <p className="mt-2 text-gray-500">Initialisation des données de l&apos;équipement...</p>
+        </div>
+      ) : (
+        <>
         <div className="mb-4 border-b border-gray-200">
             <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Tabs">
             <button onClick={() => setActiveEquipmentTab('general')} className={tabButtonStyle('general')}>
@@ -739,6 +760,15 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
             {activeEquipmentTab === 'stock' && renderStockTab()}
             {activeEquipmentTab === 'riderSpecific' && renderRiderSpecificTab()}
         </div>
+
+        <BarcodeScannerModal
+          isOpen={isStockScannerOpen}
+          onClose={() => setIsStockScannerOpen(false)}
+          onScan={handleStockBarcodeScan}
+          title="Scanner une pièce"
+        />
+        </>
+      )}
     </SectionWrapper>
   );
 };

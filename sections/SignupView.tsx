@@ -25,8 +25,8 @@ interface SignupViewProps {
 const ROLE_OPTIONS: {
   role: UserRole;
   emoji: string;
-  titleKey: 'signupRoleAthlete' | 'signupStaffRoleLabel' | 'signupTabCreate';
-  descKey: 'signupRoleAthleteDesc' | 'signupRoleStaffDesc' | 'signupRoleManagerDesc';
+  titleKey: 'signupRoleAthlete' | 'signupStaffRoleLabel' | 'signupTabCreate' | 'signupRolePartner';
+  descKey: 'signupRoleAthleteDesc' | 'signupRoleStaffDesc' | 'signupRoleManagerDesc' | 'signupRolePartnerDesc';
 }[] = [
   {
     role: UserRole.COUREUR,
@@ -39,6 +39,12 @@ const ROLE_OPTIONS: {
     emoji: '👥',
     titleKey: 'signupStaffRoleLabel',
     descKey: 'signupRoleStaffDesc',
+  },
+  {
+    role: UserRole.PARTNER,
+    emoji: '🤝',
+    titleKey: 'signupRolePartner',
+    descKey: 'signupRolePartnerDesc',
   },
   {
     role: UserRole.MANAGER,
@@ -66,7 +72,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const { t, language, setLanguage } = useTranslations();
 
-  const showPathChoice = formData.userRole !== UserRole.MANAGER;
+  const showPathChoice = formData.userRole !== UserRole.MANAGER && formData.userRole !== UserRole.PARTNER;
 
   const handleRoleSelect = (role: UserRole) => {
     setFormData((prev) => ({

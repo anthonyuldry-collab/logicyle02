@@ -5,14 +5,18 @@ import React, { useState, useEffect } from 'react';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import { DEFAULT_THEME_PRIMARY_COLOR, DEFAULT_THEME_ACCENT_COLOR, LANGUAGE_OPTIONS } from '../constants';
-import { TeamLevel, Team, Address } from '../types';
+import { TeamLevel, Team, Address, SubscriptionPlanId, User, TeamOperationalSettings, RaceEvent } from '../types';
+import TeamOperationalSettingsPanel from '../components/TeamOperationalSettingsPanel';
+import { getPlanById, formatPriceEur } from '../constants/subscriptionPlans';
+import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
+import ReferralPanel from '../components/ReferralPanel';
 import UploadIcon from '../components/icons/UploadIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useTranslations } from '../hooks/useTranslations';
 
 
-interface SettingsSectionProps {
+export interface SettingsSectionProps {
   teamLogoBase64?: string;
   teamLogoMimeType?: string;
   setTeamLogoBase64: (logo?: string) => void;
@@ -23,10 +27,35 @@ interface SettingsSectionProps {
   setThemeAccentColor: (color?: string) => void;
   teamLevel?: TeamLevel;
   setTeamLevel: (level: TeamLevel) => void;
+  operationalSettings?: TeamOperationalSettings;
+  setOperationalSettings: (settings: TeamOperationalSettings) => void;
+  onSaveOperationalSettings?: () => Promise<void>;
+  onTeamLevelChanged?: (level: TeamLevel) => void;
+  onNavigateToChecklist?: () => void;
+  raceEvents?: RaceEvent[];
   language?: 'fr' | 'en';
   setLanguage: (lang: 'fr' | 'en') => void;
   team?: Team;
   onUpdateTeam: (team: Team) => void;
+  canDeleteTeam?: boolean;
+  onDeleteTeam?: (password: string) => Promise<void>;
+  subscriptionAccess?: SubscriptionAccess;
+  onUpgradePlan?: (planId: SubscriptionPlanId) => Promise<void>;
+  onManageBillingPortal?: () => Promise<void>;
+  currentUser?: User;
+  /** Installe le pack équipe fictive « Horizon Atlantique » (présentation) */
+  onInstallPresentationDemo?: () => Promise<{
+    teamName: string;
+    riders: number;
+    staff: number;
+    events: number;
+    entityCount: number;
+  }>;
+  presentationDemoAlreadyInstalled?: boolean;
+  /** Si true, n'affiche pas le SectionWrapper (page Paramètres unifiée). */
+  embedded?: boolean;
+  /** Ouvre l’onglet Abonnement des paramètres unifiés */
+  onNavigateToSubscription?: () => void;
 }
 
 const SettingsCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -49,22 +78,45 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   setThemeAccentColor,
   teamLevel,
   setTeamLevel,
+  operationalSettings,
+  setOperationalSettings,
+  onSaveOperationalSettings,
+  onTeamLevelChanged,
+  onNavigateToChecklist,
+  raceEvents,
   language,
   setLanguage,
   team,
   onUpdateTeam,
+  canDeleteTeam = false,
+  onDeleteTeam,
+  subscriptionAccess,
+  onUpgradePlan,
+  onManageBillingPortal,
+  currentUser,
+  onInstallPresentationDemo,
+  presentationDemoAlreadyInstalled = false,
+  embedded = false,
+  onNavigateToSubscription,
 }) => {
   const [logoPreview, setLogoPreview] = useState<string | null>(
     teamLogoBase64 && teamLogoMimeType ? `data:${teamLogoMimeType};base64,${teamLogoBase64}` : null
   );
   const [levelToChange, setLevelToChange] = useState<TeamLevel | null>(null);
   const [localAddress, setLocalAddress] = useState<Address>(team?.address || {});
+  const [showTeamDeleteModal, setShowTeamDeleteModal] = useState(false);
+  const [teamDeletePassword, setTeamDeletePassword] = useState('');
+  const [teamDeleteNameConfirm, setTeamDeleteNameConfirm] = useState('');
+  const [teamDeleteError, setTeamDeleteError] = useState('');
+  const [isDeletingTeam, setIsDeletingTeam] = useState(false);
+  const [isInstallingDemo, setIsInstallingDemo] = useState(false);
 
   useEffect(() => {
     setLocalAddress(team?.address || {});
   }, [team?.address]);
 
   const { t } = useTranslations();
+  const currentPlan = subscriptionAccess ? getPlanById(subscriptionAccess.planId) : null;
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -107,6 +159,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const handleConfirmLevelChange = () => {
     if (levelToChange) {
       setTeamLevel(levelToChange);
+      onTeamLevelChanged?.(levelToChange);
     }
     setLevelToChange(null);
   };
@@ -126,9 +179,61 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const inputBaseClass = "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow bg-white text-gray-900 placeholder-gray-400";
   const labelBaseClass = "block text-sm font-medium text-gray-700 mb-1";
 
-  return (
-    <SectionWrapper title="Paramètres de l'Application">
+  const content = (
+    <>
       <div className="space-y-8">
+
+        {subscriptionAccess && currentPlan && (
+          <SettingsCard title={t('billingCardTitle')}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-lg font-bold text-gray-900">{currentPlan.name[language]}</p>
+                <p className="text-sm text-gray-500">{subscriptionAccess.statusLabel[language]}</p>
+                {currentPlan.monthlyPriceEur !== null && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {formatPriceEur(currentPlan.monthlyPriceEur, language)}/{t('pricingMonth')}
+                    {' · '}
+                    {formatPriceEur(currentPlan.annualPriceEur, language)}/{t('pricingYear')}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {onNavigateToSubscription && (
+                  <ActionButton variant="primary" size="sm" onClick={onNavigateToSubscription}>
+                    Voir les plans
+                  </ActionButton>
+                )}
+                {onManageBillingPortal && subscriptionAccess.isActive && !subscriptionAccess.isPilot && (
+                  <ActionButton variant="secondary" size="sm" onClick={() => onManageBillingPortal()}>
+                    {t('billingManage')}
+                  </ActionButton>
+                )}
+                {onUpgradePlan && subscriptionAccess.planId !== SubscriptionPlanId.FEDERATION && (
+                  <ActionButton
+                    variant="primary"
+                    size="sm"
+                    onClick={() =>
+                      onNavigateToSubscription
+                        ? onNavigateToSubscription()
+                        : onUpgradePlan(SubscriptionPlanId.PRO)
+                    }
+                  >
+                    {t('billingUpgradePro')}
+                  </ActionButton>
+                )}
+              </div>
+            </div>
+            {(subscriptionAccess.isTrial || subscriptionAccess.isPilot) && (
+              <p className="mt-3 text-sm text-amber-700 bg-amber-50 p-3 rounded-md">{t('billingTrialNote')}</p>
+            )}
+          </SettingsCard>
+        )}
+
+        {currentUser && (
+          <SettingsCard title={t('referralCardTitle')}>
+            <ReferralPanel currentUser={currentUser} />
+          </SettingsCard>
+        )}
         
         <SettingsCard title="Logo de l'Équipe">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -216,9 +321,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
            </div>
         </SettingsCard>
         
-        <SettingsCard title="Niveau de la Structure">
+        <SettingsCard title={t('settingsTeamLevel')}>
             <p className="text-sm text-gray-600">
-                Le niveau de votre équipe détermine les fonctionnalités et les calendriers accessibles, et peut être lié à votre abonnement.
+                {t('settingsTeamLevelHelp')}
             </p>
             <div>
                 <label htmlFor="teamLevel" className={labelBaseClass}>
@@ -236,6 +341,22 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     ))}
                 </select>
             </div>
+        </SettingsCard>
+
+        <SettingsCard title="Profil opérationnel & fiches de poste">
+          <TeamOperationalSettingsPanel
+            teamLevel={teamLevel}
+            operationalSettings={operationalSettings}
+            raceEvents={raceEvents}
+            onChange={setOperationalSettings}
+            onSave={async () => {
+              if (onSaveOperationalSettings) {
+                await onSaveOperationalSettings();
+                alert('Profil opérationnel enregistré.');
+              }
+            }}
+            onNavigateToChecklist={onNavigateToChecklist}
+          />
         </SettingsCard>
 
         <SettingsCard title="Adresse du Club">
@@ -287,23 +408,162 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
             </div>
         </SettingsCard>
 
+        {onInstallPresentationDemo && (
+          <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-6 shadow-sm">
+            <h3 className="text-xl font-bold text-teal-950 mb-2">Équipe démo — Horizon Atlantique</h3>
+            <p className="text-sm text-teal-800 mb-3">
+              Crée une <strong>nouvelle équipe</strong> « Horizon Atlantique » dans le sélecteur
+              Contexte (à côté de Lanester), déjà remplie pour vos supports de présentation.
+            </p>
+            <ul className="text-xs text-teal-700 mb-4 list-disc list-inside space-y-0.5">
+              <li>Apparaît dans le menu Contexte comme une équipe séparée</li>
+              <li>10 coureuses · 8 staff · 3 événements · budgets · sponsors</li>
+              <li>Vos équipes Lanester ne sont pas modifiées</li>
+            </ul>
+            {presentationDemoAlreadyInstalled && (
+              <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+                L’équipe démo existe déjà (ou contient des fiches <code className="mx-1">demo_pres_*</code>).
+                Réinstaller met à jour son contenu et bascule dessus.
+              </p>
+            )}
+            <ActionButton
+              onClick={async () => {
+                if (isInstallingDemo) return;
+                const ok = window.confirm(
+                  presentationDemoAlreadyInstalled
+                    ? 'Mettre à jour l’équipe « Horizon Atlantique » et basculer dessus ?'
+                    : 'Créer l’équipe démo « Horizon Atlantique » et basculer dessus ?\n\nElle apparaîtra dans le menu Contexte.'
+                );
+                if (!ok) return;
+                setIsInstallingDemo(true);
+                try {
+                  const result = await onInstallPresentationDemo();
+                  window.alert(
+                    `Équipe « ${result.teamName} » prête.\n` +
+                      `${result.riders} coureuses · ${result.staff} staff · ${result.events} événements\n` +
+                      `${result.entityCount} éléments.\n\n` +
+                      `Sélectionnez-la dans Contexte si besoin, puis ouvrez Effectif / Événements / Finances / Pôle Performance.`
+                  );
+                } catch (err) {
+                  console.error(err);
+                  window.alert(
+                    err instanceof Error
+                      ? err.message
+                      : 'Échec de la création de l’équipe démo.'
+                  );
+                } finally {
+                  setIsInstallingDemo(false);
+                }
+              }}
+              disabled={isInstallingDemo}
+            >
+              {isInstallingDemo
+                ? 'Création…'
+                : presentationDemoAlreadyInstalled
+                  ? 'Mettre à jour l’équipe démo'
+                  : 'Créer l’équipe démo Horizon Atlantique'}
+            </ActionButton>
+          </div>
+        )}
+
+        {canDeleteTeam && onDeleteTeam && team && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+            <h3 className="text-xl font-bold text-red-900 mb-2">{t('gdprTeamDeleteTitle')}</h3>
+            <p className="text-sm text-red-700 mb-4">{t('gdprTeamDeleteDesc')}</p>
+            <p className="text-sm text-red-600 mb-4 bg-red-100 p-3 rounded-md">{t('gdprTeamDeleteWarning')}</p>
+            <ActionButton
+              variant="danger"
+              icon={<TrashIcon className="w-4 h-4" />}
+              onClick={() => {
+                setShowTeamDeleteModal(true);
+                setTeamDeletePassword('');
+                setTeamDeleteNameConfirm('');
+                setTeamDeleteError('');
+              }}
+            >
+              {t('gdprTeamDeleteButton')}
+            </ActionButton>
+          </div>
+        )}
+
       </div>
+
+      <ConfirmationModal
+        isOpen={showTeamDeleteModal}
+        onClose={() => setShowTeamDeleteModal(false)}
+        onConfirm={async () => {
+          if (!team || teamDeleteNameConfirm.trim() !== team.name) {
+            setTeamDeleteError(t('gdprTeamDeleteNameMismatch'));
+            return;
+          }
+          if (!teamDeletePassword) {
+            setTeamDeleteError(t('gdprDeletePasswordRequired'));
+            return;
+          }
+          setIsDeletingTeam(true);
+          setTeamDeleteError('');
+          try {
+            await onDeleteTeam?.(teamDeletePassword);
+            setShowTeamDeleteModal(false);
+            alert(t('gdprTeamDeleteSuccess'));
+          } catch (err: unknown) {
+            setTeamDeleteError(err instanceof Error ? err.message : t('gdprDeleteError'));
+          } finally {
+            setIsDeletingTeam(false);
+          }
+        }}
+        title={t('gdprTeamDeleteTitle')}
+        message={
+          <>
+            <p className="mb-3">{t('gdprTeamDeleteConfirm')}</p>
+            <p className="font-semibold text-gray-800 mb-2">{team?.name}</p>
+            <input
+              type="text"
+              value={teamDeleteNameConfirm}
+              onChange={(e) => setTeamDeleteNameConfirm(e.target.value)}
+              placeholder={team?.name}
+              className="w-full px-3 py-2 mb-3 border border-gray-300 rounded-md"
+            />
+            <input
+              type="password"
+              value={teamDeletePassword}
+              onChange={(e) => setTeamDeletePassword(e.target.value)}
+              placeholder={t('gdprCurrentPassword')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            {teamDeleteError && <p className="mt-2 text-sm text-red-600">{teamDeleteError}</p>}
+            {isDeletingTeam && <p className="mt-2 text-sm text-gray-500">{t('gdprExporting')}</p>}
+          </>
+        }
+      />
 
       <ConfirmationModal
         isOpen={!!levelToChange}
         onClose={() => setLevelToChange(null)}
         onConfirm={handleConfirmLevelChange}
-        title="Confirmation du Changement de Niveau"
+        title={t('settingsConfirmLevelChangeTitle')}
         message={
           <>
-            <p>Vous êtes sur le point de changer le niveau de votre structure en <strong>{levelToChange}</strong>.</p>
+            <p>{t('settingsConfirmLevelChangeMsg1')} <strong>{levelToChange}</strong>.</p>
             <p className="mt-2 font-semibold text-yellow-700 bg-yellow-100 p-2 rounded-md">
-              Cette action peut modifier les fonctionnalités disponibles et impacter votre facturation.
+              {t('settingsConfirmLevelChangeMsg2')}
             </p>
-            <p className="mt-2">Voulez-vous continuer ?</p>
+            <p className="mt-2">{t('settingsConfirmLevelChangeMsg3')}</p>
+            <p className="mt-2 text-sm text-blue-700 bg-blue-50 p-2 rounded-md">
+              Le profil opérationnel (rôles checklist et fiches de poste) sera recalibré selon le nouveau secteur.
+              Vous pourrez l&apos;ajuster dans « Profil opérationnel & fiches de poste ».
+            </p>
           </>
         }
       />
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <SectionWrapper title="Paramètres de l'Application">
+      {content}
     </SectionWrapper>
   );
 };

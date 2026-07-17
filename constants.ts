@@ -1,5 +1,6 @@
 
-
+import { SIDEBAR_GROUPS, type SidebarGroupKey } from './constants/sidebarGroups';
+import { buildEmptyChecklistTemplatesRecord } from './utils/checklistRoleUtils';
 import { 
     PerformanceFactorDetail, StaffMember, Vehicle, EquipmentItem, RaceEvent, 
     EventTransportLeg, EventBudgetItem, PowerProfile, Rider, EventAccommodation, 
@@ -290,56 +291,96 @@ export const LANGUAGE_OPTIONS = [
 export const DEFAULT_THEME_PRIMARY_COLOR = '#1e293b'; // slate-800
 export const DEFAULT_THEME_ACCENT_COLOR = '#4f46e5'; // indigo-600
 
-export const SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; icon: string; group: Record<'fr' | 'en', string> }> = [
-    // Tableau de Bord Principal - Toujours en premier
-    { id: 'myDashboard', labels: { fr: 'Tableau de Bord', en: 'Dashboard' }, icon: 'HomeIcon', group: { fr: 'Tableau de Bord', en: 'Dashboard' } },
-    { id: 'events', labels: { fr: 'Calendrier', en: 'Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Tableau de Bord', en: 'Dashboard' } },
-    
-    // Navigation Principale - Actions quotidiennes du coureur
-    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
-    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
-    { id: 'myResults', labels: { fr: 'Mon Palmarès', en: 'My Results' }, icon: 'TrophyIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
-    { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', group: { fr: 'Navigation Principale', en: 'Main Navigation' } },
-    
-    // Performance & Santé - Regroupement logique (sections les plus utilisées)
-    { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'season-planning', labels: { fr: 'Planning de Saison', en: 'Season Planning' }, icon: 'CalendarDaysIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'staff', labels: { fr: 'Staff', en: 'Staff' }, icon: 'UserGroupIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'scouting', labels: { fr: 'Scouting', en: 'Scouting' }, icon: 'EyeIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    { id: 'talentAvailability', labels: { fr: 'Disponibilités Talents', en: 'Talent Availability' }, icon: 'UserGroupIcon', group: { fr: 'Performance & Santé', en: 'Performance & Health' } },
-    
-    // Logistique & Équipement - Regroupement technique et logistique
-    { id: 'riderEquipment', labels: { fr: 'Mon Matériel', en: 'My Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'bikeSetup', labels: { fr: 'Cotes Vélo', en: 'Bike Setup' }, icon: 'Cog6ToothIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'equipment', labels: { fr: 'Matériel', en: 'Equipment' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'vehicles', labels: { fr: 'Véhicules', en: 'Vehicles' }, icon: 'TruckIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'accommodationHistory', labels: { fr: 'Hist. Hébergements', en: 'Accommodation History' }, icon: 'BuildingOfficeIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    { id: 'expenseReceipts', labels: { fr: 'Justificatifs', en: 'Receipts' }, icon: 'DocumentTextIcon', group: { fr: 'Logistique & Équipement', en: 'Logistics & Equipment' } },
-    
-    // Administration - Fonctions administratives avancées
-    { id: 'adminDashboard', labels: { fr: 'Tableau de Bord Admin', en: 'Admin Dashboard' }, icon: 'ChartBarIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'adminDossier', labels: { fr: 'Admin', en: 'Admin' }, icon: 'ShieldCheckIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'settings', labels: { fr: 'Paramètres Équipe', en: 'Team Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'pricing', labels: { fr: 'Abonnement', en: 'Subscription' }, icon: 'BanknotesIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'userManagement', labels: { fr: 'Gestion Utilisateurs', en: 'User Management' }, icon: 'UserPlusIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'permissions', labels: { fr: 'Rôles & Permissions', en: 'Roles & Permissions' }, icon: 'KeyIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', group: { fr: 'Administration', en: 'Administration' } },
-    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', group: { fr: 'Administration', en: 'Administration' } },
+export type SectionConfig = {
+  id: string;
+  labels: Record<'fr' | 'en', string>;
+  icon: string;
+  groupKey?: SidebarGroupKey;
+  group: Record<'fr' | 'en', string>;
+};
+
+function sectionGroup(groupKey: SidebarGroupKey): Record<'fr' | 'en', string> {
+  return SIDEBAR_GROUPS[groupKey];
+}
+
+export const SECTIONS: SectionConfig[] = [
+    { id: 'myDashboard', labels: { fr: 'Tableau de Bord', en: 'Dashboard' }, icon: 'HomeIcon', groupKey: 'dashboard', group: sectionGroup('dashboard') },
+    { id: 'events', labels: { fr: 'Calendrier Équipe', en: 'Team Calendar' }, icon: 'CalendarDaysIcon', groupKey: 'dashboard', group: sectionGroup('dashboard') },
+
+    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'myResults', labels: { fr: 'Mon Palmarès', en: 'My Results' }, icon: 'TrophyIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'ChartBarIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'myStages', labels: { fr: 'Mes Stages', en: 'My Camps' }, icon: 'MountainIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'missionSearch', labels: { fr: 'Offres & Missions', en: 'Jobs & Missions' }, icon: 'BriefcaseIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'teamSearch', labels: { fr: 'Chercher une équipe', en: 'Find a Team' }, icon: 'UsersIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'nutrition', labels: { fr: 'Ma Nutrition', en: 'My Nutrition' }, icon: 'BeakerIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'riderEquipment', labels: { fr: 'Mon Matériel & Bike Fit', en: 'My Equipment & Bike Fit' }, icon: 'WrenchScrewdriverIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+    { id: 'adminDossier', labels: { fr: 'Mon Dossier Admin', en: 'My Admin File' }, icon: 'ShieldCheckIcon', groupKey: 'mySpace', group: sectionGroup('mySpace') },
+
+    { id: 'performance', labels: { fr: 'Pôle Performance', en: 'Performance Hub' }, icon: 'ChartBarIcon', groupKey: 'team', group: sectionGroup('team') },
+    { id: 'roster', labels: { fr: 'Effectif', en: 'Roster' }, icon: 'UsersIcon', groupKey: 'team', group: sectionGroup('team') },
+    { id: 'season-planning', labels: { fr: 'Planning de Saison', en: 'Season Planning' }, icon: 'CalendarDaysIcon', groupKey: 'team', group: sectionGroup('team') },
+    { id: 'staff', labels: { fr: 'Staff', en: 'Staff' }, icon: 'UserGroupIcon', groupKey: 'team', group: sectionGroup('team') },
+    { id: 'scouting', labels: { fr: 'Scouting', en: 'Scouting' }, icon: 'EyeIcon', groupKey: 'team', group: sectionGroup('team') },
+
+    { id: 'equipment', labels: { fr: 'Matériel', en: 'Equipment' }, icon: 'WrenchScrewdriverIcon', groupKey: 'logistics', group: sectionGroup('logistics') },
+    { id: 'vehicles', labels: { fr: 'Véhicules', en: 'Vehicles' }, icon: 'TruckIcon', groupKey: 'logistics', group: sectionGroup('logistics') },
+    { id: 'stocks', labels: { fr: 'Stocks', en: 'Stocks' }, icon: 'CircleStackIcon', groupKey: 'logistics', group: sectionGroup('logistics') },
+    { id: 'accommodationHistory', labels: { fr: 'Hist. Hébergements', en: 'Accommodation History' }, icon: 'BuildingOfficeIcon', groupKey: 'logistics', group: sectionGroup('logistics') },
+
+    { id: 'financial', labels: { fr: 'Finances', en: 'Financials' }, icon: 'BanknotesIcon', groupKey: 'finance', group: sectionGroup('finance') },
+    { id: 'expenseReceipts', labels: { fr: 'Justificatifs', en: 'Receipts' }, icon: 'DocumentTextIcon', groupKey: 'finance', group: sectionGroup('finance') },
+
+    { id: 'adminDashboard', labels: { fr: 'Tableau de Bord Admin', en: 'Admin Dashboard' }, icon: 'ChartBarIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'organizationDashboard', labels: { fr: 'Vue Holding', en: 'Holding View' }, icon: 'BuildingOfficeIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'partnerPortal', labels: { fr: 'Espace Partenaire', en: 'Partner Portal' }, icon: 'UserGroupIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'userManagement', labels: { fr: 'Utilisateurs & Accès', en: 'Users & Access' }, icon: 'UserPlusIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'checklist', labels: { fr: 'Modèles Checklist', en: 'Checklist Templates' }, icon: 'ClipboardListIcon', groupKey: 'administration', group: sectionGroup('administration') },
+    { id: 'superAdmin', labels: { fr: '🔧 Super Admin', en: '🔧 Super Admin' }, icon: 'ShieldExclamationIcon', groupKey: 'administration', group: sectionGroup('administration') },
 ];
 
 /** Sections visibles pour les profils indépendants (sans équipe). */
-export const INDEPENDENT_SECTIONS: Array<{ id: string; labels: Record<'fr' | 'en', string>; icon: string; group: Record<'fr' | 'en', string> }> = [
-    { id: 'independentHub', labels: { fr: 'Mon Espace', en: 'My Space' }, icon: 'HomeIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
-    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'TrophyIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+export const INDEPENDENT_SECTIONS: SectionConfig[] = [
+    { id: 'myDashboard', labels: { fr: 'Tableau de Bord', en: 'Dashboard' }, icon: 'HomeIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'independentHub', labels: { fr: 'Mon Espace', en: 'My Space' }, icon: 'IdentificationIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'myCareer', labels: { fr: 'Ma Carrière', en: 'My Career' }, icon: 'ChartBarIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'myProfile', labels: { fr: 'Mon Profil', en: 'My Profile' }, icon: 'IdentificationIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'myResults', labels: { fr: 'Mes Résultats', en: 'My Results' }, icon: 'TrophyIcon', group: { fr: 'Mon Parcours', en: 'My Journey' } },
+    { id: 'myPerformance', labels: { fr: 'Mes Performances', en: 'My Power Data' }, icon: 'LungsIcon', group: { fr: 'Performance', en: 'Performance' } },
+    { id: 'performanceProject', labels: { fr: 'Projet Performance', en: 'Performance Project' }, icon: 'BrainIcon', group: { fr: 'Performance', en: 'Performance' } },
+    { id: 'riderEquipment', labels: { fr: 'Matériel & Bike Fit', en: 'Equipment & Bike Fit' }, icon: 'WrenchScrewdriverIcon', group: { fr: 'Performance', en: 'Performance' } },
+    { id: 'nutrition', labels: { fr: 'Nutrition', en: 'Nutrition' }, icon: 'BeakerIcon', group: { fr: 'Performance', en: 'Performance' } },
+    { id: 'myCalendar', labels: { fr: 'Mon Calendrier', en: 'My Calendar' }, icon: 'CalendarDaysIcon', group: { fr: 'Planning', en: 'Planning' } },
+    { id: 'myTrips', labels: { fr: 'Mes Déplacements', en: 'My Trips' }, icon: 'PaperAirplaneIcon', group: { fr: 'Logistique', en: 'Logistics' } },
+    { id: 'expenseReceipts', labels: { fr: 'Notes de frais', en: 'Expense Receipts' }, icon: 'DocumentTextIcon', group: { fr: 'Logistique', en: 'Logistics' } },
+    { id: 'teamSearch', labels: { fr: 'Chercher une équipe', en: 'Find a Team' }, icon: 'UsersIcon', group: { fr: 'Opportunités', en: 'Opportunities' } },
     { id: 'missionSearch', labels: { fr: 'Offres & Missions', en: 'Jobs & Missions' }, icon: 'BriefcaseIcon', group: { fr: 'Opportunités', en: 'Opportunities' } },
+    { id: 'pricing', labels: { fr: 'Mon Abonnement', en: 'My Subscription' }, icon: 'CurrencyDollarIcon', group: { fr: 'Compte', en: 'Account' } },
     { id: 'userSettings', labels: { fr: 'Paramètres', en: 'Settings' }, icon: 'Cog6ToothIcon', group: { fr: 'Compte', en: 'Account' } },
 ];
+
+/** Sections réservées aux athlètes indépendants (coureurs). */
+export const INDEPENDENT_RIDER_ONLY_SECTIONS: AppSection[] = [
+    'myResults',
+    'myPerformance',
+    'performanceProject',
+    'riderEquipment',
+    'nutrition',
+    'teamSearch',
+];
+
+/** Sections réservées aux staff indépendants (vacataires). */
+export const INDEPENDENT_STAFF_ONLY_SECTIONS: AppSection[] = [
+    'myTrips',
+    'expenseReceipts',
+    'missionSearch',
+];
+
+/** Sections planning partagées (athlète = courses équipe ; staff = missions acceptées). */
+export const INDEPENDENT_SHARED_PLANNING_SECTIONS: AppSection[] = ['myCalendar'];
 
 export const LEGAL_VERSIONS = {
   TERMS_VERSION: '2026-01',
@@ -347,14 +388,27 @@ export const LEGAL_VERSIONS = {
   NDA_VERSION: '2026-01',
 } as const;
 
+/** Comptes plateforme avec accès Super Admin (maintenance globale). */
+export const SUPER_ADMIN_EMAILS = [
+  'anthony.uldry@hotmail.fr',
+  'ds.lanesterwomen@gmail.com',
+] as const;
+
+/** Seul compte autorisé à la vue holding (pilotage multi-équipes plateforme). */
+export const HOLDING_SUPER_ADMIN_EMAIL = 'anthony.uldry@hotmail.fr' as const;
+
 export const TEAM_STATE_COLLECTIONS = [
-    'riders', 'staff', 'vehicles', 'equipment', 'raceEvents', 'eventTransportLegs', 
-    'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments', 
+    'riders', 'staff', 'vehicles', 'equipment', 'raceEvents', 'eventTransportLegs',
+    'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments',
     'eventBudgetItems', 'expenseReceipts', 'eventChecklistItems', 'performanceEntries', 'riderEventSelections',
     'staffEventSelections',
-    'eventStaffAvailabilities', 'incomeItems', 'scoutingProfiles', 'teamProducts', 
-    'stockItems', 'equipmentStockItems', 'peerRatings', 'teamEventReviews', 'debriefings', 'missions', 'meetingReports',
-    'performanceArchives'
+    'eventStaffAvailabilities', 'incomeItems', 'scoutingProfiles', 'teamProducts',
+    'stockItems', 'equipmentStockItems', 'warehouses', 'stockMovements', 'vehiclePositions',
+    'convocationResponses',
+    'clientRecords', 'supplierInvoices', 'sepaBatches', 'bankTransactions', 'quotes',
+    'peerRatings', 'riderSelfDebriefs', 'teamEventReviews', 'debriefings', 'missions', 'recruitmentOffers',
+    'recruitmentCampaigns', 'meetingReports',
+    'performanceArchives', 'organizerContacts', 'partnerNewsletters'
 ];
 
 export const emptyRaceInformation: RaceInformation = {
@@ -404,6 +458,11 @@ export const getInitialGlobalState = (): GlobalState => ({
     { id: TeamRole.VIEWER, name: 'Athlète', isDeletable: false },
   ],
   scoutingRequests: [],
+  organizations: [],
+  partnerAccesses: [],
+  partnerMarketplaceProfiles: [],
+  teamSponsorshipNeeds: [],
+  partnershipMatchRequests: [],
 });
 
 export const getInitialTeamState = (): TeamState => ({
@@ -425,26 +484,33 @@ export const getInitialTeamState = (): TeamState => ({
     staffEventSelections: [],
     eventStaffAvailabilities: [],
     incomeItems: [],
-    checklistTemplates: {
-        [ChecklistRole.DS]: [],
-        [ChecklistRole.ASSISTANT]: [],
-        [ChecklistRole.MECANO]: [],
-        [ChecklistRole.MANAGER]: [],
-        [ChecklistRole.COMMUNICATION]: [],
-        [ChecklistRole.COUREUR]: [],
-    },
+    checklistTemplates: buildEmptyChecklistTemplatesRecord(),
     categoryBudgets: {},
     scoutingProfiles: [],
     teamProducts: [],
     stockItems: [],
     equipmentStockItems: [],
+    warehouses: [],
+    stockMovements: [],
+    vehiclePositions: [],
+    partnerNewsletters: [],
+    convocationResponses: [],
+    clientRecords: [],
+    supplierInvoices: [],
+    sepaBatches: [],
+    bankTransactions: [],
+    quotes: [],
     peerRatings: [],
+    riderSelfDebriefs: [],
     teamEventReviews: [],
     debriefings: [],
     dietaryPlans: [],
     missions: [],
+    recruitmentOffers: [],
+    recruitmentCampaigns: [],
     performanceArchives: [],
     meetingReports: [],
+    organizerContacts: [],
 });
 
 export const initialEquipmentFormState: Omit<EquipmentItem, 'id'> = {
@@ -685,13 +751,13 @@ export const EQUIPMENT_STATUS_COLORS: Record<EquipmentStatus, string> = {
 };
 
 export const SCOUTING_STATUS_COLORS: Record<ScoutingStatus, string> = {
-    [ScoutingStatus.TO_WATCH]: 'bg-blue-100 text-blue-800',
-    [ScoutingStatus.CONTACTED]: 'bg-yellow-100 text-yellow-800',
-    [ScoutingStatus.IN_DISCUSSION]: 'bg-orange-100 text-orange-800',
-    [ScoutingStatus.REJECTED]: 'bg-red-100 text-red-800',
-    [ScoutingStatus.SIGNED]: 'bg-green-100 text-green-800',
-    [ScoutingStatus.AWAITING_APPROVAL]: 'bg-purple-100 text-purple-800',
-    [ScoutingStatus.DATA_SHARED]: 'bg-teal-100 text-teal-800',
+    [ScoutingStatus.TO_WATCH]: 'bg-blue-500/25 text-blue-200 ring-1 ring-blue-400/30',
+    [ScoutingStatus.CONTACTED]: 'bg-yellow-500/25 text-yellow-200 ring-1 ring-yellow-400/30',
+    [ScoutingStatus.IN_DISCUSSION]: 'bg-orange-500/25 text-orange-200 ring-1 ring-orange-400/30',
+    [ScoutingStatus.REJECTED]: 'bg-rose-500/25 text-rose-200 ring-1 ring-rose-400/30',
+    [ScoutingStatus.SIGNED]: 'bg-emerald-500/25 text-emerald-200 ring-1 ring-emerald-400/30',
+    [ScoutingStatus.AWAITING_APPROVAL]: 'bg-purple-500/25 text-purple-200 ring-1 ring-purple-400/30',
+    [ScoutingStatus.DATA_SHARED]: 'bg-teal-500/25 text-teal-200 ring-1 ring-teal-400/30',
 };
 
 export const POWER_ZONE_COLORS: Record<PowerZoneKey, string> = {
@@ -765,6 +831,13 @@ export const BIKE_SETUP_COTES_FIELDS: Array<{ key: keyof BikeFitMeasurements; la
   { key: 'reculSelle', label: 'Recul de Selle' },
   { key: 'longueurBecSelleAxeCintre', label: 'Longueur (Bec selle/ Axe cintre)' },
   { key: 'hauteurGuidonAxeRoueCentreCintre', label: 'Hauteur guidon (Axe roue/ centre cintre)' },
+];
+
+export const BIKE_SETUP_TT_COTES_FIELDS: Array<{ key: keyof BikeFitMeasurements; label: string; uciKey?: 'S' | 'E' | 'H' }> = [
+  { key: 'reculSelle', label: 'Recul selle (S)', uciKey: 'S' },
+  { key: 'distanceExtensionE', label: 'Axe pédalier → prolongateurs (E)', uciKey: 'E' },
+  { key: 'hauteurProlongateursH', label: 'Support avant-bras → prolongateurs (H)', uciKey: 'H' },
+  { key: 'hauteurSelle', label: 'Hauteur de selle' },
 ];
 
 export const POWER_ZONES_CONFIG: any = {};

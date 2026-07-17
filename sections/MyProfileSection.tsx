@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Rider, User, UserRole, StaffMember, Team, RaceEvent, RiderEventSelection, AppState, RiderEventPreference } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -9,7 +9,11 @@ import CheckIcon from '../components/icons/CheckIcon';
 import { useTranslations } from '../hooks/useTranslations';
 import { updateUserProfile } from '../services/firebaseService';
 import RiderDashboardTab from '../components/riderDetailTabs/RiderDashboardTab';
-import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
+import RiderContractSummary from '../components/RiderContractSummary';
+import StaffMyProfileWorkspace from '../components/StaffMyProfileWorkspace';
+import { getStaffMemberForUser } from '../utils/staffMemberUtils';
+import { getRiderProfileForUser } from '../utils/eventRiderUtils';
+import { isIndependentUser, userToRiderProfile } from '../utils/independentUtils';
 
 interface MyProfileSectionProps {
   riders: Rider[];
@@ -17,6 +21,7 @@ interface MyProfileSectionProps {
   currentUser: User;
   setRiders: (updater: React.SetStateAction<Rider[]>) => void;
   onSaveRider: (rider: Rider) => void;
+  onSaveStaff?: (staff: StaffMember) => void | Promise<void>;
   setStaff: (updater: React.SetStateAction<StaffMember[]>) => void;
   onUpdateUser?: (user: User) => void;
   currentTeam?: Team;
@@ -31,7 +36,8 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
   staff, 
   currentUser, 
   setRiders, 
-  onSaveRider, 
+  onSaveRider,
+  onSaveStaff,
   setStaff, 
   onUpdateUser, 
   currentTeam,
@@ -47,47 +53,78 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
   const [editedData, setEditedData] = useState<Partial<Rider>>({});
   const { t } = useTranslations();
 
+  const isCoureur =
+    currentUser.userRole === UserRole.COUREUR ||
+    String(currentUser.userRole).toLowerCase() === 'coureur';
+
+  const resolvedRider = useMemo(() => {
+    if (!isCoureur) return undefined;
+    const fromRoster = getRiderProfileForUser(riders, currentUser);
+    if (fromRoster) return fromRoster;
+    // Indépendant, ou fiche équipe pas encore liée : profil à partir du compte User
+    if (isIndependentUser(currentUser) || !currentTeam) {
+      return userToRiderProfile(currentUser);
+    }
+    // Équipe sans match email/id : fallback User pour ne pas bloquer l'écran
+    return userToRiderProfile(currentUser);
+  }, [isCoureur, riders, currentUser, currentTeam]);
+
   useEffect(() => {
-    if (!currentUser || !currentUser.userRole || !currentUser.email) {
+    if (!currentUser || !currentUser.userRole) {
+      setProfileData(null);
       setIsLoading(false);
       return;
     }
 
-    let userProfile: Rider | StaffMember | undefined;
-
-    if (currentUser.userRole === UserRole.COUREUR) {
-        userProfile = riders.find(r => r.email === currentUser.email);
-    } else if (currentUser.userRole === UserRole.STAFF || currentUser.userRole === UserRole.MANAGER) {
-        userProfile = staff.find(s => s.email === currentUser.email);
-    }
-    
-    if (userProfile) {
-        const profileWithUserInfo = structuredClone(userProfile);
+    if (isCoureur) {
+      if (resolvedRider) {
+        const profileWithUserInfo = structuredClone(resolvedRider);
         if (currentUser.firstName && !profileWithUserInfo.firstName) {
-            profileWithUserInfo.firstName = currentUser.firstName;
+          profileWithUserInfo.firstName = currentUser.firstName;
         }
         if (currentUser.lastName && !profileWithUserInfo.lastName) {
-            profileWithUserInfo.lastName = currentUser.lastName;
+          profileWithUserInfo.lastName = currentUser.lastName;
         }
-        
-        if (currentUser.userRole === UserRole.COUREUR) {
-            const riderProfile = profileWithUserInfo as Rider;
-            if (currentUser.signupInfo?.birthDate && !riderProfile.birthDate) {
-                riderProfile.birthDate = currentUser.signupInfo.birthDate;
-            }
-            if (currentUser.signupInfo?.sex && !riderProfile.sex) {
-                riderProfile.sex = currentUser.signupInfo.sex;
-            }
-            if (currentTeam?.name && !riderProfile.teamName) {
-                riderProfile.teamName = currentTeam.name;
-            }
+        if (currentUser.email && !profileWithUserInfo.email) {
+          profileWithUserInfo.email = currentUser.email;
         }
-        
+        if (currentUser.signupInfo?.birthDate && !profileWithUserInfo.birthDate) {
+          profileWithUserInfo.birthDate = currentUser.signupInfo.birthDate;
+        }
+        if (currentUser.signupInfo?.sex && !profileWithUserInfo.sex) {
+          profileWithUserInfo.sex = currentUser.signupInfo.sex;
+        }
+        if (currentTeam?.name && !profileWithUserInfo.teamName) {
+          profileWithUserInfo.teamName = currentTeam.name;
+        }
         setProfileData(profileWithUserInfo);
+      } else {
+        setProfileData(null);
+      }
+      setIsLoading(false);
+      return;
     }
-    
+
+    if (currentUser.userRole === UserRole.STAFF || currentUser.userRole === UserRole.MANAGER) {
+      const userProfile = getStaffMemberForUser(currentUser, staff);
+      if (userProfile) {
+        const profileWithUserInfo = structuredClone(userProfile);
+        if (currentUser.firstName && !profileWithUserInfo.firstName) {
+          profileWithUserInfo.firstName = currentUser.firstName;
+        }
+        if (currentUser.lastName && !profileWithUserInfo.lastName) {
+          profileWithUserInfo.lastName = currentUser.lastName;
+        }
+        setProfileData(profileWithUserInfo);
+      } else {
+        setProfileData(null);
+      }
+    } else {
+      setProfileData(null);
+    }
+
     setIsLoading(false);
-  }, [riders, staff, currentUser, currentTeam]);
+  }, [resolvedRider, staff, currentUser, currentTeam, isCoureur]);
 
   // Fonction pour gérer la mise à jour des préférences de course
   const handleUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
@@ -140,7 +177,7 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
     setEditedData({});
   };
 
-  const handleInputChange = (field: keyof Rider, value: string) => {
+  const handleInputChange = (field: keyof Rider, value: string | number) => {
     setEditedData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -148,20 +185,46 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
     return <SectionWrapper title="Mon Profil"><p>Chargement...</p></SectionWrapper>;
   }
 
+  // Staff uniquement (fiche staff), ou manager présent dans l’effectif staff
+  const staffMember = getStaffMemberForUser(currentUser, staff);
+  const isStaffAccount =
+    currentUser.userRole === UserRole.STAFF ||
+    (currentUser.userRole === UserRole.MANAGER && Boolean(staffMember));
+
+  if (isStaffAccount && !isCoureur) {
+    if (!onSaveStaff) {
+      return (
+        <SectionWrapper title="Mon Profil">
+          <p className="text-sm text-slate-400">Sauvegarde staff indisponible.</p>
+        </SectionWrapper>
+      );
+    }
+    return (
+      <StaffMyProfileWorkspace
+        staff={staff}
+        currentUser={currentUser}
+        onSaveStaff={onSaveStaff}
+        title="Mon Profil"
+      />
+    );
+  }
+
   if (!profileData) {
     return (
       <SectionWrapper title="Mon Profil">
-        <div className="text-center p-8 bg-gray-50 rounded-lg border">
-            <XCircleIcon className="w-12 h-12 mx-auto text-red-400" />
-            <p className="mt-4 text-lg font-medium text-gray-700">Profil non trouvé</p>
-            <p className="mt-2 text-gray-500">Impossible de charger votre profil. Veuillez contacter le support.</p>
+        <div className="rounded-xl border border-white/10 bg-slate-900 p-8 text-center">
+            <XCircleIcon className="w-12 h-12 mx-auto text-rose-400" />
+            <p className="mt-4 text-lg font-medium text-white">Profil non trouvé</p>
+            <p className="mt-2 text-slate-400">
+              Impossible de charger votre profil. Vérifiez que votre compte est bien lié à une fiche athlète (même email ou même nom), ou contactez le support.
+            </p>
         </div>
       </SectionWrapper>
     );
   }
 
   // Si c'est un coureur, afficher les informations de base du profil
-  if (currentUser.userRole === UserRole.COUREUR) {
+  if (isCoureur) {
     return (
       <SectionWrapper title="Mon Profil">
         <div className="space-y-6">
@@ -179,7 +242,7 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
               )}
               <div>
                 <h2 className="text-2xl font-bold">{profileData.firstName} {profileData.lastName}</h2>
-                <p className="text-blue-100">{profileData.teamName || 'Équipe Inconnue'}</p>
+                <p className="text-blue-100">{(profileData as Rider).teamName || 'Équipe Inconnue'}</p>
                 <p className="text-sm text-blue-200">Informations générales</p>
               </div>
             </div>
@@ -328,7 +391,7 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                   ) : (
-                    <p className="mt-1 text-sm text-gray-900">{profileData.teamName || 'Non définie'}</p>
+                    <p className="mt-1 text-sm text-gray-900">{(profileData as Rider).teamName || 'Non définie'}</p>
                   )}
                 </div>
                 <div>
@@ -341,7 +404,7 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                   ) : (
-                    <p className="mt-1 text-sm text-gray-900">{profileData.nextSeasonTeam || 'Non définie'}</p>
+                    <p className="mt-1 text-sm text-gray-900">{(profileData as Rider).nextSeasonTeam || 'Non définie'}</p>
                   )}
                 </div>
                 <div>
@@ -441,35 +504,13 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
 
             {/* Informations contractuelles */}
             <div className="mb-6">
-              <h4 className="text-md font-semibold text-gray-900 mb-4">Informations contractuelles</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Salaire (€)</label>
-                  {isEditing ? (
-                    <input
-                      type="number"
-                      value={editedData.salary || ''}
-                      onChange={(e) => handleInputChange('salary', parseInt(e.target.value) || 0)}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-900">{profileData.salary ? `${profileData.salary} €` : 'Non défini'}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Fin de contrat</label>
-                  {isEditing ? (
-                    <input
-                      type="date"
-                      value={editedData.contractEndDate || ''}
-                      onChange={(e) => handleInputChange('contractEndDate', e.target.value)}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-900">{profileData.contractEndDate || 'Non définie'}</p>
-                  )}
-                </div>
-              </div>
+              <h4 className="text-md font-semibold text-gray-900 mb-4">{t('contractDetailsTitle')}</h4>
+              {profileData && 'qualitativeProfile' in profileData ? (
+                <RiderContractSummary rider={profileData as Rider} />
+              ) : (
+                <p className="text-sm text-gray-500">{t('contractNoData')}</p>
+              )}
+              <p className="mt-2 text-xs text-gray-500">{t('contractReadOnlyHint')}</p>
             </div>
 
             {/* Objectifs de saison */}
@@ -515,35 +556,12 @@ const MyProfileSection: React.FC<MyProfileSectionProps> = ({
     );
   }
 
-  // Si c'est un membre du staff, afficher un profil simplifié
   return (
     <SectionWrapper title="Mon Profil">
-      <div className="bg-white p-6 rounded-lg shadow-sm border">
-        <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-            <span className="text-2xl font-bold text-blue-600">
-              {(profileData as StaffMember).firstName?.[0] || 'S'}
-            </span>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {(profileData as StaffMember).firstName} {(profileData as StaffMember).lastName}
-            </h2>
-            <p className="text-gray-600">
-              {getStaffRoleDisplayLabel((profileData as StaffMember).role)} • {(profileData as StaffMember).status}
-            </p>
-            <p className="text-sm text-gray-500">
-              {currentTeam?.name || 'Équipe'}
-            </p>
-          </div>
-        </div>
-        
-        <div className="mt-6">
-          <p className="text-gray-600">
-            Interface de profil pour les membres du staff. 
-            Les fonctionnalités avancées sont disponibles pour les coureurs.
-          </p>
-        </div>
+      <div className="text-center p-8 bg-gray-50 rounded-lg border">
+        <XCircleIcon className="w-12 h-12 mx-auto text-red-400" />
+        <p className="mt-4 text-lg font-medium text-gray-700">Profil non trouvé</p>
+        <p className="mt-2 text-gray-500">Impossible de charger votre profil.</p>
       </div>
     </SectionWrapper>
   );

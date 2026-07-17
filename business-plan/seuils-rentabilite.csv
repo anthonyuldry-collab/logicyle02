@@ -1,0 +1,15 @@
+type,niveau,mois,date_calendrier,mrr_total,arr,equipes,independants,cout_total_mensuel,resultat_net,remuneration_fondateur_net
+simule,"Niveau 1 — Marge brute ≥ fixes (infra + RH, hors fondateur)",8,juil. 2028,4948.0,59377.0,38.8,249.0,4154.0,0.0,217.0
+simule,Niveau 2 — Point mort opérationnel (résultat net ≥ 0),8,juil. 2028,4948.0,59377.0,38.8,249.0,4154.0,0.0,217.0
+simule,Niveau 3 — Trésorerie ≥ 6 mois de burn,1,déc. 2027,477.0,5725.0,4.0,22.0,2200.0,-1800.0,0.0
+simule,Niveau 4 — Rémunération fondateur ≥ 15 K€ net/mois,45,août 2031,115280.0,1383356.0,545.9,4452.0,44453.0,54976.0,15211.0
+simule,Niveau 5 — Marge nette ≥ 20 % du MRR,19,juin 2029,18668.0,224011.0,128.5,977.0,11033.0,4697.0,2500.0
+theorique,M18 · Point mort hors fondateur · 100 % équipes,18,mai 2029,7384.0,88605.0,97,0,6350.0,0,
+theorique,"M18 · Point mort avec salaire fondateur 2,5 K€ · 100 % équipes",18,mai 2029,12810.0,153721.0,167,0,11017.0,0,
+theorique,M18 · Point mort avec salaire 5 K€ + charges · 100 % équipes,18,mai 2029,18236.0,218837.0,238,0,15683.0,0,
+theorique,M18 · Point mort hors fondateur · 65 % équipes / 35 % indép.,18,mai 2029,7384.0,88605.0,91.0,468.0,6350.0,0,
+theorique,"M18 · Point mort avec salaire fondateur 2,5 K€ · 65 % équipes / 35 % indép.",18,mai 2029,12810.0,153721.0,158.0,813.0,11017.0,0,
+theorique,M18 · Point mort avec salaire 5 K€ + charges · 65 % équipes / 35 % indép.,18,mai 2029,18236.0,218837.0,225.0,1157.0,15683.0,0,
+theorique,M18 · Point mort hors fondateur · 50 / 50,18,mai 2029,7384.0,88605.0,87.0,831.0,6350.0,0,
+theorique,"M18 · Point mort avec salaire fondateur 2,5 K€ · 50 / 50",18,mai 2029,12810.0,153721.0,151.0,1443.0,11017.0,0,
+theorique,M18 · Point mort avec salaire 5 K€ + charges · 50 / 50,18,mai 2029,18236.0,218837.0,215.0,2054.0,15683.0,0,

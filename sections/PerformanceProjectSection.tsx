@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Rider, PerformanceFactorDetail } from '../types';
+import { Rider, PerformanceFactorDetail, PerformanceActionItem, PerformanceProjectEntry } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import { PERFORMANCE_PROJECT_FACTORS_CONFIG } from '../constants';
@@ -8,6 +8,10 @@ import CyclingIcon from '../components/icons/CyclingIcon';
 import BrainIcon from '../components/icons/BrainIcon';
 import MountainIcon from '../components/icons/MountainIcon';
 import TacticsIcon from '../components/icons/TacticsIcon';
+import PerformanceActionItemsEditor from '../components/performance/PerformanceActionItemsEditor';
+import PerformanceFieldItemsEditor from '../components/performance/PerformanceFieldItemsEditor';
+import PerformanceProjectHistoryPanel from '../components/performance/PerformanceProjectHistoryPanel';
+import { FIELD_KIND_CONFIG, PerformanceFieldKind, withPerformanceProjectHistory } from '../utils/performanceProjectUtils';
 
 const iconComponents: Record<string, React.ElementType> = {
   LungsIcon,
@@ -30,35 +34,13 @@ export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps>
     setFormData(rider || null);
   }, [rider]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    
-    setFormData(prevData => {
-        if (!prevData) return null;
-        
-        const newData = structuredClone(prevData);
-        
-        let currentLevel: any = newData;
-        const keys = name.split('.');
-        for (let i = 0; i < keys.length - 1; i++) {
-            currentLevel = currentLevel[keys[i]] = currentLevel[keys[i]] || {};
-        }
-        currentLevel[keys[keys.length - 1]] = value;
-        
-        return newData;
-    });
-  };
-
   const handleSave = async () => {
-    if (formData) {
+    if (formData && rider) {
       try {
-        // Sauvegarder dans Firebase
-        await onSaveRider(formData);
-        
-        // Mettre à jour l'état local
-        setRiders(prevRiders => prevRiders.map(r => r.id === formData.id ? formData : r));
-        
-        alert('Projet de performance sauvegardé !');
+        const updated = withPerformanceProjectHistory(rider, formData);
+        await onSaveRider(updated);
+        setRiders(prevRiders => prevRiders.map(r => r.id === updated.id ? updated : r));
+        setFormData(updated);
       } catch (error) {
         console.error('Erreur lors de la sauvegarde:', error);
         alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
@@ -66,12 +48,49 @@ export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps>
     }
   };
 
+  const handleActionItemsChange = (factorId: string, items: PerformanceActionItem[]) => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const current = (prev as unknown as Record<string, PerformanceFactorDetail>)[factorId];
+      return {
+        ...prev,
+        [factorId]: { ...current, actionItems: items },
+      };
+    });
+  };
+
+  const handleFieldEntriesChange = (
+    factorId: string,
+    kind: PerformanceFieldKind,
+    entries: PerformanceProjectEntry[]
+  ) => {
+    const entriesKey = FIELD_KIND_CONFIG[kind].entriesKey;
+    setFormData(prev => {
+      if (!prev) return null;
+      const current = (prev as unknown as Record<string, PerformanceFactorDetail>)[factorId];
+      return {
+        ...prev,
+        [factorId]: { ...current, [entriesKey]: entries },
+      };
+    });
+  };
+
+  const handleNotesChange = (factorId: string, notes: string) => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const current = (prev as unknown as Record<string, PerformanceFactorDetail>)[factorId];
+      return {
+        ...prev,
+        [factorId]: { ...current, besoinsActions: notes },
+      };
+    });
+  };
+
   if (!formData) {
     return <SectionWrapper title="Mon Projet Performance"><p>Chargement des données...</p></SectionWrapper>;
   }
   
-  const textareaClass = "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900 placeholder-gray-500";
-  const labelClass = "block text-sm font-medium text-gray-700";
+  const labelClass = "block text-sm font-medium text-gray-700 mb-2";
 
   return (
     <SectionWrapper title="Mon Projet Performance" actionButton={<ActionButton onClick={handleSave}>Sauvegarder mon Projet</ActionButton>}>
@@ -90,34 +109,48 @@ export const PerformanceProjectSection: React.FC<PerformanceProjectSectionProps>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor={`${id}.forces`} className={labelClass}>Forces</label>
-                    <textarea
-                        id={`${id}.forces`}
-                        rows={5}
-                        name={`${id}.forces`}
-                        value={projectData?.forces || ''}
-                        onChange={handleInputChange}
-                        className={textareaClass}
-                        placeholder={`Ex:\n- ${forcesPrompts.join('\n- ')}`}
+                    <label className={labelClass}>Forces</label>
+                    <PerformanceFieldItemsEditor
+                      factor={projectData || { forces: '', aOptimiser: '', aDevelopper: '', besoinsActions: '' }}
+                      kind="forces"
+                      isEditing
+                      onChange={entries => handleFieldEntriesChange(id, 'forces', entries)}
+                      placeholder={`Ex : ${forcesPrompts.join(', ')}`}
                     />
                   </div>
                   <div>
-                    <label htmlFor={`${id}.aOptimiser`} className={labelClass}>À Optimiser (détails techniques, points faibles)</label>
-                    <textarea id={`${id}.aOptimiser`} rows={5} name={`${id}.aOptimiser`} value={projectData?.aOptimiser || ''} onChange={handleInputChange} className={textareaClass}/>
+                    <label className={labelClass}>À Optimiser (détails techniques, points faibles)</label>
+                    <PerformanceFieldItemsEditor
+                      factor={projectData || { forces: '', aOptimiser: '', aDevelopper: '', besoinsActions: '' }}
+                      kind="aOptimiser"
+                      isEditing
+                      onChange={entries => handleFieldEntriesChange(id, 'aOptimiser', entries)}
+                    />
                   </div>
                   <div className="md:col-span-2">
-                    <label htmlFor={`${id}.aDevelopper`} className={labelClass}>À Développer (qualités à acquérir)</label>
-                    <textarea id={`${id}.aDevelopper`} rows={3} name={`${id}.aDevelopper`} value={projectData?.aDevelopper || ''} onChange={handleInputChange} className={textareaClass}/>
+                    <label className={labelClass}>À Développer (qualités à acquérir)</label>
+                    <PerformanceFieldItemsEditor
+                      factor={projectData || { forces: '', aOptimiser: '', aDevelopper: '', besoinsActions: '' }}
+                      kind="aDevelopper"
+                      isEditing
+                      onChange={entries => handleFieldEntriesChange(id, 'aDevelopper', entries)}
+                    />
                   </div>
                    <div className="md:col-span-2">
-                    <label htmlFor={`${id}.besoinsActions`} className={labelClass}>Besoins / Actions à Mettre en Place</label>
-                    <textarea id={`${id}.besoinsActions`} rows={3} name={`${id}.besoinsActions`} value={projectData?.besoinsActions || ''} onChange={handleInputChange} className={textareaClass} placeholder="Ex: Analyse de données de course, stage en montagne, préparation mentale spécifique..."/>
+                    <label className={labelClass}>Besoins / Actions (objectifs datés)</label>
+                    <PerformanceActionItemsEditor
+                      factor={projectData || { forces: '', aOptimiser: '', aDevelopper: '', besoinsActions: '' }}
+                      isEditing
+                      onChange={items => handleActionItemsChange(id, items)}
+                      onNotesChange={notes => handleNotesChange(id, notes)}
+                    />
                   </div>
               </div>
             </div>
           );
         })}
       </div>
+      <PerformanceProjectHistoryPanel history={formData.performanceProjectHistory ?? []} />
     </SectionWrapper>
   );
 };

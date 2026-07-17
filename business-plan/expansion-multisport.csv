@@ -1,0 +1,19 @@
+segment,unites_sam,arpu_annuel_eur,arr_sam_eur,lancement_produit,priorite
+Cyclisme équipes (base),173 UCI + ~2 200 clubs + 16 K indép.,390–2 990,6900000,M1 déc. 2027,1 — cœur
+Organisateurs Solo (cyclisme),400,490,107800,M24,2 — AVANT triathlon · candidatures + fiche
+Organisateurs Pro (cyclisme),200,1490,163900,M30,2 — roadbook · startlists · messagerie
+TOTAL portail organisateur,600,490–1 490,2400000,M24–M30,Effet réseau équipes ↔ organisateurs
+Clubs triathlon,800,890,391600,M36,3 — après organisateur cyclisme
+Coachs indép. triathlon,8000,290,1740000,M36,3 — viral coach→athlète
+Athlètes tri solo,12000,200,840000,M39,3 — add-on Pass Camp
+Coachs indép. running,12000,290,1914000,M60,4 — après traction tri
+Clubs running structurés,300,390,52650,M72,5 — fit moyen
+TOTAL multisport (tri + run),—,—,5300000,M36–M72,Après portail organisateur
+TOTAL endurance combiné,—,—,14600000,—,Plafond Y10 leaderMultisport
+Palier · Organisateurs cyclisme Solo,400,490.0,97920,M24,M24 — fiche épreuve + candidatures en ligne (après Seed · ≥150 équipes)
+Palier · Organisateurs cyclisme Pro,200,1490.0,149040,M30,M30 — roadbook + startlists UCI/FFC + messagerie équipes
+Palier · Clubs triathlon (Compétition),800,890.0,356160,M36,M36 — module tri · après portail organisateur cyclisme
+Palier · Coachs indép. triathlon,8000,290.0,1161600,M36,M36 — Coach 29 € tri · brick · roster
+Palier · Athlètes tri solo,12000,200.0,1202400,M39,M39 — athlète + Pass Camp · viral coach→athlète
+Palier · Coachs indép. running,12000,290.0,1742400,M60,M60 — module running coach · après traction tri
+Palier · Clubs running structurés (FFA),300,390.0,58500,M72,M72 — clubs N1 running · calendrier · effectifs

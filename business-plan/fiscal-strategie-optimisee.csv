@@ -1,0 +1,18 @@
+phase,date,action,acteur,cout_eur,priorite,risque_si_omis
+M1,déc. 2027,"Création SAS · statuts (IP, dividendes, président)",Avocat,2500,P0,IP perso · requalification
+M1,déc. 2027,Salaire président 2 000 € net min. (jamais 0 € si actif),EC,0,P0,Redressement URSSAF
+M1,déc. 2027,Demande statut JEI (si éligible R&D · < 8 ans · indépendant),EC,500,P1,IS 25 % vs 10 % sur 1er palier
+M1,déc. 2027,Pacte d'associés · vesting · clause IP,Avocat,1500,P0,Due diligence Seed bloquée
+M6,mai 2028,Compte courant associé documenté si apports perso,EC,0,P1,Abus de biens sociaux
+M12,nov. 2028,1ère liasse · report déficit · revue PFU vs barème,EC,1200,P1,Sur-impôt dividendes
+M24,nov. 2029,Seed closée · 1ère AG dividendes · PV + 2777-SD,EC,800,P0,Distribution illégale
+M24,nov. 2029,Création SAS holding · apport titres LogiCycle (115-0 si éligible),Avocat,6500,P0,Plus-value immédiate mal optimisée
+M24,nov. 2029,Dividendes SAS → perso direct (pas via holding avant M48),EC,0,P0,Double imposition holding < 24 mois
+M25,déc. 2029,Salaire 5 000 € net · DSN · justification quote-part,EC,0,P0,Retraite insuffisante
+M30,mai 2030,PER 500 €/mois (holding ou perso) · déduction IR,EC,0,P1,Retraite · pression fiscale
+M36,nov. 2030,BSPCE pool 10 % · attribution fondateurs/clés,Avocat,2000,P1,Rémunération non optimisée post-Seed
+M42,mai 2031,Series A · plafond distribution 25 % · pacte investisseurs,Avocat,5000,P0,Blocage levée
+M48,nov. 2031,Activation mère-fille · dividendes via holding (24 mois détention OK),EC,1800,P0,Surcoût fiscal ~8 pts
+M48,nov. 2031,Étude Dutreil / Pacte Dutreil si transmission familiale,Avocat fiscaliste,4000,P2,Droits succession 75 %
+M53,avr. 2032,Secondary · cession parts holding (150-0 B ter si éligible),Avocat,3000,P1,PV immobilière 30 %+
+Annuel,Chaque déc.,Arbitrage PFU 30 % vs barème · CEHR si > 250 K€ RFR,EC,500,P1,2–4 pts impôt en trop

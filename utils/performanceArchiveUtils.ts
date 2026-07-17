@@ -16,6 +16,7 @@ import {
 import { calculateRiderCharacteristics } from './performanceCalculations';
 import { getAgeCategory } from './ageUtils';
 import { countSeasonWins, countSeasonPodiums, countAllTimeWins } from './fatigueDurabilityUtils';
+import { getCurrentSeasonYear } from './seasonUtils';
 
 /** Libellé / valeur saison pour les stats « toutes saisons » */
 export const ALL_TIME_STATS_SEASON = 0;
@@ -178,6 +179,7 @@ export function buildRiderQualityArchive(
   });
 
   const validRatings = riderRatings.filter(r =>
+    !r.isAbsent &&
     r.collectiveScore !== undefined &&
     r.technicalScore !== undefined &&
     r.physicalScore !== undefined
@@ -713,4 +715,33 @@ export async function checkAndCreateMissingArchives(
   }
 
   return createdArchives;
+}
+
+/**
+ * Historique des notes de qualité d'un coureur sur toutes les saisons disponibles.
+ */
+export function getRiderQualityHistory(
+  appState: AppState,
+  riderId: string
+): RiderQualityArchive[] {
+  const bySeason = new Map<number, RiderQualityArchive>();
+  const currentSeason = getCurrentSeasonYear();
+
+  const mergedCurrent = getMergedPerformanceArchive(appState, currentSeason);
+  if (mergedCurrent) {
+    const note = mergedCurrent.riderQualityNotes.find(n => n.riderId === riderId);
+    if (note) bySeason.set(note.season, note);
+  }
+
+  for (const archive of appState.performanceArchives || []) {
+    const note = archive.riderQualityNotes.find(n => n.riderId === riderId);
+    if (note) {
+      const existing = bySeason.get(note.season);
+      if (!existing || (note.lastRatingDate || '') >= (existing.lastRatingDate || '')) {
+        bySeason.set(note.season, note);
+      }
+    }
+  }
+
+  return Array.from(bySeason.values()).sort((a, b) => b.season - a.season);
 }

@@ -10,6 +10,8 @@ import BuildingOfficeIcon from '../../components/icons/BuildingOfficeIcon';
 import ClockIcon from '../../components/icons/ClockIcon';
 import { STAFF_ROLES_CONFIG } from '../../constants';
 import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
+import { sendDigitalConvocationNotifications } from '../../services/notificationService';
+import { buildWazeNavigateUrl } from '../../utils/transportLogisticsExport';
 
 const PDF_PAGE_WIDTH = 210;
 const PDF_PAGE_HEIGHT = 297;
@@ -43,6 +45,10 @@ const drawPdfHeader = (doc: jsPDF, event: RaceEvent, formatDateFn: (d?: string) 
     doc.setTextColor(...PDF_SUBTITLE_GRAY);
     const dateRange = `Du ${formatDateFn(event.date)} au ${formatDateFn(event.endDate || event.date)}`;
     doc.text(dateRange, PDF_PAGE_WIDTH / 2, dateY, { align: 'center' });
+    if (event.location?.trim()) {
+        doc.setFontSize(compact ? 8 : 9);
+        doc.text(`Lieu : ${event.location}`, PDF_PAGE_WIDTH / 2, dateY + (compact ? 5 : 6), { align: 'center' });
+    }
     doc.setTextColor(0, 0, 0);
 };
 
@@ -407,6 +413,7 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
                 y += lineH;
             });
         });
+        y = drawConvocationPdfWazeLinks(doc, [accommodation?.address], PDF_MARGIN, y + 1);
         y += gap;
     }
 
@@ -482,12 +489,23 @@ const addConvocationTextToPdf = (doc: jsPDF, text: string, options: { startY: nu
             doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'normal');
         } else if (trimmed) {
+            const wazeUrlMatch = trimmed.match(/^Waze\s*:\s*(https:\/\/\S+)$/i);
             const indent = isBulletLine ? 5 : 0;
+            if (wazeUrlMatch) {
+                if (y > PDF_PAGE_HEIGHT - PDF_MARGIN) { doc.addPage(); y = PDF_MARGIN + 4; }
+                doc.setFontSize(9);
+                doc.setTextColor(13, 173, 189);
+                doc.textWithLink('▶ Waze — Ouvrir la navigation', PDF_MARGIN + indent, y, { url: wazeUrlMatch[1] });
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(11);
+                y += PDF_LINE_HEIGHT;
+            } else {
             const wrapped = doc.splitTextToSize(trimmed, PDF_MAX_WIDTH - indent);
             for (const w of wrapped) {
                 if (y > PDF_PAGE_HEIGHT - PDF_MARGIN) { doc.addPage(); y = PDF_MARGIN + 4; }
                 doc.text(w, PDF_MARGIN + indent, y);
                 y += PDF_LINE_HEIGHT;
+            }
             }
         } else {
             y += PDF_LINE_HEIGHT * 0.5;
@@ -536,8 +554,10 @@ interface LogisticsSummaryTabProps {
   event: RaceEvent;
   appState: TeamState;
   updateEvent: (updatedEventData: Partial<RaceEvent>) => void;
-  currentUser?: { userRole: string };
+  currentUser?: { id?: string; userRole: string };
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  users?: import('../../types').User[];
+  teamId?: string | null;
 }
 
 const SummaryCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
@@ -605,6 +625,64 @@ const getConvocationAccommodationLines = (
         lines.push(`Nombre de nuits : ${accommodation.numberOfNights}`);
     }
     return lines;
+};
+
+/** Ligne Waze pour convocation texte (copie, PDF, notification). */
+const wazeConvocationLine = (place: string | undefined, indent = '    '): string => {
+    const url = buildWazeNavigateUrl(place);
+    return url ? `${indent}Waze : ${url}\n` : '';
+};
+
+const wazeLinesForPlaces = (places: (string | undefined)[], indent = '      '): string => {
+    const seen = new Set<string>();
+    let out = '';
+    for (const place of places) {
+        const url = buildWazeNavigateUrl(place);
+        if (url && !seen.has(url)) {
+            seen.add(url);
+            out += `${indent}Waze : ${url}\n`;
+        }
+    }
+    return out;
+};
+
+const wazeLinesForTransportLeg = (leg: EventTransportLeg, indent = '      '): string =>
+    wazeLinesForPlaces([
+        leg.departureLocation,
+        ...(leg.intermediateStops || []).map(s => s.location),
+        leg.arrivalLocation,
+    ], indent);
+
+const wazeLinesForOccupantStops = (
+    leg: EventTransportLeg,
+    personId: string,
+    personType: 'rider' | 'staff',
+    indent = '      ',
+): string => {
+    const places: (string | undefined)[] = [];
+    (leg.intermediateStops || []).forEach(stop => {
+        if (stop.persons?.some(p => p.id === personId && p.type === personType)) {
+            places.push(stop.location);
+        }
+    });
+    return wazeLinesForPlaces(places, indent);
+};
+
+const drawConvocationPdfWazeLinks = (doc: jsPDF, places: (string | undefined)[], x: number, y: number): number => {
+    const seen = new Set<string>();
+    let cy = y;
+    for (const place of places) {
+        const url = buildWazeNavigateUrl(place);
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        doc.setFontSize(8);
+        doc.setTextColor(13, 173, 189);
+        doc.textWithLink('Waze', x, cy, { url });
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(9);
+        cy += 3.5;
+    }
+    return cy;
 };
 
 const formatLegDepartureStr = (leg: EventTransportLeg, formatDateFn: (d?: string) => string): string => {
@@ -801,7 +879,9 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     text += `Tu es officiellement sélectionné(e) pour participer à l'événement suivant :\n`;
     text += `ÉVÉNEMENT : ${event.name}\n`;
     text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n`;
-    text += `LIEU : ${event.location}\n\n`;
+    text += `LIEU : ${event.location}\n`;
+    text += wazeConvocationLine(event.location, '  ');
+    text += `\n`;
 
     text += `ENCADREMENT\n--------------------\n`;
     text += `- Directeur(s) Sportif(s) : ${getStaffNames('directeurSportifId', event, appState)}\n`;
@@ -824,7 +904,9 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
             const da = getRiderDepartureArrivalForLeg(leg, rider.id);
             text += `  • ${leg.direction}${label ? ` ${label}` : ''}\n`;
             text += `    - Départ : ${da.departureDate ? formatDate(da.departureDate) + ' à ' : ''}${da.departureTime} de ${da.departureLocation}\n`;
+            text += wazeConvocationLine(da.departureLocation, '      ');
             text += `    - Arrivée : ${da.arrivalDate ? formatDate(da.arrivalDate) + ' à ' : ''}${da.arrivalTime} à ${da.arrivalLocation}\n`;
+            text += wazeConvocationLine(da.arrivalLocation, '      ');
             if (leg.driverId) {
                 const driver = appState.staff.find(s => s.id === leg.driverId);
                 if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
@@ -835,6 +917,7 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
             }
             if (leg.details) text += `    - Détails : ${leg.details}\n`;
             getOccupantPickupDropoffLines(leg, rider.id, 'rider', appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForOccupantStops(leg, rider.id, 'rider', '      ');
         });
         text += `\n`;
     }
@@ -849,8 +932,11 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
             const label = getTransportLegLabel(leg, vehicle?.name);
             text += `  • Jour J${label ? ` ${label}` : ''}\n`;
             text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
+            text += wazeConvocationLine(leg.departureLocation, '      ');
             text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
+            text += wazeConvocationLine(leg.arrivalLocation, '      ');
             getOccupantPickupDropoffLines(leg, rider.id, 'rider', appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForOccupantStops(leg, rider.id, 'rider', '      ');
             if (leg.driverId) {
                 const driver = appState.staff.find(s => s.id === leg.driverId);
                 if (driver) text += `    - Chauffeur : ${driver.firstName} ${driver.lastName}\n`;
@@ -865,6 +951,7 @@ const generateIndividualConvocationText = (riderId: string, event: RaceEvent, ap
     if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
         accommodationLines.forEach(line => { text += `- ${line}\n`; });
+        text += wazeConvocationLine(accommodation?.address, '  ');
         text += `\n`;
     }
 
@@ -890,7 +977,10 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     text += `Voici ta convocation et tes missions pour l'événement suivant :\n`;
     text += `ÉVÉNEMENT : ${event.name}\n`;
     text += `RÔLE : ${roleInEvent}\n`;
-    text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n\n`;
+    text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n`;
+    text += `LIEU : ${event.location}\n`;
+    text += wazeConvocationLine(event.location, '  ');
+    text += `\n`;
 
     const drivingLegs = appState.eventTransportLegs.filter(leg =>
         leg.eventId === event.id && leg.driverId === staff.id && isConvocationTransportLeg(leg)
@@ -913,6 +1003,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
             text += `    - Passagers : ${occupants || 'Aucun'}\n`;
             getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForTransportLeg(leg, '      ');
         });
         text += `\n`;
     }
@@ -934,6 +1025,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             const occupants = (leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName} ${p.lastName}` : '' }).join(', ');
             text += `    - Passagers : ${occupants || 'Aucun'}\n`;
             getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForTransportLeg(leg, '      ');
         });
         text += `\n`;
     }
@@ -958,6 +1050,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
                 ? getLegPickupDropoffLines(leg, appState)
                 : getOccupantPickupDropoffLines(leg, staff.id, 'staff', appState);
             stopLines.forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForTransportLeg(leg, '      ');
         });
         text += `\n`;
     }
@@ -975,6 +1068,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
             text += `    - Départ : ${leg.departureTime || '—'} de ${leg.departureLocation || '—'}\n`;
             text += `    - Arrivée : ${leg.arrivalTime || '—'} à ${leg.arrivalLocation || '—'}\n`;
             getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForTransportLeg(leg, '      ');
             if (vehicle) text += `    - Véhicule : ${vehicle.name}\n`;
         });
         text += `\n`;
@@ -985,6 +1079,7 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
     if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
         accommodationLines.forEach(line => { text += `- ${line}\n`; });
+        text += wazeConvocationLine(accommodation?.address, '  ');
         text += `\n`;
     }
 
@@ -996,7 +1091,10 @@ const generateStaffConvocationText = (staffId: string, event: RaceEvent, appStat
 const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): string => {
     let text = `Objet: Convocation Générale - ${event.name}\n\n`;
     text += `ÉVÉNEMENT : ${event.name}\n`;
-    text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n\n`;
+    text += `DATE : Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}\n`;
+    text += `LIEU : ${event.location}\n`;
+    text += wazeConvocationLine(event.location, '  ');
+    text += `\n`;
 
     text += `PARTICIPANTS\n--------------------\n`;
     appState.riders.filter(r => (event.selectedRiderIds || []).includes(r.id)).forEach(r => {
@@ -1046,6 +1144,7 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                     text += `    Récupérations / déposes:\n`;
                     pdLines.forEach(l => { text += `      - ${l}\n`; });
                 }
+                text += wazeLinesForTransportLeg(leg, '      ');
             });
             text += `\n`;
         }
@@ -1075,6 +1174,7 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                     text += `    Récupérations / déposes:\n`;
                     pdLines.forEach(l => { text += `      - ${l}\n`; });
                 }
+                text += wazeLinesForTransportLeg(leg, '      ');
             });
             text += `\n`;
         }
@@ -1102,6 +1202,7 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
                 if (driver) text += `    Véhicule: ${vehicle.name} (conduit par ${driver.firstName} ${driver.lastName})\n`;
             }
             getLegPickupDropoffLines(leg, appState).forEach(l => { text += `    - ${l}\n`; });
+            text += wazeLinesForTransportLeg(leg, '      ');
         });
         text += `\n`;
     }
@@ -1111,6 +1212,7 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
     if (accommodationLines.length > 0) {
         text += `HÉBERGEMENT\n--------------------\n`;
         accommodationLines.forEach(line => { text += `- ${line}\n`; });
+        text += wazeConvocationLine(accommodation?.address, '  ');
         text += `\n`;
     }
     
@@ -1118,6 +1220,38 @@ const generateGeneralConvocationText = (event: RaceEvent, appState: TeamState): 
 };
 
 // --- VISUAL PREVIEW COMPONENT ---
+
+const ConvocationWazeLinks: React.FC<{ places: (string | undefined)[]; className?: string }> = ({ places, className = '' }) => {
+    const links = useMemo(() => {
+        const seen = new Set<string>();
+        return places.flatMap(place => {
+            const url = buildWazeNavigateUrl(place);
+            if (!url || seen.has(url)) return [];
+            seen.add(url);
+            const label = place?.trim() || 'Navigation';
+            const shortLabel = label.length > 28 ? `${label.slice(0, 26)}…` : label;
+            return [{ url, label: shortLabel }];
+        });
+    }, [places]);
+
+    if (links.length === 0) return null;
+
+    return (
+        <p className={`text-xs mt-1 flex flex-wrap gap-2 ${className}`}>
+            {links.map(({ url, label }) => (
+                <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center rounded-md bg-[#0dadbd] px-2 py-0.5 font-semibold text-white hover:bg-[#0b96a4]"
+                >
+                    Waze — {label}
+                </a>
+            ))}
+        </p>
+    );
+};
 
 const ConvocationPreview: React.FC<{
     mode: 'athlete' | 'staff' | 'general';
@@ -1167,6 +1301,12 @@ const ConvocationPreview: React.FC<{
         <div className="p-4 bg-gray-50 border rounded-lg max-h-[60vh] overflow-y-auto font-sans">
             <h2 className="text-xl font-bold text-gray-800 text-center mb-1">{event.name}</h2>
             <p className="text-sm text-gray-500 text-center mb-4">{`Du ${formatDate(event.date)} au ${formatDate(event.endDate || event.date)}`}</p>
+            {event.location?.trim() && (
+                <div className="mb-4 text-center">
+                    <p className="text-sm text-gray-700"><strong>Lieu :</strong> {event.location}</p>
+                    <ConvocationWazeLinks places={[event.location]} className="justify-center" />
+                </div>
+            )}
 
             {mode !== 'general' && participant && <p className="mb-4">Bonjour {participant.firstName}, voici les détails de ta convocation :</p>}
 
@@ -1202,6 +1342,7 @@ const ConvocationPreview: React.FC<{
                                  <p className="text-xs text-amber-600 italic">Horaires non renseignés</p>
                              )}
                              <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                             <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                          </div>
                     ))}</div>
                 </Section>
@@ -1219,6 +1360,7 @@ const ConvocationPreview: React.FC<{
                                  <p className="text-xs text-gray-600"><strong>Arrivée:</strong> {leg.arrivalTime || '—'}{leg.arrivalLocation ? ` à ${leg.arrivalLocation}` : ''}</p>
                              )}
                              <p className="text-xs text-gray-600"><strong>Passagers:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                             <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                          </div>
                     ))}</div>
                 </Section>
@@ -1246,6 +1388,7 @@ const ConvocationPreview: React.FC<{
                                                 )}
                                                 <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
                                                 {(() => { const pd = getLegPickupDropoffLines(leg, appState); return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Récupérations / Déposes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null; })()}
+                                                <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                                             </div>
                                         );})}
                                     </div>
@@ -1267,6 +1410,7 @@ const ConvocationPreview: React.FC<{
                                                 )}
                                                 <p className="text-xs text-gray-600"><strong>Occupants:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
                                                 {(() => { const pd = getLegPickupDropoffLines(leg, appState); return pd.length > 0 ? <p className="text-xs text-gray-600 mt-1"><strong>Récupérations / Déposes:</strong><br />{pd.map(l => <span key={l}>{l}<br /></span>)}</p> : null; })()}
+                                                <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                                             </div>
                                         );})}
                                     </div>
@@ -1288,6 +1432,7 @@ const ConvocationPreview: React.FC<{
                                                     <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name} (conduit par {appState.staff.find(s=>s.id===leg.driverId)?.firstName})</p>
                                                 )}
                                                 <p className="text-xs text-gray-600"><strong>Passagers:</strong> {(leg.occupants || []).map(o => { const p = o.type === 'rider' ? appState.riders.find(r=>r.id===o.id) : appState.staff.find(s=>s.id===o.id); return p ? `${p.firstName[0]}.${p.lastName}` : '' }).join(', ')}</p>
+                                                <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                                             </div>
                                         );})}
                                     </div>
@@ -1330,6 +1475,9 @@ const ConvocationPreview: React.FC<{
                                     {leg.assignedVehicleId && (
                                         <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {appState.vehicles.find(v=>v.id===leg.assignedVehicleId)?.name}</p>
                                     )}
+                                    <ConvocationWazeLinks places={mode === 'athlete' && da
+                                        ? [da.departureLocation, da.arrivalLocation, ...(leg.intermediateStops || []).filter(s => s.persons?.some(p => p.id === participant?.id && p.type === 'rider')).map(s => s.location)]
+                                        : [leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                                 </div>
                                 );
                             })
@@ -1355,6 +1503,7 @@ const ConvocationPreview: React.FC<{
                                         })()}
                                         <p className="text-sm text-gray-700"><strong>Chauffeur:</strong> {driver ? `${driver.firstName} ${driver.lastName}` : <span className="italic text-amber-600">Non renseigné</span>}</p>
                                         {vehicle && <p className="text-xs text-gray-600"><strong>Véhicule:</strong> {vehicle.name}</p>}
+                                        <ConvocationWazeLinks places={[leg.departureLocation, leg.arrivalLocation, ...(leg.intermediateStops || []).map(s => s.location)]} />
                                     </div>
                                     );
                                 })}
@@ -1369,6 +1518,7 @@ const ConvocationPreview: React.FC<{
                     {accommodationLines.map((line) => (
                         <p key={line}>{line}</p>
                     ))}
+                    <ConvocationWazeLinks places={[accommodation?.address]} />
                 </Section>
             )}
 
@@ -1377,7 +1527,15 @@ const ConvocationPreview: React.FC<{
 };
 
 
-const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appState, updateEvent, currentUser, effectivePermissions }) => {
+const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({
+  event,
+  appState,
+  updateEvent,
+  currentUser,
+  effectivePermissions,
+  users = [],
+  teamId,
+}) => {
   const [notes, setNotes] = useState(event.logisticsSummaryNotes || '');
   const [isConvocationModalOpen, setIsConvocationModalOpen] = useState(false);
   
@@ -1386,6 +1544,8 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   const [copySuccess, setCopySuccess] = useState('');
+  const [sendStatus, setSendStatus] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   // Vérification des permissions pour l'accès aux informations financières
   const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
@@ -1502,6 +1662,54 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
     generateConvocationPdf(convocationMode, participantId, event, appState);
   };
 
+  const handleSendDigitalConvocation = async () => {
+    if (!teamId || !currentUser?.id) {
+      setSendStatus('Équipe ou utilisateur non identifié.');
+      return;
+    }
+
+    let previewExcerpt = '';
+    if (convocationMode === 'athlete' && selectedRiderId) {
+      previewExcerpt = generateIndividualConvocationText(selectedRiderId, event, appState);
+    } else if (convocationMode === 'staff' && selectedStaffId) {
+      previewExcerpt = generateStaffConvocationText(selectedStaffId, event, appState);
+    } else if (convocationMode === 'general') {
+      previewExcerpt = generateGeneralConvocationText(event, appState);
+    }
+
+    setIsSending(true);
+    setSendStatus('');
+    try {
+      const result = await sendDigitalConvocationNotifications({
+        teamId,
+        eventId: event.id,
+        eventName: event.name,
+        eventDate: event.date,
+        mode: convocationMode,
+        sentByUserId: currentUser.id,
+        users,
+        riders: appState.riders,
+        staff: appState.staff,
+        riderId: selectedRiderId,
+        staffId: selectedStaffId,
+        selectedRiderIds: event.selectedRiderIds,
+        selectedStaffIds: event.selectedStaffIds,
+        previewExcerpt,
+      });
+
+      if (result.sent === 0) {
+        setSendStatus('Aucun compte utilisateur lié aux destinataires.');
+      } else {
+        setSendStatus(`${result.sent} notification(s) envoyée(s)`);
+      }
+      setTimeout(() => setSendStatus(''), 4000);
+    } catch {
+      setSendStatus('Erreur lors de l\'envoi.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -1564,9 +1772,20 @@ const LogisticsSummaryTab: React.FC<LogisticsSummaryTabProps> = ({ event, appSta
 
                 <div className="flex justify-end items-center gap-3 flex-wrap">
                     {copySuccess && <span className="text-sm text-green-400 font-semibold">{copySuccess}</span>}
+                    {sendStatus && <span className="text-sm text-blue-300 font-medium">{sendStatus}</span>}
                     <ActionButton onClick={handleCopyToClipboard}>Copier le texte</ActionButton>
                     <ActionButton onClick={handleDownloadPdf} variant="secondary">Télécharger le PDF</ActionButton>
+                    <ActionButton
+                      onClick={() => void handleSendDigitalConvocation()}
+                      variant="primary"
+                      disabled={isSending || !teamId}
+                    >
+                      {isSending ? 'Envoi…' : 'Envoyer convocation digitale'}
+                    </ActionButton>
                 </div>
+                <p className="text-xs text-slate-400 text-right mt-2">
+                  La convocation digitale envoie une notification push et une alerte in-app aux destinataires.
+                </p>
             </div>
         </div>
       </Modal>

@@ -1,0 +1,10 @@
+phase,periode,periode_calendrier,focus,kpi_equipes_fr,kpi_pro_wt,kpi_equipes_en,kpi_arr_eur,remuneration_fondateur_net,equipe,investissement
+0,M1-M6,déc. 2027 – mai 2028,Double voie lancée,5,1,3,45000,0,Fondateur 50/50 FR·EN,0 levée
+0,M7-M12,juin 2028 – nov. 2028,1 WT + 8 Continental FR,12,2,8,120000,0,Fondateur + advisor WT,0 levée
+0,M13-M18,déc. 2028 – mai 2029,3 WT + 10 Continental FR,22,3,15,250000,2500,Fondateur + UK lead M6,0 levée
+1,M19-M24,juin 2029 – nov. 2029,Seed · scale WT,45,5,30,360000,8000,AE anglophone M12,Seed 750K nov. 2029
+1,M25-M36,déc. 2029 – nov. 2030,8 WT · US scale,85,8,55,770000,11000,Sales team 3 AE,Seed déployé
+2,M37-M48,déc. 2030 – nov. 2031,Series A · ES/IT,140,12,95,1600000,18000,Sales Manager,Series A 2M nov. 2031
+2,M49-M60,déc. 2031 – nov. 2032,Domination WT+EN,220,16,150,2400000,43000,Head of Sales,Series A déployé
+3,M61-M79,déc. 2032 – juin 2034,Leader SAM,380,22,280,3800000,55000,CRO prep,Réinvestissement
+3,M80-M120,juil. 2034 – nov. 2037,Saturation SAM · patrimoine,650,30,500,5000000,92000,12 ETP,Secondary optionnel

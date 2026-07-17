@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AppState, Rider, ScoutingProfile, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel, RiderQualitativeProfile } from '../types';
+import { AppState, Rider, ScoutingProfile, Sex, RaceEvent, EventType, PerformanceArchive, GroupAverageArchive, RiderQualityArchive, StaffQualityArchive, TeamMetricsArchive, User, AppSection, PermissionLevel, RiderQualitativeProfile, UserRole } from '../types';
 import {
   getMergedPerformanceArchive,
   getAllTimePowerAnalysisRiders,
@@ -13,29 +13,46 @@ import SectionWrapper from '../components/SectionWrapper';
 import UsersIcon from '../components/icons/UsersIcon';
 import TrophyIcon from '../components/icons/TrophyIcon';
 import StarIcon from '../components/icons/StarIcon';
-import CakeIcon from '../components/icons/CakeIcon';
 import ChartBarIcon from '../components/icons/ChartBarIcon';
 import { getAgeCategory } from '../utils/ageUtils';
 import { DurabilityAnalysisTable, PowerAnalysisTable } from '../components';
-import { countSeasonWins } from '../utils/fatigueDurabilityUtils';
-import PerformanceProjectSynergyAnalyzer from '../components/PerformanceProjectSynergyAnalyzer';
-import WorkGroupManager from '../components/WorkGroupManager';
+import PerformanceProjectSynergyAnalyzer, { SynergyGroup } from '../components/PerformanceProjectSynergyAnalyzer';
+import WorkGroupManager, { WorkGroup } from '../components/WorkGroupManager';
 import PerformanceOverviewEnhanced from '../components/PerformanceOverviewEnhanced';
 import PerformanceProjectDetails from '../components/PerformanceProjectDetails';
-import PerformanceInsightsAlerts from '../components/PerformanceInsightsAlerts';
+import PerformancePoleOverview from '../components/performance/PerformancePoleOverview';
+import PowerDurabilityWorkspace from '../components/performance/PowerDurabilityWorkspace';
+import StageCampPerformancePanel from '../components/performance/StageCampPerformancePanel';
 import Modal from '../components/Modal';
+import { computeProjectPilotageStats } from '../utils/performancePilotageUtils';
+import { isTrainingCamp } from '../utils/trainingCampUtils';
+import MountainIcon from '../components/icons/MountainIcon';
 
 interface PerformancePoleSectionProps {
   appState: AppState;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   currentUser?: User;
+  onSaveRaceEvent?: (event: RaceEvent) => Promise<void>;
+  navigateTo?: (section: AppSection, eventId?: string) => void;
 }
 
-type PerformanceTab = 'overview' | 'powerAnalysis' | 'debriefings' | 'archives' | 'performanceProjects';
+type PerformanceTab =
+  | 'overview'
+  | 'powerAnalysis'
+  | 'campMonitoring'
+  | 'debriefings'
+  | 'archives'
+  | 'performanceProjects';
 type PerformanceViewMode = 'overview' | 'synergy' | 'workgroups' | 'details';
 type ArchiveDetailTab = 'quality' | 'powers' | 'durability';
 
-const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appState, effectivePermissions, currentUser }) => {
+const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({
+  appState,
+  effectivePermissions,
+  currentUser,
+  onSaveRaceEvent,
+  navigateTo,
+}) => {
   const [activeTab, setActiveTab] = useState<PerformanceTab>('overview');
   const [selectedYear, setSelectedYear] = useState<number | null>(getCurrentSeasonYear());
   const [archiveDetailTab, setArchiveDetailTab] = useState<ArchiveDetailTab>('quality');
@@ -43,6 +60,8 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [performanceViewMode, setPerformanceViewMode] = useState<PerformanceViewMode>('overview');
   const [categoryDetail, setCategoryDetail] = useState<{ type: 'age' | 'roster'; key: string; label: string; riders: Rider[] } | null>(null);
+  const [seededWorkGroups, setSeededWorkGroups] = useState<WorkGroup[]>([]);
+  const [selectedProjectRiderId, setSelectedProjectRiderId] = useState<string | null>(null);
 
   /** Puissances / fatigue archives : all time (effectif + archives + scouts auto) */
   const allTimePowerRiders = useMemo(() => {
@@ -82,13 +101,21 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
 
   // Vérification des permissions d'accès
   const canViewPerformance = effectivePermissions?.performance?.includes('view') || false;
-  if (!canViewPerformance) {
+  if (currentUser?.userRole === UserRole.COUREUR || !canViewPerformance) {
     return (
       <SectionWrapper title="Centre Stratégique des Performances">
         <div className="p-6 text-center text-gray-500">
           <ChartBarIcon className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-          <p className="text-lg font-medium text-gray-700">Accès non autorisé</p>
-          <p className="mt-2 text-gray-500">Vous n'avez pas les permissions nécessaires pour accéder à cette section.</p>
+          <p className="text-lg font-medium text-gray-700">
+            {currentUser?.userRole === UserRole.COUREUR
+              ? 'Pôle performance équipe'
+              : 'Accès non autorisé'}
+          </p>
+          <p className="mt-2 text-gray-500">
+            {currentUser?.userRole === UserRole.COUREUR
+              ? 'Consultez vos performances personnelles dans Ma Carrière (Mon Espace).'
+              : 'Vous n\'avez pas les permissions nécessaires pour accéder à cette section.'}
+          </p>
         </div>
       </SectionWrapper>
     );
@@ -147,12 +174,14 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           keys.forEach((k, i) => {
             const sumW = ridersWithPower.reduce((s, r) => s + ((r.powerProfileFresh as any)?.[k] || 0), 0);
             powerAverages[avgKeys[i]] = Math.round(sumW / ridersWithPower.length);
-            const sumWkg = ridersWithPower.reduce((s, r) => {
-              const w = (r.powerProfileFresh as any)?.[k] || 0;
-              const kg = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
-              return s + w / kg;
-            }, 0);
-            powerAveragesWkg[avgKeys[i]] = Math.round((sumWkg / ridersWithPower.length) * 10) / 10;
+            const withWeight = ridersWithPower.filter((r) => r.weightKg && r.weightKg > 0);
+            if (withWeight.length > 0) {
+              const sumWkg = withWeight.reduce((s, r) => {
+                const w = (r.powerProfileFresh as any)?.[k] || 0;
+                return s + w / (r.weightKg as number);
+              }, 0);
+              powerAveragesWkg[avgKeys[i]] = Math.round((sumWkg / withWeight.length) * 10) / 10;
+            }
           });
         }
       }
@@ -179,11 +208,17 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
         const avgKeys = ['cp', 'power20min', 'power12min', 'power5min', 'power1min', 'power30s', 'power5s', 'power1s'] as const;
         keys.forEach((k, i) => {
           powerAverages[avgKeys[i]] = Math.round(withPower.reduce((s, r) => s + ((r.powerProfileFresh as any)?.[k] || 0), 0) / withPower.length);
-          powerAveragesWkg[avgKeys[i]] = Math.round((withPower.reduce((s, r) => {
-            const w = (r.powerProfileFresh as any)?.[k] || 0;
-            const kg = r.weightKg && r.weightKg > 0 ? r.weightKg : 70;
-            return s + w / kg;
-          }, 0) / withPower.length) * 10) / 10;
+          const withWeight = withPower.filter((r) => r.weightKg && r.weightKg > 0);
+          if (withWeight.length > 0) {
+            powerAveragesWkg[avgKeys[i]] = Math.round(
+              (withWeight.reduce((s, r) => {
+                const w = (r.powerProfileFresh as any)?.[k] || 0;
+                return s + w / (r.weightKg as number);
+              }, 0) /
+                withWeight.length) *
+                10
+            ) / 10;
+          }
         });
       }
       return { powerAverages, powerAveragesWkg };
@@ -191,7 +226,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
     const principalAvg = computeRosterAverages(principalRiders);
     const reserveAvg = computeRosterAverages(reserveRiders);
     const rosterDistribution = [
-      { role: 'principal' as const, label: 'Équipe première', count: principalRiders.length, riders: principalRiders, ...principalAvg },
+      { role: 'principal' as const, label: 'Équipe 1', count: principalRiders.length, riders: principalRiders, ...principalAvg },
       { role: 'reserve' as const, label: 'Réserve', count: reserveRiders.length, riders: reserveRiders, ...reserveAvg }
     ];
 
@@ -204,13 +239,17 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       new Date(event.startDate) > new Date()
     ).length;
 
-    // Moyenne CP de l'équipe
-    const averageCP = riders.length > 0 
-      ? Math.round(riders.reduce((sum, r) => {
-          const cp = r.powerProfileFresh?.criticalPower || 0;
-          return sum + cp;
-        }, 0) / riders.length)
-      : 0;
+    // Moyenne CP de l'équipe (uniquement profils renseignés)
+    const ridersWithCp = riders.filter(
+      (r) => typeof r.powerProfileFresh?.criticalPower === 'number' && (r.powerProfileFresh?.criticalPower as number) > 0
+    );
+    const averageCP =
+      ridersWithCp.length > 0
+        ? Math.round(
+            ridersWithCp.reduce((sum, r) => sum + (r.powerProfileFresh?.criticalPower || 0), 0) /
+              ridersWithCp.length
+          )
+        : 0;
 
     // Derniers résultats de l'équipe
     const recentResults = appState.performanceEntries
@@ -266,13 +305,6 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       teamGroups
     };
   }, [riders, raceEvents, appState.performanceEntries]);
-
-  const tabButtonStyle = (tabName: PerformanceTab) => 
-    `px-4 py-2 font-medium text-sm rounded-t-lg whitespace-nowrap transition-colors duration-150 focus:outline-none ${
-      activeTab === tabName 
-        ? 'bg-white text-blue-600 border-b-2 border-blue-500 shadow-sm' 
-        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-    }`;
 
   const durationLabels: { key: string; label: string }[] = [
     { key: 'power1s', label: '1s' },
@@ -353,6 +385,46 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
     return result;
   }, [categoryDetail]);
 
+  const debriefingsCount = (appState.performanceEntries || []).length;
+  const projectPilotage = useMemo(() => computeProjectPilotageStats(riders), [riders]);
+
+  const handleCreateWorkGroupFromSynergy = (group: SynergyGroup) => {
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4'];
+    const workGroup: WorkGroup = {
+      id: `seed-${group.id}-${Date.now()}`,
+      name: `Synergie · ${group.name}`,
+      description: `Créé depuis Synergies (${group.keywordCount} mots-clés communs)`,
+      riders: group.riders,
+      themes: group.themes,
+      workAreas: [],
+      startDate: new Date().toISOString().slice(0, 10),
+      status: 'planned',
+      color: colors[seededWorkGroups.length % colors.length],
+    };
+    setSeededWorkGroups((prev) => [workGroup, ...prev]);
+    setPerformanceViewMode('workgroups');
+  };
+
+  const trainingCampsCount = useMemo(
+    () => (raceEvents || []).filter(isTrainingCamp).length,
+    [raceEvents],
+  );
+
+  const performanceTabs: { id: PerformanceTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[] = [
+    { id: 'overview', label: "Vue d'ensemble", icon: UsersIcon, count: riders.length },
+    { id: 'powerAnalysis', label: 'Puissances', icon: ChartBarIcon, count: strategicMetrics.ridersWithPower },
+    { id: 'campMonitoring', label: 'Suivi stages', icon: MountainIcon, count: trainingCampsCount },
+    { id: 'performanceProjects', label: 'Projets', icon: StarIcon, count: projectPilotage.withContent },
+    { id: 'debriefings', label: 'Débriefings', icon: TrophyIcon, count: debriefingsCount },
+    { id: 'archives', label: 'Archives', icon: ChartBarIcon },
+  ];
+  const projectViewTabs: { id: PerformanceViewMode; label: string }[] = [
+    { id: 'overview', label: "Vue d'ensemble" },
+    { id: 'synergy', label: 'Synergies' },
+    { id: 'workgroups', label: 'Groupes' },
+    { id: 'details', label: 'Détails' },
+  ];
+
   return (
     <>
       <Modal
@@ -409,7 +481,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           </div>
         )}
       </Modal>
-      <style jsx={true}>{`
+      <style>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
           height: 20px;
@@ -443,307 +515,111 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
       `}</style>
-      <SectionWrapper title="Vue d'Ensemble">
-      {/* Onglets principaux */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">
-          <button onClick={() => setActiveTab('overview')} className={tabButtonStyle('overview')}>
-            <UsersIcon className="w-4 h-4 inline mr-2" />
-            Vue d'Ensemble
-          </button>
-          <button onClick={() => setActiveTab('powerAnalysis')} className={tabButtonStyle('powerAnalysis')}>
-            <ChartBarIcon className="w-4 h-4 inline mr-2" />
-            Analyse des Puissances
-          </button>
-          <button onClick={() => setActiveTab('performanceProjects')} className={tabButtonStyle('performanceProjects')}>
-            <StarIcon className="w-4 h-4 inline mr-2" />
-            Projets Performance
-          </button>
-          <button onClick={() => setActiveTab('debriefings')} className={tabButtonStyle('debriefings')}>
-            <TrophyIcon className="w-4 h-4 inline mr-2" />
-            Débriefings
-          </button>
-          <button onClick={() => setActiveTab('archives')} className={tabButtonStyle('archives')}>
-            <ChartBarIcon className="w-4 h-4 inline mr-2" />
-            Archives
-          </button>
+      <SectionWrapper title="Pôle Performance">
+      {/* Navigation par onglets */}
+      <div className="mb-5 flex justify-center">
+        <nav
+          className="inline-flex flex-wrap justify-center gap-2"
+          aria-label="Onglets performance"
+        >
+          {performanceTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-300/40'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0 opacity-90" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
       {/* Contenu des onglets */}
       {activeTab === 'overview' && (
-        <div className="space-y-8">
-          {/* En-tête stratégique */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-6 rounded-lg">
-            <h2 className="text-2xl font-bold mb-2">Vue d'Ensemble Stratégique</h2>
-            <p className="text-blue-100">
-              Tableau de bord centralisé pour la prise de décision stratégique du pôle performance
-            </p>
-          </div>
-
-        {/* Métriques clés en grille */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Total Coureurs */}
-          <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-100 rounded-full">
-                <UsersIcon className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Effectif Total</p>
-                <p className="text-3xl font-bold text-gray-900">{strategicMetrics.totalRiders}</p>
-                <p className="text-xs text-gray-500">Coureurs actifs</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Âge Moyen */}
-          <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-orange-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-orange-100 rounded-full">
-                <CakeIcon className="w-8 h-8 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Âge Moyen</p>
-                <p className="text-3xl font-bold text-gray-900">{strategicMetrics.ageStats.average} ans</p>
-                <p className="text-xs text-gray-500">
-                  {strategicMetrics.ageStats.min}-{strategicMetrics.ageStats.max} ans
-                </p>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Répartition par catégorie d'âge (cliquable → détail + profils fatigue) */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-            <TrophyIcon className="w-6 h-6 text-blue-600 mr-3" />
-            Répartition par catégorie d&apos;âge
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {strategicMetrics.ageDistribution.map(({ category, count, ageStats, powerAverages, powerAveragesWkg, riders: categoryRiders }) => (
-              <button
-                key={category}
-                type="button"
-                onClick={() => setCategoryDetail({ type: 'age', key: category, label: category, riders: categoryRiders })}
-                className="text-left bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border-2 border-blue-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
-              >
-                <div className="text-center mb-4">
-                  <div className="text-4xl font-bold text-blue-600 mb-2">{count}</div>
-                  <div className="text-lg font-semibold text-gray-800">{category}</div>
-                  <div className="text-sm text-gray-600">
-                    {strategicMetrics.totalRiders > 0 ? Math.round((count / strategicMetrics.totalRiders) * 100) : 0}% de l&apos;effectif
-                  </div>
-                </div>
-                {count > 0 && powerAverages.cp > 0 && (
-                  <div className="bg-white p-3 rounded-lg border space-y-2">
-                    <div className="text-xs text-gray-500 font-medium">Moyennes · W (brut)</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAverages.cp}W</span></div>
-                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAverages.power20min}W</span></div>
-                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAverages.power12min}W</span></div>
-                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAverages.power5min}W</span></div>
-                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAverages.power1min}W</span></div>
-                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAverages.power30s}W</span></div>
-                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAverages.power5s}W</span></div>
-                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAverages.power1s}W</span></div>
-                    </div>
-                    <div className="text-xs text-gray-500 font-medium pt-1 border-t">Moyennes · W/kg</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAveragesWkg.cp} W/kg</span></div>
-                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAveragesWkg.power20min} W/kg</span></div>
-                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAveragesWkg.power12min} W/kg</span></div>
-                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAveragesWkg.power5min} W/kg</span></div>
-                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAveragesWkg.power1min} W/kg</span></div>
-                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAveragesWkg.power30s} W/kg</span></div>
-                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAveragesWkg.power5s} W/kg</span></div>
-                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAveragesWkg.power1s} W/kg</span></div>
-                    </div>
-                  </div>
-                )}
-                <p className="text-xs text-blue-600 mt-2">Cliquer pour voir le détail et les profils de fatigue</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Répartition par équipe (Première / Réserve) — W brut et W/kg, cliquable */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-            <UsersIcon className="w-6 h-6 text-indigo-600 mr-3" />
-            Répartition par équipe
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {strategicMetrics.rosterDistribution.map(({ role, label, count, riders: rosterRiders, powerAverages, powerAveragesWkg }) => (
-              <button
-                key={role}
-                type="button"
-                onClick={() => setCategoryDetail({ type: 'roster', key: role, label, riders: rosterRiders })}
-                className="text-left bg-gradient-to-br from-indigo-50 to-purple-50 p-6 rounded-lg border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer"
-              >
-                <div className="text-center mb-4">
-                  <div className="text-4xl font-bold text-indigo-600 mb-2">{count}</div>
-                  <div className="text-lg font-semibold text-gray-800">{label}</div>
-                  <div className="text-sm text-gray-600">
-                    {strategicMetrics.totalRiders > 0 ? Math.round((count / strategicMetrics.totalRiders) * 100) : 0}% de l&apos;effectif
-                  </div>
-                </div>
-                {count > 0 && powerAverages.cp > 0 && (
-                  <div className="bg-white p-3 rounded-lg border space-y-2">
-                    <div className="text-xs text-gray-500 font-medium">Moyennes · W (brut)</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAverages.cp}W</span></div>
-                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAverages.power20min}W</span></div>
-                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAverages.power12min}W</span></div>
-                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAverages.power5min}W</span></div>
-                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAverages.power1min}W</span></div>
-                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAverages.power30s}W</span></div>
-                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAverages.power5s}W</span></div>
-                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAverages.power1s}W</span></div>
-                    </div>
-                    <div className="text-xs text-gray-500 font-medium pt-1 border-t">Moyennes · W/kg</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div><span className="text-gray-500">CP:</span> <span className="font-semibold">{powerAveragesWkg.cp} W/kg</span></div>
-                      <div><span className="text-gray-500">20min:</span> <span className="font-semibold">{powerAveragesWkg.power20min} W/kg</span></div>
-                      <div><span className="text-gray-500">12min:</span> <span className="font-semibold">{powerAveragesWkg.power12min} W/kg</span></div>
-                      <div><span className="text-gray-500">5min:</span> <span className="font-semibold">{powerAveragesWkg.power5min} W/kg</span></div>
-                      <div><span className="text-gray-500">1min:</span> <span className="font-semibold">{powerAveragesWkg.power1min} W/kg</span></div>
-                      <div><span className="text-gray-500">30s:</span> <span className="font-semibold">{powerAveragesWkg.power30s} W/kg</span></div>
-                      <div><span className="text-gray-500">5s:</span> <span className="font-semibold">{powerAveragesWkg.power5s} W/kg</span></div>
-                      <div><span className="text-gray-500">1s:</span> <span className="font-semibold">{powerAveragesWkg.power1s} W/kg</span></div>
-                    </div>
-                  </div>
-                )}
-                <p className="text-xs text-indigo-600 mt-2">Cliquer pour voir le détail et les profils de fatigue</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Alertes et valeurs intéressantes (détection intelligente vs profils / moyennes) */}
-        <PerformanceInsightsAlerts
+        <PerformancePoleOverview
+          totalRiders={strategicMetrics.totalRiders}
+          femaleRiders={strategicMetrics.femaleRiders}
+          maleRiders={strategicMetrics.maleRiders}
+          ageStats={strategicMetrics.ageStats}
+          averageCP={strategicMetrics.averageCP}
+          powerCoverage={strategicMetrics.powerCoverage}
+          ridersWithPower={strategicMetrics.ridersWithPower}
+          ageDistribution={strategicMetrics.ageDistribution}
+          rosterDistribution={strategicMetrics.rosterDistribution}
+          projectPilotage={projectPilotage}
           riders={riders}
           scoutingProfiles={scoutingProfiles}
-          maxAlerts={5}
-          maxInsights={8}
-          showInsights
-          showAlerts
+          recentResults={strategicMetrics.recentResults}
+          raceEvents={raceEvents}
+          onOpenCategory={setCategoryDetail}
+          onOpenProjects={() => {
+            setActiveTab('performanceProjects');
+            setPerformanceViewMode('overview');
+          }}
+          onOpenPowers={() => setActiveTab('powerAnalysis')}
         />
-
-        {/* Derniers résultats de l'équipe */}
-        {strategicMetrics.recentResults.length > 0 && (
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-              <TrophyIcon className="w-6 h-6 text-yellow-600 mr-3" />
-              Derniers Résultats de l'Équipe
-            </h3>
-            <div className="space-y-4">
-              {strategicMetrics.recentResults.map((result, index) => {
-                const event = raceEvents.find(e => e.id === result.eventId);
-                if (!event) return null;
-                
-                return (
-                  <div key={result.id} className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-2">{event.name}</h4>
-                        <p className="text-sm text-gray-600 mb-2">
-                          {new Date(event.startDate).toLocaleDateString('fr-FR', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </p>
-                        {result.raceOverallRanking && (
-                          <p className="text-sm text-gray-700">
-                            <span className="font-medium">Classement général:</span> {result.raceOverallRanking}
-                          </p>
-                        )}
-                        {result.resultsSummary && (
-                          <p className="text-sm text-gray-700 mt-1">
-                            <span className="font-medium">Résumé:</span> {result.resultsSummary}
-                          </p>
-                        )}
-                      </div>
-                      <div className="ml-4 text-right">
-                        <div className="text-2xl font-bold text-yellow-600">#{index + 1}</div>
-                        <div className="text-xs text-gray-500">Dernier</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-
-
-        </div>
       )}
 
       {activeTab === 'powerAnalysis' && (
-        <PowerAnalysisSubSection riders={riders} scoutingProfiles={scoutingProfiles} />
+        <PowerDurabilityWorkspace riders={riders} scoutingProfiles={scoutingProfiles} />
+      )}
+
+      {activeTab === 'campMonitoring' && (
+        <StageCampPerformancePanel
+          appState={appState}
+          onSaveRaceEvent={onSaveRaceEvent}
+          readOnly={!effectivePermissions?.performance?.includes('edit')}
+          onOpenEvent={
+            navigateTo
+              ? (eventId) => navigateTo('eventDetail', eventId)
+              : undefined
+          }
+        />
       )}
 
       {activeTab === 'performanceProjects' && (
-        <div className="space-y-6">
-          {/* En-tête avec navigation */}
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-4">
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100">
               <div>
-                <h3 className="text-2xl font-bold text-gray-800">Projets Performance</h3>
-                <p className="text-gray-600">Vue d'ensemble des objectifs athlètes et analyse des synergies</p>
+                <h3 className="text-sm font-semibold text-gray-900">Projets performance</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{riders.length} coureur{riders.length !== 1 ? 's' : ''}</p>
               </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{riders.length}</div>
-                <div className="text-sm text-gray-500">athlètes</div>
             </div>
-          </div>
-
-            {/* Navigation des vues */}
-            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setPerformanceViewMode('overview')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  performanceViewMode === 'overview'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Vue d'ensemble
-              </button>
-              <button
-                onClick={() => setPerformanceViewMode('synergy')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  performanceViewMode === 'synergy'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Analyse des synergies
-              </button>
-              <button
-                onClick={() => setPerformanceViewMode('workgroups')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  performanceViewMode === 'workgroups'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Groupes de travail
-              </button>
-              <button
-                onClick={() => setPerformanceViewMode('details')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  performanceViewMode === 'details'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Détails des domaines
-              </button>
+            <div className="px-4 py-3 flex flex-wrap gap-2">
+              {projectViewTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPerformanceViewMode(tab.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+                    performanceViewMode === tab.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
           
@@ -751,9 +627,11 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           {performanceViewMode === 'overview' && (
             <PerformanceOverviewEnhanced 
               riders={riders}
+              onGoToSynergies={() => setPerformanceViewMode('synergy')}
+              onGoToDetails={() => setPerformanceViewMode('details')}
               onRiderSelect={(rider) => {
-                console.log('Athlète sélectionné:', rider);
-                // Ici vous pouvez ajouter une logique pour afficher les détails de l'athlète
+                setSelectedProjectRiderId(rider.id);
+                setPerformanceViewMode('details');
               }}
             />
           )}
@@ -761,10 +639,7 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           {performanceViewMode === 'synergy' && (
             <PerformanceProjectSynergyAnalyzer 
               riders={riders}
-              onGroupSelect={(group) => {
-                console.log('Groupe sélectionné:', group);
-                // Ici vous pouvez ajouter une logique pour afficher les détails du groupe
-              }}
+              onCreateWorkGroup={handleCreateWorkGroupFromSynergy}
             />
           )}
 
@@ -772,17 +647,15 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
             <WorkGroupManager 
               riders={riders}
               staffMembers={appState.staff || []}
+              seedGroups={seededWorkGroups}
               onGroupCreate={(group) => {
-                console.log('Groupe créé:', group);
-                // Ici vous pouvez ajouter une logique pour sauvegarder le groupe
+                setSeededWorkGroups((prev) => [group, ...prev.filter((g) => g.id !== group.id)]);
               }}
               onGroupUpdate={(group) => {
-                console.log('Groupe modifié:', group);
-                // Ici vous pouvez ajouter une logique pour mettre à jour le groupe
+                setSeededWorkGroups((prev) => prev.map((g) => (g.id === group.id ? group : g)));
               }}
               onGroupDelete={(groupId) => {
-                console.log('Groupe supprimé:', groupId);
-                // Ici vous pouvez ajouter une logique pour supprimer le groupe
+                setSeededWorkGroups((prev) => prev.filter((g) => g.id !== groupId));
               }}
             />
           )}
@@ -791,9 +664,9 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
           {performanceViewMode === 'details' && (
             <PerformanceProjectDetails 
               riders={riders}
+              highlightRiderId={selectedProjectRiderId || undefined}
               onRiderSelect={(rider) => {
-                console.log('Athlète sélectionné:', rider);
-                // Ici vous pouvez ajouter une logique pour afficher les détails de l'athlète
+                setSelectedProjectRiderId(rider.id);
               }}
             />
           )}
@@ -801,11 +674,11 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       )}
 
       {activeTab === 'debriefings' && (
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Historique des Débriefings</h3>
-            <p className="text-gray-600 mb-6">
-              Consultez l'historique des débriefings saison par saison pour analyser l'évolution des performances d'une année sur l'autre.
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Historique des débriefings</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Consultez l&apos;évolution des performances saison par saison.
             </p>
             
             {/* Curseur de sélection d'année */}
@@ -1127,14 +1000,11 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       )}
 
       {activeTab === 'archives' && (
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Archives des Performances</h3>
-            <p className="text-gray-600 mb-6">
-              Les <strong>notes de qualité</strong> restent liées à la saison sélectionnée. Les onglets{' '}
-              <strong>Puissances</strong> et <strong>Pertes fatigue</strong> utilisent une vue{' '}
-              <strong>all time</strong> : effectif actuel, toutes les coureuses archivées en base et{' '}
-              <strong>tous les scouts</strong> inclus automatiquement.
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Archives des performances</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Notes de qualité par saison · puissances et fatigue en vue all time (effectif + archives + scouts).
             </p>
             
 
@@ -1163,10 +1033,10 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
                 return (
                   <div className="space-y-8">
                     {/* Tableau visuel des archives */}
-                    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4">
-                        <h4 className="text-xl font-bold">Tableau des Archives par Saison</h4>
-                        <p className="text-blue-100 text-sm">Cliquez sur une année pour voir les détails des notes de qualité d'effectifs</p>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 border-b border-gray-100 bg-blue-50/40">
+                        <h4 className="text-sm font-semibold text-gray-900">Archives par saison</h4>
+                        <p className="text-xs text-gray-500 mt-0.5">Cliquez sur une ligne pour voir le détail</p>
                       </div>
                       
                       
@@ -1753,123 +1623,6 @@ const PerformancePoleSection: React.FC<PerformancePoleSectionProps> = ({ appStat
       )}
     </SectionWrapper>
     </>
-  );
-};
-
-// Composant pour la sous-section Analyse de Puissance avec sous-onglets
-type PowerAnalysisSubTab = 'powers' | 'durability';
-
-interface PowerAnalysisSubSectionProps {
-  riders: Rider[];
-  scoutingProfiles?: ScoutingProfile[];
-}
-
-const PowerAnalysisSubSection: React.FC<PowerAnalysisSubSectionProps> = ({
-  riders,
-  scoutingProfiles = [],
-}) => {
-  const [subTab, setSubTab] = useState<PowerAnalysisSubTab>('powers');
-  const [roleFilter, setRoleFilter] = useState<'both' | 'team1' | 'reserve'>('both');
-
-  const currentSeason = getCurrentSeasonYear();
-
-  const filteredRidersByRole = useMemo(() => {
-    if (roleFilter === 'both') return riders;
-    return riders.filter(
-      r => (r.rosterRole ?? 'principal') === (roleFilter === 'team1' ? 'principal' : 'reserve')
-    );
-  }, [riders, roleFilter]);
-
-  const winnerRiderIds = useMemo(() => {
-    const ids = new Set<string>();
-    filteredRidersByRole.forEach(r => {
-      if (countSeasonWins(r, currentSeason) > 0) ids.add(r.id);
-    });
-    return ids;
-  }, [filteredRidersByRole, currentSeason]);
-
-
-  return (
-    <div className="space-y-6">
-      {/* Navigation des sous-onglets */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-        <nav className="flex space-x-1">
-          <button
-            onClick={() => setSubTab('powers')}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              subTab === 'powers'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <ChartBarIcon className="w-4 h-4 inline mr-2" />
-            Analyse des Puissances
-          </button>
-          <button
-            onClick={() => setSubTab('durability')}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              subTab === 'durability'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            📊 Indicateurs de Durabilité
-          </button>
-        </nav>
-        {/* Filtre Équipe 1 / Réserve */}
-        <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-gray-700">Effectif :</span>
-          <div className="flex rounded-md overflow-hidden border border-gray-300">
-            {(['both', 'team1', 'reserve'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setRoleFilter(value)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                  roleFilter === value
-                    ? 'bg-slate-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {value === 'both' ? 'Tous' : value === 'team1' ? 'Équipe 1' : 'Réserve'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Contenu du sous-onglet actif */}
-      <p className="text-sm text-gray-600 px-1">
-        Saison <strong>{currentSeason}</strong> · effectif actuel uniquement (historique complet dans{' '}
-        <strong>Archives</strong>).
-      </p>
-
-      {subTab === 'powers' && (
-        <PowerAnalysisTable
-          riders={filteredRidersByRole}
-          scoutingProfiles={scoutingProfiles}
-          title={`Analyse des Puissances — Saison ${currentSeason}`}
-          season={currentSeason}
-          winnerRiderIds={winnerRiderIds}
-          defaultIncludeScouts={false}
-          scopeLabel={`Saison ${currentSeason} · effectif actuel`}
-        />
-      )}
-
-      {subTab === 'durability' && (
-        <DurabilityAnalysisTable
-          riders={filteredRidersByRole}
-          scoutingProfiles={scoutingProfiles}
-          title={`Pertes sous fatigue — Saison ${currentSeason}`}
-          subtitle="Effectif de la saison en cours — repères calculés sur cet effectif."
-          season={currentSeason}
-          winnerRiderIds={winnerRiderIds}
-          showBenchmarkPanel
-          defaultIncludeScouts={false}
-          scopeLabel={`Saison ${currentSeason} · effectif actuel`}
-        />
-      )}
-    </div>
   );
 };
 

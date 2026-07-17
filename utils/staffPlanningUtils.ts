@@ -3,8 +3,13 @@
  * Duplique la logique du planning de saison des coureurs pour le staff
  */
 
-import { StaffMember, RaceEvent, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability } from '../types';
+import { StaffMember, RaceEvent, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability, TeamRole, User, UserRole } from '../types';
 import { isFutureEvent, getEventYear, formatEventDate } from './dateUtils';
+import { getStaffRoleKey } from './staffRoleUtils';
+import { getStaffMemberForUser } from './staffMemberUtils';
+
+/** Rôles qui ne voient que leur propre ligne dans le planning staff */
+const STAFF_PLANNING_SELF_VIEW_ROLE_KEYS = new Set(['ASSISTANT', 'MECANO']);
 
 
 /**
@@ -352,3 +357,151 @@ export const getStaffAvailabilityColor = (availability: StaffAvailability | null
       return 'bg-gray-100 text-gray-800';
   }
 };
+
+export function isStaffPlanningValidator(user: User, staff: StaffMember[]): boolean {
+  if (user.userRole === UserRole.MANAGER) return true;
+  if (user.permissionRole === TeamRole.ADMIN || user.permissionRole === TeamRole.EDITOR) return true;
+  const member = getStaffMemberForUser(user, staff);
+  if (!member) return false;
+  const key = getStaffRoleKey(member.role);
+  return key === 'DS' || key === 'MANAGER';
+}
+
+/** Assistant / mécano : vue centrée sur soi (candidatures), pas la grille de toute l'équipe */
+export function isStaffPlanningSelfViewOnly(user: User, staff: StaffMember[]): boolean {
+  if (isStaffPlanningValidator(user, staff)) return false;
+  const member = getStaffMemberForUser(user, staff);
+  if (!member) return false;
+  return STAFF_PLANNING_SELF_VIEW_ROLE_KEYS.has(getStaffRoleKey(member.role));
+}
+
+export function isOwnStaffMember(user: User, member: StaffMember): boolean {
+  if (user.previewSubjectKind === 'staff' && user.previewSubjectId) {
+    return member.id === user.previewSubjectId;
+  }
+  if (user.id && member.id === user.id) return true;
+  const userEmail = user.email?.trim().toLowerCase();
+  const memberEmail = member.email?.trim().toLowerCase();
+  return !!userEmail && !!memberEmail && userEmail === memberEmail;
+}
+
+function upsertStaffSelection(
+  eventId: string,
+  staffId: string,
+  staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+  patch: Partial<StaffEventSelection>,
+): StaffEventSelection {
+  const existing = staffEventSelections.find(sel => sel.eventId === eventId && sel.staffId === staffId);
+  if (existing) {
+    const updated = { ...existing, ...patch };
+    setStaffEventSelections(prev => prev.map(sel => (sel.id === existing.id ? updated : sel)));
+    return updated;
+  }
+  const created: StaffEventSelection = {
+    id: `${eventId}_${staffId}_${Date.now()}`,
+    eventId,
+    staffId,
+    status: StaffEventStatus.EN_ATTENTE,
+    staffPreference: StaffEventPreference.EN_ATTENTE,
+    staffAvailability: StaffAvailability.A_CONFIRMER,
+    staffObjectives: '',
+    notes: '',
+    ...patch,
+  };
+  setStaffEventSelections(prev => [...prev, created]);
+  return created;
+}
+
+/** Le staff candidate pour un événement */
+export function submitStaffCandidature(
+  eventId: string,
+  staffId: string,
+  staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+) {
+  upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
+    staffPreference: StaffEventPreference.VEUT_PARTICIPER,
+    staffAvailability: StaffAvailability.DISPONIBLE,
+    status: StaffEventStatus.EN_ATTENTE,
+    candidatureAt: new Date().toISOString(),
+    validatedAt: undefined,
+    validatedByUserId: undefined,
+    validatedByName: undefined,
+  });
+}
+
+/** Le staff décline un événement */
+export function declineStaffCandidature(
+  eventId: string,
+  staffId: string,
+  staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+) {
+  upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
+    staffPreference: StaffEventPreference.NE_VEUT_PAS,
+    staffAvailability: StaffAvailability.INDISPONIBLE,
+    status: StaffEventStatus.NON_SELECTIONNE,
+    candidatureAt: new Date().toISOString(),
+    validatedAt: undefined,
+    validatedByUserId: undefined,
+    validatedByName: undefined,
+  });
+}
+
+/** DS / manager valide ou refuse une candidature */
+export function validateStaffCandidature(
+  eventId: string,
+  staffId: string,
+  approved: boolean,
+  validator: User,
+  staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+) {
+  const validatorName = `${validator.firstName || ''} ${validator.lastName || ''}`.trim() || validator.email;
+  upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
+    status: approved ? StaffEventStatus.SELECTIONNE : StaffEventStatus.NON_SELECTIONNE,
+    validatedAt: new Date().toISOString(),
+    validatedByUserId: validator.id,
+    validatedByName: validatorName,
+    staffAvailability: approved ? StaffAvailability.DISPONIBLE : StaffAvailability.INDISPONIBLE,
+  });
+}
+
+export function formatValidationLabel(selection: StaffEventSelection | undefined): string | null {
+  if (!selection?.validatedByName || !selection.validatedAt) return null;
+  try {
+    const date = new Date(selection.validatedAt).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+    });
+    return `Validé par ${selection.validatedByName} · ${date}`;
+  } catch {
+    return `Validé par ${selection.validatedByName}`;
+  }
+}
+
+export function getCandidatureLabel(selection: StaffEventSelection | undefined): string {
+  if (!selection) return '—';
+  if (selection.staffPreference === StaffEventPreference.VEUT_PARTICIPER) {
+    if (selection.status === StaffEventStatus.SELECTIONNE) return 'Retenu';
+    if (selection.status === StaffEventStatus.NON_SELECTIONNE || selection.status === StaffEventStatus.REFUSE) {
+      return 'Refusé';
+    }
+    return 'Candidaté';
+  }
+  if (
+    selection.staffPreference === StaffEventPreference.NE_VEUT_PAS ||
+    selection.staffPreference === StaffEventPreference.ABSENT
+  ) {
+    return 'Indispo';
+  }
+  return '—';
+}
+
+export function isPendingCandidature(selection: StaffEventSelection | undefined): boolean {
+  return (
+    selection?.staffPreference === StaffEventPreference.VEUT_PARTICIPER &&
+    selection.status === StaffEventStatus.EN_ATTENTE
+  );
+}

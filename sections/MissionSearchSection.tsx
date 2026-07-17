@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Mission, MissionStatus, StaffRole, Team, User } from '../types';
+import { buildDemoMissionsForTeam, getDemoMissionTeamName, isDemoMission } from '../constants/demoMissions';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -54,7 +55,7 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
     // Protection contre currentUser undefined
     if (!currentUser || !currentUser.id) {
         return (
-            <SectionWrapper title="Recherche de Missions">
+            <SectionWrapper title="Offres & Missions">
                 <div className="text-center p-8 bg-gray-50 rounded-lg border">
                     <h3 className="text-xl font-semibold text-gray-700">Chargement...</h3>
                     <p className="mt-2 text-gray-500">Initialisation des données utilisateur...</p>
@@ -63,38 +64,69 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
         );
     }
 
-    const getTeamName = (teamId: string) => teams.find(t => t.id === teamId)?.name || 'Équipe Inconnue';
-    
+    const getTeamName = (teamId: string) =>
+        getDemoMissionTeamName(teamId) || teams.find(t => t.id === teamId)?.name || 'Équipe partenaire';
+
+    const allMissions = useMemo(() => {
+        const list = missions || [];
+        const demo = buildDemoMissionsForTeam(currentUser.teamId || teams[0]?.id);
+        const demoById = new Map(demo.map(d => [d.id, d]));
+        const withoutStaleDemos = list.filter(m => !isDemoMission(m.id) || demoById.has(m.id));
+        const merged = withoutStaleDemos.map(m => (isDemoMission(m.id) ? { ...demoById.get(m.id)!, applicants: m.applicants } : m));
+        const existingIds = new Set(merged.map(m => m.id));
+        return [...merged, ...demo.filter(d => !existingIds.has(d.id))];
+    }, [missions, teams, currentUser.teamId]);
+
     const myApplications = useMemo(() => {
-        if (!missions || !currentUser?.id) return new Set();
-        return new Set(missions.filter(m => m.applicants?.includes(currentUser.id)).map(m => m.id));
-    }, [missions, currentUser?.id]);
+        if (!allMissions.length || !currentUser?.id) return new Set<string>();
+        return new Set(allMissions.filter(m => m.applicants?.includes(currentUser.id)).map(m => m.id));
+    }, [allMissions, currentUser?.id]);
 
     const filteredMissions = useMemo(() => {
-        if (!missions) return [];
-        return missions.filter(mission => {
+        if (!allMissions.length) return [];
+        return allMissions.filter(mission => {
             if (mission.status !== MissionStatus.OPEN) return false;
             if (roleFilter !== 'all' && mission.role !== roleFilter) return false;
             if (startDateFilter && new Date(mission.startDate) < new Date(startDateFilter)) return false;
             return true;
         }).sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-    }, [missions, roleFilter, startDateFilter]);
+    }, [allMissions, roleFilter, startDateFilter]);
 
     const handleApply = async (missionToApply: Mission) => {
         if (!currentUser?.id) return;
-        if (onApplyToMission) {
+        if (!isDemoMission(missionToApply.id) && onApplyToMission) {
             await onApplyToMission(missionToApply);
         }
-        setMissions(prevMissions => prevMissions.map(m => 
-            m.id === missionToApply.id 
-            ? { ...m, applicants: [...(m.applicants || []), currentUser.id] } 
-            : m
-        ));
+                setMissions(prevMissions => {
+            if (isDemoMission(missionToApply.id)) {
+                const demoMission = buildDemoMissionsForTeam().find(m => m.id === missionToApply.id);
+                if (!demoMission) return prevMissions;
+                const exists = prevMissions.some(m => m.id === demoMission.id);
+                if (exists) {
+                    return prevMissions.map(m =>
+                        m.id === missionToApply.id
+                            ? { ...m, applicants: [...(m.applicants || []), currentUser.id] }
+                            : m
+                    );
+                }
+                return [...prevMissions, { ...demoMission, applicants: [currentUser.id] }];
+            }
+            return prevMissions.map(m =>
+                m.id === missionToApply.id
+                    ? { ...m, applicants: [...(m.applicants || []), currentUser.id] }
+                    : m
+            );
+        });
         alert(`Candidature envoyée pour le poste de "${missionToApply.title}" avec l'équipe ${getTeamName(missionToApply.teamId)}.`);
     };
     
     return (
-        <SectionWrapper title="Recherche de Missions">
+        <SectionWrapper title="Offres & Missions">
+            <p className="mb-4 text-sm text-gray-600">
+              Missions vacataires ouvertes — exemples alignés sur le calendrier UCI Femmes 2026 et quelques courses nationales.
+              Une fois accepté(e) sur un week-end, la mission apparaît automatiquement dans{' '}
+              <strong>Mon Calendrier</strong>.
+            </p>
             <div className="mb-6 p-4 bg-gray-50 rounded-lg shadow-sm border">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                     <div>

@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { ChecklistTemplate, ChecklistRole, ChecklistTemplateKind, EventType, ChecklistTiming } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChecklistTemplate, ChecklistRole, ChecklistTemplateKind, EventType, ChecklistTiming, TeamLevel, TeamOperationalSettings, RaceEvent } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -8,13 +8,35 @@ import PlusCircleIcon from '../components/icons/PlusCircleIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
-import { FICHE_POSTE_ASSISTANT_ALL, TIMING_LABEL_ORDER_STAGE, TIMING_LABEL_ORDER_COMPETITION, sortIndexForTask, getTimingLabelFromFiche } from '../data/fichePosteAssistant';
+import { TIMING_LABEL_ORDER_STAGE, TIMING_LABEL_ORDER_COMPETITION, sortIndexForTask, getTimingLabelFromFiche } from '../data/fichePosteAssistant';
+import {
+  buildChecklistTemplatesFromFiche,
+  countMissingFichePosteTasks,
+  getFichePosteDefinition,
+  getFichePosteSummary,
+  getFichePosteTasks,
+  getStructureLevelLabel,
+  getTimingLabelFromFicheCatalog,
+  groupFicheTasksBySection,
+  resolveFicheStructureForTeam,
+} from '../utils/fichePosteUtils';
+import {
+  getEnabledChecklistRoles,
+  getEventFocusLabel,
+  getOperationalPreset,
+  isChecklistRoleEnabled,
+} from '../utils/teamOperationalUtils';
 
 interface ChecklistSectionProps {
   checklistTemplates: Record<ChecklistRole, ChecklistTemplate[]>;
   onSaveChecklistTemplate: (template: ChecklistTemplate) => void;
   onDeleteChecklistTemplate: (template: ChecklistTemplate) => void;
+  onImportChecklistTemplates?: (templates: ChecklistTemplate[]) => Promise<number>;
   effectivePermissions?: any;
+  teamLevel?: TeamLevel;
+  operationalSettings?: TeamOperationalSettings;
+  raceEvents?: RaceEvent[];
+  onNavigateToSettings?: () => void;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -27,11 +49,30 @@ type EventTypeFilter = EventType | 'all';
 const TIMING_LABELS: Record<ChecklistTiming, string> = { avant: 'Avant', pendant: 'Pendant', apres: 'Après' };
 const TIMING_ORDER: ChecklistTiming[] = ['avant', 'pendant', 'apres'];
 
-const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates, onSaveChecklistTemplate, onDeleteChecklistTemplate, effectivePermissions }) => {
+const ChecklistSection: React.FC<ChecklistSectionProps> = ({
+  checklistTemplates,
+  onSaveChecklistTemplate,
+  onDeleteChecklistTemplate,
+  onImportChecklistTemplates,
+  effectivePermissions,
+  teamLevel,
+  operationalSettings,
+  raceEvents,
+  onNavigateToSettings,
+}) => {
   const isRider = effectivePermissions && effectivePermissions.checklist && Array.isArray(effectivePermissions.checklist) && effectivePermissions.checklist.includes('view');
-  const defaultRole = isRider ? ChecklistRole.COUREUR : ChecklistRole.DS;
+  const enabledRoles = useMemo(
+    () => getEnabledChecklistRoles(teamLevel, operationalSettings),
+    [teamLevel, operationalSettings]
+  );
+  const operationalPreset = getOperationalPreset(teamLevel);
+  const defaultRole = isRider
+    ? (enabledRoles.includes(ChecklistRole.COUREUR) ? ChecklistRole.COUREUR : enabledRoles[0])
+    : (enabledRoles.includes(ChecklistRole.DS) ? ChecklistRole.DS : enabledRoles[0]);
   const storedRole = typeof localStorage !== 'undefined' ? localStorage.getItem(CHECKLIST_ROLE_STORAGE_KEY) : null;
-  const initialRole = (storedRole && Object.values(ChecklistRole).includes(storedRole as ChecklistRole)) ? (storedRole as ChecklistRole) : defaultRole;
+  const initialRole = (storedRole && enabledRoles.includes(storedRole as ChecklistRole))
+    ? (storedRole as ChecklistRole)
+    : defaultRole;
   const storedEventType = typeof localStorage !== 'undefined' ? localStorage.getItem(CHECKLIST_EVENT_TYPE_KEY) : null;
   const initialEventType: EventTypeFilter = (storedEventType === EventType.COMPETITION || storedEventType === EventType.STAGE || storedEventType === 'all') ? (storedEventType as EventTypeFilter) : 'all';
 
@@ -41,6 +82,25 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
   const [currentItem, setCurrentItem] = useState<ChecklistTemplate | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ onConfirm: () => void } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const structureLevel = resolveFicheStructureForTeam(teamLevel, operationalSettings);
+  const structureLabel = getStructureLevelLabel(structureLevel);
+  const activeFiche = getFichePosteDefinition(activeRole);
+  const activeFicheTasks = getFichePosteTasks(activeRole, structureLevel, teamLevel, operationalSettings, raceEvents);
+  const activeFicheSummary = getFichePosteSummary(activeRole, structureLevel);
+  const existingForRole = (checklistTemplates && checklistTemplates[activeRole]) || [];
+  const missingFicheCount = countMissingFichePosteTasks(
+    activeRole,
+    structureLevel,
+    existingForRole,
+    teamLevel,
+    operationalSettings,
+    raceEvents
+  );
+  const eventFocusLabel = getEventFocusLabel(operationalSettings, raceEvents);
+  const fichePreviewSections = groupFicheTasksBySection(activeFicheTasks);
+  const roleEnabled = isChecklistRoleEnabled(activeRole, teamLevel, operationalSettings);
 
   const setActiveRolePersisted = (role: ChecklistRole) => {
     setActiveRole(role);
@@ -48,6 +108,12 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
       localStorage.setItem(CHECKLIST_ROLE_STORAGE_KEY, role);
     } catch (_) {}
   };
+
+  useEffect(() => {
+    if (!enabledRoles.includes(activeRole) && enabledRoles[0]) {
+      setActiveRolePersisted(enabledRoles[0]);
+    }
+  }, [enabledRoles, activeRole]);
 
   const setEventTypeFilterPersisted = (filter: EventTypeFilter) => {
     setActiveEventTypeFilter(filter);
@@ -77,32 +143,39 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
     });
   };
 
-  const handleImportFichePosteAssistant = () => {
-    const existing = (checklistTemplates && checklistTemplates[ChecklistRole.ASSISTANT]) || [];
-    const existingKeys = new Set(
-      existing.map(t => `${(t.name || '').trim().toLowerCase()}|${t.eventType || ''}|${t.timingLabel || ''}`)
+  const handleImportFichePoste = async () => {
+    const existing = (checklistTemplates && checklistTemplates[activeRole]) || [];
+    const { added, templates } = buildChecklistTemplatesFromFiche(
+      activeRole,
+      structureLevel,
+      existing,
+      generateId,
+      teamLevel,
+      operationalSettings,
+      raceEvents
     );
-    let added = 0;
-    FICHE_POSTE_ASSISTANT_ALL.forEach(task => {
-      const key = `${task.name.trim().toLowerCase()}|${task.eventType}|${task.timingLabel || ''}`;
-      if (existingKeys.has(key)) return;
-      existingKeys.add(key);
-      onSaveChecklistTemplate({
-        id: generateId(),
-        name: task.name,
-        role: ChecklistRole.ASSISTANT,
-        kind: (task.kind as ChecklistTemplateKind) || 'task',
-        eventType: task.eventType,
-        timing: task.timing || 'pendant',
-        timingLabel: task.timingLabel,
-      });
-      added += 1;
-    });
-    if (added > 0) {
-      setActiveRolePersisted(ChecklistRole.ASSISTANT);
-      setActiveEventTypeFilter('all');
+    if (added === 0) {
+      const roleLabel = activeFiche?.title || activeRole;
+      alert(`Aucune nouvelle tâche : la fiche de poste ${roleLabel} est déjà importée pour ce niveau de structure.`);
+      return;
     }
-    alert(added > 0 ? `${added} tâche(s) de la fiche de poste Assistant Sportif ont été ajoutées.` : 'Aucune nouvelle tâche : la fiche de poste est déjà importée pour ce rôle.');
+    setIsImporting(true);
+    try {
+      if (onImportChecklistTemplates) {
+        await onImportChecklistTemplates(templates);
+      } else {
+        for (const template of templates) {
+          await onSaveChecklistTemplate(template);
+        }
+      }
+      setActiveEventTypeFilter('all');
+      const roleLabel = activeFiche?.title || activeRole;
+      alert(`${added} tâche(s) de la fiche de poste ${roleLabel} (${structureLabel}) ont été ajoutées.`);
+    } catch {
+      alert('Erreur lors de l\'import. Veuillez réessayer.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -125,9 +198,12 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
   const getTiming = (t: ChecklistTemplate): ChecklistTiming => (t.timing || 'pendant');
   const filteredForRole = allForRole.filter(matchesEventType);
 
-  /** Label de section pour affichage : priorité timingLabel en base, puis lookup fiche (Assistant), sinon moment générique */
+  /** Label de section pour affichage : priorité timingLabel en base, puis lookup fiche, sinon moment générique */
   const effectiveTimingLabel = (t: ChecklistTemplate): string =>
-    t.timingLabel || getTimingLabelFromFiche(t.name ?? '', t.eventType) || (TIMING_LABELS[getTiming(t)] ?? '');
+    t.timingLabel
+    || getTimingLabelFromFiche(t.name ?? '', t.eventType)
+    || getTimingLabelFromFicheCatalog(t.name ?? '', t.eventType)
+    || (TIMING_LABELS[getTiming(t)] ?? '');
 
   const sortByFicheOrder = (a: ChecklistTemplate, b: ChecklistTemplate) => {
     const aWithLabel = { ...a, timingLabel: effectiveTimingLabel(a) };
@@ -214,11 +290,12 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Rôle</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Rôle</p>
+            <span className="text-xs text-gray-500">{operationalPreset.label}</span>
+          </div>
           <nav className="flex flex-wrap gap-1" aria-label="Rôles">
-            {Object.values(ChecklistRole)
-              .filter(role => role && typeof role === 'string')
-              .map(role => (
+            {enabledRoles.map(role => (
                 <button
                   key={role}
                   type="button"
@@ -229,23 +306,91 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
                 </button>
               ))}
           </nav>
+          {enabledRoles.length < Object.values(ChecklistRole).length && onNavigateToSettings && (
+            <p className="text-xs text-slate-500 mt-2">
+              Certains rôles sont masqués pour votre secteur ({enabledRoles.length}/{Object.values(ChecklistRole).length}).
+              {' '}
+              <button type="button" onClick={onNavigateToSettings} className="text-blue-600 hover:underline font-medium">
+                Ajuster dans Paramètres
+              </button>
+            </p>
+          )}
         </div>
 
+        {!roleEnabled ? (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+            Ce rôle n&apos;est pas actif pour votre profil opérationnel.
+            {onNavigateToSettings && (
+              <>
+                {' '}
+                <button type="button" onClick={onNavigateToSettings} className="font-medium underline">
+                  Activer dans Paramètres
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
         <div className="rounded-lg bg-slate-50/80 p-4 border border-slate-100">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Fiche de poste type</p>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Fiche de poste type</p>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              Niveau : {structureLabel}
+            </span>
+          </div>
+          {activeFiche && (
+            <div className="mb-3">
+              <p className="text-sm font-medium text-slate-800">{activeFiche.title}</p>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">{activeFicheSummary}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                {activeFicheTasks.length} tâche(s) dans la fiche
+                {missingFicheCount > 0
+                  ? ` · ${missingFicheCount} à importer`
+                  : ' · déjà importée'}
+              </p>
+            </div>
+          )}
+          <details className="mb-3 rounded-lg border border-slate-200 bg-white/70">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-700 hover:text-slate-900">
+              Voir le détail de la fiche ({activeFicheTasks.length} tâches)
+            </summary>
+            <div className="px-3 pb-3 max-h-64 overflow-y-auto space-y-3">
+              {fichePreviewSections.map(({ label, items }) => (
+                <div key={label}>
+                  <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
+                  <ul className="space-y-0.5">
+                    {items.map((task) => (
+                      <li key={`${label}-${task.name}`} className="text-xs text-slate-700 leading-relaxed">
+                        · {task.name}
+                        {task.kind === 'a_prevoir' && (
+                          <span className="ml-1 text-amber-700">(remarque)</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </details>
           <ActionButton
-            onClick={handleImportFichePosteAssistant}
+            onClick={handleImportFichePoste}
             variant="secondary"
             size="sm"
+            disabled={isImporting || missingFicheCount === 0}
             icon={<PlusCircleIcon className="w-4 h-4"/>}
-            title="Ajoute les tâches Stage et Compétition du modèle Assistant Sportif. Les doublons sont ignorés."
+            title={`Ajoute les tâches du modèle ${activeFiche?.title || activeRole} adaptées au niveau ${structureLabel}. Les doublons sont ignorés.`}
           >
-            Importer la fiche de poste Assistant Sportif
+            {isImporting
+              ? 'Import en cours…'
+              : missingFicheCount > 0
+                ? `Importer la fiche de poste — ${activeFiche?.title || activeRole} (${missingFicheCount})`
+                : `Fiche déjà importée — ${activeFiche?.title || activeRole}`}
           </ActionButton>
           <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-            Ajoute les tâches du modèle pour le rôle Assistant (Stage + Compétition). Doublons ignorés.
+            Profil <strong>{operationalPreset.label}</strong> · fiches {structureLabel} · {eventFocusLabel}
+            {teamLevel ? ` · ${teamLevel}` : ''}. Les doublons sont ignorés.
           </p>
         </div>
+        )}
       </div>
 
       <div className="bg-white rounded-b-lg overflow-hidden">
@@ -259,7 +404,15 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({ checklistTemplates,
             </ActionButton>
           </div>
           {tasksList.length === 0 ? (
-            <p className="py-6 text-center text-gray-500 text-sm italic bg-gray-50/50 rounded-lg border border-dashed border-gray-200">Aucune tâche.</p>
+            <div className="py-6 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200 space-y-2">
+              <p className="text-gray-500 text-sm italic">Aucune tâche.</p>
+              {missingFicheCount > 0 && (
+                <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+                  {missingFicheCount} tâche(s) disponibles dans la fiche de poste {activeFiche?.title || activeRole}.
+                  {' '}Cliquez sur <strong>Importer la fiche de poste</strong> ci-dessus pour les ajouter.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-4">
               {tasksBySection.map(({ label, items }) => (

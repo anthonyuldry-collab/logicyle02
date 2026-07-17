@@ -224,7 +224,7 @@ export const isVehicleLogisticsLeg = (leg: EventTransportLeg): boolean => {
     TransportMode.VOITURE_EQUIPE,
     TransportMode.VOITURE_PERSO,
     TransportMode.AUTRE,
-  ].includes(leg.mode);
+  ].includes(leg.mode as TransportMode);
 };
 
 export const resolveLegExportScope = (
@@ -1009,18 +1009,12 @@ const drawPdfTextBlock = (
 };
 
 const COUREUSES_COMPACT_LINE = 2.85;
+/** Hauteur bloc Maps/Waze (alignée sur drawPdfNavLinksCoureuses + marge basse). */
+const COUREUSES_NAV_BLOCK_H = COUREUSES_COMPACT_LINE + 3.5 + 1;
 /** Colonne libellés (Départ:, Arrivée:) plus étroite sur la fiche coureuses pour gagner du texte. */
 const COUREUSES_PDF_LABEL_W = 18;
-const MAX_COUREUSES_ETAPES_ROWS = 1;
 /** Lignes max par champ dans un bloc transfert (adresses longues). */
 const COUREUSES_TRANSFER_MAX_WRAP_LINES = 2;
-
-const getLegStopLinesForCoureusesPdf = (leg: EventTransportLeg, appState: TeamState): string[] => {
-  const full = getLegStopLines(leg, appState);
-  if (full.length <= MAX_COUREUSES_ETAPES_ROWS) return full;
-  const extra = full.length - MAX_COUREUSES_ETAPES_ROWS;
-  return [...full.slice(0, MAX_COUREUSES_ETAPES_ROWS), `… +${extra} étape(s) — voir Logicycle`];
-};
 
 /** Même rendu date que la convocation PDF (ex. « jeudi 14 mai »). */
 const formatConvocationDayDate = (dateStr?: string): string => {
@@ -1154,9 +1148,10 @@ const drawPdfNavLinksCoureuses = (
   }
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  return { y: y + (gmaps || wzArr ? COUREUSES_COMPACT_LINE + 3.5 : 0.5), countedDirections: counted };
+  return { y: y + (gmaps || wzArr ? COUREUSES_NAV_BLOCK_H - 1 : 0.5), countedDirections: counted };
 };
 
+/** Mesure alignée sur drawCoureusesLegCell (mêmes polices / retours ligne). */
 const measureCoureusesLegCellHeight = (
   doc: jsPDF,
   leg: EventTransportLeg | null,
@@ -1167,49 +1162,79 @@ const measureCoureusesLegCellHeight = (
   const lineH = COUREUSES_COMPACT_LINE;
   let cy = 0;
 
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
   const title = getTransportLegTitleForCoureusesCell(leg, appState);
   const titleWrapped = doc.splitTextToSize(sanitizeTextForPdf(title), width - 2);
   cy += titleWrapped.length * lineH + 0.5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.8);
 
   const depWrapped = doc.splitTextToSize(
     sanitizeTextForPdf(formatLegDepartureConvocationStr(leg)),
     width - COUREUSES_PDF_LABEL_W,
   );
-  cy += lineH * 0.65 + Math.max(1, depWrapped.length) * lineH;
+  cy += Math.max(1, depWrapped.length) * lineH + 0.5;
 
   const arrWrapped = doc.splitTextToSize(
     sanitizeTextForPdf(formatLegArrivalConvocationStr(leg)),
     width - COUREUSES_PDF_LABEL_W,
   );
-  cy += lineH * 0.65 + Math.max(1, arrWrapped.length) * lineH;
+  cy += Math.max(1, arrWrapped.length) * lineH + 0.5;
 
   const driverName = getDriverName(leg, appState);
   const vehicle = leg.assignedVehicleId ? appState.vehicles.find((v) => v.id === leg.assignedVehicleId) : undefined;
-  if (driverName) cy += lineH + 0.5;
-  else if (vehicle) cy += lineH + 0.5;
+  if (driverName || vehicle) cy += lineH + 0.5;
 
   const occAbbrev = getOccupantsAbbrevConvocation(leg, appState);
   if (occAbbrev) {
     const ow = doc.splitTextToSize(sanitizeTextForPdf(occAbbrev), width - COUREUSES_PDF_LABEL_W);
-    cy += lineH * 0.5 + Math.max(1, ow.length) * lineH;
+    cy += Math.max(1, ow.length) * lineH + 0.5;
   }
 
-  const stopLines = getLegStopLinesForCoureusesPdf(leg, appState);
+  const stopLines = getLegStopLines(leg, appState);
   if (stopLines.length > 0) {
-    cy += lineH * 0.85 + lineH * 0.75;
+    cy += 1;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    cy += lineH * 0.85;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.3);
     stopLines.forEach((line) => {
       const sw = doc.splitTextToSize(sanitizeTextForPdf(line), width - 6);
       cy += Math.max(1, sw.length) * lineH;
     });
+    doc.setFontSize(6.8);
   }
 
   const routePoints = collectLegRoutePoints(leg);
   const gmaps = buildGoogleMapsDirectionsUrl(routePoints);
   const wzArr = buildWazeNavigateUrl(getWazeNavigatePlaceForLeg(leg));
-  const linkLines = gmaps || wzArr ? 1 : 0;
-  cy += linkLines * (lineH + 0.35) + 0.8;
+  cy += gmaps || wzArr ? COUREUSES_NAV_BLOCK_H : 1.5;
 
-  return cy + 2;
+  return cy + 1;
+};
+
+const extendCoureusesTransportBox = (
+  doc: jsPDF,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  headerH: number,
+  prevBoxH: number,
+  actualBoxH: number,
+): void => {
+  if (actualBoxH <= prevBoxH + 0.2) return;
+  const extra = actualBoxH - prevBoxH;
+  doc.setFillColor(...PDF_BOX_BG);
+  doc.rect(boxX, boxY + prevBoxH, boxW, extra, 'F');
+  doc.setDrawColor(...PDF_LINE_GRAY);
+  doc.line(boxX + boxW / 2, boxY + prevBoxH, boxX + boxW / 2, boxY + actualBoxH);
+  doc.setDrawColor(...PDF_BOX_BORDER);
+  doc.line(boxX, boxY + actualBoxH, boxX + boxW, boxY + actualBoxH);
+  doc.line(boxX, boxY + prevBoxH, boxX, boxY + actualBoxH);
+  doc.line(boxX + boxW, boxY + prevBoxH, boxX + boxW, boxY + actualBoxH);
 };
 
 const measureStaffLegCardHeight = (
@@ -1670,7 +1695,7 @@ const drawCoureusesLegCell = (
     cy += 0.5;
   }
 
-  const stopLines = getLegStopLinesForCoureusesPdf(leg, appState);
+  const stopLines = getLegStopLines(leg, appState);
   if (stopLines.length > 0) {
     cy += 1;
     doc.setFont('helvetica', 'bold');
@@ -1798,7 +1823,9 @@ const drawCoureusesLegsConvocationStylePdf = (
       rowY = Math.max(cyL, cyR);
     });
 
-    y = boxY + boxH + 2;
+    const actualBoxH = Math.max(boxH, rowY - boxY + 3);
+    extendCoureusesTransportBox(doc, boxX, boxY, boxW, headerH, boxH, actualBoxH);
+    y = rowY + 4;
   }
 
   if (autresLegs.length > 0) {

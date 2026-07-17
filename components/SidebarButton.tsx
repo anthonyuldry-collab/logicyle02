@@ -1,6 +1,5 @@
 
 
-
 import React, { useState } from 'react';
 
 interface SidebarButtonProps {
@@ -20,10 +19,10 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({ label, icon: IconComponen
         w-full flex items-center text-left px-4 py-3 rounded-xl text-sm font-medium 
         transition-all duration-200 group relative
         ${isActive 
-          ? 'bg-white/20 text-white shadow-lg shadow-white/10' 
+          ? 'bg-indigo-500/25 text-white shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-400/30' 
           : isButtonHovered 
-            ? 'bg-white/10 text-white' 
-            : 'text-white/80 hover:text-white hover:bg-white/5'
+            ? 'bg-white/8 text-white' 
+            : 'text-slate-300 hover:text-white hover:bg-white/5'
         }
       `}
       onMouseEnter={() => setIsButtonHovered(true)}
@@ -35,19 +34,18 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({ label, icon: IconComponen
           className={`
             w-5 h-5 mr-3 flex-shrink-0 transition-colors duration-200
             ${isActive 
-              ? 'text-white' 
+              ? 'text-indigo-200' 
               : isButtonHovered 
                 ? 'text-white' 
-                : 'text-white/60 group-hover:text-white/90'
+                : 'text-slate-400 group-hover:text-slate-200'
             }
           `} 
         />
       )}
       <span className="flex-1 truncate">{label}</span>
       
-      {/* Indicateur de sélection */}
       {isActive && (
-        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white rounded-l-full" />
+        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-indigo-300 rounded-l-full" />
       )}
     </button>
   );

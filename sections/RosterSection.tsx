@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  UserCircleIcon, 
   PencilIcon, 
   TrashIcon, 
   EyeIcon,
@@ -10,14 +9,18 @@ import {
   CalendarDaysIcon,
   TrophyIcon,
   ArrowDownCircleIcon,
-  ArrowUpCircleIcon
+  ArrowUpCircleIcon,
+  TableCellsIcon,
+  ArchiveBoxIcon,
+  ChevronDownIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import { RiderDetailModal } from '../components/RiderDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { saveData, deleteData } from '../services/firebaseService';
-import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, RiderEventPreference, ScoutingProfile, TeamProduct, User, AppState } from '../types';
+import { Rider, RaceEvent, RiderEventSelection, FormeStatus, Sex, RiderQualitativeProfile, MoralStatus, HealthCondition, RiderEventStatus, RiderEventPreference, ScoutingProfile, TeamProduct, User, AppState, AppSection, PermissionLevel, StaffMember, PerformanceEntry as AppPerformanceEntry } from '../types';
 import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 import { getCurrentSeasonYear, getSeasonLabel, getAvailableSeasonYears, isSeasonActive, getSeasonTransitionStatus } from '../utils/seasonUtils';
@@ -40,11 +43,12 @@ interface RosterSectionProps {
   setRaceEvents: (updater: React.SetStateAction<RaceEvent[]>) => void;
   riderEventSelections: RiderEventSelection[];
   setRiderEventSelections: (updater: React.SetStateAction<RiderEventSelection[]>) => void;
-  performanceEntries: PerformanceEntry[];
+  performanceEntries: AppPerformanceEntry[];
   scoutingProfiles: ScoutingProfile[];
   teamProducts: TeamProduct[];
   currentUser: User;
   appState: AppState;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   staff?: StaffMember[];
   onRosterTransition?: (archive: RosterArchive, transition: RosterTransition) => void;
 }
@@ -62,6 +66,7 @@ export default function RosterSection({
   teamProducts, 
   currentUser, 
   appState,
+  effectivePermissions,
   staff = [],
   onRosterTransition
 }: RosterSectionProps) {
@@ -81,6 +86,20 @@ export default function RosterSection({
   if (!riderEventSelections || !Array.isArray(riderEventSelections)) {
     return <div>Erreur: Données des sélections non disponibles</div>;
   }
+
+  const canViewRoster = effectivePermissions?.roster?.includes('view') ?? false;
+  if (!canViewRoster) {
+    return (
+      <SectionWrapper title="Annuaire de l'Equipe">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-6 py-10 text-center">
+          <p className="text-sm font-medium text-amber-900">Accès restreint</p>
+          <p className="mt-2 text-sm text-amber-800">
+            L&apos;effectif et les dossiers athlètes sont réservés à l&apos;encadrement sportif.
+          </p>
+        </div>
+      </SectionWrapper>
+    );
+  }
   
   // États pour la gestion des onglets
   const [activeTab, setActiveTab] = useState<'roster' | 'seasonPlanning' | 'quality' | 'archives'>('roster');
@@ -96,9 +115,11 @@ export default function RosterSection({
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [minAgeFilter, setMinAgeFilter] = useState<number>(0);
   const [maxAgeFilter, setMaxAgeFilter] = useState<number>(100);
+  const [rosterRoleFilter, setRosterRoleFilter] = useState<'all' | 'principal' | 'reserve'>('all');
+  const [showRosterFilters, setShowRosterFilters] = useState(false);
   
   // États pour le tri
-  const [rosterSortBy, setRosterSortBy] = useState<'name' | 'firstName' | 'age' | 'ageCategory' | 'levelCategory' | 'raceDays'>('name');
+  const [rosterSortBy, setRosterSortBy] = useState<'name' | 'firstName' | 'age' | 'ageCategory' | 'levelCategory' | 'raceDays' | 'potential' | 'category'>('name');
   const [rosterSortDirection, setRosterSortDirection] = useState<'asc' | 'desc'>('asc');
   const [planningSortBy, setPlanningSortBy] = useState<'name' | 'raceDays'>('name');
   const [planningSortDirection, setPlanningSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -290,13 +311,17 @@ export default function RosterSection({
   };
 
   // Fonctions pour les modales
-  const openViewModal = (rider: Rider) => {
+  const openViewModal = (rider: Rider | ScoutingProfile, initialTab: string = 'info') => {
     setSelectedRider(rider);
+    setInitialModalTab(initialTab);
+    setIsEditModalOpen(false);
     setIsViewModalOpen(true);
   };
   
-  const openEditModal = (rider: Rider) => {
+  const openEditModal = (rider: Rider | ScoutingProfile, initialTab: string = 'info') => {
     setSelectedRider(rider);
+    setInitialModalTab(initialTab);
+    setIsViewModalOpen(false);
     setIsEditModalOpen(true);
   };
   // Composant pour l'onglet Sélections
@@ -945,7 +970,7 @@ export default function RosterSection({
   }, [appState.raceEvents, appState.riderEventSelections]);
 
   // États pour la gestion des modales
-  const [selectedRider, setSelectedRider] = useState<Rider | null>(null);
+  const [selectedRider, setSelectedRider] = useState<Rider | ScoutingProfile | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -1009,10 +1034,10 @@ export default function RosterSection({
           capteurPuissance: ''
         },
         cotes: {
-          hauteurSelle: '',
           reculSelle: '',
-          longueurBecSelleAxeCintre: '',
-          hauteurGuidonAxeRoueCentreCintre: ''
+          distanceExtensionE: '',
+          hauteurProlongateursH: '',
+          hauteurSelle: '',
         }
       },
       clothing: [],
@@ -1238,15 +1263,20 @@ Les compteurs de jours de course ont été remis à 0.`);
       const matchesSearch = rider.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            rider.lastName.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesGender = genderFilter === 'all' || rider.sex === genderFilter;
+      const matchesGender =
+        genderFilter === 'all' ||
+        (genderFilter === 'male' && rider.sex === Sex.MALE) ||
+        (genderFilter === 'female' && rider.sex === Sex.FEMALE);
       
       const { age } = getAgeCategory(rider.birthDate);
       // CORRECTION: Si pas d'âge valide, on considère que ça passe le filtre d'âge
       const matchesAge = age === null || (age >= minAgeFilter && age <= maxAgeFilter);
       
       const { category } = getAgeCategory(rider.birthDate);
-      // CORRECTION: Si pas de catégorie valide, on considère que ça passe le filtre de catégorie
-      const matchesCategory = ageCategoryFilter === 'all' || category !== 'N/A';
+      const matchesCategory =
+        ageCategoryFilter === 'all' ||
+        category === 'N/A' ||
+        category === ageCategoryFilter;
       
       const levelCategory = getLevelCategory(rider);
       const matchesLevel = levelFilter === 'all' || levelCategory === levelFilter;
@@ -1393,205 +1423,304 @@ Les compteurs de jours de course ont été remis à 0.`);
   // État pour le tri de l'onglet Qualité
 
   // Rendu de l'onglet Effectif
+  const renderRiderRow = (rider: Rider, listRole: 'principal' | 'reserve') => {
+    const { category, age } = getAgeCategory(rider.birthDate);
+    const levelCategory = getLevelCategory(rider);
+    const raceDays = getRiderRaceDays(rider.id);
+    return (
+      <tr key={rider.id} className="hover:bg-blue-50/40 transition-colors">
+        <td className="px-4 py-3 whitespace-nowrap">
+          <div className="flex items-center gap-3">
+            {rider.photoUrl ? (
+              <img src={rider.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover ring-2 ring-gray-100" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
+                <span className="text-xs font-semibold text-white">
+                  {rider.firstName?.charAt(0)}{rider.lastName?.charAt(0)}
+                </span>
+              </div>
+            )}
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => openViewModal(rider)}
+                className="text-sm font-medium text-gray-900 hover:text-blue-600 text-left truncate block max-w-[180px]"
+              >
+                {rider.firstName} {rider.lastName}
+              </button>
+              {rider.email && <p className="text-xs text-gray-500 truncate max-w-[180px]">{rider.email}</p>}
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+          {age !== null ? (
+            <>
+              {age} ans
+              <span className="text-xs text-gray-400 ml-1">({category})</span>
+            </>
+          ) : (
+            <span className="text-gray-400">—</span>
+          )}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+            {levelCategory}
+          </span>
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap text-center">
+          <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-semibold ${
+            raceDays > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-400'
+          }`}>
+            {raceDays}
+          </span>
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <div className="flex items-center justify-end gap-1">
+            <button type="button" onClick={() => openViewModal(rider)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Voir">
+              <EyeIcon className="w-4 h-4" />
+            </button>
+            <button type="button" onClick={() => openEditModal(rider)} className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Modifier">
+              <PencilIcon className="w-4 h-4" />
+            </button>
+            <button type="button" onClick={() => openViewModal(rider, 'admin')} className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg" title="Dossier admin">
+              <ArchiveBoxIcon className="w-4 h-4" />
+            </button>
+            {listRole === 'principal' ? (
+              <button type="button" onClick={() => handleMoveRosterRole(rider, 'reserve')} className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg" title="Passer en réserve">
+                <ArrowDownCircleIcon className="w-4 h-4" />
+              </button>
+            ) : (
+              <button type="button" onClick={() => handleMoveRosterRole(rider, 'principal')} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="Remonter en équipe 1">
+                <ArrowUpCircleIcon className="w-4 h-4" />
+              </button>
+            )}
+            <button type="button" onClick={() => handleDeleteRider(rider)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Supprimer">
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderRiderTable = (title: string, subtitle: string, ridersList: Rider[], listRole: 'principal' | 'reserve', accent: 'blue' | 'amber') => (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className={`px-4 py-3 border-b ${
+        accent === 'blue'
+          ? 'bg-blue-50/60 border-blue-100'
+          : 'bg-amber-50/60 border-amber-100'
+      }`}>
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${accent === 'blue' ? 'bg-blue-500' : 'bg-amber-500'}`} />
+          <h3 className={`text-sm font-semibold ${accent === 'blue' ? 'text-blue-900' : 'text-amber-900'}`}>
+            {title}
+          </h3>
+          <span className={`text-xs font-medium tabular-nums ${accent === 'blue' ? 'text-blue-700' : 'text-amber-700'}`}>
+            · {ridersList.length}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5 ml-4">{subtitle}</p>
+      </div>
+      {ridersList.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-gray-500">Aucun coureur dans cette liste.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Coureur</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Âge</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Niveau</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Jours</th>
+                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {ridersList.map((rider) => renderRiderRow(rider, listRole))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
   const renderRosterTab = () => (
     <div className="space-y-4">
-      {/* Contrôles de recherche et filtres */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Recherche */}
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Rechercher un coureur..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          
-          {/* Filtre genre */}
-          <select
-            value={genderFilter}
-            onChange={(e) => setGenderFilter(e.target.value as 'all' | 'male' | 'female')}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">Tous les genres</option>
-            <option value="male">Hommes</option>
-            <option value="female">Femmes</option>
-          </select>
-          
-          {/* Filtre catégorie d'âge */}
-          <select
-            value={ageCategoryFilter}
-            onChange={(e) => setAgeCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">Toutes catégories</option>
-            <option value="U15">U15</option>
-            <option value="U17">U17</option>
-            <option value="U19">U19</option>
-            <option value="U23">U23</option>
-            <option value="Senior">Senior</option>
-            <option value="Master">Master</option>
-          </select>
-          
-          {/* Filtre niveau de performance */}
-          <select
-            value={levelFilter}
-            onChange={(e) => setLevelFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">Tous les niveaux</option>
-            <option value="Pro">Pro</option>
-            <option value="Elite">Elite</option>
-            <option value="Open 1">Open 1</option>
-            <option value="Open 2">Open 2</option>
-            <option value="Open 3">Open 3</option>
-            <option value="Handisport">Handisport</option>
-          </select>
-          
-          {/* Filtre âge */}
-          <div className="flex space-x-2">
-            <input
-              type="number"
-              placeholder="Âge min"
-              value={minAgeFilter}
-              onChange={(e) => setMinAgeFilter(Number(e.target.value))}
-              className="w-1/2 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <input
-              type="number"
-              placeholder="Âge max"
-              value={maxAgeFilter}
-              onChange={(e) => setMaxAgeFilter(Number(e.target.value))}
-              className="w-1/2 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+      {/* Barre d'outils */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <p className="text-sm text-gray-600">
+            {principalRiders.length + reserveRiders.length} coureur{principalRiders.length + reserveRiders.length !== 1 ? 's' : ''} affiché{principalRiders.length + reserveRiders.length !== 1 ? 's' : ''}
+            {' · '}{principalRiders.length} équipe 1 · {reserveRiders.length} réserve
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={rosterSortBy}
+              onChange={(e) => setRosterSortBy(e.target.value as typeof rosterSortBy)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[150px]"
+            >
+              <option value="name">Trier : Nom</option>
+              <option value="firstName">Trier : Prénom</option>
+              <option value="age">Trier : Âge</option>
+              <option value="levelCategory">Trier : Niveau</option>
+              <option value="raceDays">Trier : Jours de course</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setRosterSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+              title="Inverser le tri"
+            >
+              {rosterSortDirection === 'asc' ? '↑ Croissant' : '↓ Décroissant'}
+            </button>
           </div>
         </div>
-        
-        
+
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-100 pt-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un coureur..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <select
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value as 'all' | 'male' | 'female')}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[140px]"
+            >
+              <option value="all">Tous genres</option>
+              <option value="male">Hommes</option>
+              <option value="female">Femmes</option>
+            </select>
+            <select
+              value={ageCategoryFilter}
+              onChange={(e) => setAgeCategoryFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[140px]"
+            >
+              <option value="all">Toutes catégories</option>
+              <option value="U15">U15</option>
+              <option value="U17">U17</option>
+              <option value="U19">U19</option>
+              <option value="U23">U23</option>
+              <option value="Senior">Senior</option>
+              <option value="Master">Master</option>
+            </select>
+            <select
+              value={levelFilter}
+              onChange={(e) => setLevelFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 min-w-[130px]"
+            >
+              <option value="all">Tous niveaux</option>
+              <option value="Pro">Pro</option>
+              <option value="Elite">Elite</option>
+              <option value="Open 1">Open 1</option>
+              <option value="Open 2">Open 2</option>
+              <option value="Open 3">Open 3</option>
+              <option value="Handisport">Handisport</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setShowRosterFilters(!showRosterFilters)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium ${
+                showRosterFilters ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <FunnelIcon className="w-4 h-4" />
+              Plus
+              <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${showRosterFilters ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+
+          {/* Filtre statut effectif */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-gray-500">Effectif :</span>
+            {([
+              { id: 'all' as const, label: 'Tous', count: principalRiders.length + reserveRiders.length },
+              { id: 'principal' as const, label: 'Équipe 1', count: principalRiders.length },
+              { id: 'reserve' as const, label: 'Réserve', count: reserveRiders.length },
+            ]).map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => setRosterRoleFilter(role.id)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border inline-flex items-center gap-1.5 ${
+                  rosterRoleFilter === role.id
+                    ? role.id === 'principal'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : role.id === 'reserve'
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-gray-900 text-white border-gray-900'
+                    : role.id === 'principal'
+                    ? 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100'
+                    : role.id === 'reserve'
+                    ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100'
+                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                {role.label}
+                <span
+                  className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    rosterRoleFilter === role.id ? 'bg-white/20' : 'bg-white/80 text-gray-600'
+                  }`}
+                >
+                  {role.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {showRosterFilters && (
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-xs text-gray-500">Âge :</span>
+              <input
+                type="number"
+                placeholder="Min"
+                value={minAgeFilter || ''}
+                onChange={(e) => setMinAgeFilter(Number(e.target.value) || 0)}
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+              />
+              <span className="text-gray-400">—</span>
+              <input
+                type="number"
+                placeholder="Max"
+                value={maxAgeFilter === 100 ? '' : maxAgeFilter}
+                onChange={(e) => setMaxAgeFilter(Number(e.target.value) || 100)}
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Section Équipe principale */}
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="px-6 py-4 border-b border-gray-200 bg-blue-50/50">
-          <h3 className="text-lg font-semibold text-gray-900">Équipe principale</h3>
-          <p className="text-sm text-gray-500 mt-0.5">{principalRiders.length} coureur{principalRiders.length !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('name')} title="Trier par nom de famille">
-                  <div className="flex items-center space-x-1"><span>Nom</span>{rosterSortBy === 'name' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('firstName')} title="Trier par prénom">
-                  <div className="flex items-center space-x-1"><span>Prénom</span>{rosterSortBy === 'firstName' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('age')} title="Trier par âge">
-                  <div className="flex items-center space-x-1"><span>Âge</span>{rosterSortBy === 'age' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('levelCategory')} title="Trier par niveau">
-                  <div className="flex items-center space-x-1"><span>Niveau</span>{rosterSortBy === 'levelCategory' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('raceDays')} title="Trier par jours de course">
-                  <div className="flex items-center justify-center space-x-1"><span>Jours de course</span>{rosterSortBy === 'raceDays' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {principalRiders.map((rider) => {
-                const { category, age } = getAgeCategory(rider.birthDate);
-                const levelCategory = getLevelCategory(rider);
-                return (
-                  <tr key={rider.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {rider.photoUrl ? <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/> : <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>}
-                        <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{rider.firstName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{age !== null ? `${age} ans` : 'Âge inconnu'}{age !== null && <span className="text-xs text-gray-500 ml-1">({category})</span>}</td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{levelCategory}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">🏁 {getRiderRaceDays(rider.id)}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex flex-wrap gap-2">
-                        <ActionButton onClick={() => openViewModal(rider)} variant="secondary" size="sm" icon={<EyeIcon className="w-4 h-4"/>} title="Voir"><span className="sr-only">Voir</span></ActionButton>
-                        <ActionButton onClick={() => openEditModal(rider)} variant="warning" size="sm" icon={<PencilIcon className="w-4 h-4"/>} title="Modifier"><span className="sr-only">Modifier</span></ActionButton>
-                        <ActionButton onClick={() => handleMoveRosterRole(rider, 'reserve')} variant="secondary" size="sm" icon={<ArrowDownCircleIcon className="w-4 h-4"/>} title="Déplacer en réserve">Réserve</ActionButton>
-                        <ActionButton onClick={() => handleDeleteRider(rider)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>} title="Supprimer"><span className="sr-only">Supprimer</span></ActionButton>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {(rosterRoleFilter === 'all' || rosterRoleFilter === 'principal') &&
+        renderRiderTable(
+          'Équipe 1',
+          `${principalRiders.length} coureur${principalRiders.length !== 1 ? 's' : ''}`,
+          principalRiders,
+          'principal',
+          'blue'
+        )}
 
-      {/* Section Réserve */}
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="px-6 py-4 border-b border-gray-200 bg-amber-50/50">
-          <h3 className="text-lg font-semibold text-gray-900">Réserve</h3>
-          <p className="text-sm text-gray-500 mt-0.5">{reserveRiders.length} coureur{reserveRiders.length !== 1 ? 's' : ''}</p>
+      {(rosterRoleFilter === 'all' || rosterRoleFilter === 'reserve') &&
+        renderRiderTable(
+          'Réserve',
+          `${reserveRiders.length} coureur${reserveRiders.length !== 1 ? 's' : ''}`,
+          reserveRiders,
+          'reserve',
+          'amber'
+        )}
+
+      {principalRiders.length === 0 && reserveRiders.length === 0 && (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center">
+          <UserGroupIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-600">Aucun coureur ne correspond aux filtres.</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('name')} title="Trier par nom de famille">
-                  <div className="flex items-center space-x-1"><span>Nom</span>{rosterSortBy === 'name' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('firstName')} title="Trier par prénom">
-                  <div className="flex items-center space-x-1"><span>Prénom</span>{rosterSortBy === 'firstName' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('age')} title="Trier par âge">
-                  <div className="flex items-center space-x-1"><span>Âge</span>{rosterSortBy === 'age' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('levelCategory')} title="Trier par niveau">
-                  <div className="flex items-center space-x-1"><span>Niveau</span>{rosterSortBy === 'levelCategory' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleRiderSort('raceDays')} title="Trier par jours de course">
-                  <div className="flex items-center justify-center space-x-1"><span>Jours de course</span>{rosterSortBy === 'raceDays' && <svg className={`w-3 h-3 transition-transform ${rosterSortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>}</div>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {reserveRiders.map((rider) => {
-                const { category, age } = getAgeCategory(rider.birthDate);
-                const levelCategory = getLevelCategory(rider);
-                return (
-                  <tr key={rider.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {rider.photoUrl ? <img src={rider.photoUrl} alt={rider.firstName} className="w-8 h-8 rounded-full mr-3"/> : <UserCircleIcon className="w-8 h-8 text-gray-400 mr-3"/>}
-                        <div className="text-sm font-medium text-gray-900">{rider.lastName}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{rider.firstName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{age !== null ? `${age} ans` : 'Âge inconnu'}{age !== null && <span className="text-xs text-gray-500 ml-1">({category})</span>}</td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{levelCategory}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">🏁 {getRiderRaceDays(rider.id)}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex flex-wrap gap-2">
-                        <ActionButton onClick={() => openViewModal(rider)} variant="secondary" size="sm" icon={<EyeIcon className="w-4 h-4"/>} title="Voir"><span className="sr-only">Voir</span></ActionButton>
-                        <ActionButton onClick={() => openEditModal(rider)} variant="warning" size="sm" icon={<PencilIcon className="w-4 h-4"/>} title="Modifier"><span className="sr-only">Modifier</span></ActionButton>
-                        <ActionButton onClick={() => handleMoveRosterRole(rider, 'principal')} variant="primary" size="sm" icon={<ArrowUpCircleIcon className="w-4 h-4"/>} title="Déplacer en équipe principale">Équipe principale</ActionButton>
-                        <ActionButton onClick={() => handleDeleteRider(rider)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>} title="Supprimer"><span className="sr-only">Supprimer</span></ActionButton>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 
@@ -1994,9 +2123,9 @@ Les compteurs de jours de course ont été remis à 0.`);
               <tbody>
                 {reserveRiders.length > 0 && principalRiders.length > 0 && (
                   <>
-                    <tr className="bg-emerald-50/70">
-                      <td colSpan={(filteredEventsForMatrix.length + 1)} className="sticky left-0 z-10 bg-emerald-50/70 border-r border-b border-slate-200 px-4 py-2 text-sm font-semibold text-emerald-800">
-                        RIDERS
+                    <tr className="bg-blue-50/80">
+                      <td colSpan={(filteredEventsForMatrix.length + 1)} className="sticky left-0 z-10 bg-blue-50/80 border-r border-b border-slate-200 px-4 py-2 text-sm font-semibold text-blue-800">
+                        Équipe 1 · {principalRiders.length}
                       </td>
                     </tr>
                     {principalRiders.map((rider, idx) => (
@@ -2041,7 +2170,7 @@ Les compteurs de jours de course ont été remis à 0.`);
                     ))}
                     <tr className="bg-amber-50/70">
                       <td colSpan={(filteredEventsForMatrix.length + 1)} className="sticky left-0 z-10 bg-amber-50/70 border-r border-b border-slate-200 px-4 py-2 text-sm font-semibold text-amber-800">
-                        Réserve
+                        Réserve · {reserveRiders.length}
                       </td>
                     </tr>
                     {reserveRiders.map((rider, idx) => (
@@ -3240,7 +3369,7 @@ Les compteurs de jours de course ont été remis à 0.`);
 
           // Sauvegarder dans Firebase
           if (appState.activeTeamId) {
-            await updateData(appState.activeTeamId, "riderEventSelections", updatedSelection);
+            await saveData(appState.activeTeamId, "riderEventSelections", updatedSelection);
           }
 
           // Mettre à jour l'état local
@@ -4020,6 +4149,14 @@ Les compteurs de jours de course ont été remis à 0.`);
   };
 
   // Rendu de l'onglet Qualité d'Effectif
+  const getQualityScoreBadgeClass = (score: number) => {
+    if (score >= 70) return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    if (score >= 50) return 'bg-blue-100 text-blue-800 border-blue-200';
+    if (score >= 30) return 'bg-amber-100 text-amber-800 border-amber-200';
+    if (score >= 20) return 'bg-orange-100 text-orange-800 border-orange-200';
+    return 'bg-red-100 text-red-800 border-red-200';
+  };
+
   const renderQualityTab = () => {
     const qualityPrincipalRiders = activeRiders.filter(r => r.rosterRole !== 'reserve');
     const qualityReserveRiders = activeRiders.filter(r => r.rosterRole === 'reserve');
@@ -4031,345 +4168,186 @@ Les compteurs de jours de course ont été remis à 0.`);
       : 0;
 
     return (
-      <div className="space-y-6">
-        {/* Métriques globales simplifiées */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 rounded-lg shadow-lg text-white">
-            <div className="text-center">
-              <h4 className="text-sm font-medium opacity-90">Total Effectif Actif</h4>
-              <p className="text-3xl font-bold">{activeRiders.length}</p>
-            </div>
+      <div className="space-y-4">
+        {/* Indicateurs */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-2xl border border-white/12 bg-slate-900 p-5 text-center shadow-lg shadow-black/20">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.14em]">Effectif actif</p>
+            <p className="text-3xl font-bold text-white mt-2 tracking-tight">{activeRiders.length}</p>
           </div>
-          
-          <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 rounded-lg shadow-lg text-white">
-            <div className="text-center">
-              <h4 className="text-sm font-medium opacity-90">Moyenne Score</h4>
-              <p className="text-3xl font-bold">
-                {activeRiders.length > 0 ? Math.round(activeRiders.reduce((sum, r) => {
-                  const profile = calculateCogganProfileScore(r);
-                  return sum + profile.generalScore;
-                }, 0) / activeRiders.length) : 0}
-              </p>
-            </div>
+          <div className="rounded-2xl border border-white/12 bg-slate-900 p-5 text-center shadow-lg shadow-black/20">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.14em]">Moyenne générale</p>
+            <p className="text-3xl font-bold text-indigo-300 mt-2 tracking-tight">
+              {activeRiders.length > 0 ? Math.round(activeRiders.reduce((sum, r) => sum + calculateCogganProfileScore(r).generalScore, 0) / activeRiders.length) : 0}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-blue-400/25 bg-blue-950 p-5 text-center shadow-lg shadow-black/20">
+            <p className="text-[11px] font-semibold text-blue-300 uppercase tracking-[0.14em]">Équipe 1</p>
+            <p className="text-3xl font-bold text-blue-100 mt-2 tracking-tight">{qualityPrincipalRiders.length}</p>
+            <p className="text-xs text-blue-300/90 mt-1">Moy. {avgPrincipal}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-400/25 bg-amber-950 p-5 text-center shadow-lg shadow-black/20">
+            <p className="text-[11px] font-semibold text-amber-300 uppercase tracking-[0.14em]">Réserve</p>
+            <p className="text-3xl font-bold text-amber-100 mt-2 tracking-tight">{qualityReserveRiders.length}</p>
+            <p className="text-xs text-amber-300/90 mt-1">Moy. {avgReserve}</p>
           </div>
         </div>
 
-        {/* Comparatif Équipe 1 / Réserve (affiché quand les deux sont inclus) */}
-        {qualityRoleFilter === 'both' && (qualityPrincipalRiders.length > 0 || qualityReserveRiders.length > 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gray-800 border border-blue-500/50 p-4 rounded-lg shadow text-white">
-              <div className="text-center">
-                <h4 className="text-sm font-medium text-blue-200">Équipe 1</h4>
-                <p className="text-2xl font-bold text-blue-300">{qualityPrincipalRiders.length} coureur{qualityPrincipalRiders.length !== 1 ? 's' : ''}</p>
-                <p className="text-lg text-blue-100 mt-1">Moy. {avgPrincipal}</p>
-              </div>
-            </div>
-            <div className="bg-gray-800 border border-amber-500/50 p-4 rounded-lg shadow text-white">
-              <div className="text-center">
-                <h4 className="text-sm font-medium text-amber-200">Réserve</h4>
-                <p className="text-2xl font-bold text-amber-300">{qualityReserveRiders.length} coureur{qualityReserveRiders.length !== 1 ? 's' : ''}</p>
-                <p className="text-lg text-amber-100 mt-1">Moy. {avgReserve}</p>
-              </div>
-            </div>
+        {/* Barre d'outils */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              {getSortedRidersForQuality().length} coureur{getSortedRidersForQuality().length !== 1 ? 's' : ''} affiché{getSortedRidersForQuality().length !== 1 ? 's' : ''}
+            </p>
+            <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={includeScouts}
+                onChange={(e) => setIncludeScouts(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              Inclure les scouts
+            </label>
           </div>
-        )}
+          <div className="px-4 pb-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+            <span className="text-xs font-medium text-gray-500">Afficher :</span>
+            {([
+              { id: 'both' as const, label: 'Tous' },
+              { id: 'team1' as const, label: 'Équipe 1' },
+              { id: 'reserve' as const, label: 'Réserve' },
+            ]).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setQualityRoleFilter(id)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                  qualityRoleFilter === id
+                    ? id === 'team1'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : id === 'reserve'
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-gray-900 text-white border-gray-900'
+                    : id === 'team1'
+                    ? 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100'
+                    : id === 'reserve'
+                    ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100'
+                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        {/* Tableau de pilotage style Pro Cycling Manager */}
-        <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700">
-                      <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-              <h3 className="text-xl font-bold text-white">
-                Qualité d'Effectif
-              </h3>
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400">Afficher :</span>
-                    <select
-                      value={qualityRoleFilter}
-                      onChange={(e) => setQualityRoleFilter(e.target.value as 'team1' | 'reserve' | 'both')}
-                      className="rounded border border-gray-600 bg-gray-700 text-white text-sm px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="both">Équipe 1 + Réserve</option>
-                      <option value="team1">Équipe 1</option>
-                      <option value="reserve">Réserve</option>
-                    </select>
-                  </div>
-                  <label className="flex items-center space-x-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={includeScouts}
-                      onChange={(e) => setIncludeScouts(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Inclure les scouts</span>
-                  </label>
-                </div>
-              </div>
-            </div>
+        {/* Tableau qualité */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 bg-purple-50/40">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <TrophyIcon className="w-4 h-4 text-purple-600" />
+              Profils de qualité
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">Scores Coggan — cliquez sur une colonne pour trier</p>
+          </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-800">
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('name')}
-                    title="Trier par nom"
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Coureur</span>
-                      {qualitySortField === 'name' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Rôle</th>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('age')}
-                    title="Trier par âge"
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Âge</span>
-                      {qualitySortField === 'age' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('general')}
-                    title="Trier par score général"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>MOY</span>
-                      {qualitySortField === 'general' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('sprint')}
-                    title="Trier par score sprint"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>SPR</span>
-                      {qualitySortField === 'sprint' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('climbing')}
-                    title="Trier par score montagne"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>MON</span>
-                      {qualitySortField === 'climbing' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('puncher')}
-                    title="Trier par score puncher"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>PUN</span>
-                      {qualitySortField === 'puncher' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('rouleur')}
-                    title="Trier par score rouleur"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>ROU</span>
-                      {qualitySortField === 'rouleur' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleQualitySort('fatigue')}
-                    title="Trier par score résistance"
-                  >
-                    <div className="flex items-center justify-center space-x-1">
-                      <span>RES</span>
-                      {qualitySortField === 'fatigue' && (
-                        <svg className={`w-3 h-3 transition-transform ${qualitySortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                  {([
+                    { field: 'name' as const, label: 'Coureur', align: 'left' },
+                    { field: null, label: 'Rôle', align: 'left' },
+                    { field: 'age' as const, label: 'Âge', align: 'left' },
+                    { field: 'general' as const, label: 'MOY', align: 'center' },
+                    { field: 'sprint' as const, label: 'SPR', align: 'center' },
+                    { field: 'climbing' as const, label: 'MON', align: 'center' },
+                    { field: 'puncher' as const, label: 'PUN', align: 'center' },
+                    { field: 'rouleur' as const, label: 'ROU', align: 'center' },
+                    { field: 'fatigue' as const, label: 'RES', align: 'center' },
+                  ]).map(({ field, label, align }) => (
+                    <th
+                      key={label}
+                      className={`px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase ${align === 'center' ? 'text-center' : 'text-left'} ${field ? 'cursor-pointer hover:text-blue-600 select-none' : ''}`}
+                      onClick={field ? () => handleQualitySort(field) : undefined}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        {field && qualitySortField === field && (
+                          <span className="text-blue-600">{qualitySortDirection === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-gray-900 divide-y divide-gray-700">
+              <tbody className="divide-y divide-gray-100">
                 {getSortedRidersForQuality().map((rider) => {
                   const { category, age } = getAgeCategory(rider.birthDate);
                   const levelCategory = getLevelCategory(rider);
                   const cogganProfile = calculateCogganProfileScore(rider);
-                  
+                  const scores = [
+                    cogganProfile.generalScore,
+                    cogganProfile.sprintScore,
+                    cogganProfile.montagneScore,
+                    cogganProfile.puncheurScore,
+                    cogganProfile.rouleurScore,
+                    cogganProfile.resistanceScore,
+                  ];
+
                   return (
-                    <tr key={rider.id} className="hover:bg-gray-800">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
+                    <tr key={rider.id} className="hover:bg-blue-50/40 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
                           {rider.photoUrl ? (
-                            <img src={rider.photoUrl} alt={rider.firstName} className="w-10 h-10 rounded-full mr-4"/>
+                            <img src={rider.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover ring-2 ring-gray-100" />
                           ) : (
-                            <UserCircleIcon className="w-10 h-10 text-gray-400 mr-4"/>
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shrink-0">
+                              <span className="text-xs font-semibold text-white">
+                                {rider.firstName?.charAt(0)}{rider.lastName?.charAt(0)}
+                              </span>
+                            </div>
                           )}
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-medium text-white">{rider.firstName} {rider.lastName}</span>
-                              {(rider as any).isScout && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                                  SCOUT
-                                </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-900 truncate">{rider.firstName} {rider.lastName}</span>
+                              {(rider as Rider & { isScout?: boolean }).isScout && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">SCOUT</span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-400">{category} / {levelCategory}</div>
+                            <p className="text-xs text-gray-500">{category} · {levelCategory}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {(rider as any).isScout ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Scout</span>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {(rider as Rider & { isScout?: boolean }).isScout ? (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">Scout</span>
                         ) : (rider as Rider).rosterRole === 'reserve' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/50">Réserve</span>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">Réserve</span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/50">Équipe 1</span>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">Équipe 1</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {age !== null ? `${age} ans` : 'Âge inconnu'}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        {age !== null ? `${age} ans` : '—'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.generalScore >= 70 ? 'text-green-400' :
-                            cogganProfile.generalScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.generalScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.generalScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.generalScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.sprintScore >= 70 ? 'text-green-400' :
-                            cogganProfile.sprintScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.sprintScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.sprintScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.sprintScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.montagneScore >= 70 ? 'text-green-400' :
-                            cogganProfile.montagneScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.montagneScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.montagneScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.montagneScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.puncheurScore >= 70 ? 'text-green-400' :
-                            cogganProfile.puncheurScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.puncheurScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.puncheurScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.puncheurScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.rouleurScore >= 70 ? 'text-green-400' :
-                            cogganProfile.rouleurScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.rouleurScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.rouleurScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.rouleurScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="space-y-1">
-                          <div className={`text-lg font-bold ${
-                            cogganProfile.resistanceScore >= 70 ? 'text-green-400' :
-                            cogganProfile.resistanceScore >= 50 ? 'text-blue-400' :
-                            cogganProfile.resistanceScore >= 30 ? 'text-yellow-400' :
-                            cogganProfile.resistanceScore >= 20 ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            {cogganProfile.resistanceScore}
-                          </div>
-
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <ActionButton 
-                            onClick={() => openViewModal(rider)} 
-                            variant="secondary" 
-                            size="sm" 
-                            icon={<EyeIcon className="w-4 h-4"/>} 
-                            title="Voir"
-                          >
-                            <span className="sr-only">Voir</span>
-                          </ActionButton>
-                          <ActionButton 
-                            onClick={() => openEditModal(rider)} 
-                            variant="warning" 
-                            size="sm" 
-                            icon={<PencilIcon className="w-4 h-4"/>} 
-                            title="Modifier"
-                          >
-                            <span className="sr-only">Modifier</span>
-                          </ActionButton>
+                      {scores.map((score, idx) => (
+                        <td key={idx} className="px-4 py-3 whitespace-nowrap text-center">
+                          <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-semibold border ${getQualityScoreBadgeClass(score)}`}>
+                            {score}
+                          </span>
+                        </td>
+                      ))}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button type="button" onClick={() => openViewModal(rider)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Voir">
+                            <EyeIcon className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => openEditModal(rider)} className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Modifier">
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => openViewModal(rider, 'admin')} className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg" title="Dossier admin">
+                            <ArchiveBoxIcon className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -4377,32 +4355,23 @@ Les compteurs de jours de course ont été remis à 0.`);
                 })}
               </tbody>
             </table>
+            {getSortedRidersForQuality().length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-gray-500">Aucun coureur à afficher.</div>
+            )}
           </div>
         </div>
-
-
       </div>
     );
   };
 
   // Rendu de l'onglet Archives
   const renderArchivesTab = () => (
-    <div className="space-y-6">
-      {/* Gestionnaire de transition des effectifs */}
-      <RosterTransitionManager
-        riders={riders}
-        staff={staff}
-        onRosterTransition={handleRosterTransition}
-      />
-      
-      {/* Visualiseur d'archives */}
-      <RosterArchiveViewer
-        riders={riders}
-        staff={staff}
-        archives={rosterArchives}
-        onViewArchive={handleViewArchive}
-      />
-    </div>
+    <RosterArchiveViewer
+      riders={riders}
+      staff={staff}
+      archives={rosterArchives}
+      onViewArchive={handleViewArchive}
+    />
   );
 
   // Fonction de fusion des profils par email
@@ -4456,14 +4425,16 @@ Les compteurs de jours de course ont été remis à 0.`);
     <SectionWrapper 
       title="Annuaire de l'Equipe"
       actionButton={
-        <div className="flex space-x-2">
-          <ActionButton onClick={mergeDuplicateProfiles} variant="secondary" icon={<UserGroupIcon className="w-5 h-5"/>}>
-            Fusionner Doublons
-          </ActionButton>
-          <ActionButton onClick={openAddRiderModal} icon={<PlusCircleIcon className="w-5 h-5"/>}>
-            Ajouter Coureur
-          </ActionButton>
-        </div>
+        activeTab === 'roster' ? (
+          <div className="flex flex-wrap gap-2">
+            <ActionButton onClick={mergeDuplicateProfiles} variant="secondary" icon={<UserGroupIcon className="w-5 h-5"/>}>
+              Fusionner doublons
+            </ActionButton>
+            <ActionButton onClick={openAddRiderModal} icon={<PlusCircleIcon className="w-5 h-5"/>}>
+              Ajouter coureur
+            </ActionButton>
+          </div>
+        ) : undefined
       }
     >
       {/* Gestionnaire de transition des effectifs */}
@@ -4472,54 +4443,53 @@ Les compteurs de jours de course ont été remis à 0.`);
         staff={staff}
         onRosterTransition={handleRosterTransition}
       />
-      <div className="mb-2 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">
-          <button 
-            onClick={() => setActiveTab('roster')} 
-            className={
-              activeTab === 'roster' 
-                ? 'border-blue-500 text-blue-600 border-b-2 py-2 px-3 text-sm font-medium' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-2 px-3 text-sm font-medium'
-            }
-          >
-            Effectif
-          </button>
-          <button 
-            onClick={() => setActiveTab('seasonPlanning')} 
-            className={
-              activeTab === 'seasonPlanning' 
-                ? 'border-blue-500 text-blue-600 border-b-2 py-2 px-3 text-sm font-medium' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-2 px-3 text-sm font-medium'
-            }
-          >
-            Planning Saison
-          </button>
-          <button 
-            onClick={() => setActiveTab('quality')} 
-            className={
-              activeTab === 'quality' 
-                ? 'border-blue-500 text-blue-600 border-b-2 py-2 px-3 text-sm font-medium' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-2 px-3 text-sm font-medium'
-            }
-          >
-            Qualite d'Effectif
-          </button>
-          <button 
-            onClick={() => setActiveTab('archives')} 
-            className={
-              activeTab === 'archives' 
-                ? 'border-blue-500 text-blue-600 border-b-2 py-2 px-3 text-sm font-medium' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-2 px-3 text-sm font-medium'
-            }
-          >
-            Archives
-          </button>
+
+      {/* Navigation par onglets */}
+      <div className="mb-5 flex justify-center">
+        <nav
+          className="inline-flex flex-wrap justify-center gap-2"
+          aria-label="Onglets effectif"
+        >
+          {([
+            { id: 'roster' as const, label: 'Effectif', icon: UserGroupIcon, count: activeRiders.length || riders.length },
+            { id: 'seasonPlanning' as const, label: 'Planning', icon: TableCellsIcon, count: raceEvents.length },
+            { id: 'quality' as const, label: 'Qualité', icon: TrophyIcon, count: activeRiders.length },
+            { id: 'archives' as const, label: 'Archives', icon: ArchiveBoxIcon, count: rosterArchives.length },
+          ]).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-300/40'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0 opacity-90" />
+                <span>{tab.label}</span>
+                {'count' in tab && tab.count !== undefined && (
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
       
-      {activeTab === 'roster' ? renderRosterTab() : 
+      {activeTab === 'roster' ? renderRosterTab() :
        activeTab === 'seasonPlanning' ? (
          <SeasonPlanningSection
+           embedded
            riders={riders}
            onSaveRider={onSaveRider}
            onDeleteRider={onDeleteRider}
@@ -4542,12 +4512,13 @@ Les compteurs de jours de course ont été remis à 0.`);
       {/* Modal unique pour vue et édition */}
       {selectedRider && (
         <RiderDetailModal
-          rider={selectedRider}
+          rider={selectedRider as Rider}
           isOpen={isViewModalOpen || isEditModalOpen}
           onClose={() => {
             setIsViewModalOpen(false);
             setIsEditModalOpen(false);
           }}
+          isEditMode={isEditModalOpen}
           onSaveRider={handleSaveRider}
           onUpdateRiderPreference={handleUpdateRiderPreference}
           raceEvents={raceEvents}
@@ -4570,7 +4541,7 @@ Les compteurs de jours de course ont été remis à 0.`);
           }}
           appState={appState}
           currentUser={currentUser}
-          effectivePermissions={appState.effectivePermissions}
+          effectivePermissions={effectivePermissions}
           initialTab={initialModalTab}
           allRiders={riders}
         />

@@ -31,11 +31,19 @@ import {
   RiderQualitativeProfile,
   Sex,
   ScoutingProfile,
-  TeamProduct
+  TeamProduct,
+  PerformanceEntry as AppPerformanceEntry,
 } from '../types';
 import { getAge, getAgeCategory, getLevelCategory } from '../utils/ageUtils';
 import { isFutureEvent, getEventYear, formatEventDate, formatEventDateRange } from '../utils/dateUtils';
 import { getEffectivePermissions } from '../services/firebaseService';
+import { sendDigitalConvocationNotifications } from '../services/notificationService';
+import {
+  analyzeRiderEventIssues,
+  getActiveRiders,
+  getUpcomingEventsWithSelections,
+  resolveRiderEventSelection,
+} from '../utils/talentAvailabilityUtils';
 
 /** Statuts qui font apparaître l'athlète dans l'événement (onglet Participants / calendrier) */
 const RIDER_STATUS_IN_EVENT: RiderEventStatus[] = [
@@ -52,7 +60,7 @@ interface SeasonPlanningSectionProps {
   setRaceEvents: (updater: React.SetStateAction<RaceEvent[]>) => void;
   riderEventSelections: RiderEventSelection[];
   setRiderEventSelections: (updater: React.SetStateAction<RiderEventSelection[]>) => void;
-  performanceEntries: PerformanceEntry[];
+  performanceEntries: AppPerformanceEntry[];
   scoutingProfiles: ScoutingProfile[];
   teamProducts: TeamProduct[];
   currentUser: User;
@@ -60,6 +68,7 @@ interface SeasonPlanningSectionProps {
   onOpenRiderModal?: (rider: Rider, initialTab?: string) => void;
   onSaveRaceEvent?: (event: Partial<RaceEvent> & { id: string }) => void;
   navigateTo?: (section: AppSection, eventId?: string) => void;
+  embedded?: boolean;
 }
 
 export default function SeasonPlanningSection({ 
@@ -77,7 +86,8 @@ export default function SeasonPlanningSection({
   appState,
   onOpenRiderModal,
   onSaveRaceEvent,
-  navigateTo
+  navigateTo,
+  embedded = false,
 }: SeasonPlanningSectionProps) {
   if (!appState) {
     return <div>Chargement...</div>;
@@ -106,7 +116,7 @@ export default function SeasonPlanningSection({
   const [searchTerm, setSearchTerm] = useState('');
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
   const [ageCategoryFilter, setAgeCategoryFilter] = useState<string>('all');
-  const [teamRosterFilter, setTeamRosterFilter] = useState<'principal' | 'reserve'>('principal');
+  const [teamRosterFilter, setTeamRosterFilter] = useState<'all' | 'principal' | 'reserve'>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [preferenceFilter, setPreferenceFilter] = useState<'all' | 'wants' | 'objectives' | 'unavailable' | 'waiting'>('all');
   const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'uci' | 'championnat' | 'coupe-france' | 'federal'>('all');
@@ -301,7 +311,8 @@ export default function SeasonPlanningSection({
       const matchesAgeCategory = ageCategoryFilter === 'all' || 
         ageCategory.category === ageCategoryFilter;
       const riderRosterRole = rider.rosterRole ?? 'principal';
-      const matchesRosterRole = riderRosterRole === teamRosterFilter;
+      const matchesRosterRole =
+        teamRosterFilter === 'all' || riderRosterRole === teamRosterFilter;
       const levelCategory = getLevelCategory(rider);
       const matchesLevel = levelFilter === 'all' || 
         levelCategory === levelFilter;
@@ -330,9 +341,25 @@ export default function SeasonPlanningSection({
       return matchesSearch && matchesGender && matchesAgeCategory && matchesRosterRole && matchesLevel && matchesPreference;
     });
     
-    // Appliquer le tri
-    return sortRiders(filtered);
+    // Appliquer le tri, puis scinder Équipe 1 / Réserve (Équipe 1 en premier)
+    const sorted = sortRiders(filtered);
+    return [...sorted].sort((a, b) => {
+      const aRole = a.rosterRole === 'reserve' ? 1 : 0;
+      const bRole = b.rosterRole === 'reserve' ? 1 : 0;
+      return aRole - bRole;
+    });
   }, [riders, searchTerm, genderFilter, ageCategoryFilter, teamRosterFilter, levelFilter, preferenceFilter, riderEventSelections, sortField, sortDirection]);
+
+  const rosterSplit = useMemo(() => {
+    const principal = filteredRiders.filter((r) => (r.rosterRole ?? 'principal') !== 'reserve');
+    const reserve = filteredRiders.filter((r) => r.rosterRole === 'reserve');
+    return { principal, reserve };
+  }, [filteredRiders]);
+
+  const rosterCounts = useMemo(() => ({
+    principal: riders.filter((r) => (r.rosterRole ?? 'principal') !== 'reserve').length,
+    reserve: riders.filter((r) => r.rosterRole === 'reserve').length,
+  }), [riders]);
 
   // Fonction pour obtenir le statut d'un athlète pour un événement
   const getRiderEventStatus = (eventId: string, riderId: string): RiderEventStatus | null => {
@@ -410,6 +437,23 @@ export default function SeasonPlanningSection({
       }
       // Connexion planning → événement : faire apparaître l'athlète dans l'événement (calendrier / onglet Participants)
       syncEventSelectedRiderIds(eventId, event.selectedRiderIds || [], riderId, status, false);
+
+      // Notification transversale : informer l'athlète de sa sélection
+      const teamId = appState.activeTeamId;
+      if (teamId && currentUser?.id) {
+        sendDigitalConvocationNotifications({
+          teamId,
+          eventId,
+          eventName: event.name,
+          eventDate: event.date,
+          mode: 'athlete',
+          sentByUserId: currentUser.id,
+          users: appState.users ?? [],
+          riders: riders,
+          staff: [],
+          riderId,
+        }).catch(() => {/* silencieux si l'athlète n'a pas de compte */});
+      }
     } catch (error) {
       console.error('Erreur lors de l\'ajout de l\'athlète:', error);
     }
@@ -535,18 +579,99 @@ export default function SeasonPlanningSection({
     }
   };
 
+  const activeRiderIds = useMemo(() => new Set(getActiveRiders(riders).map(r => r.id)), [riders]);
+
+  const eventValidations = useMemo(() => {
+    const summaries = getUpcomingEventsWithSelections(raceEvents, riderEventSelections, activeRiderIds, 120);
+    return Object.fromEntries(summaries.map(s => [s.event.id, s]));
+  }, [raceEvents, riderEventSelections, activeRiderIds]);
+
+  const validationStats = useMemo(() => {
+    const summaries = Object.values(eventValidations);
+    return {
+      events: summaries.length,
+      needsAction: summaries.filter(s => !s.isComplete).length,
+      missingStaff: summaries.reduce((n, s) => n + s.missingStaff, 0),
+      missingPref: summaries.reduce((n, s) => n + s.missingPreference, 0),
+      conflicts: summaries.reduce((n, s) => n + s.conflicts, 0),
+    };
+  }, [eventValidations]);
+
+  const renderValidationAlerts = () => {
+    if (validationStats.events === 0) return null;
+    if (validationStats.needsAction === 0) {
+      return (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          Toutes les sélections à venir sont alignées (préférences coureurs + disponibilités staff).
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-sm font-medium text-amber-900">
+          {validationStats.needsAction} course(s) nécessitent une vérification
+        </p>
+        <p className="text-xs text-amber-800 mt-1">
+          {validationStats.missingPref > 0 && `${validationStats.missingPref} préférence(s) coureur en attente · `}
+          {validationStats.missingStaff > 0 && `${validationStats.missingStaff} dispo staff à confirmer · `}
+          {validationStats.conflicts > 0 && `${validationStats.conflicts} conflit(s)`}
+          {validationStats.missingPref > 0 && ' — les coureurs répondent depuis Mon Calendrier.'}
+        </p>
+      </div>
+    );
+  };
+
+  const renderAvailabilitySelect = (eventId: string, riderId: string, compact = false) => {
+    const event = raceEvents.find(e => e.id === eventId);
+    if (!event) return null;
+    const selection = resolveRiderEventSelection(event, riderId, riderEventSelections);
+    const value = selection.talentAvailability ?? '';
+    return (
+      <select
+        value={value}
+        onChange={e => {
+          const next = e.target.value as TalentAvailability;
+          if (next) updateRiderAvailability(eventId, riderId, next);
+        }}
+        className={`${compact ? 'text-[10px] px-1 py-0.5' : 'text-xs px-2 py-1.5'} border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full ${
+          value
+            ? 'border-white/15 bg-slate-900/80 text-slate-100'
+            : 'border-amber-400/40 bg-amber-500/15 text-amber-100'
+        }`}
+        title="Disponibilité staff"
+      >
+        <option value="">Dispo staff</option>
+        {Object.values(TalentAvailability).map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    );
+  };
+
+  const renderCellIssues = (eventId: string, riderId: string) => {
+    const event = raceEvents.find(e => e.id === eventId);
+    if (!event) return null;
+    const selection = resolveRiderEventSelection(event, riderId, riderEventSelections);
+    if (!selection.status || selection.status === RiderEventStatus.NON_RETENU) return null;
+    const issues = analyzeRiderEventIssues(selection);
+    if (issues.length === 0) return null;
+    return (
+      <span className="text-[10px] text-amber-300 font-medium" title={issues.join(', ')}>
+        ⚠
+      </span>
+    );
+  };
+
 
   // Rendu de la vue calendrier
   const renderCalendarView = () => (
     <div className="space-y-6">
-      {/* En-tête avec contrôles de vue */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-          <div className="mb-4 lg:mb-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">📅 Planning de Saison - Vue Calendrier</h2>
-            <p className="text-gray-600">
-              Vue calendrier des événements avec les sélections d'athlètes
-            </p>
+      {/* En-tête calendrier */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Vue calendrier</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{displayEvents.length} événement{displayEvents.length !== 1 ? 's' : ''}</p>
           </div>
           
           {/* Contrôles de vue */}
@@ -613,6 +738,7 @@ export default function SeasonPlanningSection({
               const preselections = eventSelections.filter(sel => sel.status === RiderEventStatus.PRE_SELECTION);
               const remplacants = eventSelections.filter(sel => sel.status === RiderEventStatus.REMPLACANT);
               const totalSelected = titulairesCount + preselections.length + remplacants.length;
+              const validation = eventValidations[event.id];
               
               return (
                 <div
@@ -625,13 +751,20 @@ export default function SeasonPlanningSection({
                 >
                   <div className="flex justify-between items-start mb-3">
                     <h5 className="font-semibold text-gray-900 text-lg">{event.name}</h5>
-                    <span className="text-sm text-gray-500">
-                      {new Date(event.date).toLocaleDateString('fr-FR', { 
-                        day: 'numeric', 
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-sm text-gray-500 block">
+                        {new Date(event.date).toLocaleDateString('fr-FR', { 
+                          day: 'numeric', 
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                      {validation && !validation.isComplete && (
+                        <span className="text-xs text-amber-700 font-medium">
+                          {validation.attentionRiders.length} à valider
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <p className="text-sm text-gray-600 mb-4">{event.location}</p>
@@ -683,14 +816,12 @@ export default function SeasonPlanningSection({
   // Rendu de la vue détail par athlète
   const renderRiderDetailView = () => (
     <div className="space-y-6">
-      {/* En-tête */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-xl border border-purple-200">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-          <div className="mb-4 lg:mb-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">👤 Détail par Athlète</h2>
-            <p className="text-gray-600">
-              Vue détaillée du planning de chaque athlète
-            </p>
+      {/* En-tête détail coureur */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Détail par coureur</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{filteredRiders.length} coureur{filteredRiders.length !== 1 ? 's' : ''}</p>
           </div>
           
           {/* Sélecteur d'année */}
@@ -712,23 +843,22 @@ export default function SeasonPlanningSection({
         </div>
       </div>
 
-      {/* Section de recherche */}
-      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center space-x-2 mb-4">
-          <MagnifyingGlassIcon className="w-5 h-5 text-purple-500" />
-          <h3 className="text-lg font-semibold text-gray-900">Rechercher un athlète</h3>
+      {/* Recherche */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="relative">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Rechercher un coureur..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Nom de l'athlète..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-        />
       </div>
 
-      {/* Tableau accordéon par athlète */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Tableau accordéon */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -754,7 +884,7 @@ export default function SeasonPlanningSection({
                 ...riderSelections.map(sel => {
                   const ev = displayEvents.find(e => e.id === sel.eventId);
                   return ev ? { event: ev, status: sel.status, selection: sel } : null;
-                }).filter((x): x is RiderEventEntry => x !== null),
+                }).filter((x) => x !== null),
                 ...eventsFromSelectedIds.map(event => ({ event, status: RiderEventStatus.TITULAIRE, selection: undefined })),
               ].sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
               const isExpanded = expandedRiderIds.has(rider.id);
@@ -880,9 +1010,9 @@ export default function SeasonPlanningSection({
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl border border-green-200">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
           <div className="mb-4 lg:mb-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">🎯 Choix des Athlètes</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">🎯 Choix & disponibilités</h2>
             <p className="text-gray-600">
-              Vue centrée sur les préférences et souhaits des athlètes
+              Préférences des coureurs (Mon Calendrier) et confirmation staff avant de figer les titulaires
             </p>
           </div>
           
@@ -904,6 +1034,8 @@ export default function SeasonPlanningSection({
           </div>
         </div>
       </div>
+
+      {renderValidationAlerts()}
 
       {/* Filtre par préférence */}
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
@@ -945,14 +1077,21 @@ export default function SeasonPlanningSection({
                   <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
                     Athlète
                   </th>
-                  {displayEvents.map(event => (
-                    <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[140px] border-l border-gray-200">
-                      <div className="flex flex-col items-center">
+                  {displayEvents.map(event => {
+                    const validation = eventValidations[event.id];
+                    return (
+                    <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[160px] border-l border-gray-200">
+                      <div className="flex flex-col items-center gap-1">
                         <div className="font-bold text-sm text-gray-700">{event.name}</div>
                         <div className="text-xs text-gray-500 font-medium">{formatEventDateRange(event)}</div>
+                        {validation && !validation.isComplete && (
+                          <span className="text-[10px] font-normal normal-case text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                            {validation.attentionRiders.length} à traiter
+                          </span>
+                        )}
                       </div>
                     </th>
-                  ))}
+                  );})}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -963,21 +1102,32 @@ export default function SeasonPlanningSection({
                     </td>
                     {displayEvents.map(event => {
                       const pref = getRiderEventPreference(event.id, rider.id);
+                      const selection = resolveRiderEventSelection(event, rider.id, riderEventSelections);
+                      const issues = selection.status && selection.status !== RiderEventStatus.NON_RETENU
+                        ? analyzeRiderEventIssues(selection)
+                        : [];
                       const color = pref === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800'
                         : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800'
                         : pref === RiderEventPreference.EN_ATTENTE ? 'bg-gray-100 text-gray-800'
                         : pref === RiderEventPreference.ABSENT || pref === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800'
                         : 'bg-white text-gray-400';
-                      const label = pref === RiderEventPreference.VEUT_PARTICIPER ? '👍'
-                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯'
-                        : pref === RiderEventPreference.ABSENT ? '❌'
-                        : pref === RiderEventPreference.NE_VEUT_PAS ? '🚫'
-                        : pref === RiderEventPreference.EN_ATTENTE ? '⏳'
-                        : '';
+                      const label = pref === RiderEventPreference.VEUT_PARTICIPER ? '👍 Veut'
+                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯 Obj.'
+                        : pref === RiderEventPreference.ABSENT ? '❌ Absent'
+                        : pref === RiderEventPreference.NE_VEUT_PAS ? '🚫 Refus'
+                        : pref === RiderEventPreference.EN_ATTENTE ? '⏳ Attente'
+                        : '—';
+                      const isEngaged = selection.status && selection.status !== RiderEventStatus.NON_RETENU;
                       return (
-                        <td key={event.id} className="px-2 py-3 text-center text-sm border-l border-gray-200 min-w-[120px]">
-                          <div className={`inline-flex items-center justify-center px-2 py-1 rounded text-xs font-medium ${color}`}>
-                            {label || '—'}
+                        <td key={event.id} className={`px-2 py-2 text-center text-sm border-l border-gray-200 min-w-[140px] ${issues.length > 0 ? 'bg-amber-50/50' : ''}`}>
+                          <div className="space-y-1">
+                            <div className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
+                              {label}
+                            </div>
+                            {isEngaged && renderAvailabilitySelect(event.id, rider.id, true)}
+                            {issues.length > 0 && (
+                              <div className="text-[10px] text-amber-700">⚠ {issues.length}</div>
+                            )}
                           </div>
                         </td>
                       );
@@ -1006,28 +1156,42 @@ export default function SeasonPlanningSection({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Mini-onglets Équipe 1 / Réserve */}
-            <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200">
-              <button
-                onClick={() => setTeamRosterFilter('principal')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                  teamRosterFilter === 'principal'
-                    ? 'bg-gray-900 text-white shadow-sm'
-                    : 'text-gray-700 hover:text-gray-900'
-                }`}
-              >
-                Équipe 1
-              </button>
-              <button
-                onClick={() => setTeamRosterFilter('reserve')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                  teamRosterFilter === 'reserve'
-                    ? 'bg-gray-900 text-white shadow-sm'
-                    : 'text-gray-700 hover:text-gray-900'
-                }`}
-              >
-                Réserve
-              </button>
+            {/* Filtre effectif Équipe 1 / Réserve */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium text-gray-500 mr-0.5">Effectif</span>
+              {([
+                { id: 'all' as const, label: 'Tous', count: rosterCounts.principal + rosterCounts.reserve },
+                { id: 'principal' as const, label: 'Équipe 1', count: rosterCounts.principal },
+                { id: 'reserve' as const, label: 'Réserve', count: rosterCounts.reserve },
+              ]).map((role) => (
+                <button
+                  key={role.id}
+                  type="button"
+                  onClick={() => setTeamRosterFilter(role.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border inline-flex items-center gap-1.5 ${
+                    teamRosterFilter === role.id
+                      ? role.id === 'principal'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : role.id === 'reserve'
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-slate-800 text-white border-slate-800'
+                      : role.id === 'principal'
+                        ? 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100'
+                        : role.id === 'reserve'
+                          ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100'
+                          : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                  }`}
+                >
+                  {role.label}
+                  <span
+                    className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                      teamRosterFilter === role.id ? 'bg-white/20' : 'bg-white/80 text-gray-600'
+                    }`}
+                  >
+                    {role.count}
+                  </span>
+                </button>
+              ))}
             </div>
 
             {/* Année */}
@@ -1290,28 +1454,24 @@ export default function SeasonPlanningSection({
       </div>
 
 
-      {/* Tableau principal - Focus sur l'essentiel */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-w-full">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-900 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-bold flex items-center">
-                <TableCellsIcon className="w-6 h-6 mr-2" />
-                Tableau de Pilotage des Sélections
-              </h3>
-              <p className="text-blue-100 text-sm mt-1">
-                Gestion des souhaits et sélections - {filteredRiders.length} athlètes × {displayEvents.length} événements
-              </p>
-            </div>
-          </div>
+      {/* Tableau principal */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden max-w-full">
+        <div className="px-4 py-3 border-b border-gray-100 bg-blue-50/40">
+          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <TableCellsIcon className="w-4 h-4 text-blue-600" />
+            Tableau de sélections
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {filteredRiders.length} coureur{filteredRiders.length !== 1 ? 's' : ''} × {displayEvents.length} événement{displayEvents.length !== 1 ? 's' : ''}
+          </p>
         </div>
         
-        <div className="overflow-x-auto" style={{ maxWidth: 'calc(100vw - 400px)' }}>
-          <table className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-x-auto w-full max-w-full overscroll-contain">
+          <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 {/* Colonne Athlète avec tri */}
-                <th className={`px-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200 ${compactTable ? 'py-3' : 'py-4'}`}>
+                <th className={`sticky left-0 top-0 z-50 min-w-[18rem] w-[18rem] bg-gray-50 px-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.25)] ${compactTable ? 'py-3' : 'py-4'}`}>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <UserGroupIcon className="h-4 w-4" />
@@ -1463,87 +1623,143 @@ export default function SeasonPlanningSection({
                 </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredRiders.map((rider, index) => {
+              {(
+                teamRosterFilter === 'all' &&
+                rosterSplit.principal.length > 0 &&
+                rosterSplit.reserve.length > 0
+                  ? ([
+                      {
+                        kind: 'header' as const,
+                        key: 'hdr-equipe1',
+                        label: 'Équipe 1',
+                        count: rosterSplit.principal.length,
+                        accent: 'blue' as const,
+                      },
+                      ...rosterSplit.principal.map((rider) => ({ kind: 'rider' as const, rider })),
+                      {
+                        kind: 'header' as const,
+                        key: 'hdr-reserve',
+                        label: 'Réserve',
+                        count: rosterSplit.reserve.length,
+                        accent: 'amber' as const,
+                      },
+                      ...rosterSplit.reserve.map((rider) => ({ kind: 'rider' as const, rider })),
+                    ])
+                  : filteredRiders.map((rider) => ({ kind: 'rider' as const, rider }))
+              ).map((row, index) => {
+                if (row.kind === 'header') {
+                  return (
+                    <tr
+                      key={row.key}
+                      className={row.accent === 'blue' ? 'bg-blue-500/15' : 'bg-amber-500/15'}
+                    >
+                      <td
+                        colSpan={displayEvents.length + 1}
+                        className={`px-4 py-2 text-left text-xs font-bold uppercase tracking-wide border-y ${
+                          row.accent === 'blue'
+                            ? 'bg-blue-950 text-blue-200 border-blue-800/40'
+                            : 'bg-amber-950 text-amber-200 border-amber-800/40'
+                        }`}
+                      >
+                        {row.label}
+                        <span className="ml-2 font-semibold normal-case tracking-normal opacity-80">
+                          · {row.count} athlète{row.count !== 1 ? 's' : ''}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const rider = row.rider;
+                const raceDays = getRiderRaceDays(rider.id);
+                const preselections = getRiderPreselections(rider.id);
+                const age = getAge(rider.birthDate);
+                const profileLabel =
+                  rider.qualitativeProfile === RiderQualitativeProfile.GRIMPEUR
+                    ? 'Grimpeur'
+                    : rider.qualitativeProfile === RiderQualitativeProfile.ROULEUR
+                      ? 'Rouleur'
+                      : rider.qualitativeProfile === RiderQualitativeProfile.SPRINTEUR
+                        ? 'Sprinteur'
+                        : rider.qualitativeProfile === RiderQualitativeProfile.PUNCHEUR
+                          ? 'Puncheur'
+                          : rider.qualitativeProfile === RiderQualitativeProfile.BAROUDEUR_PROFIL
+                            ? 'Baroudeur'
+                            : rider.qualitativeProfile === RiderQualitativeProfile.AUTRE
+                              ? 'Autre'
+                              : null;
+                const metaParts = [
+                  age != null ? `${age} ans` : null,
+                  rider.weightKg && rider.heightCm
+                    ? `${rider.weightKg} kg · ${rider.heightCm} cm`
+                    : rider.weightKg
+                      ? `${rider.weightKg} kg`
+                      : rider.heightCm
+                        ? `${rider.heightCm} cm`
+                        : null,
+                  profileLabel,
+                ].filter(Boolean);
+                const raceDaysLabel = `${raceDays} j. course${preselections > 0 ? ` · ${preselections} pré-sél.` : ''}`;
+
+                const stickyCellBg = index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-950';
+                const rowBg = index % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900';
+
                 return (
-                  <tr key={rider.id} className={`hover:bg-gray-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <tr key={rider.id} className={`group hover:bg-indigo-950/50 transition-colors duration-150 ${rowBg}`}>
                     {/* Colonnes fixes pour les informations de base */}
-                    <td className={`px-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200 ${compactTable ? 'py-2.5' : 'py-4'}`}>
-                      <div className="flex items-center space-x-3">
-                        <div className={`flex-shrink-0 ${compactTable ? 'h-10 w-10' : 'h-12 w-12'}`}>
+                    <td
+                      className={`sticky left-0 z-20 min-w-[18rem] w-[18rem] px-4 text-sm font-medium text-white border-r border-white/10 align-middle shadow-[4px_0_16px_-6px_rgba(0,0,0,0.65)] group-hover:bg-indigo-950 ${stickyCellBg} ${compactTable ? 'py-2' : 'py-3'}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`shrink-0 ${compactTable ? 'h-9 w-9' : 'h-10 w-10'}`}>
                           {rider.photoUrl ? (
-                            <img className={`${compactTable ? 'h-10 w-10' : 'h-12 w-12'} rounded-full ring-2 ring-gray-200`} src={rider.photoUrl} alt="" />
+                            <img
+                              className={`${compactTable ? 'h-9 w-9' : 'h-10 w-10'} rounded-full object-cover ring-2 ring-white/15`}
+                              src={rider.photoUrl}
+                              alt=""
+                            />
                           ) : (
-                            <div className={`${compactTable ? 'h-10 w-10' : 'h-12 w-12'} rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center ring-2 ring-gray-200`}>
-                              <span className={`text-white font-semibold ${compactTable ? 'text-xs' : 'text-sm'}`}>
-                                {rider.firstName.charAt(0)}{rider.lastName.charAt(0)}
+                            <div
+                              className={`${compactTable ? 'h-9 w-9' : 'h-10 w-10'} rounded-full bg-indigo-500 flex items-center justify-center ring-2 ring-white/15`}
+                            >
+                              <span className="text-white font-semibold text-xs">
+                                {rider.firstName.charAt(0)}
+                                {rider.lastName.charAt(0)}
                               </span>
                             </div>
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-900 truncate">
+                          <div className="flex items-start justify-between gap-1">
+                            <p className="text-sm font-semibold text-white leading-tight">
                               {rider.firstName} {rider.lastName}
-                            </span>
-                            <span className="flex shrink-0 gap-0.5" title="Calendrier • Profil">
+                            </p>
+                            <span className="flex shrink-0 items-center gap-0.5 -mt-0.5">
                               <button
                                 type="button"
                                 onClick={() => openRiderCalendar(rider)}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                className="p-1 text-slate-400 hover:text-indigo-300 hover:bg-white/5 rounded-md transition-colors"
                                 title="Calendrier"
                               >
-                                <CalendarDaysIcon className="h-4 w-4" />
+                                <CalendarDaysIcon className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => openRiderProfile(rider)}
-                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                className="p-1 text-slate-400 hover:text-indigo-300 hover:bg-white/5 rounded-md transition-colors"
                                 title="Profil"
                               >
-                                <EyeIcon className="h-4 w-4" />
+                                <EyeIcon className="h-3.5 w-3.5" />
                               </button>
                             </span>
                           </div>
-                          <div className={`${compactTable ? 'space-y-0.5 mt-0.5' : 'space-y-1 mt-1'}`}>
-                            {/* Ligne 1: Âge et profil qualitatif */}
-                            <div className="flex items-center space-x-2">
-                              <span className="text-xs text-gray-500">
-                                {getAge(rider.birthDate)} ans
-                              </span>
-                              <span className="text-gray-300">•</span>
-                              {rider.qualitativeProfile && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.GRIMPEUR && '🏔️ Grimpeur'}
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.ROULEUR && '🛣️ Rouleur'}
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.SPRINTEUR && '💨 Sprinteur'}
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.PUNCHEUR && '⚡ Puncheur'}
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.BAROUDEUR_PROFIL && '🌪️ Baroudeur'}
-                                  {rider.qualitativeProfile === RiderQualitativeProfile.AUTRE && '🔧 Autre'}
-                                </span>
-                              )}
-                            </div>
-                            
-                            {/* Ligne 2: Caractéristiques physiques */}
-                            <div className="flex items-center space-x-2">
-                              {rider.weightKg && rider.heightCm && (
-                                <span className="text-xs text-gray-500">
-                                  {rider.weightKg}kg • {rider.heightCm}cm
-                                </span>
-                              )}
-                            </div>
-                            
-                            {/* Ligne 3: Jours de course */}
-                            <div className="flex items-center space-x-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                🏁 {getRiderRaceDays(rider.id)} jours
-                                {getRiderPreselections(rider.id) > 0 && (
-                                  <span className="ml-1 text-purple-600">
-                                    ({getRiderPreselections(rider.id)} pré-sél.)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
+                          {metaParts.length > 0 && (
+                            <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                              {metaParts.join(' · ')}
+                            </p>
+                          )}
+                          <p className="mt-1 text-center text-[11px] font-medium text-slate-300 leading-snug">
+                            {raceDaysLabel}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -1564,10 +1780,10 @@ export default function SeasonPlanningSection({
                       const isRemplacant = riderStatus === RiderEventStatus.REMPLACANT;
                       
                       return (
-                        <td key={event.id} className={`px-2 text-center text-sm border-l border-gray-200 ${
+                        <td key={event.id} className={`px-2 text-center text-sm border-l border-white/10 ${
                           compactTable ? 'py-2 min-w-[120px]' : 'py-3 min-w-[140px]'
                         } ${
-                          !withinLimits ? 'bg-red-50' : 'bg-white'
+                          !withinLimits ? 'bg-rose-500/15' : 'bg-white/[0.03]'
                         }`}>
                           <div className={compactTable ? 'space-y-1.5' : 'space-y-2'}>
                             
@@ -1576,10 +1792,10 @@ export default function SeasonPlanningSection({
                               {/* Statut actuel */}
                               {!compactTable && riderStatus && (
                                 <div className={`text-xs px-2 py-1 rounded text-center font-medium ${
-                                  riderStatus === RiderEventStatus.TITULAIRE ? 'bg-green-100 text-green-800' :
-                                  riderStatus === RiderEventStatus.PRE_SELECTION ? 'bg-blue-100 text-blue-800' :
-                                  riderStatus === RiderEventStatus.REMPLACANT ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'
+                                  riderStatus === RiderEventStatus.TITULAIRE ? 'bg-emerald-500/25 text-emerald-200' :
+                                  riderStatus === RiderEventStatus.PRE_SELECTION ? 'bg-blue-500/25 text-blue-200' :
+                                  riderStatus === RiderEventStatus.REMPLACANT ? 'bg-amber-500/25 text-amber-200' :
+                                  'bg-white/10 text-slate-200'
                                 }`}>
                                   {riderStatus === RiderEventStatus.TITULAIRE ? 'Titulaire' :
                                    riderStatus === RiderEventStatus.PRE_SELECTION ? 'Pré-sélection' :
@@ -1598,10 +1814,10 @@ export default function SeasonPlanningSection({
                                     removeRiderFromEvent(event.id, rider.id);
                                   }
                                 }}
-                                className={`text-xs px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-full ${
+                                className={`text-xs px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full ${
                                   maxRiders && selectedCount >= maxRiders && !isSelected
-                                    ? 'border-red-300 bg-red-50'
-                                    : 'border-gray-300 bg-white'
+                                    ? 'border-rose-400/40 bg-rose-500/15 text-rose-100'
+                                    : 'border-white/15 bg-slate-900/80 text-slate-100'
                                 }`}
                                 disabled={maxRiders && selectedCount >= maxRiders && !isSelected}
                               >
@@ -1627,7 +1843,7 @@ export default function SeasonPlanningSection({
                                     updateRiderPreference(event.id, rider.id, newPreference);
                                   }
                                 }}
-                                className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white"
+                                className="text-xs px-2 py-1.5 border border-white/15 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full bg-slate-900/80 text-slate-100"
                               >
                                 <option value="">Préférence</option>
                                 <option value={RiderEventPreference.VEUT_PARTICIPER}>👍 Veut participer</option>
@@ -1636,6 +1852,9 @@ export default function SeasonPlanningSection({
                                 <option value={RiderEventPreference.NE_VEUT_PAS}>🚫 Ne veut pas</option>
                                 <option value={RiderEventPreference.EN_ATTENTE}>⏳ En attente</option>
                               </select>
+
+                              {isSelected && renderAvailabilitySelect(event.id, rider.id)}
+                              {isSelected && renderCellIssues(event.id, rider.id)}
                             </div>
                           </div>
                         </td>
@@ -1668,49 +1887,37 @@ export default function SeasonPlanningSection({
     </div>
   );
 
-  return (
-    <SectionWrapper 
-      title="Planning de Saison"
-      actionButton={
-        <ActionButton onClick={() => console.log('Add event')} icon={<CalendarDaysIcon className="w-5 h-5"/>}>
-          Ajouter Événement
-        </ActionButton>
-      }
-    >
-      {/* Onglets de navigation */}
-      <div className="mb-6">
-        <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setActiveView('overview')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeView === 'overview'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Vue d'ensemble
-          </button>
-          <button
-            onClick={() => setActiveView('rider-detail')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeView === 'rider-detail'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Détail par athlète
-          </button>
-          <button
-            onClick={() => setActiveView('preferences')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeView === 'preferences'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Choix des athlètes
-          </button>
-        </div>
+  const subViewTabs = [
+    { id: 'overview' as const, label: 'Grille', icon: TableCellsIcon },
+    { id: 'rider-detail' as const, label: 'Par coureur', icon: UserGroupIcon },
+    { id: 'preferences' as const, label: 'Choix & dispo', icon: StarIcon },
+  ];
+
+  const content = (
+    <>
+      <div className="mb-4">{renderValidationAlerts()}</div>
+      <div className="mb-4">
+        <nav className="flex flex-wrap gap-2" aria-label="Sous-onglets planning">
+          {subViewTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeView === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveView(tab.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-gray-200'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
       {activeView === 'overview' ? (
         viewMode === 'calendar' ? renderCalendarView() : renderOverviewView()
@@ -1719,6 +1926,19 @@ export default function SeasonPlanningSection({
       ) : activeView === 'preferences' ? (
         renderPreferencesView()
       ) : null}
+    </>
+  );
+
+  return embedded ? content : (
+    <SectionWrapper
+      title="Planning de Saison"
+      actionButton={
+        <ActionButton onClick={() => console.log('Add event')} icon={<CalendarDaysIcon className="w-5 h-5"/>}>
+          Ajouter événement
+        </ActionButton>
+      }
+    >
+      {content}
     </SectionWrapper>
   );
 }

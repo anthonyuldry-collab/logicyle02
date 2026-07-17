@@ -186,26 +186,26 @@ function ExpertAnalysisSection({
   const { profile, axes, recommandations } = buildExpertAnalysis(subjectName, alerts, insights);
   if (alerts.length === 0 && insights.length === 0) return null;
   return (
-    <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
-      <h4 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-        <SparklesIcon className="h-5 w-5 text-amber-500" />
-        Analyse expert (synthèse entraîneur)
+    <div className="rounded-xl border border-white/15 bg-slate-900 p-4 shadow-sm">
+      <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+        <SparklesIcon className="h-5 w-5 text-amber-400" />
+        Analyse
       </h4>
-      <p className="text-sm text-slate-700 mb-3 leading-relaxed">{profile}</p>
+      <p className="text-sm text-slate-200 mb-3 leading-relaxed">{profile}</p>
       {axes.length > 0 && (
-        <ul className="list-disc list-inside text-sm text-slate-600 mb-3 space-y-1">
+        <ul className="list-disc list-inside text-sm text-slate-300 mb-3 space-y-1">
           {axes.map((axe, i) => (
             <li key={i}>{axe}</li>
           ))}
         </ul>
       )}
       {recommandations.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-slate-200">
-          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Recommandations</p>
+        <div className="mt-3 pt-3 border-t border-white/10">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Recommandations</p>
           <ul className="list-none space-y-1.5">
             {recommandations.map((rec, i) => (
-              <li key={i} className="flex gap-2 text-sm text-slate-700">
-                <span className="text-amber-500 font-bold">→</span>
+              <li key={i} className="flex gap-2 text-sm text-slate-200">
+                <span className="text-amber-400 font-bold">→</span>
                 <span>{rec}</span>
               </li>
             ))}
@@ -226,61 +226,105 @@ function PowerHistogram({
   if (series.length === 0) return null;
   const maxVal = Math.max(...series.flatMap(s => [s.athlete, s.team])) * 1.15 || 1;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h4 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-        <ChartBarIcon className="h-5 w-5 text-slate-600" />
+    <div className="rounded-xl border border-white/15 bg-slate-900 p-4 shadow-sm">
+      <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+        <ChartBarIcon className="h-5 w-5 text-sky-400" />
         Profil puissance · {subjectName} vs moyenne équipe (W/kg)
       </h4>
       <div className="space-y-3">
-        {series.map((s) => (
-          <div key={s.durationKey} className="flex items-center gap-2">
-            <div className="w-14 shrink-0 text-xs font-medium text-slate-600">{s.label}</div>
-            <div className="flex-1 flex items-center gap-1 min-w-0">
-              <div className="flex-1 flex gap-0.5 items-center min-w-0">
+        {series.map((s) => {
+          const teamWidth = `${(s.team / maxVal) * 100}%`;
+          const athleteWidth = `${(s.athlete / maxVal) * 100}%`;
+          return (
+            <div key={s.durationKey} className="flex items-center gap-2">
+              <div className="w-14 shrink-0 text-xs font-medium text-slate-300">{s.label}</div>
+              <div className="flex flex-1 items-center gap-2 min-w-0">
                 <div
-                  className="h-6 rounded bg-slate-200 flex items-center justify-end pr-1 text-xs font-medium text-slate-700"
-                  style={{ width: `${(s.team / maxVal) * 100}%`, minWidth: s.team >= 0.5 ? '2rem' : 0 }}
-                  title={`Moy. équipe ${s.team.toFixed(1)} W/kg`}
+                  className="relative h-8 flex-1 min-w-0 rounded-md bg-slate-950/80 ring-1 ring-white/10 overflow-hidden"
+                  title={`Moy. équipe ${s.team.toFixed(1)} W/kg · ${subjectName} ${s.athlete.toFixed(1)} W/kg`}
                 >
-                  {s.team >= 1.5 ? s.team.toFixed(1) : ''}
+                  <div
+                    className="absolute inset-y-0 left-0 bg-slate-500/45"
+                    style={{ width: teamWidth, minWidth: s.team > 0 ? '2px' : 0 }}
+                  />
+                  <div
+                    className={`absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r shadow-sm ${
+                      s.isAboveTeam ? 'bg-emerald-500' : 'bg-amber-500'
+                    }`}
+                    style={{ width: athleteWidth, minWidth: s.athlete > 0 ? '2px' : 0 }}
+                  />
+                  <div
+                    className="absolute inset-y-0 w-px bg-white/30"
+                    style={{ left: teamWidth }}
+                  />
+                  {(s.athlete / maxVal) * 100 >= 18 && (
+                    <span
+                      className={`absolute top-1/2 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-white drop-shadow-sm pointer-events-none ${
+                        (s.athlete / maxVal) * 100 >= 28 ? 'left-2' : 'left-1'
+                      }`}
+                    >
+                      {s.athlete.toFixed(1)}
+                    </span>
+                  )}
+                  {(s.team / maxVal) * 100 >= 22 && (
+                    <span
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-full pr-1 text-[10px] font-medium tabular-nums text-slate-200 drop-shadow-sm pointer-events-none"
+                      style={{ left: teamWidth }}
+                    >
+                      {s.team.toFixed(1)}
+                    </span>
+                  )}
                 </div>
-                <div
-                  className={`h-6 rounded flex items-center justify-end pr-1 text-xs font-medium ${s.isAboveTeam ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}
-                  style={{ width: `${(s.athlete / maxVal) * 100}%`, minWidth: s.athlete >= 0.5 ? '2rem' : 0 }}
-                  title={`${subjectName} ${s.athlete.toFixed(1)} W/kg (${s.percentDiff >= 0 ? '+' : ''}${s.percentDiff}%)`}
-                >
-                  {s.athlete >= 1.5 ? s.athlete.toFixed(1) : ''}
+                <div className="w-[5.5rem] shrink-0 text-right leading-tight">
+                  <p className="text-[11px] tabular-nums text-slate-100">
+                    <span className={s.isAboveTeam ? 'text-emerald-300 font-semibold' : 'text-amber-300 font-semibold'}>
+                      {s.athlete.toFixed(1)}
+                    </span>
+                    <span className="text-slate-500"> / </span>
+                    <span className="text-slate-400">{s.team.toFixed(1)}</span>
+                    <span className="text-slate-500"> W/kg</span>
+                  </p>
+                  <p
+                    className={`text-[11px] font-semibold tabular-nums ${
+                      s.isAboveTeam ? 'text-emerald-300' : 'text-amber-300'
+                    }`}
+                  >
+                    {s.percentDiff >= 0 ? '+' : ''}{s.percentDiff}%
+                  </p>
                 </div>
               </div>
-              <span className={`w-10 shrink-0 text-right text-xs font-semibold ${s.isAboveTeam ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {s.percentDiff >= 0 ? '+' : ''}{s.percentDiff}%
-              </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <div className="flex gap-4 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-slate-200" /> Moy. équipe</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-emerald-500" /> Au-dessus</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-amber-500" /> En dessous</span>
+      <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-white/10 text-xs text-slate-300">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-slate-500/70" /> Moy. équipe (fond)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-emerald-500" /> Au-dessus
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-amber-500" /> En dessous
+        </span>
       </div>
       <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+        <table className="min-w-full text-sm border border-white/15 rounded-lg overflow-hidden">
           <thead>
-            <tr className="bg-slate-100">
-              <th className="text-left py-2 px-3 font-semibold text-slate-700">Durée</th>
-              <th className="text-right py-2 px-3 font-semibold text-slate-700">Athlète (W/kg)</th>
-              <th className="text-right py-2 px-3 font-semibold text-slate-700">Moy. équipe</th>
-              <th className="text-right py-2 px-3 font-semibold text-slate-700">Écart</th>
+            <tr className="bg-slate-800">
+              <th className="text-left py-2 px-3 font-semibold text-slate-200">Durée</th>
+              <th className="text-right py-2 px-3 font-semibold text-slate-200">Athlète (W/kg)</th>
+              <th className="text-right py-2 px-3 font-semibold text-slate-200">Moy. équipe</th>
+              <th className="text-right py-2 px-3 font-semibold text-slate-200">Écart</th>
             </tr>
           </thead>
           <tbody>
             {series.map((s) => (
-              <tr key={s.durationKey} className="border-t border-slate-100 even:bg-slate-50/50">
-                <td className="py-2 px-3 font-medium text-slate-700">{s.label}</td>
-                <td className="py-2 px-3 text-right font-medium text-slate-800">{s.athlete.toFixed(1)}</td>
-                <td className="py-2 px-3 text-right text-slate-600">{s.team.toFixed(1)}</td>
-                <td className={`py-2 px-3 text-right font-semibold ${s.isAboveTeam ? 'text-emerald-600' : 'text-amber-600'}`}>
+              <tr key={s.durationKey} className="border-t border-white/10 even:bg-slate-800/40">
+                <td className="py-2 px-3 font-medium text-slate-100">{s.label}</td>
+                <td className="py-2 px-3 text-right font-medium text-white">{s.athlete.toFixed(1)}</td>
+                <td className="py-2 px-3 text-right text-slate-300">{s.team.toFixed(1)}</td>
+                <td className={`py-2 px-3 text-right font-semibold ${s.isAboveTeam ? 'text-emerald-300' : 'text-amber-300'}`}>
                   {s.percentDiff >= 0 ? '+' : ''}{s.percentDiff}%
                 </td>
               </tr>
@@ -301,6 +345,7 @@ const PerformanceInsightsAlerts: React.FC<PerformanceInsightsAlertsProps> = ({
   showAlerts = true,
 }) => {
   const [vigilanceExpanded, setVigilanceExpanded] = useState(false);
+  const [vigilanceFilter, setVigilanceFilter] = useState<'all' | 'risk' | 'strength'>('all');
   const [detailSubject, setDetailSubject] = useState<{
     name: string;
     type: 'rider' | 'scout';
@@ -308,9 +353,10 @@ const PerformanceInsightsAlerts: React.FC<PerformanceInsightsAlertsProps> = ({
     insights: PerformanceInsight[];
   } | null>(null);
 
-  const { mergedSubjects, hasAny } = useMemo(() => {
+  const { mergedSubjects, hasAny, summaryCounts } = useMemo(() => {
     const ins = getPerformanceInsights(riders, scoutingProfiles);
     const alt = getPerformanceAlerts(riders, scoutingProfiles);
+    const riderById = new Map(riders.map((r) => [r.id, r]));
     const valueTypes = new Set(['above_team_avg', 'below_team_avg', 'above_category_avg', 'scout_match']);
     const valueInsights = ins.filter(i => valueTypes.has(i.type));
     const otherInsights = ins.filter(i => !valueTypes.has(i.type));
@@ -340,41 +386,126 @@ const PerformanceInsightsAlerts: React.FC<PerformanceInsightsAlertsProps> = ({
       byAlertSubject.get(a.subjectId)!.alerts.push(a);
     }
     const allIds = new Set([...bySubjectInsights.keys(), ...byAlertSubject.keys()]);
-    const merged: Array<{ id: string; name: string; type: 'rider' | 'scout'; alerts: PerformanceAlert[]; insights: PerformanceInsight[] }> = [];
+    const merged: VigilanceSubject[] = [];
     for (const id of allIds) {
       const fromInsights = bySubjectInsights.get(id);
       const fromAlerts = byAlertSubject.get(id);
+      const type = fromInsights?.type ?? fromAlerts?.alerts[0]?.subjectType ?? 'rider';
+      const rider = riderById.get(id);
       merged.push({
         id,
         name: fromInsights?.name ?? fromAlerts?.name ?? '',
-        type: fromInsights?.type ?? fromAlerts?.alerts[0]?.subjectType ?? 'rider',
+        type,
+        rosterRole: rider?.rosterRole,
         alerts: fromAlerts?.alerts ?? [],
         insights: fromInsights?.items ?? [],
       });
     }
-    return { mergedSubjects: merged, hasAny: ins.length > 0 || alt.length > 0 };
+
+    merged.sort((a, b) => {
+      const score = (s: VigilanceSubject) => {
+        const warn = s.alerts.filter((x) => x.severity === 'warning').length;
+        const below = s.insights.filter((i) => !isStrength(i)).length;
+        const maxGap = Math.max(
+          0,
+          ...s.insights.map((i) => Math.abs(i.percentAboveRef ?? i.percentBelowRef ?? i.percentRegressionVsFresh ?? 0)),
+          ...s.alerts.map((a) => Math.abs(a.percentVsTeam ?? a.percentRegressionVsFresh ?? 0))
+        );
+        return warn * 1000 + below * 100 + maxGap + s.alerts.length + s.insights.length;
+      };
+      return score(b) - score(a);
+    });
+
+    const summaryCounts = {
+      athletes: merged.length,
+      warnings: merged.filter((s) =>
+        s.alerts.some((a) => a.severity === 'warning') || s.insights.some((i) => !isStrength(i))
+      ).length,
+      strengths: merged.filter((s) => s.insights.some(isStrength)).length,
+      fatigue: merged.filter((s) =>
+        [...s.alerts, ...s.insights].some((x) => x.type === 'fatigue_regression')
+      ).length,
+    };
+
+    return { mergedSubjects: merged, hasAny: ins.length > 0 || alt.length > 0, summaryCounts };
   }, [riders, scoutingProfiles]);
 
+  const filteredSubjects = useMemo(() => {
+    if (vigilanceFilter === 'risk') {
+      return mergedSubjects.filter(
+        (s) =>
+          s.alerts.some((a) => a.severity === 'warning') ||
+          s.insights.some((i) => !isStrength(i))
+      );
+    }
+    if (vigilanceFilter === 'strength') {
+      return mergedSubjects.filter((s) => s.insights.some(isStrength));
+    }
+    return mergedSubjects;
+  }, [mergedSubjects, vigilanceFilter]);
+
   const maxShown = Math.max(maxAlerts, maxInsights);
-  const visibleSubjects = vigilanceExpanded ? mergedSubjects : mergedSubjects.slice(0, maxShown);
-  const hasMore = mergedSubjects.length > maxShown;
+  const visibleSubjects = vigilanceExpanded ? filteredSubjects : filteredSubjects.slice(0, maxShown);
+  const hasMore = filteredSubjects.length > maxShown;
 
   if (!showInsights && !showAlerts) return null;
   if (!hasAny) return null;
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-        <div className="px-4 py-2.5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200">
-              <ExclamationTriangleIcon className="h-5 w-5 text-slate-600" />
-            </span>
-            Vigilance performance
-          </h3>
-          <span className="text-xs text-slate-600 font-medium">{mergedSubjects.length} athlète(s) · 1 clic = tout le détail</span>
+      <div className="bg-slate-900 rounded-xl border border-white/15 overflow-hidden shadow-lg">
+        <div className="px-4 py-3 bg-slate-800 border-b border-white/10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/25">
+                <ExclamationTriangleIcon className="h-5 w-5 text-amber-300" />
+              </span>
+              Vigilance performance
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="rounded-full bg-slate-700 border border-white/10 px-2 py-0.5 font-medium text-slate-200">
+                {summaryCounts.athletes} athlètes
+              </span>
+              <span className="rounded-full bg-amber-950 border border-amber-500/30 px-2 py-0.5 font-medium text-amber-200">
+                {summaryCounts.warnings} à surveiller
+              </span>
+              <span className="rounded-full bg-emerald-950 border border-emerald-500/30 px-2 py-0.5 font-medium text-emerald-200">
+                {summaryCounts.strengths} points forts
+              </span>
+              {summaryCounts.fatigue > 0 && (
+                <span className="rounded-full bg-rose-950 border border-rose-500/30 px-2 py-0.5 font-medium text-rose-200">
+                  {summaryCounts.fatigue} fatigue
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-2.5 inline-flex rounded-lg border border-white/15 bg-slate-900 p-0.5">
+            {(
+              [
+                { id: 'all', label: 'Tous' },
+                { id: 'risk', label: 'À risque' },
+                { id: 'strength', label: 'Points forts' },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  setVigilanceFilter(opt.id);
+                  setVigilanceExpanded(false);
+                }}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  vigilanceFilter === opt.id
+                    ? 'bg-indigo-500 text-white'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-white/10">
           {visibleSubjects.map((subject) => (
             <UnifiedVigilanceCard
               key={subject.id}
@@ -388,13 +519,16 @@ const PerformanceInsightsAlerts: React.FC<PerformanceInsightsAlertsProps> = ({
             />
           ))}
         </ul>
+        {filteredSubjects.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun athlète dans ce filtre.</p>
+        )}
         {hasMore && (
           <button
             type="button"
             onClick={() => setVigilanceExpanded((e) => !e)}
             className="w-full py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1"
           >
-            {vigilanceExpanded ? <><ChevronUpIcon className="h-4 w-4" /> Réduire</> : <><ChevronDownIcon className="h-4 w-4" /> +{mergedSubjects.length - maxShown} athlète(s)</>}
+            {vigilanceExpanded ? <><ChevronUpIcon className="h-4 w-4" /> Réduire</> : <><ChevronDownIcon className="h-4 w-4" /> +{filteredSubjects.length - maxShown} athlète(s)</>}
           </button>
         )}
         <Modal
@@ -415,46 +549,184 @@ const PerformanceInsightsAlerts: React.FC<PerformanceInsightsAlertsProps> = ({
   );
 };
 
+
+type VigilanceSubject = {
+  id: string;
+  name: string;
+  type: 'rider' | 'scout';
+  rosterRole?: string;
+  alerts: PerformanceAlert[];
+  insights: PerformanceInsight[];
+};
+
+function getSubjectBadge(subject: Pick<VigilanceSubject, 'type' | 'rosterRole'>): {
+  label: string;
+  className: string;
+} {
+  if (subject.type === 'scout') {
+    return { label: 'Recrue', className: 'bg-emerald-100 text-emerald-800' };
+  }
+  if (subject.rosterRole === 'reserve') {
+    return { label: 'Réserve', className: 'bg-sky-100 text-sky-800' };
+  }
+  return { label: 'Effectif', className: 'bg-slate-100 text-slate-700' };
+}
+
+function getInsightDelta(i: PerformanceInsight): { label: string; pct: number; positive: boolean } | null {
+  const duration =
+    i.durationKey === 'cp'
+      ? 'CP'
+      : i.durationKey ||
+        (i.fatigueLevel ? `${FATIGUE_LABELS[i.fatigueLevel]}kJ` : null);
+  if (!duration) return null;
+  if (i.type === 'below_team_avg' && i.percentBelowRef != null) {
+    return { label: duration, pct: -Math.abs(i.percentBelowRef), positive: false };
+  }
+  if (i.percentAboveRef != null) {
+    return { label: duration, pct: Math.abs(i.percentAboveRef), positive: true };
+  }
+  if (i.type === 'fatigue_regression' && i.percentRegressionVsFresh != null) {
+    return { label: duration, pct: -Math.abs(i.percentRegressionVsFresh), positive: false };
+  }
+  return null;
+}
+
+function DeltaChip({ label, pct, positive }: { label: string; pct: number; positive: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+        positive
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-amber-200 bg-amber-50 text-amber-900'
+      }`}
+      title={`${label} ${pct >= 0 ? '+' : ''}${pct}% vs moy. équipe`}
+    >
+      <span className="text-[10px] font-medium opacity-70">{label}</span>
+      {pct >= 0 ? '+' : ''}
+      {pct}%
+    </span>
+  );
+}
+
+function MiniDeltaBars({ values }: { values: number[] }) {
+  if (values.length === 0) return null;
+  const maxAbs = Math.max(...values.map((v) => Math.abs(v)), 1);
+  return (
+    <div className="hidden sm:flex items-end gap-0.5 h-7 shrink-0" aria-hidden>
+      {values.slice(0, 8).map((v, idx) => {
+        const h = Math.max(2, Math.round((Math.abs(v) / maxAbs) * 24));
+        return (
+          <span
+            key={idx}
+            className={`w-1.5 rounded-sm ${v >= 0 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+            style={{ height: h }}
+            title={`${v >= 0 ? '+' : ''}${v}%`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function UnifiedVigilanceCard({
   subject,
   onOpenDetail,
 }: {
-  subject: { id: string; name: string; type: 'rider' | 'scout'; alerts: PerformanceAlert[]; insights: PerformanceInsight[] };
+  subject: VigilanceSubject;
   onOpenDetail: () => void;
 }) {
   const total = subject.alerts.length + subject.insights.length;
-  const sortedInsights = [...subject.insights].sort((a, b) => Math.abs(b.percentAboveRef ?? b.percentBelowRef ?? 0) - Math.abs(a.percentAboveRef ?? a.percentBelowRef ?? 0));
-  const summaryParts: string[] = [];
-  if (subject.alerts.length > 0) summaryParts.push(`${subject.alerts.length} alerte${subject.alerts.length > 1 ? 's' : ''}`);
-  summaryParts.push(...sortedInsights.slice(0, 5).map(formatVsEquipe));
-  const summary = summaryParts.join(' · ');
-  const hasWarning = subject.alerts.some(a => a.severity === 'warning') || subject.insights.some(i => !isStrength(i));
-  const ringColor = hasWarning ? 'ring-amber-300' : 'ring-green-300';
+  const warningAlerts = subject.alerts.filter((a) => a.severity === 'warning').length;
+  const strengthCount = subject.insights.filter(isStrength).length;
+  const weakCount = subject.insights.filter((i) => !isStrength(i)).length;
+  const fatigueCount = [...subject.alerts, ...subject.insights].filter(
+    (x) => x.type === 'fatigue_regression'
+  ).length;
+
+  const deltas = [...subject.insights]
+    .map(getInsightDelta)
+    .filter((d): d is NonNullable<typeof d> => d != null)
+    .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+
+  const topDeltas = deltas.slice(0, 4);
+  const extraDeltas = Math.max(0, deltas.length - topDeltas.length);
+  const badge = getSubjectBadge(subject);
+  const hasWarning = warningAlerts > 0 || weakCount > 0 || fatigueCount > 0;
+  const ringColor = hasWarning ? 'ring-amber-300' : 'ring-emerald-300';
+  const badgeBg = hasWarning ? 'bg-amber-500' : 'bg-emerald-600';
+
   return (
-    <li className="px-4 py-3 hover:bg-slate-50/50 transition-colors">
+    <li className="px-4 py-3 hover:bg-slate-50/80 transition-colors">
       <button
         type="button"
         onClick={onOpenDetail}
-        className="w-full flex items-center gap-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-300 rounded-lg p-1 -m-1"
+        className="w-full flex items-start sm:items-center gap-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-300 rounded-lg p-1 -m-1"
       >
-        <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 font-bold text-sm ring-2 ${ringColor}`}>
-          {subject.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-          <span className="absolute -top-1 -right-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-slate-500 px-1 text-xs font-bold text-white">
+        <div
+          className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 font-bold text-sm ring-2 ${ringColor}`}
+        >
+          {subject.name
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .slice(0, 2)}
+          <span
+            className={`absolute -top-1 -right-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${badgeBg}`}
+          >
             {total}
           </span>
         </div>
-        <div className="min-w-0 flex-1">
+
+        <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900">{subject.name}</span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0 ${subject.type === 'scout' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>
-              {subject.type === 'scout' ? 'Recrue' : 'Réserve'}
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+              {badge.label}
             </span>
+            {warningAlerts > 0 && (
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                {warningAlerts} alerte{warningAlerts > 1 ? 's' : ''}
+              </span>
+            )}
+            {fatigueCount > 0 && (
+              <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
+                fatigue
+              </span>
+            )}
           </div>
-          <p className="text-xs text-gray-600 mt-0.5 truncate" title={summary}>
-            {summary ? `${summary} · Cliquer pour le détail` : 'Cliquer pour le détail (alertes + points forts / faibles)'}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {topDeltas.map((d, idx) => (
+              <DeltaChip key={`${d.label}-${idx}`} label={d.label} pct={d.pct} positive={d.positive} />
+            ))}
+            {extraDeltas > 0 && (
+              <span className="text-[11px] font-medium text-slate-500">+{extraDeltas}</span>
+            )}
+            {topDeltas.length === 0 && (
+              <span className="text-[11px] text-slate-500">
+                {subject.alerts.length > 0
+                  ? `${subject.alerts.length} signal(aux) — ouvrir le détail`
+                  : 'Ouvrir le détail'}
+              </span>
+            )}
+          </div>
+
+          <p className="text-[11px] text-slate-500">
+            {strengthCount > 0 && (
+              <span className="text-emerald-700">{strengthCount} point{strengthCount > 1 ? 's' : ''} fort{strengthCount > 1 ? 's' : ''}</span>
+            )}
+            {strengthCount > 0 && weakCount > 0 && <span> · </span>}
+            {weakCount > 0 && (
+              <span className="text-amber-700">{weakCount} écart{weakCount > 1 ? 's' : ''} négatif{weakCount > 1 ? 's' : ''}</span>
+            )}
+            {strengthCount === 0 && weakCount === 0 && subject.alerts.length > 0 && (
+              <span>Voir le détail des alertes</span>
+            )}
           </p>
         </div>
-        <ChevronDownIcon className="h-5 w-5 shrink-0 text-gray-400 rotate-[-90deg]" aria-hidden />
+
+        <MiniDeltaBars values={deltas.map((d) => d.pct)} />
+        <ChevronDownIcon className="h-5 w-5 shrink-0 text-gray-400 rotate-[-90deg] mt-3 sm:mt-0" aria-hidden />
       </button>
     </li>
   );
@@ -474,13 +746,13 @@ function UnifiedDetailModalContent({
   const powerSeries = useMemo(() => buildPowerSeries(alerts, insights), [alerts, insights]);
   const tableHeader = (
     <thead>
-      <tr className="border-b border-gray-200">
-        <th className="text-left py-2 pr-4 font-semibold text-gray-700">Type</th>
-        <th className="text-left py-2 pr-4 font-semibold text-gray-700">Durée / Contexte</th>
-        <th className="text-center py-2 px-2 font-semibold text-gray-700">Valeur actuelle</th>
-        <th className="text-center py-2 px-2 font-semibold text-gray-700">Écart</th>
-        <th className="text-center py-2 px-2 font-semibold text-gray-700">Moy. équipe</th>
-        <th className="text-left py-2 pl-4 font-semibold text-gray-700">Détail</th>
+      <tr className="border-b border-white/10 bg-slate-800">
+        <th className="text-left py-2 pr-4 font-semibold text-slate-200">Type</th>
+        <th className="text-left py-2 pr-4 font-semibold text-slate-200">Durée / Contexte</th>
+        <th className="text-center py-2 px-2 font-semibold text-slate-200">Valeur actuelle</th>
+        <th className="text-center py-2 px-2 font-semibold text-slate-200">Écart</th>
+        <th className="text-center py-2 px-2 font-semibold text-slate-200">Moy. équipe</th>
+        <th className="text-left py-2 pl-4 font-semibold text-slate-200">Détail</th>
       </tr>
     </thead>
   );
@@ -491,15 +763,15 @@ function UnifiedDetailModalContent({
     const teamRefStr = i.teamRefValue != null && i.teamRefUnit ? `${typeof i.teamRefValue === 'number' && i.teamRefValue % 1 !== 0 ? i.teamRefValue.toFixed(1) : i.teamRefValue} ${i.teamRefUnit}` : '–';
     const isWeak = !isStrength(i);
     return (
-      <tr key={i.id} className="border-b border-gray-100">
+      <tr key={i.id} className="border-b border-white/10">
         <td className="py-2 pr-4">
-          <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${isWeak ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>{typeLabel}</span>
+          <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${isWeak ? 'bg-amber-950 text-amber-200 border border-amber-500/40' : 'bg-emerald-950 text-emerald-200 border border-emerald-500/40'}`}>{typeLabel}</span>
         </td>
-        <td className="py-2 pr-4 text-gray-700">{durationCtx}</td>
-        <td className="py-2 px-2 text-center font-medium text-gray-800">{i.valueLabel ?? '–'}</td>
-        <td className="py-2 px-2 text-center"><span className={isWeak ? 'text-amber-600 font-medium' : 'text-green-600 font-medium'}>{ecart}</span></td>
-        <td className="py-2 px-2 text-center text-gray-600">{teamRefStr}</td>
-        <td className="py-2 pl-4 text-gray-600 max-w-xs">{i.description}</td>
+        <td className="py-2 pr-4 text-slate-200">{durationCtx}</td>
+        <td className="py-2 px-2 text-center font-medium text-white">{i.valueLabel ?? '–'}</td>
+        <td className="py-2 px-2 text-center"><span className={isWeak ? 'text-amber-300 font-medium' : 'text-emerald-300 font-medium'}>{ecart}</span></td>
+        <td className="py-2 px-2 text-center text-slate-300">{teamRefStr}</td>
+        <td className="py-2 pl-4 text-slate-300 max-w-xs">{i.description}</td>
       </tr>
     );
   };
@@ -509,7 +781,7 @@ function UnifiedDetailModalContent({
       <PowerHistogram series={powerSeries} subjectName={subjectName} />
       {alerts.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
+          <h4 className="text-sm font-semibold text-amber-300 mb-2 flex items-center gap-2">
             <ExclamationTriangleIcon className="h-5 w-5" />
             Alertes à traiter
           </h4>
@@ -517,9 +789,9 @@ function UnifiedDetailModalContent({
             {tableHeader}
             <tbody>
               {alerts.map((a) => (
-                <tr key={a.id} className="border-b border-gray-100">
+                <tr key={a.id} className="border-b border-white/10">
                   <td className="py-2 pr-4">
-                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${a.severity === 'positive' ? 'bg-green-100 text-green-800' : a.severity === 'warning' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${a.severity === 'positive' ? 'bg-emerald-950 text-emerald-200 border border-emerald-500/40' : a.severity === 'warning' ? 'bg-amber-950 text-amber-200 border border-amber-500/40' : 'bg-sky-950 text-sky-200 border border-sky-500/40'}`}>
                       {a.type === 'above_team_avg' && 'Au-dessus équipe'}
                       {a.type === 'below_team_avg' && 'En dessous équipe'}
                       {a.type === 'fatigue_regression' && 'Régression fatigue'}
@@ -530,17 +802,17 @@ function UnifiedDetailModalContent({
                       {!['above_team_avg', 'below_team_avg', 'fatigue_regression', 'fatigue_data_missing', 'missing_power', 'scout_above_team', 'profile_mismatch'].includes(a.type) && a.title}
                     </span>
                   </td>
-                  <td className="py-2 pr-4 text-gray-700">{a.durationKey ?? (a.fatigueLevel ? `${FATIGUE_LABELS[a.fatigueLevel]} kJ` : '–')}</td>
-                  <td className="py-2 px-2 text-center font-medium text-gray-800">{a.valueLabel ?? '–'}</td>
+                  <td className="py-2 pr-4 text-slate-200">{a.durationKey ?? (a.fatigueLevel ? `${FATIGUE_LABELS[a.fatigueLevel]} kJ` : '–')}</td>
+                  <td className="py-2 px-2 text-center font-medium text-white">{a.valueLabel ?? '–'}</td>
                   <td className="py-2 px-2 text-center">
-                    {a.percentVsTeam != null && <span className={a.percentVsTeam >= 0 ? 'text-green-600 font-medium' : 'text-amber-600 font-medium'}>{a.percentVsTeam >= 0 ? '+' : ''}{a.percentVsTeam}%</span>}
-                    {a.percentRegressionVsFresh != null && a.type === 'fatigue_regression' && <span className="text-amber-600 font-medium">−{Math.abs(a.percentRegressionVsFresh)}%</span>}
+                    {a.percentVsTeam != null && <span className={a.percentVsTeam >= 0 ? 'text-emerald-300 font-medium' : 'text-amber-300 font-medium'}>{a.percentVsTeam >= 0 ? '+' : ''}{a.percentVsTeam}%</span>}
+                    {a.percentRegressionVsFresh != null && a.type === 'fatigue_regression' && <span className="text-amber-300 font-medium">−{Math.abs(a.percentRegressionVsFresh)}%</span>}
                     {a.percentVsTeam == null && a.percentRegressionVsFresh == null && '–'}
                   </td>
-                  <td className="py-2 px-2 text-center text-gray-600">
+                  <td className="py-2 px-2 text-center text-slate-300">
                     {a.teamRefValue != null && a.teamRefUnit != null ? `${(a.teamRefValue % 1 !== 0 ? a.teamRefValue.toFixed(1) : a.teamRefValue)} ${a.teamRefUnit}` : '–'}
                   </td>
-                  <td className="py-2 pl-4 text-gray-600 max-w-xs">{a.message}</td>
+                  <td className="py-2 pl-4 text-slate-300 max-w-xs">{a.message}</td>
                 </tr>
               ))}
             </tbody>
@@ -549,18 +821,18 @@ function UnifiedDetailModalContent({
       )}
       {pointsForts.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-2"><CheckCircleIcon className="h-5 w-5" />Points forts (physique)</h4>
+          <h4 className="text-sm font-semibold text-emerald-300 mb-2 flex items-center gap-2"><CheckCircleIcon className="h-5 w-5" />Points forts (physique)</h4>
           <table className="min-w-full text-sm">{tableHeader}<tbody>{pointsForts.map(renderInsightRow)}</tbody></table>
         </div>
       )}
       {pointsFaibles.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2"><ExclamationTriangleIcon className="h-5 w-5" />Points faibles (physique)</h4>
+          <h4 className="text-sm font-semibold text-amber-300 mb-2 flex items-center gap-2"><ExclamationTriangleIcon className="h-5 w-5" />Points faibles (physique)</h4>
           <table className="min-w-full text-sm">{tableHeader}<tbody>{pointsFaibles.map(renderInsightRow)}</tbody></table>
         </div>
       )}
       {alerts.length === 0 && pointsForts.length === 0 && pointsFaibles.length === 0 && (
-        <p className="text-sm text-gray-500">Aucune alerte ni indicateur pour cet athlète.</p>
+        <p className="text-sm text-slate-400">Aucune alerte ni indicateur pour cet athlète.</p>
       )}
     </div>
   );

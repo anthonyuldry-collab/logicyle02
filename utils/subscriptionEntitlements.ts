@@ -1,5 +1,5 @@
-import { SECTION_MIN_PLAN, getPlanById, isPlanAtLeast } from '../constants/subscriptionPlans';
-import { AppSection, SubscriptionPlanId, SubscriptionStatus, TeamSubscription } from '../types';
+import { SECTION_MIN_PLAN, getIndependentPlanIdForRole, getPlanById, isPlanAtLeast } from '../constants/subscriptionPlans';
+import { AppSection, SubscriptionPlanId, TeamSubscription, User, UserRole } from '../types';
 
 export interface SubscriptionAccess {
   isActive: boolean;
@@ -127,4 +127,42 @@ export function getLockedSections(
   return (Object.keys(SECTION_MIN_PLAN) as AppSection[]).filter(
     (section) => !canAccessSection(section, subscription, fallbackPlan)
   );
+}
+
+export function normalizeIndependentSubscription(
+  subscription: TeamSubscription | undefined,
+  userRole: UserRole | string
+): TeamSubscription {
+  const fallbackPlan = getIndependentPlanIdForRole(userRole);
+  if (subscription?.planId && subscription?.status) {
+    return subscription;
+  }
+  const now = new Date();
+  const trialEnds = new Date(now);
+  trialEnds.setDate(trialEnds.getDate() + 14);
+  return {
+    planId: fallbackPlan,
+    status: 'trialing',
+    trialEndsAt: trialEnds.toISOString(),
+  };
+}
+
+export function getIndependentSubscriptionAccess(
+  user: User | null | undefined
+): SubscriptionAccess | null {
+  if (!user) return null;
+  const fallbackPlan = getIndependentPlanIdForRole(user.userRole);
+  return getSubscriptionAccess(user.subscription, fallbackPlan);
+}
+
+export function hasActiveIndependentSubscription(user: User | null | undefined): boolean {
+  const access = getIndependentSubscriptionAccess(user);
+  return access?.isActive ?? false;
+}
+
+/** Visibilité scouting / marketplace : abonnement actif + toggle utilisateur */
+export function canIndependentShowInMarketplace(user: User): boolean {
+  if (!hasActiveIndependentSubscription(user)) return false;
+  if (user.userRole === UserRole.STAFF) return user.openToExternalMissions === true;
+  return user.isSearchable === true;
 }

@@ -8,6 +8,14 @@ import {
     getRiderPowerWatts,
     type PowerDurationKey,
 } from '../../utils/performanceInsights';
+import PowerProgressTracker from '../performance/PowerProgressTracker';
+import MiniSparkline from '../performance/MiniSparkline';
+import {
+    buildPowerTimeline,
+    getDropSeries,
+    getWkgSeries,
+    PowerProfileSlot,
+} from '../../utils/powerProgressUtils';
 
 interface PowerPPRTabProps {
     formData: Rider | Omit<Rider, 'id'>;
@@ -20,6 +28,11 @@ interface PowerPPRTabProps {
     onSaveRequest?: () => void;
     /** Liste des coureurs de l'équipe pour la comparaison dans le sous-onglet Analyse (moyenne équipe) */
     allRiders?: Rider[];
+    /** Contrôle externe de l'onglet (ex. Ma Carrière athlète) */
+    activeSubTab?: 'ppr' | 'analyse' | 'history' | 'summary';
+    onSubTabChange?: (tab: 'ppr' | 'analyse' | 'history' | 'summary') => void;
+    /** Masque la barre d'onglets interne si la navigation est gérée à l'extérieur */
+    hideSubTabNav?: boolean;
 }
 
 const DURATION_LABELS: Record<PowerDurationKey, string> = {
@@ -37,7 +50,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     onDeleteProfile,
     onSaveRequest,
     allRiders = [],
+    activeSubTab: controlledSubTab,
+    onSubTabChange,
+    hideSubTabNav = false,
 }) => {
+    const [internalSubTab, setInternalSubTab] = useState<'ppr' | 'analyse' | 'history' | 'summary'>('ppr');
+    const activeSubTab = controlledSubTab ?? internalSubTab;
+    const setActiveSubTab = (tab: 'ppr' | 'analyse' | 'history' | 'summary') => {
+        onSubTabChange?.(tab);
+        if (controlledSubTab === undefined) setInternalSubTab(tab);
+    };
     const inputClasses = theme === 'light'
         ? "block w-full px-2 py-1 border rounded-md shadow-sm sm:text-sm bg-white text-gray-900 border-gray-300 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
         : "input-field-sm";
@@ -148,15 +170,11 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
         return 'text-red-500 font-semibold';
     };
 
-    // État pour gérer les sous-onglets
-    const [activeSubTab, setActiveSubTab] = useState<'ppr' | 'history' | 'summary' | 'analyse'>('ppr');
     // Filtre fatigue pour le sous-onglet Analyse
     const [analyseFatigue, setAnalyseFatigue] = useState<'fresh' | '15kj' | '30kj' | '45kj'>('fresh');
     // Unité d'affichage Analyse : W/kg ou watts bruts
     const [analyseUnit, setAnalyseUnit] = useState<'wattsPerKg' | 'watts'>('wattsPerKg');
     
-    // État pour gérer l'affichage de l'historique
-    const [showHistory, setShowHistory] = useState(false);
     const [historyView, setHistoryView] = useState<'table' | 'synthèse' | 'comparison' | 'season-n1'>('synthèse');
     const [selectedHistoryEntryIndex, setSelectedHistoryEntryIndex] = useState<number>(0);
     const [evolutionModal, setEvolutionModal] = useState<{ metric: keyof PowerProfile; profileType: 'powerProfileFresh' | 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ' } | null>(null);
@@ -316,7 +334,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     };
 
     // Fonction pour calculer la variation en pourcentage
-    const calculateVariation = (oldValue?: number, newValue?: number, weight?: number): string => {
+    const resolveEntryWeight = (...candidates: Array<number | undefined | null>): number | null => {
+        for (const candidate of candidates) {
+            if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+                return candidate;
+            }
+        }
+        return null;
+    };
+
+    const calculateVariation = (oldValue?: number, newValue?: number, weight?: number | null): string => {
         if (!oldValue || !newValue || !weight) return '-';
         const oldWkg = oldValue / weight;
         const newWkg = newValue / weight;
@@ -654,6 +681,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
     return (
         <div className="space-y-4">
             {/* Sous-onglets PPR / Historique / Bilan */}
+            {!hideSubTabNav && (
             <div className={`${containerClasses} p-2`}>
                 <div className="flex gap-2 border-b border-gray-300 dark:border-slate-600">
                     <button
@@ -718,6 +746,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Contenu de l'onglet PPR */}
             {activeSubTab === 'ppr' && (
@@ -955,22 +984,11 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                         <div className={containerClasses}>
                             <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
                                 <h5 className={titleClasses}>Historique des valeurs de puissance</h5>
-                                <div className="flex gap-2 flex-wrap">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowHistory(!showHistory)}
-                                        className={`px-3 py-1 text-xs rounded transition-colors ${
-                                            theme === 'light'
-                                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
-                                                : 'bg-blue-900 text-blue-300 hover:bg-blue-800 border border-blue-700'
-                                        }`}
-                                    >
-                                        {showHistory ? 'Masquer' : 'Afficher'} ({history.length} entrée{history.length > 1 ? 's' : ''})
-                                    </button>
-                                </div>
+                                <span className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                    {history.length} entrée{history.length > 1 ? 's' : ''}
+                                </span>
                             </div>
                     
-                    {showHistory && (
                         <div className="space-y-4">
                             {/* Filtres et contrôles */}
                             <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} p-3 rounded border ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'}`}>
@@ -1320,6 +1338,18 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                             {/* Vue Synthèse - Format Analyse de Fatigue avec cellules cliquables */}
                             {historyView === 'synthèse' && (
                                 <div className="space-y-4">
+                                    <PowerProgressTracker
+                                        current={{
+                                            weightKg: formData.weightKg,
+                                            powerProfileFresh: formData.powerProfileFresh,
+                                            powerProfile15KJ: formData.powerProfile15KJ,
+                                            powerProfile30KJ: formData.powerProfile30KJ,
+                                            powerProfile45KJ: formData.powerProfile45KJ,
+                                        }}
+                                        history={formData.powerProfileHistory}
+                                        theme={theme}
+                                        title="Suivi des progrès — puissance & durabilité"
+                                    />
                                     <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} p-3 rounded-lg border ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'}`}>
                                         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                                             <h5 className={`${titleClasses} text-center`}>Analyse de Fatigue - Synthèse des Pertes</h5>
@@ -1337,7 +1367,7 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                             </select>
                                         </div>
                                         <p className={`text-[10px] mb-2 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
-                                            Cliquez sur une valeur pour voir son évolution détaillée. <span className="text-green-500">↑</span> = progression, <span className="text-red-500">↓</span> = régression (vs entrée précédente)
+                                            Cliquez sur une valeur pour la courbe d&apos;évolution. <span className="text-green-500">↑</span> = progression, <span className="text-red-500">↓</span> = régression (vs entrée précédente). Au-dessus : sparklines, deltas 30j/90j/saison et comparaison de 2 dates.
                                         </p>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full text-xs">
@@ -1446,7 +1476,30 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                         </div>
                                     </div>
                                     {/* Modal évolution détaillée */}
-                                    {evolutionModal && (
+                                    {evolutionModal && (() => {
+                                        const modalTimeline = buildPowerTimeline({
+                                            history: filteredHistory,
+                                            current: {
+                                                weightKg: formData.weightKg,
+                                                powerProfileFresh: formData.powerProfileFresh,
+                                                powerProfile15KJ: formData.powerProfile15KJ,
+                                                powerProfile30KJ: formData.powerProfile30KJ,
+                                                powerProfile45KJ: formData.powerProfile45KJ,
+                                            },
+                                        });
+                                        const slot = evolutionModal.profileType as PowerProfileSlot;
+                                        const wkgSeries = getWkgSeries(modalTimeline, slot, evolutionModal.metric);
+                                        const dropSeries =
+                                            slot !== 'powerProfileFresh'
+                                                ? getDropSeries(modalTimeline, slot, evolutionModal.metric)
+                                                : [];
+                                        const oldest = wkgSeries[0];
+                                        const newest = wkgSeries[wkgSeries.length - 1];
+                                        const spanPct =
+                                            oldest && newest && oldest.value !== 0
+                                                ? ((newest.value - oldest.value) / Math.abs(oldest.value)) * 100
+                                                : null;
+                                        return (
                                         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={() => setEvolutionModal(null)}>
                                             <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
                                                 <div className="flex justify-between items-center mb-4">
@@ -1455,6 +1508,52 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                     </h3>
                                                     <button onClick={() => setEvolutionModal(null)} className={`text-2xl ${theme === 'light' ? 'text-gray-500 hover:text-gray-700' : 'text-slate-400 hover:text-slate-200'}`}>&times;</button>
                                                 </div>
+                                                {wkgSeries.length >= 2 && (
+                                                    <div className={`mb-4 rounded-lg border p-3 ${theme === 'light' ? 'bg-slate-50 border-slate-100' : 'bg-slate-700/50 border-slate-600'}`}>
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <MiniSparkline
+                                                                values={wkgSeries.map((p) => p.value)}
+                                                                width={180}
+                                                                height={40}
+                                                                ariaLabel="Courbe d'évolution W/kg"
+                                                            />
+                                                            <div className="text-right">
+                                                                <div className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                                    Sur la période
+                                                                </div>
+                                                                <div className={`text-base font-bold tabular-nums ${
+                                                                    spanPct == null || Math.abs(spanPct) < 0.05
+                                                                        ? theme === 'light' ? 'text-gray-600' : 'text-slate-300'
+                                                                        : spanPct > 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                                }`}>
+                                                                    {spanPct == null
+                                                                        ? '—'
+                                                                        : `${spanPct > 0 ? '+' : ''}${spanPct.toFixed(1)}%`}
+                                                                </div>
+                                                                <div className={`text-[10px] ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                                    {oldest?.label} → {newest?.label}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {dropSeries.length >= 2 && (
+                                                            <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-200/60">
+                                                                <span className={`text-[10px] font-medium ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                                    Δ% perte
+                                                                </span>
+                                                                <MiniSparkline
+                                                                    values={dropSeries.map((p) => p.value)}
+                                                                    width={140}
+                                                                    height={28}
+                                                                    invertColors
+                                                                    ariaLabel="Courbe d'évolution pertes"
+                                                                />
+                                                                <span className={`text-[10px] tabular-nums ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                                    {dropSeries[0].value.toFixed(1)}% → {dropSeries[dropSeries.length - 1].value.toFixed(1)}%
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 <div className="space-y-2">
                                                     {[
                                                         { date: new Date().toISOString(), entry: { powerProfileFresh: formData.powerProfileFresh, powerProfile15KJ: formData.powerProfile15KJ, powerProfile30KJ: formData.powerProfile30KJ, powerProfile45KJ: formData.powerProfile45KJ, weightKg: formData.weightKg }, isCurrent: true },
@@ -1478,7 +1577,8 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                             )}
 
@@ -1586,11 +1686,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                                                     const variationColor = getVariationColor(variation);
                                                                     
                                                                     // Calculer la largeur de la barre pour W/kg
-                                                                    const maxWkg = Math.max(...filteredHistory.map(e => {
-                                                                        const val = e.powerProfileFresh?.[pdc.key];
-                                                                        const w = e.weightKg || formData.weightKg || 1;
-                                                                        return val ? val / w : 0;
-                                                                    }).filter(v => v > 0));
+                                                                    const maxWkg = Math.max(
+                                                                        ...filteredHistory
+                                                                            .map((e) => {
+                                                                                const val = e.powerProfileFresh?.[pdc.key];
+                                                                                const w = resolveEntryWeight(e.weightKg, formData.weightKg);
+                                                                                return val && w ? val / w : 0;
+                                                                            })
+                                                                            .filter((v) => v > 0),
+                                                                        0
+                                                                    );
                                                                     const barWidth = entryWkg && maxWkg > 0 ? (entryWkg / maxWkg) * 100 : 0;
                                                                     
                                                                     return (
@@ -1667,8 +1772,15 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                             const entry1 = period1[0];
                                             const entry2 = period2[0];
                                             
-                                            const weight1 = entry1.weightKg || formData.weightKg || 1;
-                                            const weight2 = entry2.weightKg || formData.weightKg || 1;
+                                            const weight1 = resolveEntryWeight(entry1.weightKg, formData.weightKg);
+                                            const weight2 = resolveEntryWeight(entry2.weightKg, formData.weightKg);
+                                            if (!weight1 || !weight2) {
+                                                return (
+                                                    <p className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                        Poids manquant sur une des entrées — impossible de comparer en W/kg.
+                                                    </p>
+                                                );
+                                            }
                                             
                                             return (
                                                 <div className="space-y-4">
@@ -1997,10 +2109,10 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                     
                                     {(() => {
                                         const { period1Entry, period2Entry, period1Label, period2Label, currentSeason } = getComparisonData();
-                                        const currentWeight = formData.weightKg || 1;
+                                        const currentWeight = resolveEntryWeight(formData.weightKg);
                                         
                                         // Utiliser les valeurs actuelles si period2Entry est null (mode N-1)
-                                        const period2Weight = period2Entry?.weightKg || currentWeight;
+                                        const period2Weight = resolveEntryWeight(period2Entry?.weightKg, currentWeight);
                                         const period2Fresh = period2Entry?.powerProfileFresh || formData.powerProfileFresh;
                                         const period215KJ = period2Entry?.powerProfile15KJ || formData.powerProfile15KJ;
                                         const period230KJ = period2Entry?.powerProfile30KJ || formData.powerProfile30KJ;
@@ -2027,7 +2139,16 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                             );
                                         }
                                         
-                                        const period1Weight = period1Entry.weightKg || currentWeight;
+                                        const period1Weight = resolveEntryWeight(period1Entry.weightKg, currentWeight);
+                                        if (!period1Weight || !period2Weight) {
+                                            return (
+                                                <div className={`${theme === 'light' ? 'bg-white' : 'bg-slate-800'} p-4 rounded border ${theme === 'light' ? 'border-gray-200' : 'border-slate-600'}`}>
+                                                    <p className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                                                        Poids manquant — renseignez le poids pour comparer en W/kg.
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
                                         const period1Fresh = period1Entry.powerProfileFresh;
                                         const period115KJ = period1Entry.powerProfile15KJ;
                                         const period130KJ = period1Entry.powerProfile30KJ;
@@ -2196,7 +2317,6 @@ const PowerPPRTab: React.FC<PowerPPRTabProps> = ({
                                 Utilisez les filtres pour analyser les progrès sur différentes périodes et métriques.
                             </p>
                         </div>
-                    )}
                         </div>
                     ) : (
                         <div className={`${containerClasses} p-4`}>

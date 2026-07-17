@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
-import { Rider, User, PerformanceFactorDetail } from '../types';
+import { Rider, User, PerformanceFactorDetail, PerformanceActionItem, PerformanceProjectEntry } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import LungsIcon from '../components/icons/LungsIcon';
 import { PencilIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
 import { LoadingOverlay } from '../components/LoadingIndicator';
-import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
+import { resolveRiderForUser } from '../utils/independentUtils';
+import PerformanceActionItemsEditor from '../components/performance/PerformanceActionItemsEditor';
+import PerformanceFieldItemsEditor from '../components/performance/PerformanceFieldItemsEditor';
+import PerformanceFieldEvolutionStrip from '../components/performance/PerformanceFieldEvolutionStrip';
+import PerformanceProjectHistoryPanel from '../components/performance/PerformanceProjectHistoryPanel';
+import {
+  FIELD_KIND_CONFIG,
+  PerformanceFieldKind,
+  getAllRiderActionItems,
+  isActionOverdue,
+  formatTargetDate,
+  withPerformanceProjectHistory,
+} from '../utils/performanceProjectUtils';
 
 interface MyPerformanceProjectSectionProps {
   riders: Rider[];
@@ -21,18 +33,8 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
   const [editedData, setEditedData] = useState<Partial<Rider>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Vérification de sécurité pour riders
-  if (!isValidRidersArray(riders)) {
-    return (
-      <div className="text-center p-8 bg-gray-50 rounded-lg border">
-        <p className="mt-4 text-lg font-medium text-gray-700">Chargement des données...</p>
-        <p className="mt-2 text-gray-500">Veuillez patienter pendant le chargement de vos informations.</p>
-      </div>
-    );
-  }
-
-  // Trouver le profil du coureur
-  const riderProfile = findRiderByEmail(riders, currentUser.email);
+  const safeRiders = Array.isArray(riders) ? riders : [];
+  const riderProfile = resolveRiderForUser(safeRiders, currentUser);
 
   if (!riderProfile) {
     return (
@@ -52,7 +54,8 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      const updatedRider = { ...riderProfile, ...editedData } as Rider;
+      const merged = { ...riderProfile, ...editedData } as Rider;
+      const updatedRider = withPerformanceProjectHistory(riderProfile, merged);
       await onSaveRider(updatedRider);
       setIsEditing(false);
       setEditedData({});
@@ -76,11 +79,46 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
     setEditedData(prev => ({
       ...prev,
       [field]: {
-        ...(prev[field] as PerformanceFactorDetail || {}),
+        ...(prev[field] as PerformanceFactorDetail || riderProfile[field] as PerformanceFactorDetail || {}),
         [subField]: value
       }
     }));
   };
+
+  const getFactorData = (field: keyof Rider): PerformanceFactorDetail => {
+    return (editedData[field] as PerformanceFactorDetail) || (riderProfile[field] as PerformanceFactorDetail);
+  };
+
+  const handleActionItemsChange = (field: keyof Rider, items: PerformanceActionItem[]) => {
+    setEditedData(prev => ({
+      ...prev,
+      [field]: {
+        ...(prev[field] as PerformanceFactorDetail || riderProfile[field] as PerformanceFactorDetail),
+        actionItems: items,
+      },
+    }));
+  };
+
+  const handleFieldEntriesChange = (
+    field: keyof Rider,
+    kind: PerformanceFieldKind,
+    entries: PerformanceProjectEntry[]
+  ) => {
+    const entriesKey = FIELD_KIND_CONFIG[kind].entriesKey;
+    setEditedData(prev => ({
+      ...prev,
+      [field]: {
+        ...(prev[field] as PerformanceFactorDetail || riderProfile[field] as PerformanceFactorDetail),
+        [entriesKey]: entries,
+      },
+    }));
+  };
+
+  const projectHistory = riderProfile.performanceProjectHistory ?? [];
+
+  const upcomingActions = getAllRiderActionItems(riderProfile).filter(
+    a => a.status !== 'done' && a.status !== 'cancelled' && a.targetDate
+  ).sort((a, b) => (a.targetDate || '').localeCompare(b.targetDate || ''));
 
   const renderPerformanceFactor = (
     title: string,
@@ -97,66 +135,51 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Forces</label>
-          {isEditing ? (
-            <textarea
-              value={editedData[field]?.forces || data.forces || ''}
-              onChange={(e) => handleNestedInputChange(field, 'forces', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          ) : (
-            <p className="text-gray-600 bg-gray-50 p-3 rounded-md min-h-[80px]">
-              {data.forces || 'Non renseigné'}
-            </p>
+          <PerformanceFieldItemsEditor
+            factor={getFactorData(field)}
+            kind="forces"
+            isEditing={isEditing}
+            onChange={entries => handleFieldEntriesChange(field, 'forces', entries)}
+          />
+          {!isEditing && (
+            <PerformanceFieldEvolutionStrip history={projectHistory} factorKey={field} kind="forces" />
           )}
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">À Optimiser</label>
-          {isEditing ? (
-            <textarea
-              value={editedData[field]?.aOptimiser || data.aOptimiser || ''}
-              onChange={(e) => handleNestedInputChange(field, 'aOptimiser', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          ) : (
-            <p className="text-gray-600 bg-gray-50 p-3 rounded-md min-h-[80px]">
-              {data.aOptimiser || 'Non renseigné'}
-            </p>
+          <PerformanceFieldItemsEditor
+            factor={getFactorData(field)}
+            kind="aOptimiser"
+            isEditing={isEditing}
+            onChange={entries => handleFieldEntriesChange(field, 'aOptimiser', entries)}
+          />
+          {!isEditing && (
+            <PerformanceFieldEvolutionStrip history={projectHistory} factorKey={field} kind="aOptimiser" />
           )}
         </div>
-        
-        <div>
+
+        <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">À Développer</label>
-          {isEditing ? (
-            <textarea
-              value={editedData[field]?.aDevelopper || data.aDevelopper || ''}
-              onChange={(e) => handleNestedInputChange(field, 'aDevelopper', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          ) : (
-            <p className="text-gray-600 bg-gray-50 p-3 rounded-md min-h-[80px]">
-              {data.aDevelopper || 'Non renseigné'}
-            </p>
+          <PerformanceFieldItemsEditor
+            factor={getFactorData(field)}
+            kind="aDevelopper"
+            isEditing={isEditing}
+            onChange={entries => handleFieldEntriesChange(field, 'aDevelopper', entries)}
+          />
+          {!isEditing && (
+            <PerformanceFieldEvolutionStrip history={projectHistory} factorKey={field} kind="aDevelopper" />
           )}
         </div>
         
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Besoins & Actions</label>
-          {isEditing ? (
-            <textarea
-              value={editedData[field]?.besoinsActions || data.besoinsActions || ''}
-              onChange={(e) => handleNestedInputChange(field, 'besoinsActions', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          ) : (
-            <p className="text-gray-600 bg-gray-50 p-3 rounded-md min-h-[80px]">
-              {data.besoinsActions || 'Non renseigné'}
-            </p>
-          )}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Besoins & Actions (objectifs datés)</label>
+          <PerformanceActionItemsEditor
+            factor={getFactorData(field)}
+            isEditing={isEditing}
+            onChange={items => handleActionItemsChange(field, items)}
+            onNotesChange={notes => handleNestedInputChange(field, 'besoinsActions', notes)}
+          />
         </div>
       </div>
     </div>
@@ -256,6 +279,22 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
         </div>
       </div>
 
+      {upcomingActions.length > 0 && !isEditing && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-amber-900 mb-2">Prochaines échéances</h3>
+          <ul className="space-y-1">
+            {upcomingActions.slice(0, 5).map(action => (
+              <li key={action.id} className="text-sm flex flex-wrap gap-2 items-center">
+                <span className={isActionOverdue(action) ? 'text-red-700 font-medium' : 'text-gray-800'}>
+                  {action.title}
+                </span>
+                <span className="text-xs text-gray-500">{formatTargetDate(action.targetDate)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Facteurs de performance */}
       <div className="space-y-6">
         <h2 className="text-xl font-bold text-gray-900">Analyse des Facteurs de Performance</h2>
@@ -303,6 +342,8 @@ const MyPerformanceProjectSection: React.FC<MyPerformanceProjectSectionProps> = 
           </svg>
         )}
       </div>
+
+      <PerformanceProjectHistoryPanel history={riderProfile.performanceProjectHistory ?? []} />
       </div>
     </LoadingOverlay>
   );

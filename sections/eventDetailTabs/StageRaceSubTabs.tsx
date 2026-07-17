@@ -25,16 +25,16 @@ const StageRaceSubTabs: React.FC<StageRaceSubTabsProps> = ({
 
   if (stageDays.length === 0) {
     return (
-      <p className="text-sm text-gray-500 italic p-4">
+      <p className="text-sm text-slate-400 italic p-4">
         Aucune étape définie. Renseignez les dates de début et de fin de l&apos;événement.
       </p>
     );
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+    <div className="border border-slate-600 rounded-xl overflow-hidden bg-slate-900 shadow-sm">
       <nav
-        className="flex overflow-x-auto border-b border-gray-200 bg-gray-50"
+        className="flex overflow-x-auto border-b border-slate-600 bg-slate-950 sticky top-0 z-10"
         aria-label="Étapes de la course"
       >
         {stageDays.map((stage, index) => {
@@ -44,16 +44,16 @@ const StageRaceSubTabs: React.FC<StageRaceSubTabsProps> = ({
               key={stage.id}
               type="button"
               onClick={() => onSelectTab(index)}
-              className={`flex-shrink-0 px-4 py-3 text-left border-b-2 transition-colors min-w-[7rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset
+              className={`flex-shrink-0 px-4 py-3 text-left border-b-2 transition-colors min-w-[7rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-inset
                 ${isActive
-                  ? 'border-amber-500 bg-white text-amber-900'
-                  : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  ? 'border-amber-400 bg-slate-900 text-amber-100'
+                  : 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 }`}
             >
               <span className="block text-sm font-semibold">Étape {stage.stageNumber}</span>
-              <span className="block text-xs text-gray-500 mt-0.5">{shortStageDate(stage.date)}</span>
+              <span className="block text-xs text-slate-500 mt-0.5">{shortStageDate(stage.date)}</span>
               {stage.stageLabel && (
-                <span className="block text-xs text-amber-700 truncate max-w-[10rem] mt-0.5" title={stage.stageLabel}>
+                <span className="block text-xs text-amber-300/80 truncate max-w-[10rem] mt-0.5" title={stage.stageLabel}>
                   {stage.stageLabel}
                 </span>
               )}
@@ -62,8 +62,8 @@ const StageRaceSubTabs: React.FC<StageRaceSubTabsProps> = ({
         })}
       </nav>
 
-      <div className="p-4 sm:p-5">
-        <p className="text-sm font-medium text-gray-700 mb-4">
+      <div className="p-4 sm:p-5 bg-slate-900">
+        <p className="text-sm font-medium text-slate-200 mb-4">
           {formatStageDateLabel(activeStage.date)}
           {activeStage.stageLabel ? ` — ${activeStage.stageLabel}` : ''}
         </p>

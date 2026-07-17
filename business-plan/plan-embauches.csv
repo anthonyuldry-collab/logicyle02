@@ -1,0 +1,29 @@
+mois_debut,annee,role,type_contrat,cout_employeur_mois,cout_annuel,scenario_cible,phase
+1,Y1,Fondateur (CEO/Product/Dev),Fondateur,0,0,all,Phase 0 — Solo
+3,Y1,Comptable,Freelance,250,3000,all,Phase 0 — Solo
+6,Y1,Designer UI/UX,Freelance mission,800,9600,all,Phase 0 — Solo
+6,Y1,Avocat RGPD / contrats,Freelance mission,500,6000,all,Phase 0 — Solo
+18,Y2,Développeur full-stack,Freelance 3j/sem,2500,30000,accelere,Phase 1 — Renfort
+18,Y2,Développeur full-stack,CDI,5500,66000,leader100M,Phase 1 — Renfort
+24,Y2,Commercial terrain (commission),Freelance,1500,18000,accelere,Phase 1 — Renfort
+24,Y2,Account Executive,CDI,4500,54000,leader100M,Phase 1 — Renfort
+30,Y3,Customer Success,Mi-temps → CDI,2800,33600,accelere,Phase 2 — Équipe cœur
+30,Y3,Customer Success Manager,CDI,3500,42000,leader100M,Phase 2 — Équipe cœur
+36,Y3,Développeur #2 (mobile/API),CDI,5500,66000,accelere,Phase 2 — Équipe cœur
+36,Y3,Développeur mobile React Native,CDI,5800,69600,leader100M,Phase 2 — Équipe cœur
+42,Y4,Sales Manager,CDI,5500,66000,leader100M,Phase 2 — Équipe cœur
+48,Y4,Head of Sales,CDI,7000,84000,leader100M,Phase 3 — Scale
+54,Y5,DevOps / Infra,CDI,5500,66000,leader100M,Phase 3 — Scale
+60,Y5,Product Manager,CDI,6000,72000,leader100M,Phase 3 — Scale
+66,Y6,Marketing Manager,CDI,5000,60000,leader100M,Phase 3 — Scale
+72,Y6,Country Manager EU (×2),CDI,9000,108000,leader100M,Phase 3 — Scale
+18,Y2,Country lead UK/IE,Commission 15 % ARR,0,0,leaderGlobal,Phase 1 — Renfort
+24,Y2,Account Executive France,CDI,4500,54000,leaderGlobal,Phase 1 — Renfort
+28,Y3,Country lead US cycling,Commission 15 % ARR,0,0,leaderGlobal,Phase 2 — Équipe cœur
+30,Y3,AE Anglophone (US/AU),CDI,4800,57600,leaderGlobal,Phase 2 — Équipe cœur
+36,Y3,Customer Success Manager,CDI,3500,42000,leaderGlobal,Phase 2 — Équipe cœur
+42,Y4,Sales Manager,CDI,5500,66000,leaderGlobal,Phase 2 — Équipe cœur
+48,Y4,Head of Sales,CDI,7000,84000,leaderGlobal,Phase 3 — Scale
+60,Y5,Country lead Australie,Commission 15 % ARR,0,0,leaderGlobal,Phase 3 — Scale
+72,Y6,Country Manager EU (×2),CDI,9000,108000,leaderGlobal,Phase 3 — Scale
+96,Y8,CRO (Chief Revenue Officer),CDI,10000,120000,leaderGlobal,Phase 4 — Leader EU

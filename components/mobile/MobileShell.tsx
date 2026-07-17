@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { AppSection, User, UserRole } from '../../types';
+import { AppSection, User, UserRole, Rider, UserNotification, IncomeItem } from '../../types';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   MOBILE_BOTTOM_TABS,
@@ -9,7 +9,15 @@ import {
 import MobileHeader from './MobileHeader';
 import BottomTabBar from './BottomTabBar';
 import InstallPwaPrompt from './InstallPwaPrompt';
+import NotificationBell from '../NotificationBell';
 import Sidebar from '../Sidebar';
+import PageContent from '../PageContent';
+import SuperAdminPreviewBanner from '../SuperAdminPreviewBanner';
+import {
+  SuperAdminPreviewConfig,
+  isSuperAdminRolePreview,
+} from '../../utils/superAdminPreview';
+import { isSuperAdminUser } from '../../utils/superAdminUtils';
 import {
   Team,
   PermissionLevel,
@@ -34,6 +42,20 @@ interface MobileShellProps {
   children: React.ReactNode;
   lockedSections?: AppSection[];
   subscriptionBanner?: React.ReactNode;
+  realUser?: User;
+  superAdminPreview?: SuperAdminPreviewConfig;
+  onSuperAdminPreviewChange?: (config: SuperAdminPreviewConfig) => void;
+  riders?: Rider[];
+  incomeItems?: IncomeItem[];
+  onExitSuperAdminPreview?: () => void;
+  notifications?: UserNotification[];
+  notificationUnreadCount?: number;
+  pushPermission?: NotificationPermission;
+  pushSupported?: boolean;
+  onEnablePush?: () => Promise<NotificationPermission>;
+  onMarkNotificationRead?: (id: string) => void;
+  onMarkAllNotificationsRead?: () => void;
+  onOpenConvocation?: (eventId: string) => void;
 }
 
 const MobileShell: React.FC<MobileShellProps> = ({
@@ -53,6 +75,20 @@ const MobileShell: React.FC<MobileShellProps> = ({
   children,
   lockedSections = [],
   subscriptionBanner,
+  realUser,
+  superAdminPreview,
+  onSuperAdminPreviewChange,
+  riders = [],
+  incomeItems = [],
+  onExitSuperAdminPreview,
+  notifications = [],
+  notificationUnreadCount = 0,
+  pushPermission = 'default',
+  pushSupported = false,
+  onEnablePush,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
+  onOpenConvocation,
 }) => {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -68,6 +104,22 @@ const MobileShell: React.FC<MobileShellProps> = ({
     },
     [onSelectSection]
   );
+
+  const showRolePreview =
+    !!realUser &&
+    !!superAdminPreview &&
+    isSuperAdminRolePreview(isSuperAdminUser(realUser), superAdminPreview);
+
+  const previewBanner =
+    showRolePreview && superAdminPreview && onExitSuperAdminPreview ? (
+      <SuperAdminPreviewBanner
+        preview={superAdminPreview}
+        riders={riders}
+        staff={staff}
+        incomeItems={incomeItems}
+        onExitPreview={onExitSuperAdminPreview}
+      />
+    ) : null;
 
   const sidebar = (
     <Sidebar
@@ -88,27 +140,56 @@ const MobileShell: React.FC<MobileShellProps> = ({
       isDrawerOpen={drawerOpen}
       onDrawerClose={() => setDrawerOpen(false)}
       lockedSections={lockedSections}
+      realUser={realUser}
+      superAdminPreview={superAdminPreview}
+      onSuperAdminPreviewChange={onSuperAdminPreviewChange}
+      riders={riders}
+      incomeItems={incomeItems}
     />
   );
 
+  const notificationBell =
+    onMarkNotificationRead && onMarkAllNotificationsRead && onOpenConvocation && onEnablePush ? (
+      <NotificationBell
+        notifications={notifications}
+        unreadCount={notificationUnreadCount}
+        pushPermission={pushPermission}
+        pushSupported={pushSupported}
+        onEnablePush={onEnablePush}
+        onMarkRead={onMarkNotificationRead}
+        onMarkAllRead={onMarkAllNotificationsRead}
+        onOpenConvocation={onOpenConvocation}
+        variant={isMobile ? 'mobile' : 'desktop'}
+      />
+    ) : null;
+
+  const isImmersiveDashboard =
+    currentSection === 'myDashboard' || currentSection === 'adminDashboard';
+
   if (!isMobile) {
     return (
-      <div className="flex min-h-screen w-full">
+      <div className="lc-app-shell flex min-h-screen w-full">
+        <div className="lc-app-shell-bg" aria-hidden />
         {sidebar}
-        <main className="main-content flex-1 bg-gray-100 min-h-screen ml-72">
+        <main className="main-content relative z-10 flex-1 min-h-screen ml-72">
+          {notificationBell && (
+            <div className="absolute top-4 right-6 z-30">{notificationBell}</div>
+          )}
+          {previewBanner}
           {subscriptionBanner}
-          {children}
+          <PageContent immersive={isImmersiveDashboard}>{children}</PageContent>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="lc-app-shell flex min-h-screen w-full">
+      <div className="lc-app-shell-bg" aria-hidden />
       {drawerOpen && (
         <button
           type="button"
-          className="fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
           aria-label="Fermer le menu"
           onClick={() => setDrawerOpen(false)}
         />
@@ -121,24 +202,22 @@ const MobileShell: React.FC<MobileShellProps> = ({
         teamLogoUrl={teamLogoUrl}
         onMenuClick={() => setDrawerOpen(true)}
         isIndependent={isIndependent}
+        notificationBell={notificationBell}
       />
 
       <main
-        className={`main-content flex-1 bg-gray-100 min-h-screen pt-14 px-4 ${
-          showTabBar ? 'pb-24' : 'pb-6'
+        className={`main-content relative z-10 flex-1 min-h-screen pt-14 ${
+          showTabBar ? 'pb-24' : 'pb-4'
         }`}
       >
+        {previewBanner}
         {subscriptionBanner}
-        {children}
+        <PageContent immersive={isImmersiveDashboard}>{children}</PageContent>
       </main>
 
       {showTabBar && (
         <BottomTabBar
-          tabs={
-            isIndependent && currentUser.userRole !== UserRole.STAFF
-              ? tabs.filter((tab) => tab.section !== 'missionSearch')
-              : tabs
-          }
+          tabs={tabs}
           currentSection={currentSection}
           onSelectSection={handleSelectSection}
           onMoreClick={() => setDrawerOpen(true)}

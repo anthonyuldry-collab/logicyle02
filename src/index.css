@@ -9,25 +9,419 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-slate-950 text-slate-100 antialiased;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+    @apply bg-indigo-500 hover:bg-indigo-400 text-white font-medium py-2 px-4 rounded-xl transition-colors duration-200;
   }
   
   .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-md transition-colors duration-200;
+    @apply bg-white/10 hover:bg-white/15 text-white font-medium py-2 px-4 rounded-xl transition-colors duration-200;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-md border border-gray-200;
+    @apply rounded-2xl border border-white/15 bg-slate-900 shadow-xl shadow-black/40;
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+    @apply w-full px-3 py-2 rounded-xl border border-white/20 bg-slate-950 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-transparent;
+  }
+
+  /* Shell applicatif : une seule surface sidebar + contenu */
+  .lc-app-shell {
+    position: relative;
+    min-height: 100vh;
+    color: #f1f5f9;
+    background: #020617;
+  }
+
+  .lc-app-shell-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 55% at 80% 8%, rgba(79, 70, 229, 0.28), transparent 55%),
+      radial-gradient(ellipse 45% 35% at 8% 90%, rgba(14, 165, 233, 0.1), transparent 50%),
+      linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%);
+  }
+
+  .lc-app-shell .lc-sidebar {
+    border-right: none !important;
+    box-shadow: none !important;
+  }
+
+  @media (min-width: 768px) {
+    .lc-app-shell .lc-sidebar {
+      /* Fond opaque : le dégradé ne traverse plus le menu au scroll */
+      background: #020617 !important;
+      border-right: none !important;
+    }
+  }
+
+  .lc-app-shell .main-content {
+    /* Surface opaque stable au défilement (évite le contraste variable sur le dégradé fixe) */
+    background: #020617 !important;
+  }
+
+  /* Barres sticky / en-têtes : toujours opaques pour ne pas mélanger le texte en scroll */
+  .lc-app-shell .sub-nav,
+  .lc-app-shell .main-content thead.sticky,
+  .lc-app-shell .main-content .sticky.top-0 {
+    background-color: #020617 !important;
+    backdrop-filter: none !important;
+  }
+
+  .lc-app-shell .main-content fieldset {
+    background-color: #0f172a !important;
+    border-color: rgba(148, 163, 184, 0.28) !important;
+    border-radius: 0.75rem;
+  }
+
+  .lc-app-shell .main-content fieldset > legend {
+    color: #f1f5f9 !important;
+    background-color: #0f172a !important;
+    padding: 0 0.5rem;
+    font-weight: 600;
+  }
+
+  /* ——— Surfaces opaques (plus de verre trop transparent) ——— */
+  .lc-app-shell .main-content .bg-white,
+  .lc-modal .bg-white {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+  }
+
+  /* Variantes semi-transparentes souvent oubliées → restent claires et cassent le contraste */
+  .lc-app-shell .main-content .bg-white\/80,
+  .lc-app-shell .main-content .bg-white\/70,
+  .lc-app-shell .main-content .bg-white\/60,
+  .lc-modal .bg-white\/80,
+  .lc-modal .bg-white\/70 {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+  }
+
+  .lc-app-shell .main-content .bg-gray-50,
+  .lc-app-shell .main-content .bg-gray-100,
+  .lc-app-shell .main-content .bg-slate-50,
+  .lc-app-shell .main-content .bg-slate-50\/80,
+  .lc-app-shell .main-content .bg-slate-100,
+  .lc-modal .bg-gray-50,
+  .lc-modal .bg-gray-100 {
+    background-color: #1e293b !important;
+  }
+
+  .lc-app-shell .main-content .bg-gray-50\/80,
+  .lc-app-shell .main-content .bg-gray-50\/60,
+  .lc-app-shell .main-content .bg-gray-50\/50,
+  .lc-app-shell .main-content .bg-gray-50\/40,
+  .lc-app-shell .main-content .hover\:bg-gray-50\/90:hover,
+  .lc-app-shell .main-content .hover\:bg-gray-50\/60:hover {
+    background-color: #1e293b !important;
+  }
+
+  .lc-app-shell .main-content .bg-gray-200,
+  .lc-app-shell .main-content .bg-gray-300,
+  .lc-modal .bg-gray-200 {
+    background-color: #334155 !important;
+  }
+
+  .lc-app-shell .main-content .hover\:bg-gray-50:hover,
+  .lc-app-shell .main-content .hover\:bg-gray-100:hover,
+  .lc-app-shell .main-content .hover\:bg-gray-200:hover,
+  .lc-app-shell .main-content .hover\:bg-gray-300:hover,
+  .lc-app-shell .main-content .hover\:bg-blue-50\/45:hover,
+  .lc-app-shell .main-content .hover\:bg-blue-50\/50:hover,
+  .lc-app-shell .main-content .hover\:bg-violet-50:hover {
+    background-color: #334155 !important;
+  }
+
+  .lc-app-shell .main-content .bg-blue-50,
+  .lc-app-shell .main-content .bg-blue-50\/40,
+  .lc-app-shell .main-content .bg-blue-50\/50,
+  .lc-app-shell .main-content .bg-indigo-50,
+  .lc-app-shell .main-content .bg-indigo-50\/40,
+  .lc-app-shell .main-content .bg-sky-50,
+  .lc-app-shell .main-content .bg-sky-50\/40,
+  .lc-app-shell .main-content .bg-sky-50\/80,
+  .lc-modal .bg-blue-50,
+  .lc-modal .bg-indigo-50 {
+    background-color: #1e293b !important;
+  }
+
+  .lc-app-shell .main-content .bg-violet-50,
+  .lc-app-shell .main-content .bg-violet-50\/80,
+  .lc-app-shell .main-content .bg-violet-50\/60,
+  .lc-app-shell .main-content .bg-violet-50\/40,
+  .lc-app-shell .main-content .bg-violet-50\/30,
+  .lc-app-shell .main-content .bg-purple-50,
+  .lc-app-shell .main-content .bg-purple-50\/40,
+  .lc-modal .bg-violet-50 {
+    background-color: #2e1065 !important;
+  }
+
+  .lc-app-shell .main-content .bg-amber-50,
+  .lc-app-shell .main-content .bg-yellow-50,
+  .lc-modal .bg-amber-50 {
+    background-color: #451a03 !important;
+  }
+
+  .lc-app-shell .main-content .bg-red-50,
+  .lc-app-shell .main-content .bg-rose-50,
+  .lc-modal .bg-rose-50 {
+    background-color: #4c0519 !important;
+  }
+
+  .lc-app-shell .main-content .bg-green-50,
+  .lc-app-shell .main-content .bg-emerald-50,
+  .lc-modal .bg-emerald-50 {
+    background-color: #052e1c !important;
+  }
+
+  .lc-app-shell .main-content .bg-orange-50,
+  .lc-app-shell .main-content .bg-orange-50\/40 {
+    background-color: #431407 !important;
+  }
+
+  .lc-app-shell .main-content .bg-pink-50,
+  .lc-app-shell .main-content .bg-fuchsia-50,
+  .lc-app-shell .main-content .bg-rose-50\/40 {
+    background-color: #500724 !important;
+  }
+
+  /* Badges pastel → fonds opaques + texte clair */
+  .lc-app-shell .main-content .bg-blue-100,
+  .lc-modal .bg-blue-100 {
+    background-color: #1d4ed8 !important;
+  }
+  .lc-app-shell .main-content .bg-green-100,
+  .lc-app-shell .main-content .bg-emerald-100 {
+    background-color: #047857 !important;
+  }
+  .lc-app-shell .main-content .bg-yellow-100 {
+    background-color: #a16207 !important;
+  }
+  .lc-app-shell .main-content .bg-orange-100 {
+    background-color: #c2410c !important;
+  }
+  .lc-app-shell .main-content .bg-red-100,
+  .lc-app-shell .main-content .bg-rose-100 {
+    background-color: #be123c !important;
+  }
+  .lc-app-shell .main-content .bg-purple-100,
+  .lc-app-shell .main-content .bg-violet-100 {
+    background-color: #7e22ce !important;
+  }
+  .lc-app-shell .main-content .bg-teal-100 {
+    background-color: #0f766e !important;
+  }
+  .lc-app-shell .main-content .bg-amber-100 {
+    background-color: #b45309 !important;
+  }
+  .lc-app-shell .main-content .bg-indigo-100 {
+    background-color: #4338ca !important;
+  }
+
+  /* Textes : toujours clairs sur fond sombre */
+  .lc-app-shell .main-content .text-blue-900,
+  .lc-app-shell .main-content .text-blue-800,
+  .lc-app-shell .main-content .text-blue-700,
+  .lc-app-shell .main-content .text-indigo-900,
+  .lc-app-shell .main-content .text-indigo-800,
+  .lc-app-shell .main-content .text-indigo-700,
+  .lc-app-shell .main-content .text-sky-800,
+  .lc-app-shell .main-content .text-sky-700,
+  .lc-app-shell .main-content .text-sky-900,
+  .lc-app-shell .main-content .text-sky-900\/80,
+  .lc-modal .text-blue-900,
+  .lc-modal .text-blue-800,
+  .lc-modal .text-blue-700,
+  .lc-modal .text-indigo-700,
+  .lc-modal .text-pink-700,
+  .lc-modal .text-pink-800 {
+    color: #bfdbfe !important;
+  }
+
+  .lc-app-shell .main-content .text-green-900,
+  .lc-app-shell .main-content .text-green-800,
+  .lc-app-shell .main-content .text-green-700,
+  .lc-app-shell .main-content .text-green-600,
+  .lc-app-shell .main-content .text-emerald-900,
+  .lc-app-shell .main-content .text-emerald-800,
+  .lc-app-shell .main-content .text-emerald-700,
+  .lc-app-shell .main-content .text-emerald-600 {
+    color: #a7f3d0 !important;
+  }
+
+  .lc-app-shell .main-content .text-yellow-900,
+  .lc-app-shell .main-content .text-yellow-800,
+  .lc-app-shell .main-content .text-amber-900,
+  .lc-app-shell .main-content .text-amber-800,
+  .lc-app-shell .main-content .text-amber-700,
+  .lc-modal .text-amber-900 {
+    color: #fde68a !important;
+  }
+
+  .lc-app-shell .main-content .text-orange-900,
+  .lc-app-shell .main-content .text-orange-800,
+  .lc-app-shell .main-content .text-orange-700 {
+    color: #fed7aa !important;
+  }
+
+  .lc-app-shell .main-content .text-red-900,
+  .lc-app-shell .main-content .text-red-800,
+  .lc-app-shell .main-content .text-red-700,
+  .lc-app-shell .main-content .text-red-600,
+  .lc-app-shell .main-content .text-rose-900,
+  .lc-app-shell .main-content .text-rose-800,
+  .lc-app-shell .main-content .text-rose-700,
+  .lc-app-shell .main-content .text-rose-600,
+  .lc-modal .text-red-700,
+  .lc-modal .text-red-600,
+  .lc-modal .text-rose-700 {
+    color: #fecdd3 !important;
+  }
+
+  .lc-app-shell .main-content .text-purple-950,
+  .lc-app-shell .main-content .text-purple-900,
+  .lc-app-shell .main-content .text-purple-800,
+  .lc-app-shell .main-content .text-purple-700,
+  .lc-app-shell .main-content .text-violet-950,
+  .lc-app-shell .main-content .text-violet-900,
+  .lc-app-shell .main-content .text-violet-800,
+  .lc-app-shell .main-content .text-violet-700,
+  .lc-app-shell .main-content .text-violet-600,
+  .lc-modal .text-violet-950,
+  .lc-modal .text-violet-900,
+  .lc-modal .text-violet-800 {
+    color: #e9d5ff !important;
+  }
+
+  .lc-app-shell .main-content .text-teal-800,
+  .lc-app-shell .main-content .text-teal-700 {
+    color: #99f6e4 !important;
+  }
+
+  .lc-app-shell .main-content .text-gray-900,
+  .lc-app-shell .main-content .text-gray-800,
+  .lc-app-shell .main-content .text-gray-700,
+  .lc-app-shell .main-content .text-slate-900,
+  .lc-app-shell .main-content .text-slate-800,
+  .lc-app-shell .main-content .text-slate-700,
+  .lc-app-shell .main-content .text-slate-600,
+  .lc-modal .text-gray-900,
+  .lc-modal .text-gray-800,
+  .lc-modal .text-gray-700 {
+    color: #f8fafc !important;
+  }
+
+  .lc-app-shell .main-content .text-gray-600,
+  .lc-app-shell .main-content .text-gray-500,
+  .lc-app-shell .main-content .text-slate-500,
+  .lc-modal .text-gray-600,
+  .lc-modal .text-gray-500 {
+    color: #cbd5e1 !important;
+  }
+
+  .lc-app-shell .main-content .text-gray-400,
+  .lc-modal .text-gray-400 {
+    color: #94a3b8 !important;
+  }
+
+  .lc-app-shell .main-content .border-gray-100,
+  .lc-app-shell .main-content .border-gray-200,
+  .lc-app-shell .main-content .border-gray-300,
+  .lc-app-shell .main-content .border-slate-200,
+  .lc-app-shell .main-content .border-slate-100,
+  .lc-app-shell .main-content .border-blue-100,
+  .lc-app-shell .main-content .border-blue-200,
+  .lc-app-shell .main-content .border-amber-100,
+  .lc-app-shell .main-content .border-amber-200,
+  .lc-app-shell .main-content .border-indigo-100,
+  .lc-app-shell .main-content .border-rose-100,
+  .lc-app-shell .main-content .border-emerald-100,
+  .lc-app-shell .main-content .border-sky-100,
+  .lc-app-shell .main-content .border-violet-100,
+  .lc-app-shell .main-content .border-violet-200,
+  .lc-app-shell .main-content .border-purple-100,
+  .lc-modal .border-gray-200,
+  .lc-modal .border-gray-300,
+  .lc-modal .border-violet-200 {
+    border-color: rgba(255, 255, 255, 0.16) !important;
+  }
+
+  .lc-app-shell .main-content .shadow-md,
+  .lc-app-shell .main-content .shadow-lg,
+  .lc-app-shell .main-content .shadow-sm {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+  }
+
+  .lc-app-shell .main-content input:not([type='checkbox']):not([type='radio']),
+  .lc-app-shell .main-content select,
+  .lc-app-shell .main-content textarea,
+  .lc-modal input:not([type='checkbox']):not([type='radio']),
+  .lc-modal select,
+  .lc-modal textarea {
+    background-color: #020617 !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    color: #f8fafc !important;
+  }
+
+  .lc-app-shell .main-content select option,
+  .lc-modal select option {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  .lc-app-shell .main-content input::placeholder,
+  .lc-app-shell .main-content textarea::placeholder,
+  .lc-modal input::placeholder,
+  .lc-modal textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+
+  .lc-app-shell .main-content table thead {
+    background: #0f172a !important;
+  }
+
+  .lc-app-shell .main-content table th {
+    color: #e2e8f0 !important;
+  }
+
+  .lc-app-shell .main-content table td {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #e2e8f0;
+  }
+
+  .lc-app-shell .main-content .from-slate-100,
+  .lc-app-shell .main-content .from-slate-50,
+  .lc-app-shell .main-content .from-amber-50,
+  .lc-app-shell .main-content .from-blue-50,
+  .lc-app-shell .main-content .to-slate-50,
+  .lc-app-shell .main-content .to-white {
+    --tw-gradient-from: #0f172a !important;
+    --tw-gradient-to: #1e293b !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+  }
+
+  /* Scrollbars discrètes */
+  .lc-modal::-webkit-scrollbar,
+  .lc-app-shell .main-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .lc-modal::-webkit-scrollbar-track,
+  .lc-app-shell .main-content::-webkit-scrollbar-track {
+    background: #0f172a;
+  }
+  .lc-modal::-webkit-scrollbar-thumb,
+  .lc-app-shell .main-content::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 999px;
   }
 }
 
@@ -55,18 +449,17 @@
   }
   
   .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-gray-100 rounded-full;
+    @apply bg-slate-800 rounded-full;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    @apply bg-slate-500 rounded-full;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+    @apply bg-slate-400;
   }
   
-  /* Prévention du débordement des tableaux */
   .table-container {
     @apply w-full max-w-full overflow-x-auto;
   }
@@ -75,8 +468,43 @@
     @apply w-full min-w-max;
   }
   
-  /* Conteneur principal pour éviter les débordements */
+  /* Conteneur principal centré */
+  .page-content {
+    @apply mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8;
+  }
+
+  .page-content--immersive {
+    @apply mx-auto w-full max-w-none p-0;
+  }
+
+  .section-card {
+    @apply w-full;
+  }
+
   .main-content {
     @apply flex-1 min-w-0 overflow-auto;
+  }
+
+  /* Modales : toujours centrées sur le viewport (hors layout sidebar) */
+  .lc-modal-root {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 100 !important;
+  }
+
+  .lc-modal {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }

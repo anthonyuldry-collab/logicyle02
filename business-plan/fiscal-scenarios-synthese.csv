@@ -1,0 +1,5 @@
+variante_id,variante,mois_15k_lisse,date_15k_lisse,mois_15k_mois,date_15k_mois,total_net_y5,equivalent_mensuel_y5,salaire_cumul_y10,dividendes_cumul_y10,total_net_y10,equivalent_mensuel_y10,tresorerie_finale,recommandation
+dividendes_min,"Salaire min 2,5 K + dividendes (phare)",>120,>horizon,45,août 2031,317491.0,5292.0,263541.0,1401271.0,1664812.0,13873.0,14378029.0,Phare historique
+mix_5k,Mix 5 K€ salaire + dividendes,114,mai 2037,45,août 2031,391139.0,6519.0,503541.0,1355592.0,1859133.0,15493.0,13994667.0,Retraite renforcée
+holding_m24,Holding créée M24 · mère-fille M48,120,nov. 2037,45,août 2031,326465.0,5441.0,263541.0,1495611.0,1759152.0,14660.0,14382959.0,Holding · mère-fille différée M48
+optimal_ec,Stratégie optimisée EC + avocat (recommandée),111,fév. 2037,45,août 2031,391293.0,6522.0,513760.0,1398780.0,1912540.0,15938.0,13982728.0,★ Recommandée EC + avocat

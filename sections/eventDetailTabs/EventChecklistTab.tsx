@@ -33,16 +33,7 @@ const initialChecklistItemFormStateFactory = (eventId: string): Omit<EventCheckl
 const TIMING_ORDER: ChecklistTiming[] = ['avant', 'pendant', 'apres'];
 const TIMING_LABELS: Record<ChecklistTiming, string> = { avant: 'Avant', pendant: 'Pendant', apres: 'Après' };
 
-const mapStaffRoleToChecklistRole = (staffRole: StaffRoleEnum): ChecklistRole | null => {
-    switch (staffRole) {
-        case StaffRoleEnum.DS: return ChecklistRole.DS;
-        case StaffRoleEnum.ASSISTANT: return ChecklistRole.ASSISTANT;
-        case StaffRoleEnum.MECANO: return ChecklistRole.MECANO;
-        case StaffRoleEnum.MANAGER: return ChecklistRole.MANAGER;
-        case StaffRoleEnum.COMMUNICATION: return ChecklistRole.COMMUNICATION;
-        default: return null;
-    }
-};
+import { mapStaffRoleToChecklistRole } from '../../utils/checklistRoleUtils';
 
 const EventChecklistTab: React.FC<EventChecklistTabProps> = ({ 
   event, 
@@ -241,7 +232,7 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
             return;
         }
 
-        const checklistRoleForStaff = mapStaffRoleToChecklistRole(staffMember.role);
+        const checklistRoleForStaff = mapStaffRoleToChecklistRole(staffMember.role as StaffRoleEnum);
         
         const tasksForStaff = checklistItemsForEvent.filter(item => 
             item.assignedRole === checklistRoleForStaff && 

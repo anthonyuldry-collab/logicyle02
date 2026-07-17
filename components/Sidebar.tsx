@@ -1,6 +1,22 @@
 import React, { useMemo } from 'react';
-import { AppSection, User, Team, PermissionLevel, StaffMember, PermissionRole, UserRole, TeamRole } from '../types';
-import { SECTIONS, INDEPENDENT_SECTIONS } from '../constants';
+import { AppSection, User, Team, PermissionLevel, StaffMember, PermissionRole, UserRole, TeamRole, Rider, IncomeItem } from '../types';
+import { SECTIONS, INDEPENDENT_SECTIONS, INDEPENDENT_RIDER_ONLY_SECTIONS, INDEPENDENT_STAFF_ONLY_SECTIONS, SectionConfig } from '../constants';
+import { SIDEBAR_GROUP_ORDER, getSidebarGroupLabel, SidebarGroupKey } from '../constants/sidebarGroups';
+import { isSuperAdminUser } from '../utils/superAdminUtils';
+import {
+  SuperAdminPreviewConfig,
+  canAccessHoldingDashboard,
+  getSuperAdminPreviewLabel,
+  getSponsorshipIncomeItems,
+} from '../utils/superAdminPreview';
+import {
+  isCoureurUser,
+  isSectionAllowedForCoureur,
+} from '../utils/riderAccessUtils';
+import {
+  isPartnerUser,
+  isSectionAllowedForPartner,
+} from '../utils/partnerAccessUtils';
 import HomeIcon from './icons/HomeIcon';
 import UsersIcon from './icons/UsersIcon';
 import UserGroupIcon from './icons/UserGroupIcon';
@@ -33,6 +49,7 @@ import ClipboardListIcon from './icons/ClipboardListIcon';
 import PaperAirplaneIcon from './icons/PaperAirplaneIcon';
 import CircleStackIcon from './icons/CircleStackIcon';
 import KeyIcon from './icons/KeyIcon';
+import TrophyIcon from './icons/TrophyIcon';
 import { useTranslations } from '../hooks/useTranslations';
 import ActionButton from './ActionButton';
 
@@ -54,6 +71,11 @@ interface SidebarProps {
   isDrawerOpen?: boolean;
   onDrawerClose?: () => void;
   lockedSections?: AppSection[];
+  realUser?: User;
+  superAdminPreview?: SuperAdminPreviewConfig;
+  onSuperAdminPreviewChange?: (config: SuperAdminPreviewConfig) => void;
+  riders?: Rider[];
+  incomeItems?: IncomeItem[];
 }
 
 const iconMap: Record<string, React.ComponentType<any>> = {
@@ -88,6 +110,7 @@ const iconMap: Record<string, React.ComponentType<any>> = {
   PaperAirplaneIcon,
   CircleStackIcon,
   KeyIcon,
+  TrophyIcon,
 };
 
 
@@ -97,6 +120,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   isIndependent, onGoToLobby,
   isMobile = false, isDrawerOpen = false, onDrawerClose,
   lockedSections = [],
+  realUser,
+  superAdminPreview,
+  onSuperAdminPreviewChange,
+  riders = [],
+  incomeItems = [],
 }) => {
   const { t, language } = useTranslations();
   
@@ -105,28 +133,97 @@ const Sidebar: React.FC<SidebarProps> = ({
   const groupedSections = useMemo(() => {
     const source = isIndependent ? INDEPENDENT_SECTIONS : SECTIONS;
     return source.reduce((acc, section) => {
-        const group = section.group[language] || section.group['en'];
+        const groupKey = 'groupKey' in section ? (section as SectionConfig).groupKey : undefined;
+        const group = groupKey
+          ? getSidebarGroupLabel(groupKey, language)
+          : (section.group[language] || section.group['en']);
         if (!acc[group]) {
             acc[group] = [];
         }
         acc[group].push(section);
         return acc;
-    }, {} as Record<string, typeof SECTIONS>);
+    }, {} as Record<string, SectionConfig[]>);
   }, [language, isIndependent]);
 
-  const groupOrder = isIndependent
-    ? (language === 'fr'
+  const groupOrder = useMemo(() => {
+    if (isIndependent) {
+      const isRiderNav =
+        currentUser?.userRole === UserRole.COUREUR ||
+        String(currentUser?.userRole || '').toLowerCase() === 'coureur';
+      const isStaffNav =
+        currentUser?.userRole === UserRole.STAFF ||
+        String(currentUser?.userRole || '').toLowerCase() === 'staff';
+      if (isRiderNav) {
+        return language === 'fr'
+          ? ['Mon Parcours', 'Performance', 'Planning', 'Opportunités', 'Compte']
+          : ['My Journey', 'Performance', 'Planning', 'Opportunities', 'Account'];
+      }
+      if (isStaffNav) {
+        return language === 'fr'
+          ? ['Mon Parcours', 'Planning', 'Logistique', 'Opportunités', 'Compte']
+          : ['My Journey', 'Planning', 'Logistics', 'Opportunities', 'Account'];
+      }
+      return language === 'fr'
         ? ['Mon Parcours', 'Opportunités', 'Compte']
-        : ['My Journey', 'Opportunities', 'Account'])
-    : [
-    'Tableau de Bord',
-    'Navigation Principale',
-    'Performance & Santé', 
-    'Logistique & Équipement',
-    'Administration'
-  ];
+        : ['My Journey', 'Opportunities', 'Account'];
+    }
+    return SIDEBAR_GROUP_ORDER.map((key) => getSidebarGroupLabel(key, language));
+  }, [isIndependent, language, currentUser?.userRole]);
+
+  const previewMode = superAdminPreview?.mode ?? 'full';
+
+  const canShowHoldingView = canAccessHoldingDashboard(currentUser, {
+    realUser,
+    previewMode,
+  });
+
+  const isCoureurView =
+    isCoureurUser(currentUser) &&
+    !(isSuperAdminUser(realUser || currentUser) && previewMode === 'full');
+
+  const isPartnerView =
+    isPartnerUser(currentUser) &&
+    !(isSuperAdminUser(realUser || currentUser) && previewMode === 'full');
+
+  const sponsorshipIncomeItems = useMemo(
+    () => getSponsorshipIncomeItems(incomeItems),
+    [incomeItems],
+  );
+
+  const hasViewPermission = (sectionId: AppSection) =>
+    !!effectivePermissions?.[sectionId]?.includes('view');
+
+  const filterCoureurSections = (sections: typeof SECTIONS) =>
+    sections.filter((section) => {
+      const id = section.id as AppSection;
+      if (id === 'eventDetail') return false;
+      if (id === 'missionSearch') return false;
+      if (lockedSections.includes(id)) return false;
+      return isSectionAllowedForCoureur(id) && hasViewPermission(id);
+    });
+
+  const filterPartnerSections = (sections: typeof SECTIONS) =>
+    sections.filter((section) => {
+      const id = section.id as AppSection;
+      if (lockedSections.includes(id)) return false;
+      return isSectionAllowedForPartner(id) && hasViewPermission(id);
+    });
+
+  const isMySpaceSection = (section: { groupKey?: SidebarGroupKey }) =>
+    section.groupKey === 'mySpace';
+
+  const isDashboardSection = (section: { groupKey?: SidebarGroupKey }) =>
+    section.groupKey === 'dashboard';
   
   const displayRole = useMemo(() => {
+    if (
+      realUser &&
+      isSuperAdminUser(realUser) &&
+      superAdminPreview &&
+      superAdminPreview.mode !== 'full'
+    ) {
+      return getSuperAdminPreviewLabel(superAdminPreview, riders, staff, incomeItems);
+    }
     if (isIndependent) {
         return currentUser.userRole || 'Indépendant';
     }
@@ -136,32 +233,33 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
     const role = permissionRoles.find(r => r.id === currentUser.permissionRole);
     return role?.name || 'Role inconnu';
-  }, [currentUser, isIndependent, permissionRoles]);
+  }, [currentUser, isIndependent, permissionRoles, realUser, superAdminPreview, riders, staff, incomeItems]);
+
+  const showSuperAdminPreviewControls =
+    !!realUser &&
+    isSuperAdminUser(realUser) &&
+    !!onSuperAdminPreviewChange;
 
   const sidebarClasses = isMobile
-    ? `w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-50 transition-transform duration-300 ease-in-out ${
+    ? `lc-sidebar w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-50 bg-slate-950 transition-transform duration-300 ease-in-out ${
         isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
       }`
-    : 'w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto';
+    : 'lc-sidebar w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-20 bg-slate-950';
 
   return (
     <div 
         className={sidebarClasses}
-        style={{ 
-          backgroundColor: 'var(--theme-primary-bg)',
-          borderRight: '1px solid rgba(255, 255, 255, 0.1)'
-        }}
         aria-hidden={isMobile && !isDrawerOpen ? true : undefined}
     >
       {/* Header avec logo et sélecteur d'équipe */}
-      <div className="p-6 border-b border-white/10">
+      <div className="p-6 border-b border-white/5">
         {teamLogoUrl && (
             <div className="flex justify-center mb-4">
                 <img src={teamLogoUrl} alt="Team Logo" className="h-12 w-auto" />
             </div>
         )}
         
-        {!isIndependent && userTeams.length > 1 && (
+        {!isIndependent && (userTeams.length > 1 || isSuperAdminUser(realUser || currentUser)) && userTeams.length > 0 && (
             <div>
                 <label htmlFor="team-switcher" className="block text-xs font-medium mb-2" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
                     {t('sidebarContext')}
@@ -180,6 +278,158 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </select>
             </div>
         )}
+
+        {showSuperAdminPreviewControls && (
+            <div className="mt-4 space-y-2">
+                <label htmlFor="preview-mode" className="block text-xs font-medium mb-1" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
+                    Vue en tant que
+                </label>
+                <select
+                    id="preview-mode"
+                    value={previewMode}
+                    onChange={(e) => {
+                        const mode = e.target.value as SuperAdminPreviewConfig['mode'];
+                        if (mode === 'coureur') {
+                            onSuperAdminPreviewChange!({ mode, subjectId: riders[0]?.id ?? null });
+                        } else if (mode === 'staff') {
+                            onSuperAdminPreviewChange!({ mode, subjectId: staff[0]?.id ?? null });
+                        } else if (mode === 'partenaire') {
+                            onSuperAdminPreviewChange!({
+                              mode,
+                              subjectId: sponsorshipIncomeItems[0]?.id ?? null,
+                            });
+                        } else if (mode === 'coureur_independant') {
+                            onSuperAdminPreviewChange!({ mode, subjectId: riders[0]?.id ?? null });
+                        } else if (mode === 'staff_independant') {
+                            onSuperAdminPreviewChange!({ mode, subjectId: staff[0]?.id ?? null });
+                        } else {
+                            onSuperAdminPreviewChange!({ mode });
+                        }
+                    }}
+                    className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+                >
+                    <option value="full" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Super Admin (complet)</option>
+                    <option value="manager" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Manager</option>
+                    <option value="coureur" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Coureur</option>
+                    <option value="coureur_independant" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Athlète indépendant</option>
+                    <option value="staff" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Staff</option>
+                    <option value="staff_independant" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Staff indépendant</option>
+                    <option value="partenaire" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>Partenaire</option>
+                </select>
+
+                {previewMode === 'coureur' && (
+                    <select
+                        id="preview-rider"
+                        value={superAdminPreview?.subjectId ?? ''}
+                        onChange={(e) =>
+                            onSuperAdminPreviewChange!({ mode: 'coureur', subjectId: e.target.value || null })
+                        }
+                        disabled={riders.length === 0}
+                        className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-50"
+                    >
+                        {riders.length === 0 ? (
+                            <option value="">Aucun coureur dans l&apos;équipe</option>
+                        ) : (
+                            riders.map((rider) => (
+                                <option key={rider.id} value={rider.id} style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                                    {rider.firstName} {rider.lastName}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                )}
+
+                {previewMode === 'coureur_independant' && (
+                    <select
+                        id="preview-independent-rider"
+                        value={superAdminPreview?.subjectId ?? ''}
+                        onChange={(e) =>
+                            onSuperAdminPreviewChange!({ mode: 'coureur_independant', subjectId: e.target.value || null })
+                        }
+                        disabled={riders.length === 0}
+                        className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-50"
+                    >
+                        {riders.length === 0 ? (
+                            <option value="">Profil démo (aucun coureur)</option>
+                        ) : (
+                            riders.map((rider) => (
+                                <option key={rider.id} value={rider.id} style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                                    {rider.firstName} {rider.lastName}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                )}
+
+                {previewMode === 'staff' && (
+                    <select
+                        id="preview-staff"
+                        value={superAdminPreview?.subjectId ?? ''}
+                        onChange={(e) =>
+                            onSuperAdminPreviewChange!({ mode: 'staff', subjectId: e.target.value || null })
+                        }
+                        disabled={staff.length === 0}
+                        className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-50"
+                    >
+                        {staff.length === 0 ? (
+                            <option value="">Aucun staff dans l&apos;équipe</option>
+                        ) : (
+                            staff.map((member) => (
+                                <option key={member.id} value={member.id} style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                                    {member.firstName} {member.lastName}
+                                    {member.role ? ` (${member.role})` : ''}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                )}
+
+                {previewMode === 'staff_independant' && (
+                    <select
+                        id="preview-independent-staff"
+                        value={superAdminPreview?.subjectId ?? ''}
+                        onChange={(e) =>
+                            onSuperAdminPreviewChange!({ mode: 'staff_independant', subjectId: e.target.value || null })
+                        }
+                        disabled={staff.length === 0}
+                        className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-50"
+                    >
+                        {staff.length === 0 ? (
+                            <option value="">Profil démo (aucun staff)</option>
+                        ) : (
+                            staff.map((member) => (
+                                <option key={member.id} value={member.id} style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                                    {member.firstName} {member.lastName}
+                                    {member.role ? ` (${member.role})` : ''}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                )}
+
+                {previewMode === 'partenaire' && (
+                    <select
+                        id="preview-partner"
+                        value={superAdminPreview?.subjectId ?? ''}
+                        onChange={(e) =>
+                            onSuperAdminPreviewChange!({ mode: 'partenaire', subjectId: e.target.value || null })
+                        }
+                        disabled={sponsorshipIncomeItems.length === 0}
+                        className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-50"
+                    >
+                        {sponsorshipIncomeItems.length === 0 ? (
+                            <option value="">Aucun partenariat sponsor</option>
+                        ) : (
+                            sponsorshipIncomeItems.map((income) => (
+                                <option key={income.id} value={income.id} style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
+                                    {income.sponsorCompanyName || income.description}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                )}
+            </div>
+        )}
       </div>
 
       {/* Navigation principale */}
@@ -193,60 +443,88 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             if (isIndependent) {
                 visibleSections = sectionsInGroup.filter((section) => {
-                    if (section.id === 'userSettings') return true;
-                    if (section.id === 'missionSearch' && currentUser?.userRole !== UserRole.STAFF) return false;
-                    return (
-                        effectivePermissions &&
-                        effectivePermissions[section.id as AppSection] &&
-                        effectivePermissions[section.id as AppSection]!.includes('view')
-                    );
+                    if (section.id === 'userSettings' || section.id === 'pricing') return true;
+                    const isRiderNav =
+                      currentUser?.userRole === UserRole.COUREUR ||
+                      String(currentUser?.userRole || '').toLowerCase() === 'coureur';
+                    const isStaffNav =
+                      currentUser?.userRole === UserRole.STAFF ||
+                      String(currentUser?.userRole || '').toLowerCase() === 'staff';
+                    if (section.id === 'missionSearch' && !isStaffNav) return false;
+                    if (section.id === 'teamSearch' && !isRiderNav) return false;
+                    if (
+                      INDEPENDENT_RIDER_ONLY_SECTIONS.includes(section.id as AppSection) &&
+                      !isRiderNav
+                    ) {
+                      return false;
+                    }
+                    if (
+                      INDEPENDENT_STAFF_ONLY_SECTIONS.includes(section.id as AppSection) &&
+                      !isStaffNav
+                    ) {
+                      return false;
+                    }
+                    if (lockedSections.includes(section.id as AppSection)) return false;
+                    return hasViewPermission(section.id as AppSection);
                 });
-            } else if (currentUser && (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN)) {
+            } else if (isCoureurView) {
+                visibleSections = filterCoureurSections(sectionsInGroup);
+            } else if (isPartnerView) {
+                visibleSections = filterPartnerSections(sectionsInGroup);
+            } else if (isSuperAdminUser(realUser || currentUser) && previewMode === 'full') {
+                visibleSections = sectionsInGroup.filter((section) => {
+                    if (section.id === 'eventDetail') return false;
+                    // Fusionné dans Mon Profil pour le staff — ne pas laisser traîner l’entrée legacy
+                    if (section.id === 'adminDossier') return false;
+                    if (section.id === 'organizationDashboard') {
+                        return canShowHoldingView;
+                    }
+                    return true;
+                });
+            } else if (
+              currentUser &&
+              currentUser.userRole !== UserRole.COUREUR &&
+              (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN)
+            ) {
                 visibleSections = sectionsInGroup.filter(section => {
-                    // Exclure toutes les sections "Mon Espace" pour les administrateurs
-                    if (section.group[language] === t('sidebarGroupMySpace')) return false;
-                    
-                    // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
-                    if (section.group[language] === 'Tableau de Bord') {
-                        return true;
+                    if (isMySpaceSection(section)) {
+                      // Staff : dossier admin fusionné dans « Mon Profil »
+                      if (section.id === 'adminDossier') return false;
+                      return hasViewPermission(section.id as AppSection);
                     }
-                    
-                    // Toujours afficher l'historique hébergements pour Admin/Manager
-                    if (section.id === 'accommodationHistory') {
-                        return true;
+                    if (isDashboardSection(section)) return true;
+                    if (section.id === 'accommodationHistory') return true;
+                    if (section.id === 'pricing') {
+                        return false;
                     }
-                    
-                    // Paramètres équipe & abonnement : managers/admins uniquement
-                    if (section.id === 'settings' || section.id === 'pricing') {
-                        return currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN;
+                    if (section.id === 'superAdmin') {
+                        return isSuperAdminUser(realUser || currentUser) && previewMode === 'full';
                     }
-                    
-                    // Pour les administrateurs, masquer adminDashboard car myDashboard affiche déjà l'admin
+                    if (section.id === 'organizationDashboard') {
+                        return canShowHoldingView;
+                    }
                     if (section.id === 'adminDashboard') return false;
-                    
-                    // Vérifier les permissions pour les autres sections
                     return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
                 });
             } else {
                 // Pour les coureurs et autres rôles, filtrer selon les permissions
                 visibleSections = sectionsInGroup.filter(section => {
-                    // Toujours afficher les paramètres utilisateur
                     if (section.id === 'userSettings') return true;
-                    
-                    // Toujours afficher le Tableau de Bord pour tous les utilisateurs (sans vérification de permissions)
-                    if (section.group[language] === 'Tableau de Bord') {
-                        return true;
-                    }
-                    
-                    // Toujours afficher les sections "Mon Espace" pour les coureurs
-                    if (section.group[language] === t('sidebarGroupMySpace')) {
-                        // Vérifier si c'est un coureur ou si les permissions existent
+                    if (isDashboardSection(section)) return true;
+                    if (isMySpaceSection(section)) {
                         if (currentUser?.userRole === UserRole.COUREUR) return true;
+                        // Staff : pas de « Mon Dossier Admin » séparé (fusionné dans Mon Profil)
+                        if (section.id === 'adminDossier') return false;
                         return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
                     }
-                    
-                    // Vérifier les permissions pour les autres sections
-                    return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
+                    if (lockedSections.includes(section.id as AppSection)) return false;
+                    if (section.id === 'superAdmin') {
+                        return isSuperAdminUser(realUser || currentUser) && previewMode === 'full';
+                    }
+                    if (section.id === 'organizationDashboard') {
+                        return canShowHoldingView;
+                    }
+                    return hasViewPermission(section.id as AppSection);
                 });
             }
             
@@ -255,8 +533,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             return (
                 <div key={group} className="space-y-2">
                     <h3 
-                        className="px-3 text-xs font-semibold uppercase tracking-wider mb-3" 
-                        style={{ color: 'var(--theme-primary-text)', opacity: 0.6 }}
+                        className="px-3 text-xs font-semibold uppercase tracking-[0.2em] mb-3 text-slate-500"
                     >
                         {group}
                     </h3>
@@ -268,11 +545,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                             // Afficher le bon libellé et icône pour le tableau de bord selon le rôle
                             if (section.id === 'myDashboard' && currentUser && 
                                 (currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER)) {
-                                displayLabel = 'Tableau de Bord';
+                                displayLabel = 'Tableau de bord';
                                 Icon = ChartBarIcon; // Icône différente pour l'admin
                             }
                             
-                            const isLocked = lockedSections.includes(section.id as AppSection);
+                            const isLocked =
+                              !isCoureurView && lockedSections.includes(section.id as AppSection);
                             
                             return (
                                 <SidebarButton
@@ -280,7 +558,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     label={isLocked ? `${displayLabel} 🔒` : displayLabel}
                                     icon={Icon}
                                     isActive={currentSection === section.id}
-                                    onClick={() => onSelectSection(section.id as AppSection)}
+                                    onClick={() => {
+                                      if (isLocked) return;
+                                      onSelectSection(section.id as AppSection);
+                                    }}
                                 />
                             );
                         })}
@@ -291,8 +572,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Footer avec informations utilisateur */}
-      <div className="p-4 border-t border-white/10">
-        <div className="p-4 bg-white/5 rounded-xl">
+      <div className="p-4 border-t border-white/5">
+        <div className="p-4 rounded-xl border border-white/10 bg-white/[0.06]">
             <div className="flex items-center space-x-3 mb-3">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
                     <span className="text-sm font-semibold" style={{ color: 'var(--theme-primary-text)' }}>

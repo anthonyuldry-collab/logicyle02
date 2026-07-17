@@ -9,7 +9,8 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   XCircleIcon,
-  EyeIcon
+  EyeIcon,
+  UserIcon,
 } from '@heroicons/react/24/outline';
 import { StaffMember, RaceEvent, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability } from '../types';
 import { 

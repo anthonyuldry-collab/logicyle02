@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Rider } from '../types';
 import { 
   UserGroupIcon, 
@@ -18,7 +18,7 @@ interface StaffMember {
   email?: string;
 }
 
-interface WorkGroup {
+export interface WorkGroup {
   id: string;
   name: string;
   description: string;
@@ -35,6 +35,8 @@ interface WorkGroup {
 interface WorkGroupManagerProps {
   riders: Rider[];
   staffMembers?: StaffMember[];
+  /** Groupes injectés depuis Synergies (session locale). */
+  seedGroups?: WorkGroup[];
   onGroupCreate?: (group: WorkGroup) => void;
   onGroupUpdate?: (group: WorkGroup) => void;
   onGroupDelete?: (groupId: string) => void;
@@ -43,11 +45,23 @@ interface WorkGroupManagerProps {
 const WorkGroupManager: React.FC<WorkGroupManagerProps> = ({
   riders,
   staffMembers = [],
+  seedGroups = [],
   onGroupCreate,
   onGroupUpdate,
   onGroupDelete
 }) => {
   const [groups, setGroups] = useState<WorkGroup[]>([]);
+
+  useEffect(() => {
+    if (!seedGroups.length) return;
+    setGroups((prev) => {
+      const ids = new Set(prev.map((g) => g.id));
+      const incoming = seedGroups.filter((g) => !ids.has(g.id));
+      if (!incoming.length) return prev;
+      return [...incoming, ...prev];
+    });
+  }, [seedGroups]);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<WorkGroup | null>(null);
   const [selectedRiders, setSelectedRiders] = useState<Set<string>>(new Set());

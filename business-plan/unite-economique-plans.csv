@@ -1,0 +1,11 @@
+plan,prix_mensuel_eur,prix_annuel_equiv_mois,cogs_variable_mois,marge_contribution_eur,marge_contribution_pct,seuil_equipes_seules,note_cogs
+club,39,32.5,5.5,33.5,85.9,106,"Firebase, Stripe, storage, support"
+competition,89,74.2,13.0,76.0,85.4,47,"Firebase, Stripe, storage, support"
+continental,169,140.8,22.0,147.0,87.0,25,Idem + OCR/Gemini/scouting
+pro,299,249.2,38.0,261.0,87.3,14,Idem + OCR/Gemini/scouting
+independent_rider,9,7.5,1.2,7.8,86.7,456,"Stripe, Firebase, support léger"
+independent_staff,12,10.0,1.5,10.5,87.5,339,"Stripe, Firebase, support léger"
+independent_coach,29,24.2,2.0,27.0,93.1,132,"Stripe, Firebase, support léger"
+independent_athlete_camp,19,16.7,2.2,16.8,88.4,212,"Stripe, Firebase, support léger"
+organizer_solo,49,40.8,6.0,43.0,87.8,83,"Stripe, Firebase, support léger"
+organizer_pro,149,124.2,18.0,131.0,87.9,28,Idem + OCR/Gemini/scouting

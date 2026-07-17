@@ -59,7 +59,6 @@ const PowerStatsPanel: React.FC<PowerStatsPanelProps> = ({
   categoryFilter,
   statsRows,
   hasWinnerMeasurements,
-  isAllTime = false,
 }) => {
   const [showSprint, setShowSprint] = useState(false);
   const unit = report.mode === 'watts' ? 'W' : 'W/kg';
@@ -109,15 +108,9 @@ const PowerStatsPanel: React.FC<PowerStatsPanelProps> = ({
   const [viewMode, setViewMode] = useState<'focused' | 'all'>('focused');
   const tableSections = viewMode === 'all' ? allSections : sections;
 
-  const categoryLabel =
-    categoryFilter !== 'all' ? categoryFilter : 'Toutes catégories';
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-md bg-blue-100 text-blue-900 px-2 py-1 font-medium">
-          {isAllTime ? 'All time · toutes saisons' : `Saison ${report.season}`}
-        </span>
         <span className="rounded-md bg-slate-100 text-slate-700 px-2 py-1">
           {FATIGUE_LABEL[report.fatigue]}
         </span>
@@ -130,22 +123,17 @@ const PowerStatsPanel: React.FC<PowerStatsPanelProps> = ({
       </div>
 
       {statsRows.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 border-b border-slate-200 bg-slate-50">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Repères effectif</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {categoryLabel} · mêmes filtres que le tableau coureuses
-              </p>
-            </div>
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-900">Repères effectif</h3>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium shadow-sm">
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
                 <button
                   type="button"
                   onClick={() => setViewMode('focused')}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                  className={`rounded-md px-2.5 py-1 transition-colors ${
                     viewMode === 'focused'
-                      ? 'bg-blue-600 text-white shadow-sm'
+                      ? 'bg-blue-600 text-white'
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -154,9 +142,9 @@ const PowerStatsPanel: React.FC<PowerStatsPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setViewMode('all')}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                  className={`rounded-md px-2.5 py-1 transition-colors ${
                     viewMode === 'all'
-                      ? 'bg-blue-600 text-white shadow-sm'
+                      ? 'bg-blue-600 text-white'
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -181,21 +169,8 @@ const PowerStatsPanel: React.FC<PowerStatsPanelProps> = ({
             sections={tableSections}
             unitLabel={unit}
             showWinnerColumn={hasWinnerMeasurements}
-            caption="Min = plus bas · Moy = moyenne effectif · Max = plus haut · Top 25 % = seuil du quartile supérieur"
+            caption="Min · Moy · Max · Top 25 %"
           />
-
-          <details className="border-t border-slate-100 text-xs">
-            <summary className="px-3 py-2 text-slate-600 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
-              ℹ️ Comment lire ces repères
-            </summary>
-            <ul className="px-3 pb-3 text-slate-600 space-y-1 list-disc list-inside">
-              <li>Chaque ligne = une durée de test sur l&apos;échantillon filtré (n coureuses).</li>
-              <li>
-                <strong>Gagn.</strong> : moyenne des coureuses avec au moins une victoire sur la saison.
-              </li>
-              <li>Les pastilles colorées facilitent la comparaison sans dépendre uniquement de la couleur du texte.</li>
-            </ul>
-          </details>
         </div>
       )}
 

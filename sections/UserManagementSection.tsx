@@ -1,6 +1,7 @@
 
 import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { AppState, TeamMembership, TeamMembershipStatus, TeamRole, User, UserRole, PermissionLevel, AppSection, Team } from '../types';
+import { AppState, TeamMembership, TeamMembershipStatus, TeamRole, User, UserRole, PermissionLevel, AppSection, Team, PermissionRole } from '../types';
+import { getRoleLabel, suggestPermissionRoleForUser } from '../utils/permissionUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import CheckCircleIcon from '../components/icons/CheckCircleIcon';
@@ -12,7 +13,7 @@ import UserPermissionsModal from '../components/UserPermissionsModal';
 import Modal from '../components/Modal';
 import ConfirmationModal from '../components/ConfirmationModal';
 
-interface UserManagementSectionProps {
+export interface UserManagementSectionProps {
     appState: AppState;
     currentTeamId: string;
     onApprove: (membership: TeamMembership) => Promise<void>;
@@ -20,9 +21,11 @@ interface UserManagementSectionProps {
     onInvite: (email: string, teamId: string, userRole?: UserRole) => Promise<void>;
     onRemove: (userId: string, teamId: string) => Promise<void>;
     onUpdateRole: (userId: string, teamId: string, newUserRole: UserRole) => Promise<void>;
-    onUpdatePermissionRole: (userId: string, newPermissionRole: TeamRole) => Promise<void>;
-    onUpdateUserCustomPermissions: (userId: string, newEffectivePermissions: Partial<Record<AppSection, PermissionLevel[]>>) => Promise<void>;
+    onUpdatePermissionRole: (userId: string, newPermissionRole: string) => Promise<void>;
+    onUpdateUserCustomPermissions: (userId: string, customDeltas: Partial<Record<AppSection, PermissionLevel[]>>) => Promise<void>;
     onTransferUser: (userId: string, fromTeamId: string, toTeamId: string) => Promise<void>;
+    /** Intégré dans Utilisateurs & accès (sans SectionWrapper). */
+    embedded?: boolean;
 }
 
 const UserManagementSection: React.FC<UserManagementSectionProps> = ({ 
@@ -35,14 +38,14 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
     onUpdateRole, 
     onUpdatePermissionRole,
     onUpdateUserCustomPermissions,
-    onTransferUser
+    onTransferUser,
+    embedded = false,
 }: UserManagementSectionProps) => {
-    const { users, teams, teamMemberships } = appState;
+    const { users, teams, teamMemberships, permissionRoles } = appState;
     
     // Protection contre les données undefined
     if (!users || !teams || !teamMemberships) {
-        return (
-            <SectionWrapper title="Gestion des Utilisateurs et des Accès">
+        const loading = (
                 <div className="text-center p-8 bg-gray-50 rounded-lg border">
                     <h3 className="text-xl font-semibold text-gray-700">Chargement...</h3>
                     <p className="mt-2 text-gray-500">Initialisation des données utilisateurs...</p>
@@ -52,6 +55,11 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                         {!teamMemberships && <div>• Adhésions en cours de chargement...</div>}
                     </div>
                 </div>
+        );
+        if (embedded) return loading;
+        return (
+            <SectionWrapper title="Gestion des Utilisateurs et des Accès">
+                {loading}
             </SectionWrapper>
         );
     }
@@ -204,8 +212,12 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
         return logs;
     };
 
-    return (
-        <SectionWrapper title="Gestion des Utilisateurs et des Accès">
+    const content = (
+            <>
+            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <p><strong>Profil métier</strong> = coureur, staff ou manager dans l&apos;équipe.</p>
+                <p className="mt-1"><strong>Niveau d&apos;accès</strong> = ce que la personne peut voir et modifier (onglet Rôles &amp; permissions).</p>
+            </div>
             <div className="space-y-8">
                 <div className="p-4 bg-white rounded-lg shadow-md border">
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">Inviter un nouveau membre</h3>
@@ -405,8 +417,8 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                 <thead className="bg-gray-100 text-gray-600">
                                     <tr>
                                         <th className="px-4 py-2">Nom</th>
-                                        <th className="px-4 py-2">Rôle Fonctionnel</th>
-                                        <th className="px-4 py-2">Rôle Permissions</th>
+                                        <th className="px-4 py-2">Profil métier</th>
+                                        <th className="px-4 py-2">Niveau d&apos;accès</th>
                                         <th className="px-4 py-2 text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -447,24 +459,24 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                         value={user.permissionRole}
                                                         onChange={async (e: ChangeEvent<HTMLSelectElement>) => {
                                                             try {
-                                                                await onUpdatePermissionRole(user.id, e.target.value as TeamRole);
+                                                                await onUpdatePermissionRole(user.id, e.target.value);
                                                             } catch (error) {
-                                                                console.error('Erreur lors de la mise à jour du rôle de permission:', error);
-                                                                alert('Erreur lors de la mise à jour du rôle de permission');
+                                                                console.error('Erreur lors de la mise à jour du niveau d\'accès:', error);
+                                                                alert('Erreur lors de la mise à jour');
                                                             }
                                                         }}
                                                         className="w-full px-2 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-xs bg-white text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                         disabled={isLastAdmin}
-                                                        title={isLastAdmin ? "Impossible de modifier le rôle du dernier administrateur." : ""}
+                                                        title={isLastAdmin ? "Impossible de modifier le dernier administrateur." : ""}
                                                     >
-                                                        {Object.values(TeamRole).map((role: TeamRole) => (
-                                                            <option key={role} value={role}>{role}</option>
+                                                        {(permissionRoles || []).map((role: PermissionRole) => (
+                                                            <option key={role.id} value={role.id}>{role.name}</option>
                                                         ))}
                                                     </select>
                                                 </td>
                                                 <td className="px-4 py-2 text-right space-x-2">
                                                     <ActionButton onClick={() => openTransferModal(user)} variant="secondary" size="sm">Transférer</ActionButton>
-                                                    <ActionButton onClick={() => setEditingPermissionsForUser(user)} variant="secondary" size="sm" icon={<KeyIcon className="w-4 h-4" />} title="Gérer les permissions individuelles" disabled={user.permissionRole === TeamRole.ADMIN}/>
+                                                    <ActionButton onClick={() => setEditingPermissionsForUser(user)} variant="secondary" size="sm" icon={<KeyIcon className="w-4 h-4" />} title="Exceptions individuelles" disabled={user.permissionRole === TeamRole.ADMIN}/>
                                                     <ActionButton 
                                                         onClick={async () => {
                                                             try {
@@ -489,78 +501,7 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                         </div>
                     )}
                 </div>
-
-                {/* Gestion avancée de l'équipe */}
-                <div className="p-4 bg-white rounded-lg shadow-md border">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Gestion Avancée de l'Équipe</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Export des données */}
-                        <div className="space-y-3">
-                            <h4 className="font-medium text-gray-700">Export et Sauvegarde</h4>
-                            <div className="space-y-2">
-                                <ActionButton 
-                                    onClick={() => exportTeamData()} 
-                                    variant="secondary" 
-                                    size="sm"
-                                    className="w-full justify-center"
-                                >
-                                    📊 Exporter les Données de l'Équipe
-                                </ActionButton>
-                                <ActionButton 
-                                    onClick={() => exportUserList()} 
-                                    variant="secondary" 
-                                    size="sm"
-                                    className="w-full justify-center"
-                                >
-                                    👥 Exporter la Liste des Utilisateurs
-                                </ActionButton>
-                            </div>
-                        </div>
-
-                        {/* Actions d'administration */}
-                        <div className="space-y-3">
-                            <h4 className="font-medium text-gray-700">Actions d'Administration</h4>
-                            <div className="space-y-2">
-                                <ActionButton 
-                                    onClick={() => bulkUpdateRoles()} 
-                                    variant="secondary" 
-                                    size="sm"
-                                    className="w-full justify-center"
-                                >
-                                    🔄 Mise à Jour en Lot des Rôles
-                                </ActionButton>
-                                <ActionButton 
-                                    onClick={() => sendTeamNotification()} 
-                                    variant="secondary" 
-                                    size="sm"
-                                    className="w-full justify-center"
-                                >
-                                    📢 Envoyer une Notification d'Équipe
-                                </ActionButton>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Logs d'activité */}
-                <div className="p-4 bg-white rounded-lg shadow-md border">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Logs d'Activité Récente</h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {getRecentActivityLogs().map((log, index: number) => (
-                            <div key={index} className="flex items-center space-x-3 p-2 bg-gray-50 rounded-md">
-                                <div className={`w-2 h-2 rounded-full ${log.type === 'success' ? 'bg-green-500' : log.type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'}`}></div>
-                                <span className="text-sm text-gray-600">{log.message}</span>
-                                <span className="text-xs text-gray-400 ml-auto">{log.timestamp}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
             </div>
-
-            {/* Composant de test des enums - TEMPORAIRE */}
-            {/* <div className="mt-6">
-                <TestEnums />
-            </div> */}
 
             {editingPermissionsForUser && (
                 <UserPermissionsModal
@@ -568,6 +509,7 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                     onClose={() => setEditingPermissionsForUser(null)}
                     user={editingPermissionsForUser}
                     basePermissions={appState.permissions}
+                    permissionRoles={permissionRoles || []}
                     onSave={onUpdateUserCustomPermissions}
                 />
             )}
@@ -611,6 +553,14 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                     }
                 />
             )}
+            </>
+    );
+
+    if (embedded) return content;
+
+    return (
+        <SectionWrapper title="Gestion des Utilisateurs et des Accès">
+            {content}
         </SectionWrapper>
     );
 };

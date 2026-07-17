@@ -25,16 +25,29 @@
   },
   "include": [
     "index.tsx",
+    "App.tsx",
+    "EventDetailView.tsx",
+    "firebaseConfig.ts",
+    "translations.ts",
+    "vite-env.d.ts",
     "sections/**/*",
     "components/**/*",
+    "services/**/*",
+    "utils/**/*",
+    "hooks/**/*",
+    "contexts/**/*",
     "types.ts",
-    "constants.ts",
-    "App.tsx"
+    "constants.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "build",
-    "vite.config.ts"
+    "vite.config.ts",
+    "**/*backup*",
+    "**/*_backup*",
+    "**/*_fixed*",
+    "**/*_clean*",
+    "**/AccommodationDebug.tsx"
   ]
 }

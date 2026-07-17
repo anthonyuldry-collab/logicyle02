@@ -17,6 +17,13 @@ import {
 } from '../utils/fatigueDurabilityUtils';
 import { ALL_TIME_STATS_SEASON } from '../utils/performanceArchiveUtils';
 import FatigueStatsPanel from './FatigueStatsPanel';
+import PowerProgressTracker from './performance/PowerProgressTracker';
+import MiniSparkline from './performance/MiniSparkline';
+import {
+  buildPowerTimelineFromRider,
+  getDropSeries,
+} from '../utils/powerProgressUtils';
+import { buildRosterGroupedRows } from '../utils/rosterRoleUtils';
 
 type DurabilityRow = (Rider | ScoutingProfile) & FatigueAnalysisSubject;
 
@@ -33,13 +40,27 @@ interface DurabilityAnalysisTableProps {
   hideScoutsOption?: boolean;
   alwaysIncludeScouts?: boolean;
   scopeLabel?: string;
+  highlightRiderId?: string;
+  /** En-tête compact */
+  compactHeader?: boolean;
+  /** Masquer filtres (pilotés par le parent) */
+  hideControls?: boolean;
+  /** Scinder le tableau en sections Équipe 1 / Réserve */
+  groupByRosterRole?: boolean;
+  controlledFilters?: {
+    genderFilter: 'all' | Sex;
+    categoryFilter: string;
+    levelFilter: string;
+    includeScouts: boolean;
+    kjFilter?: 'all' | '15kj' | '30kj' | '45kj';
+  };
 }
 
 const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
   riders,
   scoutingProfiles = [],
   title = 'Indicateurs de Durabilité',
-  subtitle = 'Pourcentages de perte de puissance (W/kg) entre le profil frais et après 15, 30 et 45 kJ/kg',
+  subtitle = 'Pourcentages de perte de puissance (W/kg) entre le profil frais et après 15, 30 et 45 kJ/kg. Cliquez un athlète pour le suivi des progrès.',
   season,
   winnerRiderIds = new Set(),
   removedRiderIds,
@@ -48,23 +69,61 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
   hideScoutsOption = false,
   alwaysIncludeScouts = false,
   scopeLabel,
+  highlightRiderId,
+  compactHeader = false,
+  hideControls = false,
+  groupByRosterRole = true,
+  controlledFilters,
 }) => {
-  const [genderFilter, setGenderFilter] = useState<'all' | Sex>('all');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
-  const [levelFilter, setLevelFilter] = useState<'all' | string>('all');
-  const [kjFilter, setKjFilter] = useState<'all' | '15kj' | '30kj' | '45kj'>('all');
+  const [localGenderFilter, setLocalGenderFilter] = useState<'all' | Sex>('all');
+  const [localCategoryFilter, setLocalCategoryFilter] = useState<'all' | string>('all');
+  const [localLevelFilter, setLocalLevelFilter] = useState<'all' | string>('all');
+  const [localKjFilter, setLocalKjFilter] = useState<'all' | '15kj' | '30kj' | '45kj'>('all');
   const [durationFilter, setDurationFilter] = useState<string[]>(POWER_DURATIONS.map(d => d.key));
   const [sortColumn, setSortColumn] = useState('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showPriorities, setShowPriorities] = useState(true);
   const [showPotentialsOnly, setShowPotentialsOnly] = useState(false);
-  const [includeScouts, setIncludeScouts] = useState(
+  const [localIncludeScouts, setLocalIncludeScouts] = useState(
     alwaysIncludeScouts || defaultIncludeScouts
   );
+  const [progressRiderId, setProgressRiderId] = useState<string | null>(
+    highlightRiderId || null
+  );
+
+  const genderFilter = controlledFilters?.genderFilter ?? localGenderFilter;
+  const setGenderFilter = (v: 'all' | Sex) => {
+    if (!controlledFilters) setLocalGenderFilter(v);
+  };
+  const categoryFilter = controlledFilters?.categoryFilter ?? localCategoryFilter;
+  const setCategoryFilter = (v: string) => {
+    if (!controlledFilters) setLocalCategoryFilter(v);
+  };
+  const levelFilter = controlledFilters?.levelFilter ?? localLevelFilter;
+  const setLevelFilter = (v: string) => {
+    if (!controlledFilters) setLocalLevelFilter(v);
+  };
+  const includeScouts = controlledFilters?.includeScouts ?? localIncludeScouts;
+  const setIncludeScouts = (v: boolean) => {
+    if (!controlledFilters) setLocalIncludeScouts(v);
+  };
+  const kjFilter = controlledFilters?.kjFilter ?? localKjFilter;
+  const setKjFilter = (v: 'all' | '15kj' | '30kj' | '45kj') => {
+    if (!controlledFilters?.kjFilter) setLocalKjFilter(v);
+  };
 
   useEffect(() => {
-    if (alwaysIncludeScouts) setIncludeScouts(true);
-  }, [alwaysIncludeScouts]);
+    if (alwaysIncludeScouts && !controlledFilters) setLocalIncludeScouts(true);
+  }, [alwaysIncludeScouts, controlledFilters]);
+
+  useEffect(() => {
+    if (highlightRiderId) setProgressRiderId(highlightRiderId);
+  }, [highlightRiderId]);
+
+  const progressRider = useMemo(
+    () => riders.find((r) => r.id === progressRiderId) ?? null,
+    [riders, progressRiderId]
+  );
 
   const isAllTime = season === ALL_TIME_STATS_SEASON;
 
@@ -167,6 +226,13 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
     potentialIds,
   ]);
 
+  const tableRows = useMemo(() => {
+    if (!groupByRosterRole) {
+      return filteredData.map((item) => ({ kind: 'item' as const, item }));
+    }
+    return buildRosterGroupedRows(filteredData);
+  }, [filteredData, groupByRosterRole]);
+
   const visibleDurations = POWER_DURATIONS.filter(d => durationFilter.includes(d.key));
 
   const handleSort = (durationKey: string) => {
@@ -190,15 +256,57 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
-        <h2 className="text-xl font-bold mb-1">{title}</h2>
-        <p className="text-sm text-indigo-100">{subtitle}</p>
-      </div>
+    <div className={`bg-white overflow-hidden ${compactHeader ? 'rounded-xl border border-gray-200 shadow-sm' : 'rounded-lg shadow-lg'}`}>
+      {hideControls ? (
+        <div className="px-3 py-1.5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-white">
+          <span className="text-[11px] text-gray-500">
+            Pertes % · {kjFilter === 'all' ? '15 / 30 / 45 kJ' : kjFilter.replace('kj', ' kJ/kg')}
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={kjFilter}
+              onChange={(e) => setKjFilter(e.target.value as typeof kjFilter)}
+              className="px-1.5 py-0.5 border border-gray-200 rounded text-[11px]"
+            >
+              <option value="all">Tous kJ</option>
+              <option value="15kj">15 kJ</option>
+              <option value="30kj">30 kJ</option>
+              <option value="45kj">45 kJ</option>
+            </select>
+            <label className="inline-flex items-center gap-1 text-[11px] text-gray-600">
+              <input
+                type="checkbox"
+                checked={showPotentialsOnly}
+                onChange={(e) => setShowPotentialsOnly(e.target.checked)}
+                className="rounded border-gray-300 h-3 w-3"
+              />
+              Potentiels
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowPriorities(!showPriorities)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                showPriorities ? 'bg-rose-600 text-white' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              Priorités
+            </button>
+            <span className="text-[11px] text-gray-400 tabular-nums">{filteredData.length}</span>
+          </div>
+        </div>
+      ) : (
+        <div className={compactHeader
+          ? 'bg-white border-b border-gray-200 p-3'
+          : 'bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white'
+        }>
+          <h2 className={`font-bold mb-1 ${compactHeader ? 'text-sm text-gray-900' : 'text-xl'}`}>{title}</h2>
+          <p className={`text-sm ${compactHeader ? 'text-gray-500' : 'text-indigo-100'}`}>{subtitle}</p>
+        </div>
+      )}
 
       {showBenchmarkPanel && season && fatigueReport && (
         <div className="bg-indigo-50/80 border-b border-indigo-100 px-3 py-3 sm:px-4">
-          {scopeLabel && (
+          {scopeLabel && !hideControls && (
             <div className="mb-3 px-3 py-2 bg-slate-800 text-white text-xs font-medium rounded-lg flex flex-wrap gap-2">
               <span>Portée : {scopeLabel}</span>
               {alwaysIncludeScouts && (
@@ -217,6 +325,7 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
         </div>
       )}
 
+      {!hideControls && (
       <div className="bg-gray-50 p-4 border-b border-gray-200">
         <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-gray-200">
           {alwaysIncludeScouts ? (
@@ -363,6 +472,7 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="min-w-full">
@@ -433,38 +543,109 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
                     : 'Aucun profil ne correspond aux filtres sélectionnés.'}
                 </td>
               </tr>
-            ) : filteredData.map(item => {
+            ) : tableRows.map(row => {
+              if (row.kind === 'header') {
+                const bg =
+                  row.accent === 'blue'
+                    ? 'bg-blue-50 text-blue-800'
+                    : row.accent === 'amber'
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'bg-emerald-50 text-emerald-800';
+                return (
+                  <tr key={row.key}>
+                    <td colSpan={99} className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wide ${bg}`}>
+                      {row.label}
+                      <span className="ml-2 font-semibold normal-case tracking-normal opacity-80">
+                        · {row.count}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              }
+              const item = row.item;
               const durability = getFatigueDropPercentages(item);
               const scout = isScoutRow(item);
               const isWinner = !scout && winnerRiderIds.has(item.id);
               const isRemoved = !scout && removedRiderIds?.has(item.id);
               const hasPotential = potentialIds.has(item.id);
+              const isHighlighted = !scout && highlightRiderId === item.id;
 
               return (
                 <tr
                   key={scout ? `scout-${item.id}` : item.id}
-                  className={`hover:bg-gray-50 ${hasPotential ? 'bg-green-50/40' : ''} ${scout ? 'bg-green-50/20' : ''}`}
+                  className={`hover:bg-gray-50 ${isHighlighted ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : ''} ${hasPotential ? 'bg-green-50/40' : ''} ${scout ? 'bg-green-50/20' : ''}`}
                 >
                   <td className="sticky left-0 bg-white px-4 py-3 z-10">
-                    <div className="text-sm font-medium text-gray-900">
-                      {item.firstName} {item.lastName}
-                      {scout && (
-                        <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                          Scout
-                        </span>
-                      )}
-                      {isRemoved && (
-                        <span className="ml-1 text-xs text-amber-700">(archivée)</span>
-                      )}
-                      {hasPotential && (
-                        <span className="ml-1 text-xs text-green-700 font-semibold">★ potentiel</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {getAgeCategory(item.birthDate).category}
-                      {scout && 'potentialRating' in item && item.potentialRating != null && (
-                        <span className="ml-1">· Potentiel {item.potentialRating}/5</span>
-                      )}
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          disabled={scout}
+                          onClick={() =>
+                            setProgressRiderId((prev) =>
+                              prev === item.id ? null : item.id
+                            )
+                          }
+                          className={`text-left text-sm font-medium ${
+                            scout
+                              ? 'text-gray-900 cursor-default'
+                              : 'text-indigo-700 hover:text-indigo-900 hover:underline'
+                          }`}
+                          title={
+                            scout
+                              ? undefined
+                              : 'Voir le suivi des progrès'
+                          }
+                        >
+                          {item.firstName} {item.lastName}
+                          {scout && (
+                            <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              Scout
+                            </span>
+                          )}
+                          {!scout && (
+                            <span
+                              className={`ml-1 inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                (item as Rider).rosterRole === 'reserve'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-blue-50 text-blue-800 border-blue-200'
+                              }`}
+                            >
+                              {(item as Rider).rosterRole === 'reserve' ? 'Réserve' : 'Équipe 1'}
+                            </span>
+                          )}
+                          {isRemoved && (
+                            <span className="ml-1 text-xs text-amber-700">(archivée)</span>
+                          )}
+                          {hasPotential && (
+                            <span className="ml-1 text-xs text-green-700 font-semibold">★ potentiel</span>
+                          )}
+                        </button>
+                        <div className="text-xs text-gray-500">
+                          {getAgeCategory(item.birthDate).category}
+                          {scout && 'potentialRating' in item && item.potentialRating != null && (
+                            <span className="ml-1">· Potentiel {item.potentialRating}/5</span>
+                          )}
+                          {!scout && progressRiderId === item.id && (
+                            <span className="ml-1 text-indigo-600 font-medium">· progrès</span>
+                          )}
+                        </div>
+                      </div>
+                      {!scout && (() => {
+                        const rider = item as Rider;
+                        const timeline = buildPowerTimelineFromRider(rider);
+                        const series = getDropSeries(timeline, 'powerProfile30KJ', 'power5min');
+                        if (series.length < 2) return null;
+                        return (
+                          <MiniSparkline
+                            values={series.map((p) => p.value)}
+                            width={56}
+                            height={22}
+                            invertColors
+                            ariaLabel={`Évolution pertes 5min @30kJ de ${rider.firstName}`}
+                          />
+                        );
+                      })()}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center text-xs">
@@ -542,6 +723,29 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
         </table>
       </div>
 
+      {progressRider && (
+        <div className="border-t border-indigo-100 bg-indigo-50/40 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold text-indigo-900">
+              Progrès — {progressRider.firstName} {progressRider.lastName}
+            </p>
+            <button
+              type="button"
+              onClick={() => setProgressRiderId(null)}
+              className="text-xs font-medium text-indigo-700 hover:text-indigo-900"
+            >
+              Fermer
+            </button>
+          </div>
+          <PowerProgressTracker
+            rider={progressRider}
+            theme="light"
+            compact
+            title="Suivi longitudinal (puissance & pertes)"
+          />
+        </div>
+      )}
+
       <div className="bg-gray-50 p-4 border-t text-xs text-gray-600 flex flex-wrap gap-4">
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 bg-yellow-400 rounded" /> Δ ≥ -10%
@@ -554,6 +758,9 @@ const DurabilityAnalysisTable: React.FC<DurabilityAnalysisTableProps> = ({
         </span>
         <span className="flex items-center gap-1">
           <span className="ring-1 ring-green-400 rounded px-1">↑ ref.</span> Meilleure que réf. gagnantes
+        </span>
+        <span className="flex items-center gap-1 text-indigo-700">
+          Cliquez un nom pour le suivi des progrès (sparklines / deltas / 2 dates)
         </span>
       </div>
     </div>

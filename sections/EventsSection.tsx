@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { RaceEvent, EventTransportLeg, RiderEventSelection, RiderEventStatus, Rider, StaffMember, TransportStop, MealDay, TeamLevel, Discipline, EventType, TransportDirection, EventBudgetItem, BudgetItemCategory, User, TeamRole, EventRaceDocument, DocumentStatus, StaffRole } from '../types';
 import { emptyRaceInformation, EVENT_TYPE_COLORS, ELIGIBLE_CATEGORIES_CONFIG } from '../constants'; 
 import SectionWrapper from '../components/SectionWrapper';
@@ -14,8 +14,23 @@ import CakeIcon from '../components/icons/CakeIcon'; // Added for birthday indic
 import { useTranslations } from '../hooks/useTranslations';
 import { jsPDF } from 'jspdf';
 import { getAvailableYears, filterEventsByYear, formatEventDate, formatEventDateRange, isPlanningYear } from '../utils/dateUtils';
+import { getOrganizerDossierYear } from '../constants/demoOrganizerContacts';
 import { getCurrentSeasonYear, getPlanningYears, getSeasonLabel, getSeasonTransitionStatus } from '../utils/seasonUtils';
 import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
+import { ensureUciDocumentsForEvent, isUciCategoryEvent } from '../utils/uciFormsWorkflow';
+import OrganizerContactsPanel from '../components/OrganizerContactsPanel';
+import { OrganizerContact, RaceEventOrganizerContact } from '../types';
+import { getProjectionsForCalendarDay } from '../components/CalendarProjectionPanel';
+import { getApplicationStatus, organizerContactToEventFields } from '../utils/organizerContactUtils';
+import { canViewOrganizerApplicationDossier } from '../utils/staffRoleDataAccess';
+import { getStaffMemberForUser } from '../utils/staffMemberUtils';
+import {
+  EVENT_TYPE_FORM_OPTIONS,
+  isCompetitiveEvent,
+  isTrainingCamp,
+  isTrainingSession,
+  normalizeEventType,
+} from '../utils/trainingCampUtils';
 
 interface EventsSectionProps {
   raceEvents: RaceEvent[];
@@ -23,13 +38,17 @@ interface EventsSectionProps {
   setEventDocuments: React.Dispatch<React.SetStateAction<EventRaceDocument[]>>;
   navigateToEventDetail: (eventId: string) => void;
   eventTransportLegs: EventTransportLeg[];
-  riderEventSelections: RiderEventSelection[]; // Added for filtering
+  riderEventSelections: RiderEventSelection[];
   deleteRaceEvent: (eventId: string) => void;
-  // Added for birthday indicators
   riders: Rider[];
   staff: StaffMember[];
   teamLevel?: TeamLevel;
   currentUser: User;
+  teamName?: string;
+  organizerContacts?: OrganizerContact[];
+  onSaveOrganizerContact?: (contact: OrganizerContact) => void | Promise<void>;
+  onSyncOrganizerContactsFromEvents?: () => void | Promise<void>;
+  onLoadDemoOrganizerExamples?: () => void | Promise<void>;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -43,6 +62,7 @@ const initialEventFormState: Omit<RaceEvent, 'id' | 'raceInfo' | 'operationalLog
   discipline: Discipline.ROUTE,
   minRiders: undefined,
   maxRiders: undefined,
+  organizerContact: undefined,
 };
 
 // Helper to check for transport legs
@@ -137,6 +157,11 @@ export const EventsSection = ({
     staff,
     teamLevel,
     currentUser,
+    teamName = 'Équipe',
+    organizerContacts = [],
+    onSaveOrganizerContact,
+    onSyncOrganizerContactsFromEvents,
+    onLoadDemoOrganizerExamples,
 }: EventsSectionProps): JSX.Element => {
   // Protection minimale - seulement raceEvents est requis
   if (!raceEvents) {
@@ -165,6 +190,29 @@ export const EventsSection = ({
   const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'location' | 'eventType' | 'discipline' | 'eligibleCategory'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [yearFilter, setYearFilter] = useState<number | 'all'>('all');
+  const [calendarTab, setCalendarTab] = useState<'calendar' | 'organizers'>('calendar');
+  const [savedContactPick, setSavedContactPick] = useState('');
+  const [showProjections, setShowProjections] = useState(false);
+
+  const staffMemberForAccess = useMemo(
+    () => getStaffMemberForUser(currentUser, staff),
+    [currentUser, staff],
+  );
+  const canViewOrganizerDossier = useMemo(
+    () => canViewOrganizerApplicationDossier(currentUser, staffMemberForAccess),
+    [currentUser, staffMemberForAccess],
+  );
+
+  useEffect(() => {
+    if (!canViewOrganizerDossier && calendarTab === 'organizers') {
+      setCalendarTab('calendar');
+    }
+    if (!canViewOrganizerDossier && showProjections) {
+      setShowProjections(false);
+    }
+  }, [canViewOrganizerDossier, calendarTab, showProjections]);
+
+  const projectionYear = getOrganizerDossierYear();
 
   // NOTE: Filtering by team level has been removed as per last valid user request to simplify event creation
   const filteredRaceEvents = raceEvents;
@@ -200,6 +248,18 @@ export const EventsSection = ({
     });
     return grouped;
   }, [filteredRaceEvents]);
+
+  const projectionEntriesByMonth = useMemo(() => {
+    const map = new Map<number, OrganizerContact[]>();
+    for (const contact of organizerContacts) {
+      const month = contact.typicalMonth;
+      if (!month) continue;
+      const list = map.get(month - 1) || [];
+      list.push(contact);
+      map.set(month - 1, list);
+    }
+    return map;
+  }, [organizerContacts]);
 
   // Fonction de tri pour les événements
   const sortEvents = (events: RaceEvent[], column: string, direction: 'asc' | 'desc') => {
@@ -262,17 +322,57 @@ export const EventsSection = ({
   const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
-    // Gestion spéciale pour les champs numériques
     if (name === 'minRiders' || name === 'maxRiders') {
       const numValue = value === '' ? undefined : parseInt(value);
       setCurrentEventForModal(prev => ({ ...prev, [name]: numValue }));
+    } else if (name === 'eventType') {
+      const nextType = normalizeEventType(value as EventType);
+      setCurrentEventForModal(prev => ({
+        ...prev,
+        eventType: nextType,
+        // Contact organisateur utile surtout pour les courses
+        ...(nextType === EventType.STAGE || nextType === EventType.ENTRAINEMENT
+          ? {}
+          : {}),
+      }));
     } else {
       setCurrentEventForModal(prev => ({ ...prev, [name]: name === 'endDate' && value === '' ? undefined : value }));
     }
   };
 
+  const handleOrganizerInputChange = (field: keyof RaceEventOrganizerContact, value: string) => {
+    setCurrentEventForModal((prev) => ({
+      ...prev,
+      organizerContact: {
+        ...(prev.organizerContact || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handlePickSavedOrganizer = (contactId: string) => {
+    setSavedContactPick(contactId);
+    if (!contactId) return;
+    const picked = organizerContacts.find((c) => c.id === contactId);
+    if (!picked) return;
+    setCurrentEventForModal((prev) => ({
+      ...prev,
+      name: prev.name || picked.eventName,
+      location: prev.location || picked.location || prev.location,
+      eligibleCategory: prev.eligibleCategory || picked.category || prev.eligibleCategory,
+      organizerContact: organizerContactToEventFields(picked),
+    }));
+  };
+
+  const signerName = currentUser
+    ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim()
+    : undefined;
+
   const handleEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const eventType = normalizeEventType(currentEventForModal.eventType);
+    const showOrganizer = isCompetitiveEvent({ eventType });
+    const organizerContact = showOrganizer ? currentEventForModal.organizerContact : undefined;
     
     if (isEditingModal && editingEventId) {
         const updatedEvent: RaceEvent = {
@@ -281,11 +381,12 @@ export const EventsSection = ({
             date: currentEventForModal.date,
             endDate: currentEventForModal.endDate || currentEventForModal.date, 
             location: currentEventForModal.location,
-            eventType: currentEventForModal.eventType,
+            eventType,
             eligibleCategory: currentEventForModal.eligibleCategory,
             discipline: currentEventForModal.discipline,
             minRiders: currentEventForModal.minRiders,
             maxRiders: currentEventForModal.maxRiders,
+            organizerContact,
         };
         await setRaceEvents(updatedEvent);
         navigateToEventDetail(editingEventId);
@@ -295,11 +396,12 @@ export const EventsSection = ({
             date: currentEventForModal.date,
             endDate: currentEventForModal.endDate || currentEventForModal.date,
             location: currentEventForModal.location,
-            eventType: currentEventForModal.eventType,
+            eventType,
             eligibleCategory: currentEventForModal.eligibleCategory,
             discipline: currentEventForModal.discipline,
             minRiders: currentEventForModal.minRiders,
             maxRiders: currentEventForModal.maxRiders,
+            organizerContact,
             id: generateId(),
             raceInfo: { ...emptyRaceInformation },
             operationalLogistics: [],
@@ -349,7 +451,10 @@ export const EventsSection = ({
         doc.text('[À compléter]', 60, 40);
 
         doc.text('Contacts Organisation:', 20, 50);
-        doc.text('[À compléter]', 65, 50);
+        const orgLine = newEvent.organizerContact?.contactEmail
+          ? `${newEvent.organizerContact.organizingEntity || ''} — ${newEvent.organizerContact.contactName || ''} — ${newEvent.organizerContact.contactEmail}`
+          : '[À compléter]';
+        doc.text(orgLine.slice(0, 80), 25, 57);
 
         doc.text('Véhicules:', 20, 60);
         doc.text('[Liste des véhicules et chauffeurs à compléter]', 25, 67);
@@ -435,12 +540,17 @@ export const EventsSection = ({
             notes: 'Généré automatiquement à la création de l\'événement.',
         };
 
-        setEventDocuments(prevDocs => [...prevDocs, newRoadbookDocument, newLicensesDocument]);
+        const autoDocuments: EventRaceDocument[] = [newRoadbookDocument, newLicensesDocument];
+        if (isUciCategoryEvent(newEvent, teamLevel)) {
+          autoDocuments.push(...ensureUciDocumentsForEvent(newEvent, [], teamLevel));
+        }
+        setEventDocuments(prevDocs => [...prevDocs, ...autoDocuments]);
 
         navigateToEventDetail(newEvent.id);
     }
     setIsModalOpen(false);
     setCurrentEventForModal({ ...initialEventFormState, eligibleCategory: '', discipline: Discipline.ROUTE });
+    setSavedContactPick('');
     setIsEditingModal(false);
     setEditingEventId(null);
   };
@@ -453,6 +563,7 @@ export const EventsSection = ({
         eligibleCategory: '',
         discipline: Discipline.ROUTE,
     });
+    setSavedContactPick('');
     setIsEditingModal(false);
     setEditingEventId(null);
     setIsModalOpen(true);
@@ -469,7 +580,9 @@ export const EventsSection = ({
         discipline: event.discipline,
         minRiders: event.minRiders,
         maxRiders: event.maxRiders,
+        organizerContact: event.organizerContact,
     });
+    setSavedContactPick('');
     setIsEditingModal(true);
     setEditingEventId(event.id);
     setIsModalOpen(true);
@@ -542,6 +655,10 @@ export const EventsSection = ({
           
           const eventsForDay = getEventDisplayInfoForDay(currentDate, filteredRaceEvents, eventTransportLegs);
           const birthdaysForDay = [...riders, ...staff].filter(p => p.birthDate && p.birthDate.substring(5) === currentDateStr.substring(5));
+          const projectionsForDay =
+            showProjections && year === projectionYear
+              ? getProjectionsForCalendarDay(organizerContacts, projectionYear, currentDateStr)
+              : [];
 
           return (
             <div
@@ -572,6 +689,26 @@ export const EventsSection = ({
                     <CakeIcon className="w-3 h-3 mr-1"/> {person.firstName} {person.lastName}
                   </div>
                 ))}
+                {projectionsForDay.map((contact) => {
+                  const status = getApplicationStatus(contact, projectionYear);
+                  const statusClass =
+                    status === 'accepted'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : status === 'sent'
+                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                        : status === 'declined'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : 'bg-slate-50 text-slate-600 border-slate-200';
+                  return (
+                    <div
+                      key={`proj-${contact.id}`}
+                      className={`p-1 rounded text-[10px] border border-dashed ${statusClass}`}
+                      title={t('organizerProjectionCalendarHint')}
+                    >
+                      ≈ {contact.eventName}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -589,14 +726,23 @@ export const EventsSection = ({
     ];
     
     const yearEvents = eventsByYear[currentYear] || {};
+    const showYearProjections = showProjections && currentYear === projectionYear;
     
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {months.map((monthName, monthIndex) => {
           const monthEvents = yearEvents[monthIndex] || [];
+          const monthProjections = showYearProjections ? (projectionEntriesByMonth.get(monthIndex) || []) : [];
           return (
             <div key={monthIndex} className="bg-white p-4 rounded-lg border shadow-sm">
-              <h4 className="text-lg font-semibold text-gray-800 mb-3">{monthName} {currentYear}</h4>
+              <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center justify-between">
+                <span>{monthName} {currentYear}</span>
+                {monthProjections.length > 0 && (
+                  <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                    +{monthProjections.length} {t('organizerProjectionShort')}
+                  </span>
+                )}
+              </h4>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {monthEvents.length > 0 ? (
                   monthEvents.map(event => (
@@ -616,9 +762,26 @@ export const EventsSection = ({
                       <p className="text-xs text-gray-500">{event.discipline}</p>
                     </div>
                   ))
-                ) : (
+                ) : monthProjections.length === 0 ? (
                   <p className="text-gray-500 text-sm italic">Aucun événement</p>
-                )}
+                ) : null}
+                {showYearProjections && monthProjections.map((contact) => {
+                  const status = getApplicationStatus(contact, projectionYear);
+                  return (
+                    <div
+                      key={`proj-y-${contact.id}`}
+                      className="p-2 rounded border border-dashed text-sm bg-indigo-50/50 border-indigo-200"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-medium text-indigo-900 text-xs truncate">≈ {contact.eventName}</span>
+                        <span className="text-[10px] text-indigo-600">{status}</span>
+                      </div>
+                      {contact.category && (
+                        <p className="text-xs text-indigo-700">{contact.category}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -781,15 +944,59 @@ export const EventsSection = ({
       title="Gestion des Événements"
       actionButton={<ActionButton onClick={() => openAddModal()} icon={<PlusCircleIcon className="w-5 h-5"/>}>Ajouter Événement</ActionButton>}
     >
+      <div className="flex gap-2 mb-6 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setCalendarTab('calendar')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            calendarTab === 'calendar'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('eventsTabCalendar')}
+        </button>
+        {canViewOrganizerDossier && (
+        <button
+          type="button"
+          onClick={() => setCalendarTab('organizers')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            calendarTab === 'organizers'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('eventsTabOrganizers')}
+          {organizerContacts.length > 0 && (
+            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
+              {organizerContacts.length}
+            </span>
+          )}
+        </button>
+        )}
+      </div>
+
+      {canViewOrganizerDossier && calendarTab === 'organizers' ? (
+        <OrganizerContactsPanel
+          contacts={organizerContacts}
+          teamName={teamName}
+          signerName={signerName}
+          teamLevel={teamLevel}
+          onUpdateContact={onSaveOrganizerContact}
+          onSyncFromCalendar={onSyncOrganizerContactsFromEvents}
+          onLoadDemoExamples={onLoadDemoOrganizerExamples}
+        />
+      ) : (
+      <>
       {/* Calendrier des événements */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
         <div className="flex items-center space-x-2">
           {viewMode === 'monthly' && (
             <>
-              <ActionButton onClick={() => setDisplayDate(new Date(year, month - 1, 1))} variant="secondary" size="sm" icon={<ChevronLeftIcon className="w-4 h-4"/>} />
-              <ActionButton onClick={() => setDisplayDate(new Date(year, month + 1, 1))} variant="secondary" size="sm" icon={<ChevronRightIcon className="w-4 h-4"/>} />
+              <ActionButton onClick={() => setDisplayDate(new Date(year, month - 1, 1))} variant="secondary" size="sm" icon={<ChevronLeftIcon className="w-4 h-4 text-slate-100"/>} />
+              <ActionButton onClick={() => setDisplayDate(new Date(year, month + 1, 1))} variant="secondary" size="sm" icon={<ChevronRightIcon className="w-4 h-4 text-slate-100"/>} />
               <div className="flex items-center space-x-2">
-                <h3 className="text-xl font-semibold text-gray-800 w-48 text-center">
+                <h3 className="text-xl font-semibold text-white w-48 text-center">
                   {displayDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                 </h3>
                 <SeasonTransitionIndicator 
@@ -822,12 +1029,34 @@ export const EventsSection = ({
         </div>
         <div className="flex flex-col sm:flex-row gap-3 mt-2 sm:mt-0">
           <div className="flex items-center space-x-2">
-            <input type="checkbox" id="show-all-events" checked={showAllEvents} onChange={(e) => setShowAllEvents(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-            <label htmlFor="show-all-events" className="text-sm text-gray-600">Afficher toutes les courses</label>
+            <input type="checkbox" id="show-all-events" checked={showAllEvents} onChange={(e) => setShowAllEvents(e.target.checked)} className="h-4 w-4 text-indigo-500 border-white/30 rounded bg-white/10 focus:ring-indigo-500" />
+            <label htmlFor="show-all-events" className="text-sm text-slate-300">Afficher toutes les courses</label>
           </div>
+          {canViewOrganizerDossier && (
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="show-projections"
+              checked={showProjections}
+              onChange={(e) => {
+                setShowProjections(e.target.checked);
+                if (e.target.checked && viewMode === 'monthly') {
+                  setDisplayDate(new Date(projectionYear, 0, 1));
+                }
+                if (e.target.checked && viewMode === 'yearly') {
+                  setCurrentYear(projectionYear);
+                }
+              }}
+              className="h-4 w-4 text-indigo-500 border-white/30 rounded bg-white/10 focus:ring-indigo-500"
+            />
+            <label htmlFor="show-projections" className="text-sm text-slate-300">
+              {t('organizerProjectionToggle').replace('{year}', String(projectionYear))}
+            </label>
+          </div>
+          )}
           {viewMode === 'table' && (
             <div className="flex items-center space-x-2">
-              <label htmlFor="year-filter" className="text-sm text-gray-600">Année :</label>
+              <label htmlFor="year-filter" className="text-sm text-slate-300">Année :</label>
               <select
                 id="year-filter"
                 value={yearFilter}
@@ -869,33 +1098,33 @@ export const EventsSection = ({
               </button>
             </div>
           )}
-          <div className="flex gap-1">
+          <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
             <button
               onClick={() => setViewMode('monthly')}
-              className={`px-3 py-1 text-sm rounded ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 viewMode === 'monthly'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               Mensuel
             </button>
             <button
               onClick={() => setViewMode('yearly')}
-              className={`px-3 py-1 text-sm rounded ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 viewMode === 'yearly'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               Annuel
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1 text-sm rounded ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 viewMode === 'table'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               Tableau
@@ -910,29 +1139,66 @@ export const EventsSection = ({
       
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditingModal ? "Modifier Événement" : "Nouvel Événement"}>
         <form onSubmit={handleEventSubmit} className="space-y-4">
+          {(() => {
+            const modalType = normalizeEventType(currentEventForModal.eventType);
+            const isCamp = isTrainingCamp({ eventType: modalType });
+            const isSession = isTrainingSession({ eventType: modalType });
+            const isRace = isCompetitiveEvent({ eventType: modalType });
+            return (
+              <>
+          <div className={`rounded-xl px-3 py-2.5 text-sm font-medium border ${
+            isCamp
+              ? 'bg-amber-950 text-amber-100 border-amber-500/40'
+              : isSession
+                ? 'bg-emerald-950 text-emerald-100 border-emerald-500/40'
+                : 'bg-indigo-950 text-indigo-100 border-indigo-400/40'
+          }`}>
+            {isCamp
+              ? 'Stage / camp — logistique séjour, suivi wellness, sans contact organisateur de course.'
+              : isSession
+                ? 'Entraînement — session courte, champs course masqués.'
+                : 'Compétition / course — catégorie UCI, contact organisateur pour les demandes N+1.'}
+          </div>
+
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nom de l'événement</label>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              {isCamp ? 'Nom du stage' : isSession ? "Nom de l'entraînement" : "Nom de la compétition"}
+            </label>
             <input type="text" name="name" id="name" value={currentEventForModal.name} onChange={handleModalInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900 placeholder-gray-500"/>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date de début</label>
+              <label htmlFor="date" className="block text-sm font-medium text-gray-700">
+                {isCamp ? 'Date de début' : 'Date de début'}
+              </label>
               <input type="date" name="date" id="date" value={currentEventForModal.date} onChange={handleModalInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"/>
             </div>
             <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">Date de fin (si étape)</label>
+              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
+                {isCamp ? 'Date de fin' : isSession ? 'Date de fin (optionnel)' : 'Date de fin (si course à étapes)'}
+              </label>
               <input type="date" name="endDate" id="endDate" value={currentEventForModal.endDate || ''} onChange={handleModalInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"/>
             </div>
           </div>
           <div>
-            <label htmlFor="location" className="block text-sm font-medium text-gray-700">Lieu</label>
+            <label htmlFor="location" className="block text-sm font-medium text-gray-700">
+              {isCamp ? 'Lieu / base du stage' : 'Lieu'}
+            </label>
             <input type="text" name="location" id="location" value={currentEventForModal.location} onChange={handleModalInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"/>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="eventType" className="block text-sm font-medium text-gray-700">Type</label>
-              <select name="eventType" id="eventType" value={currentEventForModal.eventType} onChange={handleModalInputChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white text-gray-900">
-                {Object.values(EventType).map(type => <option key={type} value={type}>{type}</option>)}
+              <select
+                name="eventType"
+                id="eventType"
+                value={modalType}
+                onChange={handleModalInputChange}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white text-gray-900"
+              >
+                {EVENT_TYPE_FORM_OPTIONS.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -943,22 +1209,95 @@ export const EventsSection = ({
             </div>
           </div>
           <div>
-            <label htmlFor="eligibleCategory" className="block text-sm font-medium text-gray-700">Catégorie de l'épreuve</label>
+            <label htmlFor="eligibleCategory" className="block text-sm font-medium text-gray-700">
+              {isCamp || isSession ? 'Public / catégorie concernée' : "Catégorie de l'épreuve"}
+            </label>
             <input 
               type="text" 
               name="eligibleCategory" 
               id="eligibleCategory" 
               value={currentEventForModal.eligibleCategory} 
               onChange={handleModalInputChange} 
-              required 
+              required={isRace}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900 placeholder-gray-500"
-              placeholder="Ex: Elite Nationale, UCI 1.1, etc."
+              placeholder={
+                isCamp || isSession
+                  ? 'Ex: Effectif pro, Espoirs…'
+                  : 'Ex: Elite Nationale, UCI 1.1, etc.'
+              }
             />
           </div>
+
+          {isRace && (
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-1">{t('organizerSectionTitle')}</h3>
+            <p className="text-xs text-gray-500 mb-4">{t('organizerSectionHelp')}</p>
+            {organizerContacts.length > 0 && (
+              <div className="mb-4">
+                <label htmlFor="pickOrganizer" className="block text-sm font-medium text-gray-700">{t('organizerPickSaved')}</label>
+                <select
+                  id="pickOrganizer"
+                  value={savedContactPick}
+                  onChange={(e) => handlePickSavedOrganizer(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm bg-white text-gray-900"
+                >
+                  <option value="">{t('organizerPickPlaceholder')}</option>
+                  {organizerContacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.eventName} — {c.contactEmail}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">{t('organizerEntity')}</label>
+                <input
+                  type="text"
+                  value={currentEventForModal.organizerContact?.organizingEntity || ''}
+                  onChange={(e) => handleOrganizerInputChange('organizingEntity', e.target.value)}
+                  placeholder="Ex: Tour du Limousin Organisation"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm bg-white text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactName')}</label>
+                <input
+                  type="text"
+                  value={currentEventForModal.organizerContact?.contactName || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactName', e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm bg-white text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactEmail')}</label>
+                <input
+                  type="email"
+                  value={currentEventForModal.organizerContact?.contactEmail || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactEmail', e.target.value)}
+                  placeholder="contact@organisation.fr"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm bg-white text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('organizerContactPhone')}</label>
+                <input
+                  type="tel"
+                  value={currentEventForModal.organizerContact?.contactPhone || ''}
+                  onChange={(e) => handleOrganizerInputChange('contactPhone', e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm bg-white text-gray-900"
+                />
+              </div>
+            </div>
+          </div>
+          )}
           
           {/* Section Limites de sélection */}
           <div className="border-t border-gray-200 pt-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Limites de sélection des athlètes</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {isCamp ? 'Effectif du stage' : 'Limites de sélection des athlètes'}
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="minRiders" className="block text-sm font-medium text-gray-700">Nombre minimum d'athlètes</label>
@@ -967,13 +1306,12 @@ export const EventsSection = ({
                   name="minRiders" 
                   id="minRiders" 
                   min="0"
-                  max="20"
+                  max="40"
                   value={currentEventForModal.minRiders || ''} 
                   onChange={handleModalInputChange} 
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"
-                  placeholder="Ex: 4"
+                  placeholder={isCamp ? 'Ex: 8' : 'Ex: 4'}
                 />
-                <p className="mt-1 text-xs text-gray-500">Nombre minimum de coureurs requis pour cet événement</p>
               </div>
               <div>
                 <label htmlFor="maxRiders" className="block text-sm font-medium text-gray-700">Nombre maximum d'athlètes</label>
@@ -982,20 +1320,21 @@ export const EventsSection = ({
                   name="maxRiders" 
                   id="maxRiders" 
                   min="1"
-                  max="20"
+                  max="40"
                   value={currentEventForModal.maxRiders || ''} 
                   onChange={handleModalInputChange} 
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900"
-                  placeholder="Ex: 6"
+                  placeholder={isCamp ? 'Ex: 16' : 'Ex: 6'}
                 />
-                <p className="mt-1 text-xs text-gray-500">Nombre maximum de coureurs autorisés pour cet événement</p>
               </div>
             </div>
-            <div className="mt-3 p-3 bg-blue-50 rounded-md">
-              <p className="text-sm text-blue-800">
-                💡 <strong>Conseil :</strong> Ces limites seront utilisées dans le planning de saison pour contrôler les sélections d'athlètes.
-                <br />
-                <span className="text-xs">Exemples : Course classique (4-6), Championnat (6-8), Course locale (2-4)</span>
+            <div className={`mt-3 p-3 rounded-md ${isCamp ? 'bg-amber-50' : 'bg-blue-50'}`}>
+              <p className={`text-sm ${isCamp ? 'text-amber-900' : 'text-blue-800'}`}>
+                {isCamp
+                  ? 'Ces limites cadrent l’effectif invité au stage (planning saison & suivi camp).'
+                  : isSession
+                    ? 'Optionnel — utile si vous planifiez un groupe d’entraînement restreint.'
+                    : 'Ces limites sont utilisées dans le planning de saison. Ex. : classique 4–6, championnat 6–8.'}
               </p>
             </div>
           </div>
@@ -1004,8 +1343,13 @@ export const EventsSection = ({
             <ActionButton type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Annuler</ActionButton>
             <ActionButton type="submit">{isEditingModal ? "Sauvegarder" : "Créer"}</ActionButton>
           </div>
+              </>
+            );
+          })()}
         </form>
       </Modal>
+      </>
+      )}
     </SectionWrapper>
   );
 };

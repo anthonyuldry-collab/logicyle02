@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Rider, User } from '../types';
+import { Rider, User, PowerProfile } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import PencilIcon from '../components/icons/PencilIcon';
 import CheckIcon from '../components/icons/CheckIcon';
 import XCircleIcon from '../components/icons/XCircleIcon';
 import { LoadingOverlay } from '../components/LoadingIndicator';
-import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
+import { resolveRiderForUser } from '../utils/independentUtils';
 
 interface MyPerformanceSectionProps {
   riders: Rider[];
@@ -22,20 +22,8 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
   const [editedData, setEditedData] = useState<Partial<Rider>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Vérification de sécurité pour riders
-  if (!isValidRidersArray(riders)) {
-    return (
-      <SectionWrapper title="Mes Performances (PPR)">
-        <div className="text-center p-8 bg-gray-50 rounded-lg border">
-          <p className="mt-4 text-lg font-medium text-gray-700">Chargement des données...</p>
-          <p className="mt-2 text-gray-500">Veuillez patienter pendant le chargement de vos informations.</p>
-        </div>
-      </SectionWrapper>
-    );
-  }
-
-  // Trouver le profil du coureur
-  const riderProfile = findRiderByEmail(riders, currentUser.email);
+  const safeRiders = Array.isArray(riders) ? riders : [];
+  const riderProfile = resolveRiderForUser(safeRiders, currentUser);
 
   if (!riderProfile) {
     return (
@@ -174,8 +162,8 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
                       <div className="flex items-center space-x-1">
                         <input
                           type="number"
-                          value={editedData[field.key as keyof Rider] || ''}
-                          onChange={(e) => handleInputChange(field.key as keyof Rider, parseInt(e.target.value) || 0)}
+                          value={editedData.powerProfileFresh?.[field.key as keyof PowerProfile] ?? ''}
+                          onChange={(e) => handleNestedInputChange('powerProfileFresh', field.key, parseInt(e.target.value) || 0)}
                           className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                           placeholder="0"
                         />
@@ -183,7 +171,7 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
                       </div>
                     ) : (
                       <span className="text-sm font-medium text-gray-900">
-                        {riderProfile[field.key as keyof Rider] || '-'} {field.unit}
+                        {riderProfile.powerProfileFresh?.[field.key as keyof PowerProfile] ?? '-'} {field.unit}
                       </span>
                     )}
                   </div>
@@ -285,13 +273,13 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
                 {isEditing ? (
                   <input
                     type="number"
-                    value={editedData.weight || ''}
-                    onChange={(e) => handleInputChange('weight', parseFloat(e.target.value) || 0)}
+                    value={editedData.weightKg || ''}
+                    onChange={(e) => handleInputChange('weightKg', parseFloat(e.target.value) || 0)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0"
                   />
                 ) : (
-                  <p className="mt-1 text-sm text-gray-900">{riderProfile.weight || 'Non défini'} kg</p>
+                  <p className="mt-1 text-sm text-gray-900">{riderProfile.weightKg || 'Non défini'} kg</p>
                 )}
               </div>
               <div>
@@ -299,13 +287,13 @@ const MyPerformanceSection: React.FC<MyPerformanceSectionProps> = ({
                 {isEditing ? (
                   <input
                     type="number"
-                    value={editedData.height || ''}
-                    onChange={(e) => handleInputChange('height', parseFloat(e.target.value) || 0)}
+                    value={editedData.heightCm || ''}
+                    onChange={(e) => handleInputChange('heightCm', parseFloat(e.target.value) || 0)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0"
                   />
                 ) : (
-                  <p className="mt-1 text-sm text-gray-900">{riderProfile.height || 'Non défini'} cm</p>
+                  <p className="mt-1 text-sm text-gray-900">{riderProfile.heightCm || 'Non défini'} cm</p>
                 )}
               </div>
             </div>

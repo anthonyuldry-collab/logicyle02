@@ -6,8 +6,11 @@ import {
   RiderEventSelection,
   EventTransportLeg, EventAccommodation, EventRaceDocument, 
   EventRadioEquipment, EventRadioAssignment, 
-  EventBudgetItem, EventChecklistItem, PerformanceEntry as AppPerformanceEntry, AppSection, User, TeamState, GlobalState, PeerRating
-} from './types'; 
+  EventBudgetItem, EventChecklistItem,   PerformanceEntry as AppPerformanceEntry, AppSection, User, TeamState, GlobalState, PeerRating,
+  PermissionLevel,
+  Vehicle,
+  RiderSelfDebrief,
+} from './types';
 import ActionButton from './components/ActionButton'; 
 import CalendarDaysIcon from './components/icons/CalendarDaysIcon'; 
 import HomeIcon from './components/icons/HomeIcon'; 
@@ -27,7 +30,21 @@ import EventChecklistTab from './sections/eventDetailTabs/EventChecklistTab';
 import { EventPerformanceTab } from './sections/eventDetailTabs/EventPerformanceTab'; 
 import LogisticsSummaryTab from './sections/eventDetailTabs/LogisticsSummaryTab';
 import PeerReviewTab from './sections/eventDetailTabs/PeerReviewTab';
+import RiderEventDebriefTab from './sections/eventDetailTabs/RiderEventDebriefTab';
+import StageCampMonitoringTab from './sections/eventDetailTabs/StageCampMonitoringTab';
+import { getRiderProfileForUser, isRiderAbsentFromEvent } from './utils/eventRiderUtils';
 import { useTranslations } from './hooks/useTranslations';
+import { getStaffMemberForUser } from './utils/staffMemberUtils';
+import { getStaffRoleKey } from './utils/staffRoleUtils';
+import {
+  getStaffRoleAccessProfile,
+  staffRoleHasMissionTab,
+} from './utils/staffRoleDataAccess';
+import { isTrainingCamp } from './utils/trainingCampUtils';
+import AssistantMissionTab from './components/eventMissionTabs/AssistantMissionTab';
+import MecanoMissionTab from './components/eventMissionTabs/MecanoMissionTab';
+import CommunicationMissionTab from './components/eventMissionTabs/CommunicationMissionTab';
+import HealthMissionTab from './components/eventMissionTabs/HealthMissionTab';
 
 
 interface EventDetailViewProps {
@@ -37,6 +54,7 @@ interface EventDetailViewProps {
   navigateTo: (section: AppSection, eventId?: string) => void; 
   deleteRaceEvent: (eventId: string) => void;
   currentUser: User;
+  effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   
   // Setters for team state slices
   setRaceEvents: React.Dispatch<React.SetStateAction<RaceEvent[]>>;
@@ -49,15 +67,18 @@ interface EventDetailViewProps {
   setEventChecklistItems: React.Dispatch<React.SetStateAction<EventChecklistItem[]>>;
   setPerformanceEntries: React.Dispatch<React.SetStateAction<AppPerformanceEntry[]>>;
   setPeerRatings: React.Dispatch<React.SetStateAction<PeerRating[]>>;
+  setVehicles: React.Dispatch<React.SetStateAction<Vehicle[]>>;
   riderEventSelections: RiderEventSelection[];
   setRiderEventSelections: React.Dispatch<React.SetStateAction<RiderEventSelection[]>>;
   
   // Firebase save functions
   onSavePerformanceEntry: (item: AppPerformanceEntry) => Promise<void>;
+  onSaveRiderSelfDebrief?: (debrief: RiderSelfDebrief) => Promise<void>;
   onSaveRaceEvent?: (event: RaceEvent) => Promise<void>;
+  initialTab?: EventDetailTab;
 }
 
-type EventDetailTab = 
+export type EventDetailTab = 
   | 'logisticsSummary'
   | 'info' | 'participants' | 'opLogistics' | 'transport' | 'accommodation' 
   | 'accommodationHistory'
@@ -65,7 +86,10 @@ type EventDetailTab =
   | 'budget' 
   | 'checklist' 
   | 'peerReview'
-  | 'performance';
+  | 'performance'
+  | 'riderDebrief'
+  | 'staffMission'
+  | 'campMonitoring';
 
 function EventDetailView({ 
   event: initialEvent, 
@@ -74,6 +98,7 @@ function EventDetailView({
   navigateTo, 
   deleteRaceEvent, 
   currentUser,
+  effectivePermissions,
   setRaceEvents,
   setEventTransportLegs,
   setEventAccommodations,
@@ -84,12 +109,19 @@ function EventDetailView({
   setEventChecklistItems,
   setPerformanceEntries,
   setPeerRatings,
+  setVehicles,
   riderEventSelections,
   setRiderEventSelections,
   onSavePerformanceEntry,
+  onSaveRiderSelfDebrief,
   onSaveRaceEvent,
+  initialTab,
 }: EventDetailViewProps) {
-  const [activeTab, setActiveTab] = useState<EventDetailTab>('logisticsSummary');
+  const [activeTab, setActiveTab] = useState<EventDetailTab>(initialTab ?? 'logisticsSummary');
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab, eventId]);
+
   const [currentEvent, setCurrentEvent] = useState<RaceEvent>(initialEvent);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const { t } = useTranslations();
@@ -199,25 +231,111 @@ function EventDetailView({
 
   // Filtrer les onglets selon les permissions de l'utilisateur
   const isRider = currentUser.userRole === 'Coureur';
-  
-  const allTabs: { id: EventDetailTab; label: string; Icon?: React.ElementType }[] = [
-    { id: 'logisticsSummary', label: t('eventTabLogisticsSummary') },
-    { id: 'info', label: t('eventTabInfo') }, 
-    { id: 'participants', label: t('eventTabParticipants') },
-    { id: 'opLogistics', label: t('eventTabOpLogistics') },
-    { id: 'transport', label: t('eventTabTransport') },
-    { id: 'accommodation', label: t('eventTabAccommodation') },
-    { id: 'accommodationHistory', label: t('eventTabAccommodationHistory') },
-    { id: 'documents', label: t('eventTabDocuments') },
-    { id: 'budget', label: t('eventTabBudget') },
-    { id: 'checklist', label: t('eventTabChecklist') },
-    { id: 'peerReview', label: t('eventTabPeerReview') },
-    { id: 'performance', label: t('eventTabPerformance') },
+  const riderProfile = getRiderProfileForUser(appState.riders, currentUser);
+  const isSelectedRider =
+    isRider
+    && !!riderProfile
+    && !!currentEvent.selectedRiderIds?.includes(riderProfile.id)
+    && !isRiderAbsentFromEvent(riderProfile.id, eventId, riderEventSelections);
+  const canViewRoster = effectivePermissions?.roster?.includes('view') ?? false;
+  const canEditRoster = effectivePermissions?.roster?.includes('edit') ?? false;
+  const canViewPerformance = effectivePermissions?.performance?.includes('view') ?? false;
+  const canViewFinancial = effectivePermissions?.financial?.includes('view') ?? false;
+
+  const staffMember = getStaffMemberForUser(currentUser, appState.staff);
+  const staffRoleKey = staffMember ? getStaffRoleKey(staffMember.role) : null;
+  const staffMissionProfile = getStaffRoleAccessProfile(staffRoleKey);
+  const showStaffMissionTab = staffRoleHasMissionTab(staffRoleKey);
+  const isAssistantRole = staffRoleKey === 'ASSISTANT';
+  const isCommunicationRole = staffRoleKey === 'COMMUNICATION';
+  const opLogisticsReadOnly = isAssistantRole || isCommunicationRole;
+  const canEditMissionLogistics = staffMissionProfile?.canEditEventMissionLogistics ?? false;
+
+  type TabDef = { id: EventDetailTab; label: string };
+
+  const trainingCamp = isTrainingCamp(currentEvent);
+
+  /** Onglets pertinents : course ≠ stage (pas d’éval coéquipiers / débrief course sur un camp). */
+  const tabGroups: { label: string; tabs: TabDef[] }[] = [
+    {
+      label: 'Vue',
+      tabs: [
+        { id: 'logisticsSummary', label: t('eventTabLogisticsSummary') },
+        {
+          id: 'info',
+          label: trainingCamp ? t('eventTabInfoStage') : t('eventTabInfo'),
+        },
+        ...(trainingCamp
+          ? [{ id: 'campMonitoring' as const, label: t('eventTabCampMonitoring') }]
+          : []),
+      ],
+    },
+    ...(showStaffMissionTab && staffMissionProfile
+      ? [
+          {
+            label: 'Mission',
+            tabs: [{ id: 'staffMission' as const, label: staffMissionProfile.missionTabLabel }],
+          },
+        ]
+      : []),
+    {
+      label: 'Équipe',
+      tabs: [
+        ...(canViewRoster ? [{ id: 'participants' as const, label: t('eventTabParticipants') }] : []),
+        // Débriefs / évaluations : réservés aux compétitions
+        ...(!trainingCamp && isSelectedRider
+          ? [{ id: 'riderDebrief' as const, label: t('eventTabRiderDebrief') }]
+          : []),
+        ...(!trainingCamp && canViewPerformance
+          ? [
+              { id: 'peerReview' as const, label: t('eventTabPeerReview') },
+              { id: 'performance' as const, label: t('eventTabPerformance') },
+            ]
+          : []),
+      ],
+    },
+    {
+      label: 'Logistique',
+      tabs: [
+        // Timing course (permanences / créneaux journée) surtout utile en compétition
+        ...(!trainingCamp
+          ? [{ id: 'opLogistics' as const, label: t('eventTabOpLogistics') }]
+          : []),
+        { id: 'transport', label: t('eventTabTransport') },
+        { id: 'accommodation', label: t('eventTabAccommodation') },
+        ...(canViewRoster
+          ? [{ id: 'accommodationHistory' as const, label: t('eventTabAccommodationHistory') }]
+          : []),
+      ],
+    },
+    {
+      label: 'Gestion',
+      tabs: [
+        ...(canViewRoster ? [{ id: 'documents' as const, label: t('eventTabDocuments') }] : []),
+        ...(canViewFinancial ? [{ id: 'budget' as const, label: t('eventTabBudget') }] : []),
+        { id: 'checklist', label: t('eventTabChecklist') },
+      ],
+    },
   ];
-  
-  // Les coureurs ne peuvent pas voir l'onglet budget (données financières)
-  const tabs = allTabs.filter(tab => !(isRider && tab.id === 'budget'));
-  
+
+  const visibleTabGroups = tabGroups
+    .map((group) => ({
+      ...group,
+      tabs: group.tabs.filter((tab) => !(isRider && tab.id === 'budget')),
+    }))
+    .filter((group) => group.tabs.length > 0);
+
+  const visibleTabKey = visibleTabGroups
+    .flatMap((g) => g.tabs.map((tab) => tab.id))
+    .join(',');
+
+  useEffect(() => {
+    const ids = visibleTabKey.split(',').filter(Boolean);
+    if (ids.length > 0 && !ids.includes(activeTab)) {
+      setActiveTab('logisticsSummary');
+    }
+  }, [activeTab, visibleTabKey]);
+
   const eventDetailProps = {
     event: currentEvent,
     eventId,
@@ -228,41 +346,68 @@ function EventDetailView({
   };
 
   return (
-    <div className="bg-gray-50 p-2 sm:p-4 rounded-lg shadow-md min-h-full">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-4 border-b">
-        <div className="mb-2 sm:mb-0">
-            <h2 className="text-2xl sm:text-3xl font-bold text-blue-700 flex items-center">
-            <CalendarDaysIcon className="w-8 h-8 mr-3 text-blue-600"/>
-            {currentEvent.name}
+    <div className="min-h-full space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+              <CalendarDaysIcon className="w-6 h-6 text-blue-600 shrink-0" />
+              {currentEvent.name}
             </h2>
-            <p className="text-sm text-gray-600 ml-11">{new Date(currentEvent.date + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} - {currentEvent.location}</p>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1 ml-8">
+              {new Date(currentEvent.date + 'T12:00:00Z').toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+              {currentEvent.location ? ` · ${currentEvent.location}` : ''}
+            </p>
+          </div>
+          <ActionButton onClick={() => navigateTo('events')} icon={<HomeIcon className="w-4 h-4" />} variant="secondary" size="sm">
+            Retour
+          </ActionButton>
         </div>
-        <ActionButton onClick={() => navigateTo('events')} icon={<HomeIcon className="w-4 h-4"/>} variant="secondary" size="sm">
-          Retour aux Événements
-        </ActionButton>
       </div>
 
-      <div className="mb-6 overflow-x-auto">
-        <nav className="flex space-x-1 border-b border-gray-300 whitespace-nowrap">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-2 font-medium text-sm rounded-t-md focus:outline-none transition-colors duration-150
-                ${activeTab === tab.id 
-                  ? 'border-blue-600 border-b-2 text-blue-600 bg-white' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                }`}
-            >
-              {tab.label}
-            </button>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <nav className="space-y-3" aria-label="Onglets événement">
+          {visibleTabGroups.map((group) => (
+            <div key={group.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">{group.label}</p>
+              <div className="flex flex-wrap gap-2">
+                {group.tabs.map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`inline-flex items-center px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </nav>
       </div>
 
-      <div className="bg-white p-4 rounded-b-md shadow">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5">
         <div style={{ display: activeTab === 'logisticsSummary' ? 'block' : 'none' }}>
-            <LogisticsSummaryTab {...eventDetailProps} currentUser={currentUser} effectivePermissions={appState.effectivePermissions} />
+            <LogisticsSummaryTab
+              {...eventDetailProps}
+              currentUser={currentUser}
+              effectivePermissions={effectivePermissions}
+              users={appState.users}
+              teamId={appState.activeTeamId}
+            />
         </div>
          <div style={{ display: activeTab === 'info' ? 'block' : 'none' }}>
             <EventInfoTab 
@@ -273,19 +418,67 @@ function EventDetailView({
                 setRadioAssignments={setEventRadioAssignments}
             />
         </div>
+        <div style={{ display: activeTab === 'campMonitoring' ? 'block' : 'none' }}>
+          {trainingCamp && (
+            <StageCampMonitoringTab
+              event={currentEvent}
+              eventId={eventId}
+              appState={appState}
+              updateEvent={updateEventDetails}
+              readOnly={isRider}
+            />
+          )}
+        </div>
+        <div style={{ display: activeTab === 'staffMission' ? 'block' : 'none' }}>
+          {staffRoleKey === 'ASSISTANT' && (
+            <AssistantMissionTab
+              event={currentEvent}
+              appState={appState}
+              updateEvent={updateEventDetails}
+              canEdit={canEditMissionLogistics}
+            />
+          )}
+          {staffRoleKey === 'MECANO' && (
+            <MecanoMissionTab event={currentEvent} appState={appState} />
+          )}
+          {staffRoleKey === 'COMMUNICATION' && (
+            <CommunicationMissionTab
+              event={currentEvent}
+              appState={appState}
+              updateEvent={updateEventDetails}
+            />
+          )}
+          {staffRoleKey === 'KINE' && (
+            <HealthMissionTab
+              event={currentEvent}
+              appState={appState}
+              title="Mission soins"
+              subtitle="Suivi kiné des athlètes convoqués sur cette épreuve."
+            />
+          )}
+          {staffRoleKey === 'MEDECIN' && (
+            <HealthMissionTab
+              event={currentEvent}
+              appState={appState}
+              title="Mission médicale"
+              subtitle="Protocoles santé et allergies des partants."
+            />
+          )}
+        </div>
         <div style={{ display: activeTab === 'participants' ? 'block' : 'none' }}>
-            <EventParticipantsTab {...eventDetailProps} appState={appState} />
+            <EventParticipantsTab {...eventDetailProps} appState={appState} readOnly={!canEditRoster} />
         </div>
         <div style={{ display: activeTab === 'opLogistics' ? 'block' : 'none' }}>
-            <EventOperationalLogisticsTab {...eventDetailProps} />
+            <EventOperationalLogisticsTab {...eventDetailProps} readOnly={opLogisticsReadOnly} />
         </div>
         <div style={{ display: activeTab === 'transport' ? 'block' : 'none' }}>
             <EventTransportTab 
                 {...eventDetailProps}
                 setEventTransportLegs={setEventTransportLegs}
                 setEventBudgetItems={setEventBudgetItems}
+                setVehicles={setVehicles}
                 currentUser={currentUser}
-                effectivePermissions={appState.effectivePermissions}
+                effectivePermissions={effectivePermissions}
             />
         </div>
         <div style={{ display: activeTab === 'accommodation' ? 'block' : 'none' }}>
@@ -294,7 +487,7 @@ function EventDetailView({
                 setEventAccommodations={setEventAccommodations}
                 setEventBudgetItems={setEventBudgetItems}
                 currentUser={currentUser}
-                effectivePermissions={appState.effectivePermissions}
+                effectivePermissions={effectivePermissions}
             />
         </div>
         <div style={{ display: activeTab === 'accommodationHistory' ? 'block' : 'none' }}>
@@ -302,7 +495,7 @@ function EventDetailView({
                 {...eventDetailProps}
                 setEventAccommodations={setEventAccommodations}
                 currentUser={currentUser}
-                effectivePermissions={appState.effectivePermissions}
+                effectivePermissions={effectivePermissions}
             />
         </div>
         <div style={{ display: activeTab === 'documents' ? 'block' : 'none' }}>
@@ -317,7 +510,7 @@ function EventDetailView({
                   {...eventDetailProps}
                   setEventBudgetItems={setEventBudgetItems}
                   currentUser={currentUser}
-                  effectivePermissions={appState.effectivePermissions}
+                  effectivePermissions={effectivePermissions}
               />
           </div>
         )}
@@ -333,8 +526,22 @@ function EventDetailView({
                 {...eventDetailProps}
                 setPeerRatings={setPeerRatings}
                 currentUser={currentUser}
+                riderEventSelections={riderEventSelections}
+                raterUserId={currentUser.id}
             />
         </div>
+        {onSaveRiderSelfDebrief && (
+          <div style={{ display: activeTab === 'riderDebrief' ? 'block' : 'none' }}>
+            <RiderEventDebriefTab
+              event={currentEvent}
+              appState={appState}
+              currentUser={currentUser}
+              riderEventSelections={riderEventSelections}
+              setPeerRatings={setPeerRatings}
+              onSaveRiderSelfDebrief={onSaveRiderSelfDebrief}
+            />
+          </div>
+        )}
         <div style={{ display: activeTab === 'performance' ? 'block' : 'none' }}>
             <EventPerformanceTab 
                 {...eventDetailProps}
@@ -344,10 +551,12 @@ function EventDetailView({
         </div>
       </div>
       
-      <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex justify-end">
+        {!isRider && (
         <ActionButton onClick={() => setIsConfirmDeleteOpen(true)} variant="danger" icon={<TrashIcon className="w-4 h-4"/>}>
           Supprimer cet Événement
         </ActionButton>
+        )}
       </div>
 
        <ConfirmationModal

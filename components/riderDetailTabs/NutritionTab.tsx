@@ -5,7 +5,11 @@ import PlusCircleIcon from '../icons/PlusCircleIcon';
 import TrashIcon from '../icons/TrashIcon';
 import Modal from '../Modal';
 import NutritionSummaryForAssistants from '../NutritionSummaryForAssistants';
+import CustomProductForm from '../nutrition/CustomProductForm';
+import NutritionPlanAiAssistant from '../nutrition/NutritionPlanAiAssistant';
 import { PREDEFINED_ALLERGEN_INFO } from '../../constants';
+import { createEmptyCustomProduct, formatProductNutritionSummary, formatGlucoseFructoseRatio } from '../../utils/nutritionProductUtils';
+import { GeneratedNutritionPlan, formatTimelineForDisplay } from '../../utils/nutritionPlanBuilder';
 
 interface NutritionTabProps {
     formData: Rider | Omit<Rider, 'id'>;
@@ -27,17 +31,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
     const [modalMode, setModalMode] = useState<'gel' | 'bar' | 'drink'>('gel');
 
     // State for custom product form
-    const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>({ 
-        name: '', 
-        type: 'gel',
-        brand: '',
-        carbs: 0,
-        glucose: 0,
-        fructose: 0,
-        caffeine: 0,
-        sodium: 0,
-        notes: ''
-    });
+    const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>(createEmptyCustomProduct());
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -76,16 +70,20 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                 }
                 
                 const updatedNutrition = { ...updatedRider.performanceNutrition };
-                const existingIndex = updatedNutrition[typeKey].findIndex(item => item.productId === productId);
+                if (!Array.isArray(updatedNutrition[typeKey])) {
+                    (updatedNutrition as Record<string, SelectedProduct[]>)[typeKey as string] = [];
+                }
+                const productList = updatedNutrition[typeKey] as SelectedProduct[];
+                const existingIndex = productList.findIndex(item => item.productId === productId);
                 
                 if (quantity > 0) {
                     if (existingIndex >= 0) {
-                        updatedNutrition[typeKey][existingIndex].quantity = quantity;
+                        productList[existingIndex].quantity = quantity;
                     } else {
-                        updatedNutrition[typeKey].push({ productId, quantity });
+                        productList.push({ productId, quantity });
                     }
                 } else if (existingIndex >= 0) {
-                    updatedNutrition[typeKey].splice(existingIndex, 1);
+                    productList.splice(existingIndex, 1);
                 }
                 
                 updatedRider.performanceNutrition = updatedNutrition;
@@ -102,7 +100,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
             id: generateId(),
             allergenKey: 'CUSTOM',
             customAllergenName: '',
-            severity: 'LÉGÈRE',
+            severity: AllergySeverityEnum.LEGERE,
             regimeDetails: '',
             notes: '',
             isCeliacDisease: false
@@ -137,16 +135,20 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
             }
             
             const updatedNutrition = { ...updatedRider.performanceNutrition };
-            const existingIndex = updatedNutrition[typeKey].findIndex(item => item.productId === productId);
+            if (!Array.isArray(updatedNutrition[typeKey])) {
+                (updatedNutrition as Record<string, SelectedProduct[]>)[typeKey as string] = [];
+            }
+            const productList = updatedNutrition[typeKey] as SelectedProduct[];
+            const existingIndex = productList.findIndex(item => item.productId === productId);
             
             if (quantity > 0) {
                 if (existingIndex >= 0) {
-                    updatedNutrition[typeKey][existingIndex].quantity = quantity;
+                    productList[existingIndex].quantity = quantity;
                 } else {
-                    updatedNutrition[typeKey].push({ productId, quantity });
+                    productList.push({ productId, quantity });
                 }
             } else if (existingIndex >= 0) {
-                updatedNutrition[typeKey].splice(existingIndex, 1);
+                productList.splice(existingIndex, 1);
             }
             
             updatedRider.performanceNutrition = updatedNutrition;
@@ -155,7 +157,12 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
     };
 
     const handleSelectProduct = (product: TeamProduct) => {
-        const modalType = product.type as 'gel' | 'bar' | 'drink';
+        const typeMap: Record<string, 'gels' | 'bars' | 'drinks'> = {
+            gel: 'gels',
+            bar: 'bars',
+            drink: 'drinks',
+        };
+        const modalType = typeMap[product.type as string] ?? 'gels';
         handleQuantityChange(modalType, product.id, 1);
         setIsProductModalOpen(false);
     };
@@ -172,40 +179,53 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
         // Add to team products (this would normally be handled by a parent component)
         // For now, we'll just select it
         handleSelectProduct(newProduct);
-        setCustomProduct({ 
-            name: '', 
-            type: 'gel',
-            brand: '',
-            carbs: 0,
-            glucose: 0,
-            fructose: 0,
-            caffeine: 0,
-            sodium: 0,
-            notes: ''
+        setCustomProduct(createEmptyCustomProduct(modalMode));
+    };
+
+    const handleApplyAiPlan = (plan: GeneratedNutritionPlan) => {
+        setFormData(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                performanceNutrition: {
+                    ...(prev.performanceNutrition || {}),
+                    carbsPerHourTarget: plan.carbsPerHourTarget,
+                    hydrationNotes: plan.hydrationNotes,
+                    notes: `${plan.strategyNotes}\n\n--- Timeline ---\n${formatTimelineForDisplay(plan.timeline)}`,
+                    caloricGoal: plan.carbsPerHourTarget * 4,
+                    hydrationGoal: plan.hydrationNotes,
+                    selectedGels: plan.selectedGels,
+                    selectedBars: plan.selectedBars,
+                    selectedDrinks: plan.selectedDrinks,
+                    gels: plan.selectedGels,
+                    bars: plan.selectedBars,
+                    drinks: plan.selectedDrinks,
+                },
+            };
         });
     };
 
     // Check product compatibility with allergies
     const checkProductCompatibility = (product: TeamProduct, allergies: AllergyItem[]): boolean => {
-        if (!product.notes || allergies.length === 0) return true;
-        
-        const productNotes = product.notes.toLowerCase();
+        const productText = [product.notes, product.composition].filter(Boolean).join(' ').toLowerCase();
+        if (!productText || allergies.length === 0) return true;
         
         return !allergies.some(allergy => {
             if (allergy.allergenKey === 'CUSTOM') {
-                return allergy.customAllergenName && productNotes.includes(allergy.customAllergenName.toLowerCase());
-            } else {
-                const allergenInfo = PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
-                if (!allergenInfo) return false;
-                
-                return allergenInfo.commonSources.some(source => 
-                    productNotes.includes(source.toLowerCase())
-                );
+                return allergy.customAllergenName && productText.includes(allergy.customAllergenName.toLowerCase());
             }
+            const allergenInfo = PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
+            if (!allergenInfo) return false;
+            return allergenInfo.commonSources.some(source =>
+                productText.includes(source.toLowerCase())
+            );
         });
     };
 
-    const allProducts = teamProducts || [];
+    const allProducts = [
+      ...(teamProducts || []),
+      ...(formData.performanceNutrition?.customProducts || []),
+    ];
     const inputClass = "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white text-gray-900 placeholder-gray-400";
     const selectClass = "block w-full pl-3 pr-10 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900";
     const checkboxClass = "h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500";
@@ -455,6 +475,14 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                     <div className="bg-slate-700 p-4 rounded-lg">
                         <h3 className="text-lg font-semibold text-slate-200 mb-4">🚴 Plan Nutritionnel Course</h3>
                         <div className="space-y-4">
+                            {formFieldsEnabled && (
+                              <NutritionPlanAiAssistant
+                                rider={formData as Rider}
+                                teamProducts={allProducts}
+                                onApply={handleApplyAiPlan}
+                                variant="dark"
+                              />
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-2">Objectif Calorique (kcal/h)</label>
@@ -480,16 +508,25 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                                             <div key={typeKey} className="bg-slate-800/50 p-3 rounded-lg">
                                                 <div className="flex justify-between items-center mb-2">
                                                     <h5 className="font-semibold text-sm text-slate-300">{title}</h5>
-                                                    {formFieldsEnabled && <ActionButton size="sm" variant="secondary" onClick={() => { setModalMode(modalType); setIsProductModalOpen(true); }}><PlusCircleIcon className="w-3 h-3 mr-1"/>Ajouter</ActionButton>}
+                                                    {formFieldsEnabled && <ActionButton size="sm" variant="secondary" onClick={() => { setModalMode(modalType); setCustomProduct(createEmptyCustomProduct(modalType)); setIsProductModalOpen(true); }}><PlusCircleIcon className="w-3 h-3 mr-1"/>Ajouter</ActionButton>}
                                                 </div>
                                                 <div className="space-y-2 text-xs">
                                                     {(formData.performanceNutrition?.[typeKey] || []).map(item => {
                                                         const product = allProducts.find(p => p.id === item.productId);
                                                         if (!product) return null;
+                                                        const summary = formatProductNutritionSummary(product);
+                                                        const ratio = formatGlucoseFructoseRatio(product.glucose, product.fructose);
                                                         return (
-                                                            <div key={item.productId} className="flex items-center justify-between bg-slate-700/50 p-2 rounded">
-                                                                <span className="text-slate-300">{product.name}</span>
-                                                                <input type="number" value={item.quantity} min="0" onChange={e => handleQuantityChange(typeKey, item.productId, parseInt(e.target.value))} className={`${inputClass} !mt-0 !text-xs w-16 py-1`} disabled={!formFieldsEnabled}/>
+                                                            <div key={item.productId} className="flex items-center justify-between gap-2 bg-slate-700/50 p-2 rounded">
+                                                                <div className="min-w-0 flex-1">
+                                                                  <span className="text-slate-300 block truncate">{product.name}</span>
+                                                                  {(summary || ratio) && (
+                                                                    <span className="text-[10px] text-slate-400 block truncate">
+                                                                      {summary}{ratio ? ` • G:F ${ratio}` : ''}
+                                                                    </span>
+                                                                  )}
+                                                                </div>
+                                                                <input type="number" value={item.quantity} min="0" onChange={e => handleQuantityChange(typeKey, item.productId, parseInt(e.target.value))} className={`${inputClass} !mt-0 !text-xs w-16 py-1 shrink-0`} disabled={!formFieldsEnabled}/>
                                                             </div>
                                                         );
                                                     })}
@@ -533,6 +570,8 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                                 {allProducts.filter(p => p.type === modalMode).map(p => {
                                     // Vérifier la compatibilité avec les allergies
                                     const isCompatible = checkProductCompatibility(p, formData.allergies || []);
+                                    const summary = formatProductNutritionSummary(p);
+                                    const ratio = formatGlucoseFructoseRatio(p.glucose, p.fructose);
                                     return (
                                         <button 
                                             key={p.id} 
@@ -545,13 +584,13 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                                             <div className="flex justify-between items-start">
                                                 <div className="flex-1">
                                                     <div className="font-medium">{p.name} ({p.brand})</div>
-                                                    {(p.carbs || p.caffeine || p.sodium) && (
+                                                    {(summary || ratio) && (
                                                         <div className="text-xs text-gray-600 mt-1">
-                                                            {p.carbs && `Glucides: ${p.carbs}g`}
-                                                            {p.caffeine && ` • Caféine: ${p.caffeine}mg`}
-                                                            {p.sodium && ` • Sodium: ${p.sodium}mg`}
+                                                            {summary}
+                                                            {ratio && ` • ratio G:F ${ratio}`}
                                                         </div>
                                                     )}
+                                                    {p.composition && <div className="text-xs text-gray-500 mt-1 line-clamp-2">{p.composition}</div>}
                                                     {p.notes && <div className="text-xs text-gray-500 mt-1">{p.notes}</div>}
                                                 </div>
                                                 {!isCompatible && <span className="text-xs font-bold ml-2">⚠️ INCOMPATIBLE</span>}
@@ -564,109 +603,13 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                         <div className="text-center text-sm text-gray-500">ou</div>
                         <div>
                             <h4 className="font-semibold">Ajouter un produit personnel</h4>
-                            <div className="p-3 bg-gray-50 rounded-md border mt-1 space-y-3">
-                                {/* Informations de base */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <input 
-                                        type="text" 
-                                        value={customProduct.name} 
-                                        onChange={e => setCustomProduct(p => ({...p, name: e.target.value, type: modalMode}))} 
-                                        placeholder="Nom du produit" 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        value={customProduct.brand || ''} 
-                                        onChange={e => setCustomProduct(p => ({...p, brand: e.target.value}))} 
-                                        placeholder="Marque" 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                </div>
-
-                                {/* Informations nutritionnelles */}
-                                <div className="border-t pt-3">
-                                    <h5 className="text-sm font-semibold text-gray-700 mb-3">📊 Informations Nutritionnelles</h5>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Glucides totaux (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.carbs || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, carbs: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Glucose (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.glucose || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, glucose: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Fructose (g)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.fructose || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, fructose: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Caféine (mg)</label>
-                                            <input 
-                                                type="number" 
-                                                value={customProduct.caffeine || ''} 
-                                                onChange={e => setCustomProduct(p => ({...p, caffeine: parseFloat(e.target.value) || 0}))} 
-                                                placeholder="0" 
-                                                min="0"
-                                                step="0.1"
-                                                className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="mt-3">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 mb-1">Sodium (mg)</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={customProduct.sodium || ''} 
-                                                    onChange={e => setCustomProduct(p => ({...p, sodium: parseFloat(e.target.value) || 0}))} 
-                                                    placeholder="0" 
-                                                    min="0"
-                                                    step="0.1"
-                                                    className="mt-1 block w-full px-2 py-1 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Notes */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes (allergènes, composition...)</label>
-                                    <textarea 
-                                        value={customProduct.notes || ''} 
-                                        onChange={e => setCustomProduct(p => ({...p, notes: e.target.value}))} 
-                                        placeholder="Ex: Contient du gluten, sans lactose, goût vanille..." 
-                                        rows={2} 
-                                        className="mt-1 block w-full px-3 py-2 border-gray-300 bg-white text-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                    />
-                                </div>
-
-                                <ActionButton onClick={handleAddCustomProduct}>Ajouter et Sélectionner</ActionButton>
+                            <div className="p-3 bg-gray-50 rounded-md border mt-1">
+                                <CustomProductForm
+                                    product={customProduct}
+                                    onChange={setCustomProduct}
+                                    onSubmit={handleAddCustomProduct}
+                                    productType={modalMode}
+                                />
                             </div>
                         </div>
                     </div>

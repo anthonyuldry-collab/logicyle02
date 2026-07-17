@@ -1,183 +1,269 @@
 import React from 'react';
-import { Rider, AllergyItem, PredefinedAllergen as PredefinedAllergenEnum } from '../types';
+import { Rider, PredefinedAllergen as PredefinedAllergenEnum } from '../types';
 import { PREDEFINED_ALLERGEN_INFO } from '../constants';
 
 interface NutritionSummaryForAssistantsProps {
-    rider: Rider;
+  rider: Rider;
+  highlightCarbStrategy?: boolean;
 }
 
-const NutritionSummaryForAssistants: React.FC<NutritionSummaryForAssistantsProps> = ({ rider }) => {
-    const allergies = rider.allergies || [];
-    const criticalAllergies = allergies.filter(allergy => 
-        allergy.allergenKey === PredefinedAllergenEnum.GLUTEN_CELIAC || 
-        allergy.isCeliacDisease ||
-        (allergy.allergenKey !== 'CUSTOM' && PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity === 'CRITIQUE')
-    );
+const NutritionSummaryForAssistants: React.FC<NutritionSummaryForAssistantsProps> = ({
+  rider,
+  highlightCarbStrategy = false,
+}) => {
+  const allergies = rider.allergies || [];
+  const criticalAllergies = allergies.filter(
+    (allergy) =>
+      allergy.allergenKey === PredefinedAllergenEnum.GLUTEN_CELIAC ||
+      allergy.isCeliacDisease ||
+      (allergy.allergenKey !== 'CUSTOM' &&
+        PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity ===
+          'CRITIQUE'),
+  );
 
-    const highSeverityAllergies = allergies.filter(allergy => 
-        !criticalAllergies.includes(allergy) &&
-        allergy.allergenKey !== 'CUSTOM' && 
-        PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity === 'ELEVEE'
-    );
+  const highSeverityAllergies = allergies.filter(
+    (allergy) =>
+      !criticalAllergies.includes(allergy) &&
+      allergy.allergenKey !== 'CUSTOM' &&
+      PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity ===
+        'ELEVEE',
+  );
 
-    const moderateAllergies = allergies.filter(allergy => 
-        !criticalAllergies.includes(allergy) &&
-        !highSeverityAllergies.includes(allergy) &&
-        allergy.allergenKey !== 'CUSTOM' && 
-        PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity === 'MODEREE'
-    );
+  const moderateAllergies = allergies.filter(
+    (allergy) =>
+      !criticalAllergies.includes(allergy) &&
+      !highSeverityAllergies.includes(allergy) &&
+      allergy.allergenKey !== 'CUSTOM' &&
+      PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]?.severity ===
+        'MODEREE',
+  );
 
-    return (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">🍎 Résumé Nutrition - {rider.firstName} {rider.lastName}</h3>
-                <div className="text-sm text-gray-500">
-                    Guide pour assistants
+  return (
+    <div className="rounded-xl border border-white/15 bg-slate-900 p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-white">
+          🍎 Résumé Nutrition — {rider.firstName} {rider.lastName}
+        </h3>
+        <div className="shrink-0 text-sm text-slate-400">Guide pour assistants</div>
+      </div>
+
+      {criticalAllergies.length > 0 && (
+        <div className="mb-4 rounded-xl border border-red-500/40 bg-red-950/60 p-4">
+          <h4 className="mb-2 flex items-center text-sm font-bold text-red-100">
+            🚨 ALERTES CRITIQUES — ATTENTION MAXIMALE REQUISE
+          </h4>
+          <div className="space-y-2">
+            {criticalAllergies.map((allergy, idx) => {
+              const allergenInfo =
+                allergy.allergenKey !== 'CUSTOM'
+                  ? PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum]
+                  : null;
+              return (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-red-500/30 bg-red-950/80 p-3"
+                >
+                  <div className="flex items-start space-x-2">
+                    <span className="text-lg font-bold text-red-300">⚠️</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-red-100">
+                        {allergy.allergenKey === 'CUSTOM'
+                          ? allergy.customAllergenName
+                          : allergenInfo?.displayName}
+                        {allergy.isCeliacDisease && ' (MALADIE CŒLIAQUE)'}
+                      </div>
+                      <div className="mt-1 text-sm text-red-200/90">
+                        <strong>Actions d&apos;urgence :</strong> {allergenInfo?.emergencyActions}
+                      </div>
+                      <div className="mt-1 text-sm text-red-200/80">
+                        <strong>Régime :</strong> {allergy.regimeDetails}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-            </div>
-
-            {/* Alertes critiques */}
-            {criticalAllergies.length > 0 && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <h4 className="text-sm font-bold text-red-800 mb-2 flex items-center">
-                        🚨 ALERTES CRITIQUES - ATTENTION MAXIMALE REQUISE
-                    </h4>
-                    <div className="space-y-2">
-                        {criticalAllergies.map((allergy, idx) => {
-                            const allergenInfo = allergy.allergenKey !== 'CUSTOM' ? PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum] : null;
-                            return (
-                                <div key={idx} className="p-3 bg-red-100 border border-red-300 rounded">
-                                    <div className="flex items-start space-x-2">
-                                        <span className="text-red-600 font-bold text-lg">⚠️</span>
-                                        <div className="flex-1">
-                                            <div className="font-bold text-red-800">
-                                                {allergy.allergenKey === 'CUSTOM' ? allergy.customAllergenName : allergenInfo?.displayName}
-                                                {allergy.isCeliacDisease && " (MALADIE CŒLIAQUE)"}
-                                            </div>
-                                            <div className="text-sm text-red-700 mt-1">
-                                                <strong>Actions d'urgence :</strong> {allergenInfo?.emergencyActions}
-                                            </div>
-                                            <div className="text-sm text-red-600 mt-1">
-                                                <strong>Régime :</strong> {allergy.regimeDetails}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* Allergies de haute sévérité */}
-            {highSeverityAllergies.length > 0 && (
-                <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                    <h4 className="text-sm font-bold text-orange-800 mb-2 flex items-center">
-                        ⚠️ ALLERGIES HAUTE SÉVÉRITÉ
-                    </h4>
-                    <div className="space-y-2">
-                        {highSeverityAllergies.map((allergy, idx) => {
-                            const allergenInfo = PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
-                            return (
-                                <div key={idx} className="p-2 bg-orange-100 border border-orange-300 rounded">
-                                    <div className="font-semibold text-orange-800">
-                                        {allergenInfo?.displayName}
-                                    </div>
-                                    <div className="text-sm text-orange-700 mt-1">
-                                        {allergy.regimeDetails}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* Allergies modérées */}
-            {moderateAllergies.length > 0 && (
-                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <h4 className="text-sm font-bold text-yellow-800 mb-2 flex items-center">
-                        ⚡ ALLERGIES MODÉRÉES
-                    </h4>
-                    <div className="space-y-1">
-                        {moderateAllergies.map((allergy, idx) => {
-                            const allergenInfo = PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
-                            return (
-                                <div key={idx} className="p-2 bg-yellow-100 border border-yellow-300 rounded text-sm">
-                                    <span className="font-semibold text-yellow-800">{allergenInfo?.displayName}</span>
-                                    <span className="text-yellow-700 ml-2">{allergy.regimeDetails}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* Préférences et instructions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Collations préférées */}
-                {rider.snackPreferences && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <h4 className="text-sm font-bold text-green-800 mb-2">🍌 Collations Préférées</h4>
-                        <p className="text-sm text-green-700">{rider.snackPreferences}</p>
-                    </div>
-                )}
-
-                {/* Instructions spéciales */}
-                {rider.assistantInstructions && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <h4 className="text-sm font-bold text-blue-800 mb-2">📋 Instructions Spéciales</h4>
-                        <p className="text-sm text-blue-700">{rider.assistantInstructions}</p>
-                    </div>
-                )}
-
-                {/* Horaires de collations */}
-                {rider.snackSchedule && (
-                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                        <h4 className="text-sm font-bold text-purple-800 mb-2">⏰ Horaires Collations</h4>
-                        <p className="text-sm text-purple-700">{rider.snackSchedule}</p>
-                    </div>
-                )}
-
-                {/* Régime alimentaire */}
-                {rider.dietaryRegimen && (
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                        <h4 className="text-sm font-bold text-gray-800 mb-2">🥗 Régime Alimentaire</h4>
-                        <p className="text-sm text-gray-700">{rider.dietaryRegimen}</p>
-                    </div>
-                )}
-            </div>
-
-            {/* Plan nutritionnel course */}
-            {rider.performanceNutrition && (
-                <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <h4 className="text-sm font-bold text-slate-800 mb-2">🚴 Plan Course</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                        {rider.performanceNutrition.carbsPerHourTarget && (
-                            <div>
-                                <span className="font-semibold text-slate-700">Objectif glucides/heure :</span>
-                                <span className="text-slate-600 ml-1">{rider.performanceNutrition.carbsPerHourTarget}g</span>
-                            </div>
-                        )}
-                        {rider.performanceNutrition.hydrationNotes && (
-                            <div>
-                                <span className="font-semibold text-slate-700">Hydratation :</span>
-                                <span className="text-slate-600 ml-1">{rider.performanceNutrition.hydrationNotes}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Aucune allergie */}
-            {allergies.length === 0 && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                    <div className="text-green-800 font-semibold">✅ Aucune allergie déclarée</div>
-                    <div className="text-green-600 text-sm mt-1">Préparation des rations sans restriction particulière</div>
-                </div>
-            )}
+              );
+            })}
+          </div>
         </div>
-    );
+      )}
+
+      {highSeverityAllergies.length > 0 && (
+        <div className="mb-4 rounded-xl border border-orange-500/40 bg-orange-950/50 p-4">
+          <h4 className="mb-2 flex items-center text-sm font-bold text-orange-100">
+            ⚠️ ALLERGIES HAUTE SÉVÉRITÉ
+          </h4>
+          <div className="space-y-2">
+            {highSeverityAllergies.map((allergy, idx) => {
+              const allergenInfo =
+                PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
+              return (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-orange-500/30 bg-orange-950/70 p-2"
+                >
+                  <div className="font-semibold text-orange-100">{allergenInfo?.displayName}</div>
+                  <div className="mt-1 text-sm text-orange-200/90">{allergy.regimeDetails}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {moderateAllergies.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-950/40 p-4">
+          <h4 className="mb-2 flex items-center text-sm font-bold text-amber-100">
+            ⚡ ALLERGIES MODÉRÉES
+          </h4>
+          <div className="space-y-1">
+            {moderateAllergies.map((allergy, idx) => {
+              const allergenInfo =
+                PREDEFINED_ALLERGEN_INFO[allergy.allergenKey as PredefinedAllergenEnum];
+              return (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-amber-500/25 bg-amber-950/50 p-2 text-sm"
+                >
+                  <span className="font-semibold text-amber-100">{allergenInfo?.displayName}</span>
+                  <span className="ml-2 text-amber-200/90">{allergy.regimeDetails}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {(rider.snack1 || rider.snack2 || rider.snack3 || rider.snackPreferences) && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-3 md:col-span-2">
+            <h4 className="mb-2 text-sm font-bold text-emerald-100">🍌 Collations préférées</h4>
+            <ul className="space-y-0.5 text-sm text-emerald-200/90">
+              {rider.snack1 && <li>1 — {rider.snack1}</li>}
+              {rider.snack2 && <li>2 — {rider.snack2}</li>}
+              {rider.snack3 && <li>3 — {rider.snack3}</li>}
+              {!rider.snack1 && rider.snackPreferences && <li>{rider.snackPreferences}</li>}
+            </ul>
+          </div>
+        )}
+
+        {rider.assistantInstructions && (
+          <div className="rounded-xl border border-sky-500/30 bg-sky-950/40 p-3">
+            <h4 className="mb-2 text-sm font-bold text-sky-100">📋 Instructions Spéciales</h4>
+            <p className="text-sm text-sky-200/90">{rider.assistantInstructions}</p>
+          </div>
+        )}
+
+        {rider.snackSchedule && (
+          <div className="rounded-xl border border-violet-500/30 bg-violet-950/40 p-3">
+            <h4 className="mb-2 text-sm font-bold text-violet-100">⏰ Horaires Collations</h4>
+            <p className="text-sm text-violet-200/90">{rider.snackSchedule}</p>
+          </div>
+        )}
+
+        {rider.dietaryRegimen && (
+          <div className="rounded-xl border border-white/15 bg-slate-800 p-3">
+            <h4 className="mb-2 text-sm font-bold text-slate-100">🥗 Régime Alimentaire</h4>
+            <p className="text-sm text-slate-300">{rider.dietaryRegimen}</p>
+          </div>
+        )}
+      </div>
+
+      {rider.performanceNutrition && (
+        <div
+          className={`mt-4 rounded-xl border p-3 ${
+            highlightCarbStrategy
+              ? 'border-fuchsia-500/40 bg-fuchsia-950/45'
+              : 'border-white/15 bg-slate-800'
+          }`}
+        >
+          <h4
+            className={`mb-2 text-sm font-bold ${
+              highlightCarbStrategy ? 'text-fuchsia-100' : 'text-slate-100'
+            }`}
+          >
+            🚴 {highlightCarbStrategy ? 'Stratégie glucidique' : 'Plan course'}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+            {rider.performanceNutrition.carbsPerHourTarget != null && (
+              <div>
+                <span
+                  className={`font-semibold ${
+                    highlightCarbStrategy ? 'text-fuchsia-100' : 'text-slate-200'
+                  }`}
+                >
+                  Objectif glucides/heure :
+                </span>
+                <span
+                  className={`ml-1 ${
+                    highlightCarbStrategy ? 'text-fuchsia-200/90' : 'text-slate-300'
+                  }`}
+                >
+                  {rider.performanceNutrition.carbsPerHourTarget} g/h
+                </span>
+              </div>
+            )}
+            {rider.performanceNutrition.hydrationNotes && (
+              <div>
+                <span
+                  className={`font-semibold ${
+                    highlightCarbStrategy ? 'text-fuchsia-100' : 'text-slate-200'
+                  }`}
+                >
+                  Hydratation :
+                </span>
+                <span
+                  className={`ml-1 ${
+                    highlightCarbStrategy ? 'text-fuchsia-200/90' : 'text-slate-300'
+                  }`}
+                >
+                  {rider.performanceNutrition.hydrationNotes}
+                </span>
+              </div>
+            )}
+            {rider.performanceNutrition.preRaceMeal && (
+              <div className="md:col-span-2">
+                <span className="font-semibold text-slate-200">Repas pré-course :</span>
+                <span className="ml-1 text-slate-300">
+                  {rider.performanceNutrition.preRaceMeal}
+                </span>
+              </div>
+            )}
+            {rider.performanceNutrition.duringRaceNutrition && (
+              <div className="md:col-span-2">
+                <span className="font-semibold text-slate-200">Pendant la course :</span>
+                <span className="ml-1 text-slate-300">
+                  {rider.performanceNutrition.duringRaceNutrition}
+                </span>
+              </div>
+            )}
+            {rider.performanceNutrition.recoveryNutrition && (
+              <div className="md:col-span-2">
+                <span className="font-semibold text-slate-200">Récupération :</span>
+                <span className="ml-1 text-slate-300">
+                  {rider.performanceNutrition.recoveryNutrition}
+                </span>
+              </div>
+            )}
+            {rider.performanceNutrition.notes && (
+              <div className="md:col-span-2">
+                <span className="font-semibold text-slate-200">Notes :</span>
+                <span className="ml-1 text-slate-300">{rider.performanceNutrition.notes}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {allergies.length === 0 && (
+        <div className="mt-4 rounded-xl border border-emerald-500/35 bg-emerald-950/45 p-4 text-center">
+          <div className="font-semibold text-emerald-100">✅ Aucune allergie déclarée</div>
+          <div className="mt-1 text-sm text-emerald-200/90">
+            Préparation des rations sans restriction particulière
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default NutritionSummaryForAssistants;

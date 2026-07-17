@@ -19,9 +19,10 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
   const { t, language } = useTranslations();
   const [hasReadTerms, setHasReadTerms] = useState(false);
   const [hasReadNDA, setHasReadNDA] = useState(false);
+  const [hasReadPrivacy, setHasReadPrivacy] = useState(false);
 
   const handleAccept = () => {
-    if (hasReadTerms && hasReadNDA) {
+    if (hasReadTerms && hasReadNDA && hasReadPrivacy) {
       onAccept();
     } else {
       alert('Veuillez lire et accepter toutes les conditions avant de continuer.');
@@ -70,6 +71,22 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
               <p className="font-semibold mb-2">SANCTIONS :</p>
               <p>Toute violation de cet accord de non-divulgation pourra entraîner des poursuites judiciaires et des dommages et intérêts.</p>
             </div>
+          </div>
+        </div>
+
+        {/* Politique de confidentialité RGPD */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h3 className="text-lg font-bold text-green-800 mb-3">🔐 POLITIQUE DE CONFIDENTIALITÉ (RGPD)</h3>
+          <div className="text-green-700 space-y-2 text-sm">
+            <p>Conformément au Règlement Général sur la Protection des Données (RGPD), LogiCycle collecte et traite vos données personnelles uniquement pour :</p>
+            <ul className="list-disc list-inside ml-2 space-y-1">
+              <li>La gestion de votre compte et de votre appartenance à une équipe</li>
+              <li>La planification logistique et sportive</li>
+              <li>Le suivi de performance et de santé (données que vous fournissez)</li>
+            </ul>
+            <p>Vous disposez d'un <strong>droit d'accès, de rectification, d'effacement et de portabilité</strong> de vos données via les Paramètres de votre compte.</p>
+            <p>Les données sont conservées tant que votre compte est actif, puis supprimées dans un délai de 30 jours après suppression du compte.</p>
+            <p>Contact DPO : <strong>privacy@logicyle.com</strong></p>
           </div>
         </div>
 
@@ -189,6 +206,18 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
               <strong>J'ai lu et compris l'accord de non-divulgation (NDA) et je m'engage à le respecter</strong>
             </label>
           </div>
+          <div className="flex items-start space-x-3">
+            <input
+              type="checkbox"
+              id="readPrivacy"
+              checked={hasReadPrivacy}
+              onChange={(e) => setHasReadPrivacy(e.target.checked)}
+              className="mt-1 h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+            />
+            <label htmlFor="readPrivacy" className="text-sm text-gray-700">
+              <strong>J'ai lu et j'accepte la politique de confidentialité (RGPD)</strong>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -197,7 +226,7 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
         <ActionButton onClick={onDecline} variant="danger">
           Refuser et Quitter
         </ActionButton>
-        <ActionButton onClick={handleAccept} variant="primary" disabled={!hasReadTerms || !hasReadNDA}>
+        <ActionButton onClick={handleAccept} variant="primary" disabled={!hasReadTerms || !hasReadNDA || !hasReadPrivacy}>
           J'Accepte et Continue
         </ActionButton>
       </div>

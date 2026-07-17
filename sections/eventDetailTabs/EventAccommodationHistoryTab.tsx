@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AppSection, AppState, EventAccommodation, PermissionLevel, RaceEvent, User } from '../../types';
 import ActionButton from '../../components/ActionButton';
 import { saveData } from '../../services/firebaseService';
+import { useTranslations } from '../../hooks/useTranslations';
 
 interface EventAccommodationHistoryTabProps {
   event: RaceEvent;
@@ -24,10 +25,10 @@ function normalize(s: string) {
   return (s || '').trim().toLowerCase();
 }
 
-const outcomeLabel: Record<NonNullable<EventAccommodation['reviewOutcome']>, string> = {
-  good: 'Bien',
-  neutral: 'Neutre',
-  bad: 'Pas bien',
+const outcomeBadgeClass: Record<NonNullable<EventAccommodation['reviewOutcome']>, string> = {
+  good: 'bg-green-100 text-green-800',
+  neutral: 'bg-gray-200 text-gray-800',
+  bad: 'bg-red-100 text-red-800',
 };
 
 const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> = ({
@@ -37,11 +38,21 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
   setEventAccommodations,
   currentUser,
 }) => {
+  const { t } = useTranslations();
   const isRider = currentUser?.userRole === 'Coureur';
   const [yearFilter, setYearFilter] = useState<YearFilter>('all');
-  const [nameFilter, setNameFilter] = useState<string>('');
+  const [nameFilter, setNameFilter] = useState('');
+  const [dirtyIds, setDirtyIds] = useState<Record<string, boolean>>({});
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Record<string, boolean>>({});
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const currentEventYear = useMemo(() => getEventYear(event), [event]);
+
+  const outcomeLabel = (outcome: NonNullable<EventAccommodation['reviewOutcome']>) => {
+    if (outcome === 'good') return t('accHistoryOutcomeGood');
+    if (outcome === 'bad') return t('accHistoryOutcomeBad');
+    return t('accHistoryOutcomeNeutral');
+  };
 
   const relevantEventIds = useMemo(() => {
     const baseName = normalize(event.name);
@@ -50,7 +61,6 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
     return appState.raceEvents
       .filter(e => {
         const sameName = normalize(e.name) === baseName;
-        // Location helps when names are generic; we keep it permissive (either matches name OR location).
         const sameLocation = baseLocation && normalize(e.location) === baseLocation;
         return sameName || sameLocation;
       })
@@ -80,7 +90,7 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
             normalize(r.acc.hotelName).includes(f) || normalize(r.acc.address).includes(f)
           );
 
-    return filteredByName.sort((a, b) => (b.year! - a.year!));
+    return filteredByName.sort((a, b) => (b.year! - a.year!) || (b.event!.date || '').localeCompare(a.event!.date || ''));
   }, [appState.eventAccommodations, appState.raceEvents, relevantEventIds, yearFilter, nameFilter]);
 
   const availableYears = useMemo(() => {
@@ -96,8 +106,15 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
     return Array.from(years).sort((a, b) => b - a);
   }, [appState.eventAccommodations, appState.raceEvents, relevantEventIds]);
 
+  const stats = useMemo(() => ({
+    total: historyRows.length,
+    good: historyRows.filter(r => r.acc.reviewOutcome === 'good').length,
+    bad: historyRows.filter(r => r.acc.reviewOutcome === 'bad').length,
+  }), [historyRows]);
+
   const handleUpdateLocal = (id: string, patch: Partial<EventAccommodation>) => {
     setEventAccommodations(prev => prev.map(a => (a.id === id ? { ...a, ...patch } : a)));
+    setDirtyIds(prev => ({ ...prev, [id]: true }));
   };
 
   const handleSaveReview = async (item: EventAccommodation) => {
@@ -107,113 +124,122 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
     }
     try {
       await saveData(appState.activeTeamId, 'eventAccommodations', item);
+      setDirtyIds(prev => ({ ...prev, [item.id]: false }));
+      setSaveMessage(t('accHistorySaved'));
+      setTimeout(() => setSaveMessage(null), 2500);
     } catch (e) {
       console.error('❌ Erreur sauvegarde avis hébergement:', e);
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
     }
   };
 
-  const lightInputClass =
-    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm';
-  const lightSelectClass =
-    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm';
+  const inputClass =
+    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
+  const selectClass =
+    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-end gap-3">
         <div className="flex-1">
-          <h3 className="text-xl font-semibold text-gray-700">
-            Historique hébergement {currentEventYear ? `(référence ${currentEventYear})` : ''}
+          <h3 className="text-lg font-semibold text-gray-800">
+            {t('eventTabAccommodationHistory')}
+            {currentEventYear ? ` · ${currentEventYear}` : ''}
           </h3>
           <p className="text-sm text-gray-500">
-            Retrouver rapidement les hôtels d’une année sur l’autre, avec un avis et une note.
+            {event.name}{event.location ? ` · ${event.location}` : ''}
           </p>
         </div>
-
-        <div className="w-full md:w-56">
-          <label className="block text-sm font-medium text-gray-700">Année</label>
+        <div className="w-full md:w-40">
+          <label className="block text-xs font-medium text-gray-600">{t('accHistoryYear')}</label>
           <select
-            className={lightSelectClass}
+            className={selectClass}
             value={yearFilter === 'all' ? 'all' : String(yearFilter)}
             onChange={e => {
               const v = e.target.value;
               setYearFilter(v === 'all' ? 'all' : Number(v));
             }}
           >
-            <option value="all">Toutes</option>
+            <option value="all">{t('accHistoryYearAll')}</option>
             {availableYears.map(y => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
+              <option key={y} value={String(y)}>{y}</option>
             ))}
           </select>
         </div>
-
-        <div className="w-full md:w-72">
-          <label className="block text-sm font-medium text-gray-700">Recherche (hôtel / adresse)</label>
+        <div className="w-full md:flex-1 md:max-w-sm">
+          <label className="block text-xs font-medium text-gray-600">{t('accHistorySearch')}</label>
           <input
-            className={lightInputClass}
+            className={inputClass}
             value={nameFilter}
             onChange={e => setNameFilter(e.target.value)}
-            placeholder="Ex: Ibis, Novotel, centre ville…"
+            placeholder={t('accHistorySearch')}
           />
         </div>
       </div>
 
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: t('accHistoryKpiTotal'), value: stats.total, tone: 'text-gray-900' },
+          { label: t('accHistoryKpiGood'), value: stats.good, tone: 'text-emerald-600' },
+          { label: t('accHistoryKpiBad'), value: stats.bad, tone: 'text-red-600' },
+        ].map(kpi => (
+          <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-3 text-center">
+            <p className="text-[10px] uppercase text-gray-400">{kpi.label}</p>
+            <p className={`text-xl font-bold ${kpi.tone}`}>{kpi.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {saveMessage && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {saveMessage}
+        </div>
+      )}
+
       {historyRows.length === 0 ? (
-        <p className="text-gray-500 italic p-4 bg-gray-50 rounded-md border text-center">
-          Aucun hébergement trouvé dans l’historique pour cette course (ou localisation).
+        <p className="text-gray-500 italic p-8 bg-gray-50 rounded-xl border border-dashed text-center">
+          {t('accHistoryEmpty')}
         </p>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {historyRows.map(({ acc, event: e, year }) => {
             const isCurrentEvent = acc.eventId === eventId;
             const outcome = acc.reviewOutcome;
+            const note = acc.reviewNote || '';
+            const isExpanded = !!expandedNoteIds[acc.id];
+            const isDirty = !!dirtyIds[acc.id];
 
             return (
-              <div key={acc.id} className="p-4 bg-gray-50 rounded-lg shadow-sm border">
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-md font-semibold text-gray-800 truncate">
-                        {acc.hotelName || 'Hébergement sans nom'}
-                      </h4>
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                        {year}
+              <article
+                key={acc.id}
+                className={`rounded-xl border bg-white shadow-sm overflow-hidden ${isDirty ? 'border-amber-300 ring-1 ring-amber-100' : 'border-gray-200'}`}
+              >
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-gray-900 truncate">
+                      {acc.hotelName || t('accHistoryNoName')}
+                    </h4>
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800">{year}</span>
+                    {isCurrentEvent && (
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                        {t('accHistoryCurrentEvent')}
                       </span>
-                      {isCurrentEvent && (
-                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                          Événement actuel
-                        </span>
-                      )}
-                      {outcome && (
-                        <span
-                          className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                            outcome === 'good'
-                              ? 'bg-green-100 text-green-800'
-                              : outcome === 'bad'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-gray-200 text-gray-800'
-                          }`}
-                          title="Avis"
-                        >
-                          {outcomeLabel[outcome]}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-700 mt-1">{acc.address || 'Adresse non renseignée'}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {e?.name} — {e?.location}
-                    </p>
+                    )}
+                    {outcome && (
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${outcomeBadgeClass[outcome]}`}>
+                        {outcomeLabel(outcome)}
+                      </span>
+                    )}
                   </div>
+                  <p className="text-sm text-gray-600">{acc.address || t('accHistoryNoAddress')}</p>
+                  <p className="text-xs text-gray-500">{e?.name} · {e?.date || '—'}</p>
 
-                  <div className="w-full md:w-96">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {!isRider && (
+                    <div className="space-y-3 pt-2 border-t border-gray-100">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Avis</label>
+                        <label className="block text-xs font-medium text-gray-500">{t('accHistoryOutcome')}</label>
                         <select
-                          className={lightSelectClass}
-                          disabled={isRider}
+                          className={selectClass}
                           value={acc.reviewOutcome || ''}
                           onChange={ev =>
                             handleUpdateLocal(acc.id, {
@@ -222,43 +248,50 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
                           }
                         >
                           <option value="">—</option>
-                          <option value="good">Bien</option>
-                          <option value="neutral">Neutre</option>
-                          <option value="bad">Pas bien</option>
+                          <option value="good">{t('accHistoryOutcomeGood')}</option>
+                          <option value="neutral">{t('accHistoryOutcomeNeutral')}</option>
+                          <option value="bad">{t('accHistoryOutcomeBad')}</option>
                         </select>
                       </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Note (retour d’expérience)</label>
-                        <textarea
-                          className={lightInputClass}
-                          disabled={isRider}
-                          rows={3}
-                          value={acc.reviewNote || ''}
-                          onChange={ev => handleUpdateLocal(acc.id, { reviewNote: ev.target.value })}
-                          placeholder="Ex: Parking camion OK, petit-déj tôt, chambres bruyantes, accueil super…"
-                        />
-                      </div>
-                    </div>
-
-                    {!isRider && (
-                      <div className="mt-2 flex justify-end">
-                        <ActionButton
-                          size="sm"
-                          onClick={() => {
-                            // Recharger l’item à jour depuis l’état (au cas où)
-                            const latest = appState.eventAccommodations.find(a => a.id === acc.id) || acc;
-                            handleSaveReview(latest);
-                          }}
-                          variant="secondary"
+                      <div>
+                        <button
+                          type="button"
+                          className="text-xs text-blue-600 hover:underline"
+                          onClick={() => setExpandedNoteIds(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))}
                         >
-                          Sauvegarder l’avis
-                        </ActionButton>
+                          {isExpanded ? '▾' : '▸'} {t('accHistoryExpandNote')}
+                        </button>
+                        {isExpanded && (
+                          <textarea
+                            className={`${inputClass} mt-1`}
+                            rows={3}
+                            value={note}
+                            onChange={ev => handleUpdateLocal(acc.id, { reviewNote: ev.target.value })}
+                            placeholder={t('accHistoryNotePlaceholder')}
+                          />
+                        )}
                       </div>
-                    )}
-                  </div>
+                      {isDirty && (
+                        <div className="flex justify-end">
+                          <ActionButton
+                            size="sm"
+                            onClick={() => {
+                              const latest = appState.eventAccommodations.find(a => a.id === acc.id) || acc;
+                              handleSaveReview(latest);
+                            }}
+                          >
+                            {t('accHistorySave')}
+                          </ActionButton>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {isRider && note.trim() && (
+                    <p className="text-sm text-gray-600 border-t border-gray-100 pt-2">{note}</p>
+                  )}
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -268,4 +301,3 @@ const EventAccommodationHistoryTab: React.FC<EventAccommodationHistoryTabProps> 
 };
 
 export default EventAccommodationHistoryTab;
-

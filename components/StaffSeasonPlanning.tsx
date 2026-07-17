@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   CalendarDaysIcon, 
   UserGroupIcon, 
@@ -7,18 +7,15 @@ import {
   FunnelIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  ClockIcon,
-  Cog6ToothIcon,
-  TrophyIcon,
-  CheckCircleIcon,
   TableCellsIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
+  EllipsisHorizontalIcon
 } from '@heroicons/react/24/outline';
 import SectionWrapper from './SectionWrapper';
-import ActionButton from './ActionButton';
 import { StaffMember, RaceEvent, User, AppState, StaffEventSelection, StaffEventStatus, StaffAvailability } from '../types';
+import { sendDigitalConvocationNotifications } from '../services/notificationService';
 import { getStaffRoleDisplayLabel, getStaffRoleKey, STAFF_ROLE_KEYS } from '../utils/staffRoleUtils';
-import { 
+import {
   getStrictFutureEventsForStaff,
   getEventsForSelectedYear,
   getAvailableYearsForStaff,
@@ -29,11 +26,39 @@ import {
   updateStaffAvailability,
   filterStaff,
   sortStaff,
-  getStaffStatusColor,
-  getStaffAvailabilityColor
+  isStaffPlanningValidator,
+  isPendingCandidature,
+  isStaffPlanningSelfViewOnly,
 } from '../utils/staffPlanningUtils';
+import { getStaffMemberForUser } from '../utils/staffMemberUtils';
+import StaffPlanningCell from './StaffPlanningCell';
+import { formatEventDateRange } from '../utils/dateUtils';
+import {
+  normalizeStaffStatusKey,
+  getStaffStatusLabel,
+  getStaffStatusBadgeClass,
+  compareStaffByStatus,
+  staffMatchesEmploymentStatus,
+  STAFF_STATUS_KEYS,
+  type StaffStatusKey,
+} from '../utils/staffStatusUtils';
 import StaffIndividualCalendar from './StaffIndividualCalendar';
 import StaffGroupMonitoring from './StaffGroupMonitoring';
+
+const AVAILABILITY_SELECT_CLASSES: Record<string, string> = {
+  DISPONIBLE: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  PARTIELLEMENT_DISPONIBLE: 'bg-amber-50 text-amber-800 border-amber-200',
+  INDISPONIBLE: 'bg-red-50 text-red-800 border-red-200',
+  A_CONFIRMER: 'bg-orange-50 text-orange-800 border-orange-200',
+};
+
+const STATUS_SELECT_CLASSES: Record<string, string> = {
+  SELECTIONNE: 'bg-green-50 text-green-800 border-green-200',
+  NON_SELECTIONNE: 'bg-slate-50 text-slate-600 border-slate-200',
+  EN_ATTENTE: 'bg-yellow-50 text-yellow-800 border-yellow-200',
+  PRE_SELECTION: 'bg-blue-50 text-blue-800 border-blue-200',
+  REFUSE: 'bg-red-50 text-red-800 border-red-200',
+};
 
 interface StaffSeasonPlanningProps {
   staff: StaffMember[];
@@ -45,6 +70,8 @@ interface StaffSeasonPlanningProps {
   onOpenStaffModal?: (staff: StaffMember, initialTab?: string) => void;
   onAssignStaffToEvent?: (eventId: string, staffId: string, status: StaffEventStatus) => void;
   onOpenEventDetail?: (eventId: string) => void;
+  /** Intégré dans StaffSection : pas de SectionWrapper ni titre dupliqué */
+  embedded?: boolean;
 }
 
 export default function StaffSeasonPlanning({ 
@@ -56,28 +83,14 @@ export default function StaffSeasonPlanning({
   appState,
   onOpenStaffModal,
   onAssignStaffToEvent,
-  onOpenEventDetail
+  onOpenEventDetail,
+  embedded = false,
 }: StaffSeasonPlanningProps) {
-  // Vérification plus permissive pour éviter le blocage
-  if (!appState && !staff) {
-    return <div>Chargement...</div>;
-  }
-  
-  // Vérifications de sécurité
-  if (!staff || !Array.isArray(staff)) {
-    return <div>Erreur: Données du staff non disponibles</div>;
-  }
-  
-  if (!raceEvents || !Array.isArray(raceEvents)) {
-    return <div>Erreur: Données des événements non disponibles</div>;
-  }
-  
-  if (!staffEventSelections || !Array.isArray(staffEventSelections)) {
-    return <div>Erreur: Données des sélections non disponibles</div>;
-  }
+  const safeStaff = staff ?? [];
+  const safeRaceEvents = raceEvents ?? [];
+  const safeSelections = staffEventSelections ?? [];
 
   // États pour la gestion des vues
-  const [activeView, setActiveView] = useState<'overview' | 'staff-detail'>('overview');
   const [planningViewMode, setPlanningViewMode] = useState<'table' | 'cards'>('table');
   const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
   
@@ -85,34 +98,56 @@ export default function StaffSeasonPlanning({
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [employmentStatusFilter, setEmploymentStatusFilter] = useState<'' | StaffStatusKey | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   
   // États pour le tri
   const [sortField, setSortField] = useState<'name' | 'role' | 'status' | 'workDays'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
-  // États pour les animations et feedbacks
-  const [isOptimizing, setIsOptimizing] = useState(false);
+  // Feedback de dernière action
   const [lastAction, setLastAction] = useState<{type: string, member: string, event: string} | null>(null);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
   // États pour les calendriers
   const [selectedStaffForCalendar, setSelectedStaffForCalendar] = useState<StaffMember | null>(null);
   const [showGroupMonitoring, setShowGroupMonitoring] = useState(false);
-  const [openCellMenu, setOpenCellMenu] = useState<{ eventId: string; staffId: string } | null>(null);
   const [openHeaderMenuEventId, setOpenHeaderMenuEventId] = useState<string | null>(null);
   const [openRowMenuStaffId, setOpenRowMenuStaffId] = useState<string | null>(null);
   const [hidePastEvents, setHidePastEvents] = useState(true);
-  const [compactTable, setCompactTable] = useState(false);
+  const [compactTable, setCompactTable] = useState(true);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
 
-  const isCellMenuOpen = (eventId: string, staffId: string) =>
-    openCellMenu && openCellMenu.eventId === eventId && openCellMenu.staffId === staffId;
-
-  const closeCellMenu = () => setOpenCellMenu(null);
+  const closeAllMenus = () => {
+    setOpenHeaderMenuEventId(null);
+    setOpenRowMenuStaffId(null);
+  };
   const toggleHeaderMenu = (eventId: string) =>
     setOpenHeaderMenuEventId(prev => (prev === eventId ? null : eventId));
   const toggleRowMenu = (staffId: string) =>
     setOpenRowMenuStaffId(prev => (prev === staffId ? null : staffId));
+
+  const canValidatePlanning = isStaffPlanningValidator(currentUser, safeStaff);
+  const selfViewOnly = isStaffPlanningSelfViewOnly(currentUser, safeStaff);
+  const currentStaffMember = useMemo(
+    () => getStaffMemberForUser(currentUser, safeStaff),
+    [currentUser, safeStaff],
+  );
+
+  useEffect(() => {
+    if (selfViewOnly) {
+      setPlanningViewMode('cards');
+    }
+  }, [selfViewOnly]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!menuContainerRef.current?.contains(e.target as Node)) {
+        closeAllMenus();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const bulkSetStatus = (eventId: string, newStatus: StaffEventStatus) => {
     filteredStaff.forEach(member => addStaffToEventHandler(eventId, member.id, newStatus));
@@ -136,46 +171,27 @@ export default function StaffSeasonPlanning({
   };
 
 
-  // Parité coureurs: progression par colonne
+  // Parité coureurs: progression par colonne (+ candidatures en attente)
   const getColumnProgress = (eventId: string) => {
     const total = filteredStaff.length || 0;
-    if (total === 0) return { percent: 0, selected: 0 };
+    if (total === 0) return { percent: 0, selected: 0, pending: 0 };
     const selected = filteredStaff.filter(m => getStaffEventStatusForEvent(eventId, m.id) === StaffEventStatus.SELECTIONNE).length;
-    return { percent: Math.round((selected / total) * 100), selected };
-  };
-
-  // Parité coureurs: navigation clavier
-  const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
-  const onCellKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, rowIdx: number, colIdx: number, eventId: string, staffId: string) => {
-    if (e.key === 'Enter') {
-      setOpenCellMenu({ eventId, staffId });
-      e.preventDefault();
-    } else if (e.key === 'Escape') {
-      closeCellMenu();
-    } else if (e.key === 'ArrowRight') {
-      setFocusedCell({ row: rowIdx, col: colIdx + 1 });
-      e.preventDefault();
-    } else if (e.key === 'ArrowLeft') {
-      setFocusedCell({ row: rowIdx, col: Math.max(0, colIdx - 1) });
-      e.preventDefault();
-    } else if (e.key === 'ArrowDown') {
-      setFocusedCell({ row: rowIdx + 1, col: colIdx });
-      e.preventDefault();
-    } else if (e.key === 'ArrowUp') {
-      setFocusedCell({ row: Math.max(0, rowIdx - 1), col: colIdx });
-      e.preventDefault();
-    }
+    const pending = filteredStaff.filter(m => {
+      const sel = safeSelections.find(s => s.eventId === eventId && s.staffId === m.id);
+      return isPendingCandidature(sel);
+    }).length;
+    return { percent: Math.round((selected / total) * 100), selected, pending };
   };
 
   // Filtrer les événements futurs (date >= aujourd'hui, comme pour les athlètes)
   const futureEvents = useMemo(() => {
-    return getStrictFutureEventsForStaff(raceEvents, selectedYear);
-  }, [raceEvents, selectedYear]);
+    return getStrictFutureEventsForStaff(safeRaceEvents, selectedYear);
+  }, [safeRaceEvents, selectedYear]);
 
   // Tous les événements de l'année sélectionnée (pour l'option "afficher les passés")
   const eventsForSelectedYear = useMemo(() => {
-    return getEventsForSelectedYear(raceEvents, selectedYear);
-  }, [raceEvents, selectedYear]);
+    return getEventsForSelectedYear(safeRaceEvents, selectedYear);
+  }, [safeRaceEvents, selectedYear]);
 
   // Liste affichée : sans les passés si l'option est cochée (comme pour les athlètes)
   const displayEvents = useMemo(() => {
@@ -184,53 +200,78 @@ export default function StaffSeasonPlanning({
 
   // Obtenir les années disponibles
   const availableYears = useMemo(() => {
-    return getAvailableYearsForStaff(raceEvents);
-  }, [raceEvents]);
+    return getAvailableYearsForStaff(safeRaceEvents);
+  }, [safeRaceEvents]);
 
   // Fonction pour calculer le nombre de jours de travail prévu pour un membre du staff
   const getStaffWorkDaysCount = (staffId: string) => {
-    return getStaffWorkDays(staffId, staffEventSelections, futureEvents);
+    return getStaffWorkDays(staffId, safeSelections, displayEvents);
   };
 
   // Fonction de tri des membres du staff
   const sortStaffMembers = (staffMembers: StaffMember[]) => {
+    if (sortField === 'status') {
+      return [...staffMembers].sort((a, b) => compareStaffByStatus(a.status, b.status, sortDirection));
+    }
     return sortStaff(staffMembers, sortField, sortDirection, getStaffWorkDaysCount);
   };
 
   // Filtrer et trier les membres du staff
   const filteredStaff = useMemo(() => {
-    const filtered = filterStaff(
-      staff,
+    let filtered = filterStaff(
+      safeStaff,
       searchTerm,
       roleFilter,
       statusFilter,
       'all',
-      staffEventSelections,
+      safeSelections,
       getStaffRoleKey
-    );
+    ).filter((member) => staffMatchesEmploymentStatus(member.status, employmentStatusFilter));
+
+    if (selfViewOnly && currentStaffMember) {
+      filtered = filtered.filter(m => m.id === currentStaffMember.id);
+    }
+
     return sortStaffMembers(filtered);
-  }, [staff, searchTerm, roleFilter, statusFilter, staffEventSelections, sortField, sortDirection]);
+  }, [safeStaff, searchTerm, roleFilter, statusFilter, employmentStatusFilter, safeSelections, sortField, sortDirection, selfViewOnly, currentStaffMember]);
 
   // Fonction pour obtenir le statut d'un membre du staff pour un événement
   const getStaffEventStatusForEvent = (eventId: string, staffId: string): StaffEventStatus | null => {
-    return getStaffEventStatus(eventId, staffId, staffEventSelections);
+    return getStaffEventStatus(eventId, staffId, safeSelections);
   };
 
   // Fonction pour obtenir la disponibilité d'un membre du staff pour un événement
   const getStaffEventAvailabilityForEvent = (eventId: string, staffId: string): StaffAvailability | null => {
-    return getStaffEventAvailability(eventId, staffId, staffEventSelections);
+    return getStaffEventAvailability(eventId, staffId, safeSelections);
   };
 
   // Fonction pour ajouter un membre du staff à un événement avec feedback
   const addStaffToEventHandler = (eventId: string, staffId: string, status: StaffEventStatus = StaffEventStatus.SELECTIONNE) => {
-    addStaffToEvent(eventId, staffId, status, staffEventSelections, setStaffEventSelections);
+    addStaffToEvent(eventId, staffId, status, safeSelections, setStaffEventSelections);
     if (onAssignStaffToEvent) {
       onAssignStaffToEvent(eventId, staffId, status);
     }
+
+    // Notification transversale : informer le membre du staff de son affectation
+    const teamId = appState.activeTeamId;
+    const event = displayEvents.find(e => e.id === eventId);
+    if (teamId && currentUser?.id && event) {
+      sendDigitalConvocationNotifications({
+        teamId,
+        eventId,
+        eventName: event.name,
+        eventDate: event.date,
+        mode: 'staff',
+        sentByUserId: currentUser.id,
+        users: appState.users ?? [],
+        riders: [],
+        staff: safeStaff,
+        staffId,
+      }).catch(() => {/* silencieux si pas de compte */});
+    }
     
     // Feedback visuel
-    const member = staff.find(s => s.id === staffId);
-    const event = displayEvents.find(e => e.id === eventId);
+    const member = safeStaff.find(s => s.id === staffId);
     setLastAction({
       type: status,
       member: member?.name || 'Membre',
@@ -243,49 +284,7 @@ export default function StaffSeasonPlanning({
 
   // Fonction pour mettre à jour la disponibilité d'un membre du staff
   const updateStaffAvailabilityHandler = (eventId: string, staffId: string, availability: StaffAvailability) => {
-    updateStaffAvailability(eventId, staffId, availability, staffEventSelections, setStaffEventSelections);
-  };
-
-  // Fonction pour optimiser automatiquement les sélections avec animations
-  const optimizeStaffSelections = async () => {
-    setIsOptimizing(true);
-    setShowSuccessMessage(false);
-    
-    console.log('🔧 Optimisation des sélections du staff...');
-    
-    let optimizationsCount = 0;
-    
-    // Pour chaque événement, optimiser les sélections avec délai pour l'animation
-    for (const event of futureEvents) {
-      for (const member of staff) {
-        const currentStatus = getStaffEventStatusForEvent(event.id, member.id);
-        const currentAvailability = getStaffEventAvailabilityForEvent(event.id, member.id);
-        // Logique binaire :
-        // - Dispo => déplacement Oui
-        // - Indispo => déplacement Non
-        if (currentAvailability === StaffAvailability.DISPONIBLE) {
-          if (currentStatus !== StaffEventStatus.SELECTIONNE) {
-            addStaffToEventHandler(event.id, member.id, StaffEventStatus.SELECTIONNE);
-            optimizationsCount++;
-          }
-        } else if (currentAvailability === StaffAvailability.INDISPONIBLE) {
-          // Staff indisponible → Retirer
-          if (currentStatus) {
-            addStaffToEventHandler(event.id, member.id, StaffEventStatus.NON_SELECTIONNE);
-            optimizationsCount++;
-          }
-        }
-        
-        // Petit délai pour l'animation
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-    }
-    
-    setIsOptimizing(false);
-    setShowSuccessMessage(true);
-    setTimeout(() => setShowSuccessMessage(false), 3000);
-    
-    console.log(`Optimisation terminée ! ${optimizationsCount} sélections optimisées.`);
+    updateStaffAvailability(eventId, staffId, availability, safeSelections, setStaffEventSelections);
   };
 
   // Fonction pour gérer le tri
@@ -305,42 +304,20 @@ export default function StaffSeasonPlanning({
     }
   };
 
-  const getAvailabilityShort = (availability: StaffAvailability | null) => {
-    if (availability === 'DISPONIBLE') return 'Dispo';
-    if (availability === 'PARTIELLEMENT_DISPONIBLE') return 'Partiel';
-    if (availability === 'INDISPONIBLE') return 'Indispo';
-    if (availability === 'A_CONFIRMER') return 'Conf.';
-    return '—';
-  };
+  if (!staff || !Array.isArray(staff)) {
+    return <div>Erreur: Données du staff non disponibles</div>;
+  }
 
-  const getStatusShort = (status: StaffEventStatus | null) => {
-    if (status === StaffEventStatus.SELECTIONNE) return 'Oui';
-    if (status === StaffEventStatus.NON_SELECTIONNE) return 'Non';
-    return '—';
-  };
+  if (!raceEvents || !Array.isArray(raceEvents)) {
+    return <div>Erreur: Données des événements non disponibles</div>;
+  }
 
-  const getStatusChar = (status: StaffEventStatus | null) => {
-    if (status === StaffEventStatus.SELECTIONNE) return '✓';
-    if (status === StaffEventStatus.NON_SELECTIONNE) return '×';
-    return '○';
-  };
+  if (!staffEventSelections || !Array.isArray(staffEventSelections)) {
+    return <div>Erreur: Données des sélections non disponibles</div>;
+  }
 
-  return (
-    <SectionWrapper 
-      title="Planning de Saison - Staff"
-    >
-      <div className="space-y-6 w-full max-w-full overflow-hidden">
-        {/* Message de succès */}
-        {showSuccessMessage && (
-          <div className="fixed top-4 right-4 z-50 animate-bounce">
-            <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-2">
-              <CheckCircleIcon className="w-5 h-5" />
-              <span className="font-semibold">Optimisation terminée !</span>
-            </div>
-          </div>
-        )}
-        
-        
+  const content = (
+      <div ref={menuContainerRef} className="space-y-4 w-full max-w-full overflow-hidden">
         {/* Feedback de dernière action */}
         {lastAction && (
           <div className="fixed top-20 right-4 z-50 animate-pulse">
@@ -350,112 +327,156 @@ export default function StaffSeasonPlanning({
           </div>
         )}
         
-        {/* Contrôles de filtrage et tri - Version compacte */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="space-y-3">
-            {/* Ligne 1 : recherche + vues */}
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-              <div className="flex-1 min-w-[280px]">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher un membre du staff..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                {/* Vue Tableau / Cartes */}
-                <div className="flex items-center gap-1 border border-gray-200 rounded-md p-0.5 bg-gray-50">
-                  <button
-                    type="button"
-                    onClick={() => setPlanningViewMode('table')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                      planningViewMode === 'table' ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                    title="Vue Tableau"
-                  >
-                    <TableCellsIcon className="w-4 h-4" />
-                    Tableau
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlanningViewMode('cards')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                      planningViewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                    title="Vue Cartes"
-                  >
-                    <Squares2X2Icon className="w-4 h-4" />
-                    Cartes
-                  </button>
-                </div>
-
-                {/* Densité tableau */}
-                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={compactTable}
-                    onChange={(e) => setCompactTable(e.target.checked)}
-                    className="h-4 w-4 text-slate-600 border-slate-300 rounded focus:ring-slate-500"
-                  />
-                  <span className="text-sm text-gray-700">Mode compact</span>
-                </label>
-              </div>
+        {/* Barre d'outils */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm text-gray-600">
+                {selfViewOnly
+                  ? `Mon planning · ${displayEvents.length} événement${displayEvents.length > 1 ? 's' : ''}`
+                  : `${filteredStaff.length} membre${filteredStaff.length > 1 ? 's' : ''} • ${displayEvents.length} événement${displayEvents.length > 1 ? 's' : ''}`}
+              </p>
             </div>
 
-            {/* Ligne 2 : filtres (wrap propre) */}
-            <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Rôle</label>
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
-                  title="Filtrer par rôle"
+            <div className="flex flex-wrap items-center gap-2">
+              {!selfViewOnly && (
+              <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setPlanningViewMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    planningViewMode === 'table' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Vue Tableau"
                 >
-                  <option value="all">Tous les rôles</option>
-                  {STAFF_ROLE_KEYS.map((key) => (
-                    <option key={key} value={key}>
-                      {getStaffRoleDisplayLabel(key)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Année</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px]"
+                  <TableCellsIcon className="w-4 h-4" />
+                  Tableau
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanningViewMode('cards')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    planningViewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Vue Cartes"
                 >
-                  <option value="all">Toutes</option>
-                  {availableYears.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
+                  <Squares2X2Icon className="w-4 h-4" />
+                  Cartes
+                </button>
               </div>
+              )}
 
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              {!selfViewOnly && (
+              <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-lg border border-gray-200">
                 <input
                   type="checkbox"
-                  checked={hidePastEvents}
-                  onChange={(e) => setHidePastEvents(e.target.checked)}
-                  className="h-4 w-4 text-slate-600 border-slate-300 rounded focus:ring-slate-500"
+                  checked={compactTable}
+                  onChange={(e) => setCompactTable(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Masquer les événements passés</span>
+                <span className="text-sm font-medium text-gray-700">Compact</span>
               </label>
+              )}
+
+              {!selfViewOnly && (
+              <button
+                type="button"
+                onClick={() => setShowGroupMonitoring(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                title="Vue calendrier de groupe"
+              >
+                <CalendarDaysIcon className="w-4 h-4" />
+                Vue groupe
+              </button>
+              )}
             </div>
           </div>
 
+          <div className="px-4 pb-4 flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-3 border-t border-gray-100 pt-3">
+            {!selfViewOnly && (
+            <div className="flex-1 min-w-[220px]">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Rechercher un membre du staff..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+            )}
+
+            {!selfViewOnly && (
+            <>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]"
+              title="Filtrer par rôle"
+            >
+              <option value="all">Tous les rôles</option>
+              {STAFF_ROLE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {getStaffRoleDisplayLabel(key)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={employmentStatusFilter}
+              onChange={(e) => setEmploymentStatusFilter((e.target.value || 'all') as '' | StaffStatusKey | 'all')}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px]"
+              title="Filtrer par statut"
+            >
+              <option value="all">Tous statuts</option>
+              {STAFF_STATUS_KEYS.map((key) => (
+                <option key={key} value={key}>{getStaffStatusLabel(key)}</option>
+              ))}
+            </select>
+            </>
+            )}
+
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px]"
+            >
+              <option value="all">Toutes</option>
+              {availableYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+
+            <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-lg border border-gray-200">
+              <input
+                type="checkbox"
+                checked={hidePastEvents}
+                onChange={(e) => setHidePastEvents(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Masquer passés</span>
+            </label>
+
+            {!selfViewOnly && (
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                showFilters ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <FunnelIcon className="w-4 h-4" />
+              {showFilters ? 'Masquer' : 'Plus de filtres'}
+              {showFilters ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
+            </button>
+            )}
+          </div>
+
           {/* Filtres avancés */}
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200">
+          {!selfViewOnly && showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200 px-4 pb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
                 <select
@@ -515,37 +536,42 @@ export default function StaffSeasonPlanning({
                   >
                     Jours {sortField === 'workDays' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </button>
+                  <button
+                    onClick={() => handleSort('status')}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      sortField === 'status' 
+                        ? 'bg-blue-100 text-blue-700 border border-blue-300' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Statut {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-      {/* Légende compacte */}
-      <div className="mt-2 text-xs text-gray-600 flex flex-wrap items-center gap-3">
-        <span className="font-semibold text-gray-700">Légende:</span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-green-500" /> Dispo
+      {/* Légende intégrée */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-medium text-gray-500 mr-1">Légende</span>
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Candidaté
         </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-yellow-500" /> Partiel
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-red-500" /> Indispo
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-orange-500" /> Conf.
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Oui</span> Veut participer
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">Obj.</span> Objectifs
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">Sel</span> Sélectionné
-        </span>
+        <span className="text-gray-300">|</span>
+        <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-100 font-medium">Retenu</span>
+        <span className="text-gray-400">validé par DS / manager</span>
+        <span className="inline-flex items-center px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200 font-medium">Refusé</span>
+        {canValidatePlanning && (
+          <span className="text-gray-400">— boutons sous chaque candidature</span>
+        )}
       </div>
+
+      {selfViewOnly && filteredStaff.length === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Votre fiche staff est introuvable dans cette équipe. Contactez l&apos;encadrement pour lier votre compte.
+        </div>
+      )}
 
       {/* Message si aucun événement à afficher */}
       {displayEvents.length === 0 && (
@@ -596,30 +622,39 @@ export default function StaffSeasonPlanning({
               {/* Événements en version mobile */}
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-600 mb-2">Événements :</div>
-                {displayEvents.slice(0, 3).map(event => {
-                  const status = getStaffEventStatusForEvent(event.id, member.id);
-                  const availability = getStaffEventAvailabilityForEvent(event.id, member.id);
-                  
+                {displayEvents.map(event => {
+                  const selection = staffEventSelections.find(
+                    s => s.eventId === event.id && s.staffId === member.id,
+                  );
                   return (
-                    <div key={event.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-gray-900 truncate">{event.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(event.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                    <div key={event.id} className="p-2.5 bg-gray-50 rounded-lg space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-gray-900 leading-tight">{event.name}</div>
+                          <div className="text-[10px] text-gray-500">{formatEventDateRange(event)}</div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => onOpenEventDetail && onOpenEventDetail(event.id)}
+                          className="text-[10px] text-blue-600 hover:underline shrink-0"
+                        >
+                          Détail
+                        </button>
                       </div>
-                      <div className="flex items-center space-x-1">
-                        <span className={`text-xs px-2 py-1 rounded ${getStaffStatusColor(status)}`}>
-                          {status ? (status === 'SELECTIONNE' ? 'Sel' : 'Ret') : '—'}
-                        </span>
-                      </div>
+                      <StaffPlanningCell
+                        eventId={event.id}
+                        member={member}
+                        selection={selection}
+                        currentUser={currentUser}
+                        staff={staff}
+                        staffEventSelections={staffEventSelections}
+                        setStaffEventSelections={setStaffEventSelections}
+                      />
                     </div>
                   );
                 })}
-                {displayEvents.length > 3 && (
-                  <div className="text-xs text-gray-500 text-center">
-                    +{displayEvents.length - 3} autres événements
-                  </div>
+                {displayEvents.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">Aucun événement à afficher</p>
                 )}
               </div>
             </div>
@@ -628,224 +663,197 @@ export default function StaffSeasonPlanning({
         </div>
 
         {/* Vue Tableau */}
-        <div className={`${planningViewMode === 'table' ? 'block' : 'hidden'} bg-white rounded-lg border border-gray-200 overflow-hidden w-full max-w-full`}>
-          <div className="max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+        <div className={`${planningViewMode === 'table' ? 'block' : 'hidden'} bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden w-full max-w-full`}>
+          <div className="px-4 py-3 border-b border-gray-200 bg-blue-600 text-white">
+            <h3 className="text-base font-semibold">{selfViewOnly ? 'Mon planning saison' : 'Grille de planning'}</h3>
+            <p className="text-blue-100 text-xs mt-0.5">
+              {canValidatePlanning
+                ? 'Candidatures staff en haut · validez Retenu / Refusé (votre nom est enregistré)'
+                : selfViewOnly
+                  ? 'Indiquez votre disponibilité et candidatez aux courses qui vous intéressent'
+                  : 'Cliquez Candidater ou Indispo sur votre ligne — la réponse du DS apparaît en dessous'}
+            </p>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto">
             <div className="overflow-x-auto">
-              <table className="divide-y divide-gray-200 w-max min-w-full" style={{ minWidth: '760px' }}>
+              <table className="divide-y divide-gray-200 w-max min-w-full">
               <thead className="bg-gray-50 sticky top-0 z-30">
                 <tr>
-                  <th className="px-3 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200 min-w-[240px]">
-                    <div className="flex items-center space-x-2">
+                  <th className={`px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200 min-w-[200px] ${compactTable ? 'py-2.5' : 'py-3'}`}>
+                    <div className="flex items-center gap-2">
                       <UserGroupIcon className="w-4 h-4" />
                       <span>Staff</span>
                     </div>
                   </th>
-                  <th className="px-2 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                    Rôle
-                  </th>
-                  <th className="px-2 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                  <th className={`px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[52px] border-r border-gray-100 ${compactTable ? 'py-2.5' : 'py-3'}`} title="Jours de déplacement confirmés">
                     Jours
                   </th>
-                  {displayEvents.map(event => (
-                    <th key={event.id} className="px-2 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px] max-w-[220px]">
-                      <div className="flex flex-col items-center space-y-1 relative">
-                        <div className="flex items-center gap-2">
+                  {displayEvents.map(event => {
+                    const progress = getColumnProgress(event.id);
+                    return (
+                    <th key={event.id} className={`px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-l border-gray-200 relative ${compactTable ? 'py-2 min-w-[108px]' : 'py-3 min-w-[128px]'}`}>
+                      <div className={`flex flex-col items-center ${compactTable ? 'gap-0.5' : 'gap-1'}`}>
+                        <div className="flex items-center gap-1 w-full justify-center">
                           <button
+                            type="button"
                             onClick={() => onOpenEventDetail && onOpenEventDetail(event.id)}
-                            className="truncate text-xs font-semibold hover:underline hover:text-blue-600"
-                            title={`${event.name} – ouvrir le détail`}
+                            className={`font-semibold hover:underline hover:text-blue-600 text-left leading-tight ${compactTable ? 'text-[11px] line-clamp-2' : 'text-xs line-clamp-2'}`}
+                            title={`${event.name} — ouvrir le détail`}
                           >
-                            {event.name.length > 12 ? event.name.substring(0, 12) + '…' : event.name}
+                            {event.name}
                           </button>
+                          {canValidatePlanning && (
                           <button
+                            type="button"
                             onClick={() => toggleHeaderMenu(event.id)}
-                            className="px-1.5 py-0.5 border rounded text-[11px] hover:bg-gray-50"
-                            title="Actions de colonne"
+                            className="p-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded shrink-0"
+                            title="Actions sur toute la colonne"
                           >
-                            …
+                            <EllipsisHorizontalIcon className="w-4 h-4" />
                           </button>
+                          )}
                         </div>
-                        <span className="text-xs text-gray-400">
-                          {new Date(event.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                        <span className="text-[10px] text-gray-400 font-normal normal-case">
+                          {formatEventDateRange(event)}
                         </span>
-
-                        {/* Barre de progression sélection (parité coureurs) */}
-                        {(() => { const p = getColumnProgress(event.id); return (
-                          <div className="w-20 h-1.5 bg-gray-200 rounded overflow-hidden">
-                            <div className="h-full bg-green-500" style={{ width: `${p.percent}%` }} />
-                          </div>
-                        ); })()}
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                          progress.percent === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {selfViewOnly
+                            ? (progress.selected > 0 ? 'Retenu' : progress.pending > 0 ? 'En attente' : '—')
+                            : `${progress.selected}/${filteredStaff.length}`}
+                        </span>
+                        {progress.pending > 0 && canValidatePlanning && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                            {progress.pending} à valider
+                          </span>
+                        )}
 
                         {openHeaderMenuEventId === event.id && (
-                          <div className="absolute top-7 z-30 w-56 bg-white border border-gray-200 rounded-md shadow-lg text-left p-2">
-                            <div className="text-[11px] font-semibold text-gray-500 px-1 pb-1">Appliquer à toute la colonne</div>
-                            <div className="text-[12px] text-gray-600 px-1 py-1">Disponibilité</div>
-                            <div className="grid grid-cols-4 gap-1 mb-2">
-                              <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border hover:border-green-200" onClick={() => bulkSetAvailability(event.id, 'DISPONIBLE' as any)}>Dispo</button>
-                              <button className="text-xs px-2 py-1 rounded hover:bg-yellow-50 border hover:border-yellow-200" onClick={() => bulkSetAvailability(event.id, 'PARTIELLEMENT_DISPONIBLE' as any)}>Partiel</button>
-                              <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border hover:border-red-200" onClick={() => bulkSetAvailability(event.id, 'INDISPONIBLE' as any)}>Indispo</button>
-                              <button className="text-xs px-2 py-1 rounded hover:bg-orange-50 border hover:border-orange-200" onClick={() => bulkSetAvailability(event.id, 'A_CONFIRMER' as any)}>Conf.</button>
+                          <div className="absolute top-full mt-1 z-40 w-52 bg-white border border-gray-200 rounded-lg shadow-lg text-left p-2 normal-case">
+                            <div className="text-[10px] font-semibold text-gray-400 px-1 pb-1 uppercase">Colonne entière</div>
+                            <div className="text-[11px] text-gray-500 px-1 py-0.5">Disponibilité</div>
+                            <div className="grid grid-cols-2 gap-1 mb-2">
+                              <button className="text-xs px-2 py-1 rounded hover:bg-emerald-50 border border-gray-100" onClick={() => bulkSetAvailability(event.id, StaffAvailability.DISPONIBLE)}>Dispo</button>
+                              <button className="text-xs px-2 py-1 rounded hover:bg-amber-50 border border-gray-100" onClick={() => bulkSetAvailability(event.id, StaffAvailability.PARTIELLEMENT_DISPONIBLE)}>Partiel</button>
+                              <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border border-gray-100" onClick={() => bulkSetAvailability(event.id, StaffAvailability.INDISPONIBLE)}>Indispo</button>
+                              <button className="text-xs px-2 py-1 rounded hover:bg-orange-50 border border-gray-100" onClick={() => bulkSetAvailability(event.id, StaffAvailability.A_CONFIRMER)}>À conf.</button>
                             </div>
-
-                              <div className="text-[12px] text-gray-600 px-1 py-1">Déplacement</div>
-                              <div className="grid grid-cols-2 gap-1">
-                                <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border hover:border-green-200" onClick={() => bulkSetStatus(event.id, 'SELECTIONNE' as any)}>Oui</button>
-                                <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border hover:border-red-200" onClick={() => bulkSetStatus(event.id, 'NON_SELECTIONNE' as any)}>Non</button>
-                              </div>
+                            <div className="text-[11px] text-gray-500 px-1 py-0.5">Déplacement</div>
+                            <div className="grid grid-cols-2 gap-1">
+                              <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border border-gray-100" onClick={() => bulkSetStatus(event.id, StaffEventStatus.SELECTIONNE)}>Oui</button>
+                              <button className="text-xs px-2 py-1 rounded hover:bg-slate-50 border border-gray-100" onClick={() => bulkSetStatus(event.id, StaffEventStatus.NON_SELECTIONNE)}>Non</button>
+                            </div>
                           </div>
                         )}
                       </div>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredStaff.map((member, rowIdx) => (
-                  <tr key={member.id} className={`${rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} hover:bg-gray-100/60 transition-colors`}>
-                    <td className={`px-3 whitespace-nowrap sticky left-0 z-10 border-r border-gray-200 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} ${compactTable ? 'py-3' : 'py-5'}`}>
-                      <div className="flex items-center space-x-3">
-                        <div className="flex-shrink-0 h-8 w-8">
-                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
-                            <span className="text-xs font-semibold text-white">
-                                {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
-                              </span>
-                            </div>
-                          </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-gray-900 cursor-pointer hover:text-blue-600 truncate"
-                               onClick={() => openStaffModal(member)}
-                               title={`${member.firstName} ${member.lastName}`}>
-                              {member.firstName} {member.lastName}
-                          </div>
-                          <div className="text-xs text-gray-500 truncate">{member.email}</div>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {filteredStaff.map((member, rowIdx) => {
+                  const workDays = getStaffWorkDaysCount(member.id);
+                  const rowBg = rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50';
+                  return (
+                  <tr key={member.id} className={`${rowBg} hover:bg-blue-50/30 transition-colors`}>
+                    <td className={`px-3 whitespace-nowrap sticky left-0 z-10 border-r border-gray-200 ${rowBg} relative ${compactTable ? 'py-2' : 'py-3'}`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`flex-shrink-0 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center ${compactTable ? 'h-7 w-7' : 'h-8 w-8'}`}>
+                          <span className="text-[10px] font-semibold text-white">
+                            {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStaffForCalendar(member)}
-                            className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Voir le calendrier individuel"
-                          >
-                            <CalendarDaysIcon className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleRowMenu(member.id)}
-                            className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="Actions de ligne"
-                          >
-                            …
-                          </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openStaffModal(member)}
+                              className="text-sm font-medium text-gray-900 hover:text-blue-600 truncate text-left"
+                              title={`${member.firstName} ${member.lastName}`}
+                            >
+                              {member.firstName} {member.lastName}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedStaffForCalendar(member)}
+                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded shrink-0"
+                              title="Calendrier individuel"
+                            >
+                              <CalendarDaysIcon className="w-3.5 h-3.5" />
+                            </button>
+                            {canValidatePlanning && (
+                            <button
+                              type="button"
+                              onClick={() => toggleRowMenu(member.id)}
+                              className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded shrink-0"
+                              title="Actions sur toute la ligne"
+                            >
+                              <EllipsisHorizontalIcon className="w-3.5 h-3.5" />
+                            </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                              {getStaffRoleDisplayLabel(member.role) || 'Autre'}
+                            </span>
+                            {!compactTable && member.email && (
+                              <span className="text-[10px] text-gray-400 truncate">{member.email}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       {openRowMenuStaffId === member.id && (
-                        <div className="absolute mt-1 left-3 z-30 w-64 bg-white border border-gray-200 rounded-md shadow-lg text-left p-2">
-                          <div className="text-[11px] font-semibold text-gray-500 px-1 pb-1">
-                            Appliquer à toute la ligne
+                        <div className="absolute mt-1 left-2 z-40 w-52 bg-white border border-gray-200 rounded-lg shadow-lg text-left p-2">
+                          <div className="text-[10px] font-semibold text-gray-400 px-1 pb-1 uppercase">Ligne entière</div>
+                          <div className="text-[11px] text-gray-500 px-1 py-0.5">Disponibilité</div>
+                          <div className="grid grid-cols-2 gap-1 mb-2">
+                            <button className="text-xs px-2 py-1 rounded hover:bg-emerald-50 border border-gray-100" onClick={() => rowSetAvailability(member.id, StaffAvailability.DISPONIBLE)}>Dispo</button>
+                            <button className="text-xs px-2 py-1 rounded hover:bg-amber-50 border border-gray-100" onClick={() => rowSetAvailability(member.id, StaffAvailability.PARTIELLEMENT_DISPONIBLE)}>Partiel</button>
+                            <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border border-gray-100" onClick={() => rowSetAvailability(member.id, StaffAvailability.INDISPONIBLE)}>Indispo</button>
+                            <button className="text-xs px-2 py-1 rounded hover:bg-orange-50 border border-gray-100" onClick={() => rowSetAvailability(member.id, StaffAvailability.A_CONFIRMER)}>À conf.</button>
                           </div>
-
-                          <div className="text-[12px] text-gray-600 px-1 py-1">Disponibilité</div>
-                          <div className="grid grid-cols-4 gap-1 mb-2">
-                            <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border hover:border-green-200" onClick={() => rowSetAvailability(member.id, 'DISPONIBLE' as any)}>Dispo</button>
-                            <button className="text-xs px-2 py-1 rounded hover:bg-yellow-50 border hover:border-yellow-200" onClick={() => rowSetAvailability(member.id, 'PARTIELLEMENT_DISPONIBLE' as any)}>Partiel</button>
-                            <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border hover:border-red-200" onClick={() => rowSetAvailability(member.id, 'INDISPONIBLE' as any)}>Indispo</button>
-                            <button className="text-xs px-2 py-1 rounded hover:bg-orange-50 border hover:border-orange-200" onClick={() => rowSetAvailability(member.id, 'A_CONFIRMER' as any)}>Conf.</button>
-                          </div>
-
-                          <div className="text-[12px] text-gray-600 px-1 py-1">Déplacement</div>
+                          <div className="text-[11px] text-gray-500 px-1 py-0.5">Déplacement</div>
                           <div className="grid grid-cols-2 gap-1">
-                            <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border hover:border-green-200" onClick={() => rowSetStatus(member.id, 'SELECTIONNE' as any)}>Oui</button>
-                            <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border hover:border-red-200" onClick={() => rowSetStatus(member.id, 'NON_SELECTIONNE' as any)}>Non</button>
+                            <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border border-gray-100" onClick={() => rowSetStatus(member.id, StaffEventStatus.SELECTIONNE)}>Oui</button>
+                            <button className="text-xs px-2 py-1 rounded hover:bg-slate-50 border border-gray-100" onClick={() => rowSetStatus(member.id, StaffEventStatus.NON_SELECTIONNE)}>Non</button>
                           </div>
                         </div>
                       )}
                     </td>
-                    <td className={`px-2 whitespace-nowrap text-center ${compactTable ? 'py-3' : 'py-5'}`}>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {getStaffRoleDisplayLabel(member.role) || 'Autre'}
+                    <td className={`px-2 text-center border-r border-gray-100 ${compactTable ? 'py-2' : 'py-3'}`}>
+                      <span className={`inline-flex items-center justify-center rounded-full font-semibold ${
+                        workDays > 0
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-gray-100 text-gray-400'
+                      } ${compactTable ? 'h-6 w-6 text-[11px]' : 'h-7 w-7 text-xs'}`}>
+                        {workDays}
                       </span>
                     </td>
-                    <td className={`px-2 whitespace-nowrap text-center ${compactTable ? 'py-3' : 'py-5'}`}>
-                      <span className="text-sm font-medium text-gray-900">
-                        {getStaffWorkDaysCount(member.id)}
-                      </span>
-                    </td>
-                    {displayEvents.map((event, colIdx) => {
-                      const status = getStaffEventStatusForEvent(event.id, member.id);
-                      const availability = getStaffEventAvailabilityForEvent(event.id, member.id);
-                      const availabilityLabel = availability === 'DISPONIBLE' ? 'Disponible' :
-                        availability === 'PARTIELLEMENT_DISPONIBLE' ? 'Partiel' :
-                        availability === 'INDISPONIBLE' ? 'Indispo' :
-                        availability === 'A_CONFIRMER' ? 'À confirmer' : 'N/A';
-                      const statusLabel = status === 'SELECTIONNE' ? 'Oui' :
-                        status === 'NON_SELECTIONNE' ? 'Non' : '—';
-                      
+                    {displayEvents.map((event) => {
+                      const selection = staffEventSelections.find(
+                        s => s.eventId === event.id && s.staffId === member.id,
+                      );
                       return (
-                        <td key={event.id} className="px-2 py-4 text-center border-l border-gray-200 min-w-[180px] max-w-[220px]">
-                          <div
-                            className="relative outline-none"
-                            tabIndex={0}
-                            onFocus={() => setFocusedCell({ row: rowIdx, col: colIdx })}
-                            onKeyDown={(e) => onCellKeyDown(e, rowIdx, colIdx, event.id, member.id)}
-                          >
-                            {/* Dans la grille : un seul contrôle (résumé) → menu */}
-                            <button
-                              type="button"
-                              onClick={() => setOpenCellMenu({ eventId: event.id, staffId: member.id })}
-                              className={`w-full rounded-md border px-3 ${compactTable ? 'py-2.5' : 'py-3'} text-left ${compactTable ? 'text-xs' : 'text-sm'} font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                                getStaffAvailabilityColor(availability)
-                              }`}
-                              title={`Disponibilité: ${availabilityLabel} • Déplacement: ${statusLabel} (cliquer pour modifier)`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="inline-flex items-center gap-1 shrink-0" aria-label="Disponibilité">
-                                    <span className={`inline-block w-2 h-2 rounded-full ${
-                                      availability === 'DISPONIBLE' ? 'bg-green-500' :
-                                      availability === 'PARTIELLEMENT_DISPONIBLE' ? 'bg-yellow-500' :
-                                      availability === 'INDISPONIBLE' ? 'bg-red-500' :
-                                      availability === 'A_CONFIRMER' ? 'bg-orange-500' : 'bg-gray-300'
-                                    }`} />
-                                    <span className="text-gray-700">{getAvailabilityShort(availability)}</span>
-                                  </span>
-
-                                  <span className="inline-flex items-center gap-1" aria-label="Déplacement">
-                                    <span className={`inline-flex items-center justify-center ${compactTable ? 'w-5 h-5 text-[11px]' : 'w-6 h-6 text-xs'} rounded border border-gray-200 bg-white font-bold text-gray-700`}>
-                                      {getStatusChar(status)}
-                                    </span>
-                                    <span className="text-gray-700">{getStatusShort(status)}</span>
-                                  </span>
-                                </div>
-
-                                <span className="text-gray-400 shrink-0">…</span>
-                              </div>
-                            </button>
-
-                            {/* Menu contextuel */}
-                            {isCellMenuOpen(event.id, member.id) && (
-                              <div className="absolute z-30 mt-2 left-1/2 -translate-x-1/2 w-48 bg-white border border-gray-200 rounded-md shadow-lg text-left p-2">
-                                <div className="text-[11px] font-semibold text-gray-500 px-1 pb-1">Disponibilité</div>
-                                <div className="grid grid-cols-4 gap-1 mb-2">
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border border-transparent hover:border-green-200" onClick={() => { updateStaffAvailabilityHandler(event.id, member.id, 'DISPONIBLE' as any); closeCellMenu(); }}>Dispo</button>
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-yellow-50 border border-transparent hover:border-yellow-200" onClick={() => { updateStaffAvailabilityHandler(event.id, member.id, 'PARTIELLEMENT_DISPONIBLE' as any); closeCellMenu(); }}>Partiel</button>
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200" onClick={() => { updateStaffAvailabilityHandler(event.id, member.id, 'INDISPONIBLE' as any); closeCellMenu(); }}>Indispo</button>
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-orange-50 border border-transparent hover:border-orange-200" onClick={() => { updateStaffAvailabilityHandler(event.id, member.id, 'A_CONFIRMER' as any); closeCellMenu(); }}>Conf.</button>
-                                </div>
-
-                                <div className="text-[11px] font-semibold text-gray-500 px-1 pb-1">Déplacement</div>
-                                <div className="grid grid-cols-2 gap-1">
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-green-50 border hover:border-green-200" onClick={() => { addStaffToEventHandler(event.id, member.id, 'SELECTIONNE' as any); closeCellMenu(); }}>Oui</button>
-                                  <button className="text-xs px-2 py-1 rounded hover:bg-red-50 border hover:border-red-200" onClick={() => { addStaffToEventHandler(event.id, member.id, 'NON_SELECTIONNE' as any); closeCellMenu(); }}>Non</button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                        <td key={event.id} className={`px-1.5 text-center border-l border-gray-100 ${compactTable ? 'py-1.5 min-w-[108px]' : 'py-2 min-w-[128px]'}`}>
+                          <StaffPlanningCell
+                            eventId={event.id}
+                            member={member}
+                            selection={selection}
+                            currentUser={currentUser}
+                            staff={staff}
+                            staffEventSelections={staffEventSelections}
+                            setStaffEventSelections={setStaffEventSelections}
+                            compact={compactTable}
+                          />
                         </td>
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             </div>
@@ -855,6 +863,15 @@ export default function StaffSeasonPlanning({
 
         {/* Statistiques supprimées sur demande */}
       </div>
+  );
+
+  return (
+    <>
+      {embedded ? content : (
+        <SectionWrapper title="Planning de Saison - Staff">
+          {content}
+        </SectionWrapper>
+      )}
       
       {/* Calendrier individuel */}
       {selectedStaffForCalendar && (
@@ -880,6 +897,6 @@ export default function StaffSeasonPlanning({
           }}
         />
       )}
-    </SectionWrapper>
+    </>
   );
 }

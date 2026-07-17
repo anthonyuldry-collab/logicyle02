@@ -1,0 +1,12 @@
+option_produit,bonus_multiple_arr,multiple_cumule,valorisation_indicative_eur,vs_ippogee_14M,commentaire
+Base SaaS équipes seul (sans options),0,11.5,27600000.0,+97.0%,Scénario sans ERP ni réseau
+"+ Module ERP (SEPA, FEC, facturation)",0.8,12.3,29520000.0,+111.0%,"TAM Continental/Pro, churn ↓, ARPU +15%"
++ Indépendants payants (9-12€/mois),0.6,12.9,30960000.0,+121.0%,"+MRR B2C, effet réseau scouting"
++ Marketplace missions vacataires (12 % GMV),1.4,14.3,34320000.0,+145.0%,Revenus transactionnels bilatéraux
++ Suivi stage / wellness / altitude,0.4,14.7,35280000.0,+152.0%,Stickiness perf · wedge DN/WT vs Ippogee
++ Expansion EU + Monde,0.5,15.2,36480000.0,+161.0%,TAM élargi · multiple global SaaS
++ Portail partenaires web,0.3,15.5,37200000.0,+166.0%,Rétention sponsors
++ GPS flotte (Traccar),0.2,15.7,37680000.0,+169.0%,Complétude logistique
++ PWA + push FCM,0.2,15.9,38160000.0,+173.0%,Rétention coureurs/staff
++ Nutrition IA + OCR,0.3,16.2,38880000.0,+178.0%,Stickiness Pro
+Effet réseau (ratio indép./équipes > 2),0.4,16.6,39840000.0,+185.0%,Barrière concurrentielle

@@ -44,7 +44,7 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 safe-area-bottom"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950 border-t border-white/10 safe-area-bottom"
       aria-label={t('mobileTabBarLabel')}
     >
       <div className="flex items-stretch justify-around max-w-lg mx-auto">
@@ -57,7 +57,7 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({
               type="button"
               onClick={() => onSelectSection(tab.section)}
               className={`flex flex-col items-center justify-center flex-1 min-h-[56px] py-2 px-1 transition-colors ${
-                isActive ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+                isActive ? 'text-indigo-300' : 'text-slate-400 hover:text-slate-200'
               }`}
               aria-current={isActive ? 'page' : undefined}
             >
@@ -72,7 +72,7 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({
           type="button"
           onClick={onMoreClick}
           className={`flex flex-col items-center justify-center flex-1 min-h-[56px] py-2 px-1 transition-colors ${
-            isMoreActive ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+            isMoreActive ? 'text-indigo-300' : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-label={t('mobileTabMore')}
         >

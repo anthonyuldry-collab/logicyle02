@@ -78,7 +78,7 @@ const CalendarTab: React.FC<CalendarTabProps> = ({
             const isSelected = (event.selectedRiderIds || []).includes(riderId);
             return {
                 ...event,
-                status: selection?.status || (isSelected ? RiderEventStatus.EN_ATTENTE : RiderEventStatus.NON_SELECTIONNE),
+                status: selection?.status || (isSelected ? RiderEventStatus.EN_ATTENTE : RiderEventStatus.NON_RETENU),
                 riderPreference: selection?.riderPreference || RiderEventPreference.EN_ATTENTE,
                 riderObjectives: selection?.riderObjectives || '',
                 notes: selection?.notes || '',

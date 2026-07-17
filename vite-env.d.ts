@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // Déclarations pour les modules externes
 declare module 'frappe-charts' {

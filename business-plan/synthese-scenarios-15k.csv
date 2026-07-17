@@ -1,0 +1,6 @@
+scenario,mois_objectif_15k,date_objectif_15k,equipes_au_objectif,mrr_au_objectif,arr_au_objectif,equipes_necessaires_theorique,mrr_necessaire_theorique,arr_necessaire_theorique,tresorerie_fin_y5,arr_fin_y5,equipes_fin_y5,salaire_fin_y5
+Prudent,>60,Non atteint en 5 ans,216.5,25978.0,311736.0,610,73171.0,878049.0,-551813.0,311736.0,216.5,0
+Base,>60,Non atteint en 5 ans,544.7,76265.0,915175.0,575,80488.0,965854.0,25073.0,915175.0,544.7,6000
+Optimiste,48,Mois 48,647.4,100352.0,1204218.0,575,89024.0,1068293.0,468335.0,1623623.0,872.9,15000
+Bootstrap solo,52,Mois 52,351.3,47419.0,569033.0,362,48780.0,585366.0,105587.0,663488.0,409.6,15000
+Accéléré (objectif 15K),42,Mois 42,374.0,54691.0,656297.0,374,56098.0,673171.0,339767.0,1026243.0,570.1,15000

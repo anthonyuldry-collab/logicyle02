@@ -14,20 +14,6 @@ export const isJourJDirection = (leg: EventTransportLeg): boolean =>
 export const isRetourDirection = (leg: EventTransportLeg): boolean =>
   leg.direction === TransportDirection.RETOUR || leg.direction === 'Retour';
 
-const normalizePlace = (value?: string): string =>
-  value
-    ?.trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') ?? '';
-
-const placesMatch = (a?: string, b?: string): boolean => {
-  const na = normalizePlace(a);
-  const nb = normalizePlace(b);
-  if (!na || !nb) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
-};
-
 /** Le trajet concerne uniquement cette date d'étape (évite d'afficher l'étape 2 sur l'étape 1). */
 export const legTouchesStageDate = (leg: EventTransportLeg, stageDate: string): boolean => {
   if (leg.stageDate) {
@@ -45,21 +31,6 @@ export const legMatchesStageDate = (leg: EventTransportLeg, stageDate: string): 
 
 const hasRiderOccupants = (leg: EventTransportLeg): boolean =>
   (leg.occupants || []).some((o) => o.type === 'rider');
-
-const isInterCityTravelLeg = (leg: EventTransportLeg): boolean => {
-  const dep = normalizePlace(leg.departureLocation);
-  const arr = normalizePlace(leg.arrivalLocation);
-  if (!dep || !arr || dep === arr) return false;
-  return !placesMatch(leg.departureLocation, leg.arrivalLocation);
-};
-
-const isArrivalAtStageStart = (
-  leg: EventTransportLeg,
-  stage?: Pick<StageDayLogistics, 'departLocation' | 'arriveeLocation'>,
-): boolean => {
-  if (!stage?.departLocation?.trim()) return false;
-  return placesMatch(leg.arrivalLocation, stage.departLocation);
-};
 
 export const hasDisplayableTransportContent = (leg: EventTransportLeg): boolean =>
   Boolean(
@@ -92,13 +63,15 @@ export const isAllerSurCourseLeg = (
   }
 
   if (isJourJDirection(leg)) {
+    // Emmener les coureurs = Avant, même sous direction technique Jour J
     if (hasRiderOccupants(leg)) return true;
     const dep = leg.departureDate;
     const arr = leg.arrivalDate || dep;
+    // Déplacement avant le jour d’étape (veille, etc.) = encore Avant
     if (dep && dep < stageDate) return true;
     if (arr && arr < stageDate) return true;
-    if (isArrivalAtStageStart(leg, stage)) return true;
-    if (isInterCityTravelLeg(leg)) return true;
+    // Jour même, staff seul (suiveur, positionnement) → Jour J, pas Avant
+    return false;
   }
 
   return false;
@@ -112,16 +85,14 @@ export const isPendantCourseLeg = (
 ): boolean => {
   if (isRetourDirection(leg) || isAllerDirection(leg)) return false;
   if (!legTouchesStageDate(leg, stageDate)) return false;
+  // Les trajets « Avant » (emmener les coureurs) restent hors Jour J
   if (isAllerSurCourseLeg(leg, stageDate, stage)) return false;
 
   if (leg.logisticsPhase === 'aller_course' || leg.logisticsPhase === 'retour') return false;
-  if (leg.logisticsPhase === 'pendant') {
-    return true;
-  }
+  if (leg.logisticsPhase === 'pendant') return true;
 
-  if (isJourJDirection(leg)) {
-    return false;
-  }
+  // Direction technique Jour J + pas un aller-sur-course → en course (suiveur, staff, etc.)
+  if (isJourJDirection(leg)) return true;
 
   return Boolean(eventDate && stageDate === eventDate);
 };
@@ -183,3 +154,80 @@ export const inferLogisticsPhase = (
   if (isJourJDirection(leg)) return 'aller_course';
   return 'pendant';
 };
+
+/** Libellés UX des 3 phases du plan de transport. */
+export const TRANSPORT_PHASE_UI = {
+  avant: {
+    short: 'Avant',
+    long: 'Avant — Emmener les coureurs',
+    hint: 'Trajets pour emmener les coureurs sur la course (base → départ, vols, etc.).',
+  },
+  pendant: {
+    short: 'Jour J',
+    long: 'Jour J — En course',
+    hint: 'Véhicules pendant l’épreuve (suiveur, ravito, staff). Les coureurs sont sur le vélo.',
+  },
+  apres: {
+    short: 'Après',
+    long: 'Après — Hôtel & retours',
+    hint: 'Transfert arrivée → hôtel, transferts entre étapes, puis retour final.',
+  },
+} as const;
+
+export type TransportPhaseKey = keyof typeof TRANSPORT_PHASE_UI;
+
+/** Mappe la direction technique (ALLER / JOUR_J / RETOUR) vers Avant / Pendant / Après. */
+export function transportDirectionToPhase(
+  direction: TransportDirection | string | undefined,
+): TransportPhaseKey {
+  if (direction === TransportDirection.RETOUR || direction === 'Retour') return 'apres';
+  if (direction === TransportDirection.JOUR_J || direction === 'Transport Jour J') return 'pendant';
+  return 'avant';
+}
+
+/**
+ * Préremplit un trajet « Après » : arrivée d’étape → hôtel (nuit suivante / transfert).
+ */
+export function buildApresStageTransportDefaults(
+  stage: StageDayLogistics,
+  options?: {
+    nextStage?: StageDayLogistics;
+    transfer?: {
+      arriveeLocation?: string;
+      departLocation?: string;
+      departTime?: string;
+      arriveePrevueTime?: string;
+    };
+    stageHotel?: { hotelName?: string; address?: string };
+    eventHotel?: { hotelName?: string; address?: string };
+  },
+): Partial<EventTransportLeg> {
+  const hotelLabel =
+    options?.transfer?.arriveeLocation?.trim() ||
+    options?.stageHotel?.address?.trim() ||
+    options?.stageHotel?.hotelName?.trim() ||
+    options?.eventHotel?.address?.trim() ||
+    options?.eventHotel?.hotelName?.trim() ||
+    options?.nextStage?.departLocation?.trim() ||
+    '';
+
+  const fromArrival =
+    stage.arriveeLocation?.trim() ||
+    options?.transfer?.departLocation?.trim() ||
+    '';
+
+  return {
+    direction: TransportDirection.RETOUR,
+    stageDate: stage.date,
+    departureDate: stage.date,
+    arrivalDate: stage.date,
+    departureLocation: fromArrival,
+    arrivalLocation: hotelLabel,
+    departureTime: stage.arriveePrevueTime || options?.transfer?.departTime || '',
+    arrivalTime: options?.transfer?.arriveePrevueTime || '',
+    logisticsPhase: 'retour',
+    details: hotelLabel
+      ? `Transfert après l’étape ${stage.stageNumber} : arrivée → hôtel`
+      : `Transfert après l’étape ${stage.stageNumber} (arrivée → hôtel)`,
+  };
+}

@@ -25,12 +25,13 @@ import BikeSetupTab from './riderDetailTabs/BikeSetupTab';
 import PerformanceProjectTab from './riderDetailTabs/PerformanceProjectTab';
 import InterviewTab from './riderDetailTabs/InterviewTab';
 import AdminTab from './riderDetailTabs/AdminTab';
+import ContractTab from './riderDetailTabs/ContractTab';
 import { ResultsTab } from './riderDetailTabs/ResultsTab';
 import CalendarTab from './riderDetailTabs/CalendarTab';
 import SettingsTab from './riderDetailTabs/SettingsTab';
 import RiderDashboardTab from './riderDetailTabs/RiderDashboardTab';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
-import { uploadFile, updateRiderPowerProfiles } from '../services/firebaseService';
+import { uploadFile, updateRiderPowerProfiles, extractBase64Data } from '../services/firebaseService';
 import { getAgeCategory } from '../utils/ageUtils';
 
 
@@ -45,13 +46,33 @@ interface RiderDetailModalProps {
   calculateWkg: (power?: number, weight?: number) => string;
   isEditMode?: boolean;
   onSaveRider?: (riderData: Rider) => void | Promise<void>;
+  onUpdateRiderPreference?: (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => void;
   initialFormData?: Omit<Rider, 'id'> | Rider; 
   appState: AppState;
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   initialTab?: string;
+  /** Affiche le contenu sans overlay modal (ex. section Admin coureur) */
+  embedded?: boolean;
   /** Liste des coureurs de l'équipe (pour sous-onglet Analyse PPR : comparaison à la moyenne équipe) */
   allRiders?: Rider[];
+  /** Mode dossier admin coureur : onglets simplifiés, thème clair */
+  adminDossierMode?: boolean;
+}
+
+function isRiderOwnProfile(
+  currentUser: User | null | undefined,
+  rider: Rider | Omit<Rider, 'id'> | null | undefined
+): boolean {
+  if (!currentUser || !rider || !('id' in rider)) return false;
+  if (currentUser.previewSubjectKind === 'rider' && currentUser.previewSubjectId === rider.id) {
+    return true;
+  }
+  const emailMatch =
+    currentUser.email &&
+    rider.email &&
+    currentUser.email.trim().toLowerCase() === rider.email.trim().toLowerCase();
+  return currentUser.id === rider.id || !!emailMatch;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -179,6 +200,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   rider,
   isEditMode: initialIsEditMode = false,
   onSaveRider,
+  onUpdateRiderPreference: onUpdateRiderPreferenceProp,
   appState,
   raceEvents,
   riderEventSelections,
@@ -187,7 +209,9 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   currentUser,
   effectivePermissions,
   initialTab = 'info',
+  embedded = false,
   allRiders = [],
+  adminDossierMode = false,
 }: RiderDetailModalProps) => {
   const isNew = !rider;
   const [formData, setFormData] = useState<Rider | Omit<Rider, 'id'>>(() =>
@@ -206,8 +230,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
 
   // Fonction pour mettre à jour les préférences des coureurs
   const onUpdateRiderPreference = (eventId: string, riderId: string, preference: RiderEventPreference, objectives?: string) => {
-    // Cette fonction sera implémentée dans le composant parent (RosterSection)
-    // Pour l'instant, on ne fait rien car les permissions sont gérées côté parent
+    onUpdateRiderPreferenceProp?.(eventId, riderId, preference, objectives);
   };
 
   // N'initialiser le formulaire que lorsque le modal S'OUVRE (isOpen passe à true)
@@ -230,7 +253,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
 
   // Réinitialiser l'onglet actif si on passe d'un profil utilisateur à un autre
   useEffect(() => {
-    const isCurrentUserProfile = currentUser && formData && currentUser.id === (formData as Rider).id;
+    const isCurrentUserProfile = isRiderOwnProfile(currentUser, formData as Rider);
     if (activeTab === 'settings' && !isCurrentUserProfile) {
       setActiveTab('info');
     }
@@ -515,7 +538,7 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
         setFormData((prev: Rider | Omit<Rider, 'id'>) => {
             if (!prev) return prev;
             const updated = structuredClone(prev);
-            updated.licenseImageBase64 = base64.split(',')[1];
+            updated.licenseImageBase64 = extractBase64Data(base64);
             updated.licenseImageMimeType = mimeType;
             updated.licenseImageUrl = undefined;
             formDataRef.current = updated;
@@ -536,26 +559,55 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
   };
   
   // Vérifier si c'est le profil de l'utilisateur connecté
-  const isCurrentUserProfile = currentUser && formData && currentUser.id === (formData as Rider).id;
+  const isCurrentUserProfile = isRiderOwnProfile(currentUser, formData as Rider);
+  const canEditContract =
+    !isCurrentUserProfile &&
+    Boolean(
+      effectivePermissions?.roster?.includes('edit') ||
+        effectivePermissions?.financial?.includes('edit')
+    );
   
-  // TEMPORAIRE : Toujours afficher l'onglet paramètres pour debug
-  const shouldShowSettings = true; // isCurrentUserProfile;
+  // Afficher l'onglet paramètres uniquement pour le profil de l'utilisateur connecté
+  const shouldShowSettings = isCurrentUserProfile;
   
+  const canViewRoster = effectivePermissions?.roster?.includes('view') ?? false;
+  const canViewPerformance = effectivePermissions?.performance?.includes('view') ?? false;
+  const canViewSensitiveProfile = canViewRoster || Boolean(isCurrentUserProfile);
+
   const tabs = [
-    { id: 'dashboard', label: 'Tableau de Bord' },
-    { id: 'info', label: 'Profil' },
-    { id: 'ppr', label: 'PPR' },
-    { id: 'project', label: 'Projet Perf.' },
-    { id: 'interview', label: 'Entretiens' },
-    { id: 'results', label: 'Palmarès' },
-    { id: 'calendar', label: 'Calendrier' },
+    ...(canViewSensitiveProfile ? [{ id: 'dashboard', label: 'Tableau de Bord' }] : []),
+    ...(canViewSensitiveProfile ? [{ id: 'info', label: 'Profil' }] : []),
+    ...(canViewPerformance || isCurrentUserProfile ? [{ id: 'ppr', label: 'PPR' }] : []),
+    ...(canViewPerformance || isCurrentUserProfile ? [{ id: 'project', label: 'Projet Perf.' }] : []),
+    ...(canViewSensitiveProfile ? [{ id: 'interview', label: 'Entretiens' }] : []),
+    ...(canViewSensitiveProfile ? [{ id: 'results', label: 'Palmarès' }] : []),
+    ...(canViewSensitiveProfile ? [{ id: 'calendar', label: 'Calendrier' }] : []),
     { id: 'nutrition', label: 'Nutrition' },
-    { id: 'equipment', label: 'Équipement' },
-    { id: 'bikeSetup', label: 'Cotes Vélo' },
-    { id: 'admin', label: 'Admin' },
-    // Afficher l'onglet paramètres (temporairement toujours visible pour debug)
+    ...(canViewSensitiveProfile ? [{ id: 'equipment', label: 'Équipement' }] : []),
+    ...(canViewSensitiveProfile ? [{ id: 'bikeSetup', label: 'Cotes Vélo' }] : []),
+    ...(canViewRoster && !isCurrentUserProfile ? [{ id: 'contract', label: 'Contrat' }] : []),
+    ...(canViewRoster && !isCurrentUserProfile ? [{ id: 'admin', label: 'Admin' }] : []),
+    ...(isCurrentUserProfile ? [{ id: 'contract', label: 'Contrat' }] : []),
+    ...(isCurrentUserProfile ? [{ id: 'admin', label: 'Admin' }] : []),
     ...(shouldShowSettings ? [{ id: 'settings', label: 'Paramètres' }] : []),
   ];
+
+  const visibleTabs =
+    adminDossierMode
+      ? [
+          { id: 'admin', label: 'Mes informations' },
+          { id: 'contract', label: 'Contrat & tarif' },
+          ...(shouldShowSettings ? [{ id: 'settings', label: 'Paramètres' }] : []),
+        ]
+      : embedded && initialTab === 'admin'
+      ? tabs.filter(tab => ['admin', 'contract', 'settings'].includes(tab.id))
+      : tabs;
+
+  useEffect(() => {
+    if (!visibleTabs.some(tab => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id ?? 'nutrition');
+    }
+  }, [visibleTabs, activeTab]);
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -657,6 +709,19 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             formData={formData}
             handleInputChange={handleInputChange}
             formFieldsEnabled={isEditMode}
+            onSetupChange={(bikeKey, setup) =>
+              setFormDataForChild(prev => prev ? { ...prev, [bikeKey]: setup } : prev)
+            }
+          />
+        );
+      case 'contract':
+        return (
+          <ContractTab
+            formData={formData as Rider}
+            handleInputChange={handleInputChange}
+            formFieldsEnabled={isEditMode}
+            isEditable={canEditContract || (isEditMode && !isCurrentUserProfile)}
+            theme={adminDossierMode || embedded ? 'light' : 'dark'}
           />
         );
       case 'admin':
@@ -666,15 +731,16 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             handleInputChange={handleInputChange}
             formFieldsEnabled={isEditMode}
             handleLicenseUpdate={handleLicenseUpdate}
-            isContractEditable={true}
+            isContractEditable={canEditContract}
+            canEditRestrictedFields={isEditMode && !isCurrentUserProfile}
+            isOwnProfile={!!isCurrentUserProfile}
           />
         );
       case 'settings':
         return (
           <SettingsTab
-            formData={formData}
-            handleInputChange={handleInputChange}
-            formFieldsEnabled={isEditMode}
+            currentUser={currentUser ?? undefined}
+            isOwnAccount={!!isCurrentUserProfile}
           />
         );
       default:
@@ -692,24 +758,29 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !embedded) return null;
 
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={isNew ? "Nouveau Coureur" : `${formData.firstName} ${formData.lastName}`}>
-      <div className="bg-slate-800 text-white -m-6 p-4 rounded-lg">
-        {/* Barre de fiabilité du profil supprimée - seules les étoiles sous la photo restent */}
-        
-        <div className="flex justify-between items-center mb-4">
-            <nav className="flex space-x-1 border-b border-slate-600 w-full overflow-x-auto">
-                {tabs.map(tab => (
+  const panelBody = (
+    <div className={
+      adminDossierMode || embedded
+        ? 'rounded-xl border border-gray-200 bg-white text-gray-900'
+        : 'bg-slate-800 text-white -m-6 p-4 rounded-lg'
+    }>
+        <div className={`flex justify-between items-center mb-4 ${adminDossierMode || embedded ? 'border-b border-gray-200 px-1 pt-1' : ''}`}>
+            <nav className={`flex space-x-1 w-full overflow-x-auto ${adminDossierMode || embedded ? 'border-b-0' : 'border-b border-slate-600'}`}>
+                {visibleTabs.map(tab => (
                     <button
                         key={tab.id}
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
                         className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-t-md whitespace-nowrap ${
                             activeTab === tab.id
-                                ? 'bg-slate-800 text-white'
-                                : 'text-slate-400 hover:bg-slate-700'
+                                ? adminDossierMode || embedded
+                                  ? 'border-b-2 border-violet-600 text-violet-700 font-semibold'
+                                  : 'bg-slate-800 text-white'
+                                : adminDossierMode || embedded
+                                  ? 'text-gray-500 hover:text-gray-800'
+                                  : 'text-slate-400 hover:bg-slate-700'
                         }`}
                     >
                         {tab.label}
@@ -728,8 +799,10 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
                                     formDataRef.current = resetData;
                                     setFormData(resetData); // Reset changes
                                     setIsEditMode(false);
-                                } else {
+                                } else if (!embedded) {
                                     onClose();
+                                } else {
+                                    setIsEditMode(false);
                                 }
                            }}>
                                Annuler
@@ -740,10 +813,19 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
                 </div>
             )}
         </div>
-        <div className="max-h-[calc(85vh - 120px)] overflow-y-auto p-1 pr-3">
+        <div className={`overflow-y-auto p-1 pr-3 ${embedded ? 'max-h-[calc(100vh-280px)]' : 'max-h-[calc(85vh - 120px)]'}`}>
           {renderActiveTab()}
         </div>
       </div>
+  );
+
+  if (embedded) {
+    return panelBody;
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={isNew ? "Nouveau Coureur" : `${formData.firstName} ${formData.lastName}`}>
+      {panelBody}
     </Modal>
   );
 };

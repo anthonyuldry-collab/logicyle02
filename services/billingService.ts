@@ -1,6 +1,11 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { SubscriptionPlanId, TeamSubscription } from '../types';
-import { PILOT_DAYS, TRIAL_DAYS, getDefaultPlanForTeamLevel } from '../constants/subscriptionPlans';
+import { SubscriptionPlanId, TeamSubscription, UserRole } from '../types';
+import {
+  PILOT_DAYS,
+  TRIAL_DAYS,
+  getDefaultPlanForTeamLevel,
+  getIndependentPlanIdForRole,
+} from '../constants/subscriptionPlans';
 import { TeamLevel } from '../types';
 
 export function buildInitialSubscription(
@@ -34,17 +39,77 @@ export function buildInitialSubscription(
   };
 }
 
-export async function createCheckoutSession(
-  teamId: string,
+export function buildInitialIndependentSubscription(userRole: UserRole | string): TeamSubscription {
+  const planId = getIndependentPlanIdForRole(userRole);
+  const now = new Date();
+  const trialEnds = new Date(now);
+  trialEnds.setDate(trialEnds.getDate() + TRIAL_DAYS);
+  return {
+    planId,
+    status: 'trialing',
+    trialEndsAt: trialEnds.toISOString(),
+  };
+}
+
+export async function createIndependentCheckoutSession(
   planId: SubscriptionPlanId,
-  interval: 'month' | 'year'
+  interval: 'month' | 'year',
+  referralCode?: string | null
 ): Promise<{ url: string }> {
   const functions = getFunctions();
   const fn = httpsCallable<
-    { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year' },
+    { planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string; scope: 'user' },
     { url: string }
   >(functions, 'createStripeCheckout');
-  const result = await fn({ teamId, planId, interval });
+  const payload: {
+    planId: SubscriptionPlanId;
+    interval: 'month' | 'year';
+    referralCode?: string;
+    scope: 'user';
+  } = { planId, interval, scope: 'user' };
+  if (referralCode?.trim()) {
+    payload.referralCode = referralCode.trim();
+  }
+  const result = await fn(payload);
+  return result.data;
+}
+
+export async function createIndependentBillingPortalSession(): Promise<{ url: string }> {
+  const functions = getFunctions();
+  const fn = httpsCallable<{ scope: 'user' }, { url: string }>(functions, 'createStripePortal');
+  const result = await fn({ scope: 'user' });
+  return result.data;
+}
+
+export async function requestIndependentPlanUpgrade(
+  planId: SubscriptionPlanId,
+  interval: 'month' | 'year' = 'year',
+  referralCode?: string | null
+): Promise<void> {
+  const { url } = await createIndependentCheckoutSession(planId, interval, referralCode);
+  window.location.href = url;
+}
+
+export async function createCheckoutSession(
+  teamId: string,
+  planId: SubscriptionPlanId,
+  interval: 'month' | 'year',
+  referralCode?: string | null
+): Promise<{ url: string }> {
+  const functions = getFunctions();
+  const fn = httpsCallable<
+    { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string },
+    { url: string }
+  >(functions, 'createStripeCheckout');
+  const payload: { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string } = {
+    teamId,
+    planId,
+    interval,
+  };
+  if (referralCode?.trim()) {
+    payload.referralCode = referralCode.trim();
+  }
+  const result = await fn(payload);
   return result.data;
 }
 
@@ -58,8 +123,9 @@ export async function createBillingPortalSession(teamId: string): Promise<{ url:
 export async function requestPlanUpgrade(
   teamId: string,
   planId: SubscriptionPlanId,
-  interval: 'month' | 'year' = 'year'
+  interval: 'month' | 'year' = 'year',
+  referralCode?: string | null
 ): Promise<void> {
-  const { url } = await createCheckoutSession(teamId, planId, interval);
+  const { url } = await createCheckoutSession(teamId, planId, interval, referralCode);
   window.location.href = url;
 }

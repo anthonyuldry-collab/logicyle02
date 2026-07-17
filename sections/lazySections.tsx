@@ -36,15 +36,18 @@ export const LazyEquipmentSection = lazy(() => import('./EquipmentSection'));
 export const LazyEventsSection = lazyNamed(() => import('./EventsSection'), 'EventsSection');
 export const LazyFinancialSection = lazyNamed(() => import('./FinancialSection'), 'FinancialSection');
 export const LazyMissionSearchSection = lazy(() => import('./MissionSearchSection'));
+export const LazyTeamSearchSection = lazy(() => import('./TeamSearchSection'));
 export const LazyMyTripsSection = lazy(() => import('./MyTripsSection'));
 export const LazyNutritionSection = lazy(() => import('./NutritionSection'));
 export const LazyPerformanceProjectSection = lazyNamed(
   () => import('./PerformanceProjectSection'),
   'PerformanceProjectSection'
 );
+export const LazyMyPerformanceSection = lazy(() => import('./MyPerformanceSection'));
 export const LazyPerformanceSection = lazy(() => import('./PerformanceSection'));
 export const LazyPerformancePoleSection = lazy(() => import('./PerformancePoleSection'));
 export const LazyPermissionsSection = lazy(() => import('./PermissionsSection'));
+export const LazyTeamAccessSection = lazy(() => import('./TeamAccessSection'));
 export const LazyRiderEquipmentSection = lazy(() => import('./RiderEquipmentSection'));
 export const LazyRosterSection = lazy(() => import('./RosterSection'));
 export const LazySeasonPlanningSection = lazy(() => import('./SeasonPlanningSection'));
@@ -62,11 +65,15 @@ export const LazyVehiclesSection = lazy(() => import('./VehiclesSection'));
 export const LazyMyDashboardSection = lazy(() => import('./MyDashboardSection'));
 export const LazyMyProfileSection = lazy(() => import('./MyProfileSection'));
 export const LazyMyCalendarSection = lazy(() => import('./MyCalendarSection'));
+export const LazyIndependentStaffCalendarSection = lazy(() => import('./IndependentStaffCalendarSection'));
+export const LazyIndependentAthleteCalendarSection = lazy(() => import('./IndependentAthleteCalendarSection'));
 export const LazyMyResultsSection = lazy(() => import('./MyResultsSection'));
 export const LazyBikeSetupSection = lazy(() => import('./BikeSetupSection'));
 export const LazyMyCareerSection = lazy(() => import('./MyCareerSection'));
 export const LazyMyAdminSection = lazy(() => import('./MyAdminSection'));
-export const LazyTalentAvailabilitySection = lazy(() => import('./TalentAvailabilitySection'));
 export const LazyIndependentSpaceSection = lazy(() => import('./IndependentSpaceSection'));
+export const LazyIndependentDashboardSection = lazy(() => import('./IndependentDashboardSection'));
 export const LazyPricingSection = lazy(() => import('./PricingSection'));
 export const LazyExpenseReceiptsSection = lazy(() => import('./ExpenseReceiptsSection'));
+export const LazyOrganizationDashboardSection = lazy(() => import('./OrganizationDashboardSection'));
+export const LazyPartnerPortalSection = lazy(() => import('./PartnerPortalSection'));

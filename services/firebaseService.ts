@@ -13,6 +13,9 @@ import {
   query,
   where,
   collectionGroup,
+  onSnapshot,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
@@ -22,8 +25,10 @@ import {
   EmailAuthProvider,
   signOut
 } from 'firebase/auth';
+import { buildEmptyChecklistTemplatesRecord } from '../utils/checklistRoleUtils';
+import { getRecommendedOperationalSettings } from '../utils/teamOperationalUtils';
 import { 
-  TeamState, 
+  TeamState,
   GlobalState, 
   User, 
   Team, 
@@ -36,7 +41,7 @@ import {
   TeamMembershipStatus,
   TeamLevel,
   StaffMember,
-  StaffRole,
+  StaffStatus,
   Sex,
   SignupInfo,
   ChecklistRole,
@@ -45,78 +50,64 @@ import {
   PowerProfileHistory,
   Mission,
   MissionStatus,
+  MissionApplication,
+  MissionApplicationStatus,
   ScoutingRequest,
   ScoutingRequestStatus,
+  ScoutingDataScope,
+  ProspectLevel,
   SignupMode,
+  PermissionRole,
+  Organization,
+  PartnerAccess,
+  PartnerMarketplaceProfile,
+  TeamSponsorshipNeed,
+  PartnershipMatchRequest,
+  PartnershipMatchStatus,
+  RaceEvent,
+  Rider,
+  VehiclePosition,
+  IncomeItem,
+  EventBudgetItem,
+  TeamRecruitmentOffer,
+  TeamRecruitmentOfferStatus,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState, LEGAL_VERSIONS } from '../constants';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  mergeConfiguredPermissions,
+  MY_SPACE_SECTIONS,
+  resolveRolePermissions,
+  mergeSectionGrants,
+  getStaffMemberSectionGrants,
+  getStaffMemberSectionDenials,
+} from '../utils/permissionUtils';
+import { buildCoureurPermissions, scopeTeamStateForCoureur, isCoureurUser } from '../utils/riderAccessUtils';
+import { isSuperAdminUser } from '../utils/superAdminUtils';
+import { getStaffMemberForUser } from '../utils/staffMemberUtils';
 import { getDefaultPlanForTeamLevel } from '../constants/subscriptionPlans';
-import { buildInitialSubscription } from './billingService';
+import { buildInitialIndependentSubscription, buildInitialSubscription } from './billingService';
 import { buildDefaultRider, buildDefaultStaffMember } from '../utils/defaultTeamMemberProfiles';
 import { purgeUserPersonalDataSecure, deleteTeamAndAllDataSecure } from './gdprCloudService';
 import { GdprConsent } from '../types';
+import {
+  canRiderApplyToTeam,
+  canTeamScoutRider,
+  getMarketMismatchMessage,
+  getTeamMarketContext,
+  resolveRiderMarketSegmentFromUser,
+} from '../utils/riderTeamMarketSegment';
 
-// Helper function to check if user has access to mission search based on staff role
+// Accès marketplace missions : tout compte staff (équipe ou vacataire).
 const hasAccessToMissions = (user: User, staff: StaffMember[]): boolean => {
-    // Find the staff member associated with this user
-    const staffMember = staff.find(s => s.email === user.email);
-    
-    // If no staff member found, no access to missions
-    if (!staffMember) return false;
-    
-    // Check if the staff role is one of the allowed roles for mission search
-    const allowedRoles = [StaffRole.DS, StaffRole.ENTRAINEUR, StaffRole.ASSISTANT, StaffRole.MECANO];
-    return allowedRoles.includes(staffMember.role as StaffRole);
+    if (user.userRole === UserRole.STAFF) return true;
+    const staffMember = getStaffMemberForUser(user, staff);
+    return Boolean(staffMember && staffMember.status === StaffStatus.VACATAIRE);
 };
 
 // Reasonable default permissions when no permissions document is configured in Firestore
-const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
-    [TeamRole.VIEWER]: {
-        // Sections de base accessibles à tous
-        events: ['view'],
-        myDashboard: ['view'],
-        
-        // Note: Sections logistiques (véhicules, matériel, stocks) exclues des athlètes
-        // Note: Section Scouting exclue des athlètes (TeamRole.VIEWER)
-        // Note: Sections "Mon Espace" ajoutées dynamiquement pour les coureurs uniquement
-    },
-    [TeamRole.MEMBER]: {
-        // Sections de base
-        events: ['view'],
-        myDashboard: ['view'],
-        
-        // Sections logistiques étendues
-        roster: ['view'],
-        vehicles: ['view'],
-        equipment: ['view'],
-        stocks: ['view'],
-        accommodationHistory: ['view'],
-        scouting: ['view'],
-        
-        // Accès limité au staff (lecture seule)
-        staff: ['view'],
-    },
-    [TeamRole.EDITOR]: {
-        // Sections de base
-        events: ['view', 'edit'],
-        myDashboard: ['view'],
-        
-        // Sections logistiques complètes
-        roster: ['view', 'edit'],
-        staff: ['view', 'edit'],
-        vehicles: ['view', 'edit'],
-        equipment: ['view', 'edit'],
-        stocks: ['view', 'edit'],
-        accommodationHistory: ['view', 'edit'],
-        scouting: ['view', 'edit'],
-        checklist: ['view', 'edit'],
-        
-        // Accès au pôle performance (Entraîneur/DS)
-        performance: ['view', 'edit'],
-    },
-    // TeamRole.ADMIN handled as full access elsewhere
-};
+export { DEFAULT_ROLE_PERMISSIONS };
 
 // Helper function to remove undefined properties from an object recursively
 // Firestore n'accepte pas les valeurs undefined - elles doivent être supprimées
@@ -244,8 +235,8 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             lastName,
             permissionRole: TeamRole.VIEWER,
             userRole: userRole,
-            isSearchable: isIndependentSignup && userRole === UserRole.COUREUR,
-            openToExternalMissions: isIndependentSignup && userRole === UserRole.STAFF,
+            isSearchable: false,
+            openToExternalMissions: false,
             signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : undefined,
             gdprConsent,
             ...(isIndependentSignup
@@ -253,6 +244,7 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
                       signupMode: SignupMode.INDEPENDENT,
                       isIndependentProfile: true,
                       independentActivatedAt: now,
+                      subscription: buildInitialIndependentSubscription(userRole),
                   }
                 : {}),
             createdAt: now,
@@ -329,6 +321,19 @@ export const requestToJoinTeam = async (
         }
         
         const teamData = teamDoc.data() as Team;
+        
+        if (userRole === UserRole.COUREUR) {
+            const userDocRef = doc(db, 'users', userId);
+            const userDoc = await getDoc(userDocRef);
+            if (!userDoc.exists()) {
+                throw new Error("Profil utilisateur introuvable.");
+            }
+            const userData = userDoc.data() as User;
+            const riderSegment = resolveRiderMarketSegmentFromUser(userData);
+            if (!canRiderApplyToTeam(riderSegment, teamData, teamData.operationalSettings)) {
+                throw new Error(getMarketMismatchMessage(riderSegment, teamData));
+            }
+        }
         
         // Créer la demande de membership
         await addDoc(membershipsColRef, {
@@ -452,6 +457,7 @@ export const createTeamForUser = async (userId: string, teamData: { name: string
             level: teamData.level,
             country: teamData.country,
             subscription,
+            operationalSettings: getRecommendedOperationalSettings(teamData.level),
             createdAt: new Date().toISOString(),
         });
         
@@ -504,6 +510,147 @@ export const createTeamForUser = async (userId: string, teamData: { name: string
     }
 };
 
+async function safeLoadGlobalCollection<T>(collName: string): Promise<T[]> {
+    try {
+        const snap = await getDocs(collection(db, collName));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as T));
+    } catch (error) {
+        console.warn(`Chargement ${collName} ignoré:`, error);
+        return [];
+    }
+}
+
+const loadOrganizations = () => safeLoadGlobalCollection<Organization>('organizations');
+const loadPartnerAccesses = () => safeLoadGlobalCollection<PartnerAccess>('partnerAccesses');
+const loadPartnerMarketplaceProfiles = () =>
+  safeLoadGlobalCollection<PartnerMarketplaceProfile>('partnerMarketplaceProfiles');
+const loadTeamSponsorshipNeeds = () =>
+  safeLoadGlobalCollection<TeamSponsorshipNeed>('teamSponsorshipNeeds');
+const loadPartnershipMatchRequests = () =>
+  safeLoadGlobalCollection<PartnershipMatchRequest>('partnershipMatchRequests');
+
+export const getOrgTeamLightData = async (
+    teamId: string
+): Promise<{
+    riders: Rider[];
+    staff: StaffMember[];
+    events: RaceEvent[];
+    incomeItems: IncomeItem[];
+    budgetItems: EventBudgetItem[];
+}> => {
+    const teamDocRef = doc(db, 'teams', teamId);
+    const [ridersSnap, staffSnap, eventsSnap, incomeSnap, budgetSnap] = await Promise.all([
+        getDocs(collection(teamDocRef, 'riders')),
+        getDocs(collection(teamDocRef, 'staff')),
+        getDocs(collection(teamDocRef, 'raceEvents')),
+        getDocs(collection(teamDocRef, 'incomeItems')),
+        getDocs(collection(teamDocRef, 'eventBudgetItems')),
+    ]);
+    const mapDocs = <T,>(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }) =>
+        snap.docs
+            .filter((d) => d.id !== '_init_')
+            .map((d) => ({ id: d.id, ...d.data() } as T));
+    return {
+        riders: mapDocs<Rider>(ridersSnap),
+        staff: mapDocs<StaffMember>(staffSnap),
+        events: mapDocs<RaceEvent>(eventsSnap),
+        incomeItems: mapDocs<IncomeItem>(incomeSnap),
+        budgetItems: mapDocs<EventBudgetItem>(budgetSnap),
+    };
+};
+
+export async function recordManualVehiclePosition(
+    teamId: string,
+    vehicleId: string,
+    latitude: number,
+    longitude: number,
+    speedKmh?: number,
+): Promise<void> {
+    const recordedAt = new Date().toISOString();
+    const positionRef = doc(collection(doc(db, 'teams', teamId), 'vehiclePositions'));
+    await setDoc(positionRef, {
+        vehicleId,
+        latitude,
+        longitude,
+        speedKmh: speedKmh ?? 0,
+        recordedAt,
+        source: 'manual',
+    });
+    const vehicleRef = doc(db, 'teams', teamId, 'vehicles', vehicleId);
+    await setDoc(
+        vehicleRef,
+        {
+            lastLatitude: latitude,
+            lastLongitude: longitude,
+            lastPositionAt: recordedAt,
+            lastSpeedKmh: speedKmh ?? 0,
+            gpsSource: 'manual',
+        },
+        { merge: true },
+    );
+}
+
+export async function saveGpsWebhookKey(teamId: string, key: string): Promise<void> {
+    await setDoc(doc(db, 'teams', teamId), { gpsWebhookKey: key }, { merge: true });
+}
+
+export interface DriverGpsContext {
+    eventId?: string;
+    transportLegId?: string;
+}
+
+export async function recordDriverVehiclePosition(
+    teamId: string,
+    staffId: string,
+    vehicleIds: string[],
+    latitude: number,
+    longitude: number,
+    speedKmh?: number,
+    heading?: number,
+    context: DriverGpsContext = {},
+): Promise<void> {
+    const recordedAt = new Date().toISOString();
+    const teamRef = doc(db, 'teams', teamId);
+
+    await setDoc(
+        doc(teamRef, 'staff', staffId),
+        {
+            lastLatitude: latitude,
+            lastLongitude: longitude,
+            lastPositionAt: recordedAt,
+            lastSpeedKmh: speedKmh ?? 0,
+        },
+        { merge: true },
+    );
+
+    for (const vehicleId of vehicleIds) {
+        const positionRef = doc(collection(teamRef, 'vehiclePositions'));
+        await setDoc(positionRef, {
+            vehicleId,
+            latitude,
+            longitude,
+            speedKmh: speedKmh ?? 0,
+            heading: heading ?? null,
+            recordedAt,
+            source: 'driver_app',
+            ...(context.eventId ? { eventId: context.eventId } : {}),
+            ...(context.transportLegId ? { transportLegId: context.transportLegId } : {}),
+        });
+        await setDoc(
+            doc(teamRef, 'vehicles', vehicleId),
+            {
+                lastLatitude: latitude,
+                lastLongitude: longitude,
+                lastPositionAt: recordedAt,
+                lastSpeedKmh: speedKmh ?? 0,
+                gpsSource: 'driver_app',
+                gpsTrackingEnabled: true,
+            },
+            { merge: true },
+        );
+    }
+}
+
 // --- GLOBAL DATA ---
 export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
     try {
@@ -524,14 +671,37 @@ export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
             users: usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User)),
             teams: teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Team)),
             teamMemberships: membershipsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamMembership)),
-            permissions: permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {},
+            permissions: mergeConfiguredPermissions(
+                permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {}
+            ),
             permissionRoles,
             scoutingRequests: scoutingRequestsSnap.docs.map(d => ({ id: d.id, ...d.data() } as ScoutingRequest)),
+            organizations: await loadOrganizations(),
+            partnerAccesses: await loadPartnerAccesses(),
+            partnerMarketplaceProfiles: await loadPartnerMarketplaceProfiles(),
+            teamSponsorshipNeeds: await loadTeamSponsorshipNeeds(),
+            partnershipMatchRequests: await loadPartnershipMatchRequests(),
         };
     } catch (error) {
         console.error('Erreur lors de la récupération des données globales:', error);
         throw error;
     }
+};
+
+const PERMISSIONS_DOC_ID = 'default';
+
+export const savePermissionsConfig = async (
+    permissions: AppPermissions,
+    permissionRoles: PermissionRole[]
+): Promise<void> => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'permissions', PERMISSIONS_DOC_ID), cleanDataForFirebase(permissions), { merge: true });
+
+    permissionRoles.forEach((role) => {
+        batch.set(doc(db, 'permissionRoles', role.id), cleanDataForFirebase(role), { merge: true });
+    });
+
+    await batch.commit();
 };
 
 /** Missions ouvertes publiées par toutes les équipes (collection group). */
@@ -547,18 +717,57 @@ export const getOpenMissionsGlobal = async (): Promise<Mission[]> => {
     }
 };
 
+/** Offres coureur ouvertes (toutes équipes). */
+export const getOpenRecruitmentOffersGlobal = async (): Promise<TeamRecruitmentOffer[]> => {
+    try {
+        const snap = await getDocs(
+            query(
+                collectionGroup(db, 'recruitmentOffers'),
+                where('status', '==', TeamRecruitmentOfferStatus.OPEN),
+            ),
+        );
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamRecruitmentOffer));
+    } catch (error) {
+        console.warn('getOpenRecruitmentOffersGlobal:', error);
+        return [];
+    }
+};
+
 export const applyToMission = async (
     teamId: string,
     missionId: string,
-    userId: string
+    userId: string,
+    applicant?: {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        phone?: string;
+        message?: string;
+    }
 ): Promise<void> => {
     const missionRef = doc(db, 'teams', teamId, 'missions', missionId);
     const missionSnap = await getDoc(missionRef);
     if (!missionSnap.exists()) throw new Error('Mission introuvable');
-    const applicants = (missionSnap.data().applicants as string[]) || [];
-    if (applicants.includes(userId)) return;
+    const data = missionSnap.data();
+    const applicants = (data.applicants as string[]) || [];
+    const applications = (data.applications as MissionApplication[]) || [];
+    if (applicants.includes(userId) || applications.some((a) => a.userId === userId)) return;
+
+    const newApp: MissionApplication = {
+        id: `app_${Date.now().toString(36)}`,
+        userId,
+        firstName: applicant?.firstName || '',
+        lastName: applicant?.lastName || '',
+        email: applicant?.email || '',
+        phone: applicant?.phone,
+        message: applicant?.message,
+        appliedAt: new Date().toISOString(),
+        status: MissionApplicationStatus.RECEIVED,
+    };
+
     await updateDoc(missionRef, {
         applicants: [...applicants, userId],
+        applications: [...applications, newApp],
         updatedAt: new Date().toISOString(),
     });
 };
@@ -567,6 +776,8 @@ export const createScoutingRequest = async (params: {
     requesterTeamId: string;
     athleteId: string;
     message?: string;
+    prospectLevel?: ProspectLevel;
+    requestedScopes?: ScoutingDataScope[];
 }): Promise<string> => {
     const existingSnap = await getDocs(
         query(
@@ -576,7 +787,10 @@ export const createScoutingRequest = async (params: {
         )
     );
     const activeRequest = existingSnap.docs.find((d) => {
-        const status = d.data().status as ScoutingRequestStatus;
+        const data = d.data();
+        const status = data.status as ScoutingRequestStatus;
+        const level = data.prospectLevel as ProspectLevel | undefined;
+        if (level === ProspectLevel.WATCHLIST) return false;
         return (
             status === ScoutingRequestStatus.PENDING ||
             status === ScoutingRequestStatus.ACCEPTED
@@ -584,10 +798,29 @@ export const createScoutingRequest = async (params: {
     });
     if (activeRequest) return activeRequest.id;
 
+    const teamDoc = await getDoc(doc(db, 'teams', params.requesterTeamId));
+    if (!teamDoc.exists()) {
+        throw new Error("Équipe demandeuse introuvable.");
+    }
+    const teamData = teamDoc.data() as Team;
+
+    const athleteDoc = await getDoc(doc(db, 'users', params.athleteId));
+    if (!athleteDoc.exists()) {
+        throw new Error("Profil athlète introuvable.");
+    }
+    const athleteData = athleteDoc.data() as User;
+    const riderSegment = resolveRiderMarketSegmentFromUser(athleteData);
+    const marketCtx = getTeamMarketContext(teamData, teamData.operationalSettings);
+    if (!canTeamScoutRider(marketCtx, riderSegment)) {
+        throw new Error(getMarketMismatchMessage(riderSegment, teamData));
+    }
+
     const ref = await addDoc(collection(db, 'scoutingRequests'), {
         requesterTeamId: params.requesterTeamId,
         athleteId: params.athleteId,
         status: ScoutingRequestStatus.PENDING,
+        prospectLevel: params.prospectLevel ?? ProspectLevel.CONTACT_REQUEST,
+        requestedScopes: params.requestedScopes ?? [],
         message: params.message || '',
         requestDate: new Date().toISOString(),
     });
@@ -596,20 +829,26 @@ export const createScoutingRequest = async (params: {
 
 export const respondToScoutingRequest = async (
     requestId: string,
-    response: 'accepted' | 'rejected'
+    response: 'accepted' | 'rejected',
+    grantedScopes?: ScoutingDataScope[],
 ): Promise<void> => {
     const status =
         response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED;
-    await updateDoc(doc(db, 'scoutingRequests', requestId), {
+    const payload: Record<string, unknown> = {
         status,
         responseDate: new Date().toISOString(),
-    });
+    };
+    if (response === 'accepted' && grantedScopes?.length) {
+        payload.grantedScopes = grantedScopes;
+    }
+    await updateDoc(doc(db, 'scoutingRequests', requestId), payload);
 };
 
 export const getIndependentPermissions = (
     user: User
 ): Partial<Record<AppSection, PermissionLevel[]>> => {
     const base: Partial<Record<AppSection, PermissionLevel[]>> = {
+        myDashboard: ['view', 'edit'],
         independentHub: ['view', 'edit'],
         myCareer: ['view', 'edit'],
         career: ['view', 'edit'],
@@ -618,170 +857,133 @@ export const getIndependentPermissions = (
     };
     if (user.userRole === UserRole.STAFF) {
         base.missionSearch = ['view', 'edit'];
+        base.myProfile = ['view', 'edit'];
+        base.myCareer = ['view', 'edit'];
+        base.myCalendar = ['view', 'edit'];
+        base.myTrips = ['view', 'edit'];
+        base.expenseReceipts = ['view', 'edit'];
+        base.pricing = ['view', 'edit'];
+    }
+    if (user.userRole === UserRole.COUREUR) {
+        base.teamSearch = ['view', 'edit'];
+        base.myCareer = ['view', 'edit'];
+        base.myProfile = ['view', 'edit'];
+        base.myResults = ['view', 'edit'];
+        base.myPerformance = ['view', 'edit'];
+        base.performanceProject = ['view', 'edit'];
+        base.riderEquipment = ['view', 'edit'];
+        base.nutrition = ['view', 'edit'];
+        base.myCalendar = ['view', 'edit'];
+        base.pricing = ['view', 'edit'];
     }
     return base;
 };
 
-export const getEffectivePermissions = (user: User, basePermissions: AppPermissions, staff: StaffMember[] = []): Partial<Record<AppSection, PermissionLevel[]>> => {
+export const getEffectivePermissions = (
+    user: User,
+    basePermissions: AppPermissions,
+    staff: StaffMember[] = [],
+    options?: { skipSuperAdminBypass?: boolean }
+): Partial<Record<AppSection, PermissionLevel[]>> => {
     if (user.signupMode === SignupMode.INDEPENDENT || user.isIndependentProfile) {
         return getIndependentPermissions(user);
     }
-    // SOLUTION DE CONTOURNEMENT : Forcer les permissions Manager pour tous les utilisateurs avec teamId
-    // ou pour les utilisateurs qui ont créé une équipe
-    
-    // Vérifier si l'utilisateur est admin (via permissionRole) OU manager (via userRole)
-    if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
+
+    if (!options?.skipSuperAdminBypass && isSuperAdminUser(user)) {
         const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
-        SECTIONS.forEach(section => {
-            // Exclure TOUJOURS les sections "Mon Espace" pour les managers/admins
-            const isMySpaceSection = [
-                'career', 'nutrition', 'riderEquipment', 'adminDossier', 
-                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile',
-                'myProfile', 'myCalendar', 'myCareer', 'myResults', 'bikeSetup'
-            ].includes(section.id);
-            
-            // Seules les sections NON "Mon Espace" sont accessibles aux managers/admins
-            if (!isMySpaceSection) {
-                allPermissions[section.id as AppSection] = ['view', 'edit'];
-            }
+        SECTIONS.forEach((section) => {
+            const id = section.id as AppSection;
+            if (id === 'eventDetail') return;
+            allPermissions[id] = ['view', 'edit'];
         });
         return allPermissions;
     }
-    
-    // SOLUTION AGGRESSIVE : Si l'utilisateur a un teamId OU s'il a accès à certaines sections admin,
-    // on le considère comme manager et on lui donne toutes les permissions
-    if (user.teamId || 
-        user.permissionRole === TeamRole.EDITOR || 
-        user.permissionRole === TeamRole.MEMBER) {
-        
-        const managerPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
-        SECTIONS.forEach(section => {
-            // Exclure les sections "Mon Espace"
-            const isMySpaceSection = [
-                'career', 'nutrition', 'riderEquipment', 'adminDossier', 
-                'myTrips', 'myPerformance', 'performanceProject', 'automatedPerformanceProfile',
-                'myProfile', 'myCalendar', 'myCareer', 'myResults', 'bikeSetup'
-            ].includes(section.id);
-            
-            if (!isMySpaceSection) {
-                managerPermissions[section.id as AppSection] = ['view', 'edit'];
-            }
-        });
-        return managerPermissions;
+
+    if (user.userRole === UserRole.COUREUR) {
+        return buildCoureurPermissions();
     }
 
+    if (user.userRole === UserRole.PARTNER) {
+        return {
+            partnerPortal: ['view'],
+            userSettings: ['view', 'edit'],
+        };
+    }
+
+    if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
+        const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
+        SECTIONS.forEach((section) => {
+            const id = section.id as AppSection;
+            if (id === 'eventDetail') return;
+            if (MY_SPACE_SECTIONS.includes(id)) return;
+            if (id === 'superAdmin') return;
+            allPermissions[id] = ['view', 'edit'];
+        });
+        // Les managers / admins présents dans l’effectif staff gardent leur dossier perso.
+        const staffMember = getStaffMemberForUser(user, staff);
+        Object.assign(allPermissions, getStaffMemberSectionGrants(staffMember));
+        if (staffMember || user.userRole === UserRole.STAFF) {
+            allPermissions.myProfile = ['view', 'edit'];
+            allPermissions.myDashboard = allPermissions.myDashboard || ['view'];
+            allPermissions.userSettings = allPermissions.userSettings || ['view', 'edit'];
+        }
+        return allPermissions;
+    }
+
+    const mergedBase = mergeConfiguredPermissions(basePermissions);
     const effectiveRoleKey = user.permissionRole || TeamRole.VIEWER;
-    let rolePerms = basePermissions[effectiveRoleKey] || DEFAULT_ROLE_PERMISSIONS[effectiveRoleKey] || {};
-    
-    // Si aucune permission n'est trouvée, utiliser les permissions par défaut du rôle
-    if (!rolePerms || Object.keys(rolePerms).length === 0) {
-        rolePerms = DEFAULT_ROLE_PERMISSIONS[effectiveRoleKey] || DEFAULT_ROLE_PERMISSIONS[TeamRole.VIEWER] || {};
-    }
-    
-    const effectivePerms: Partial<Record<AppSection, PermissionLevel[]>> = structuredClone(rolePerms);
-    
-    // Vérification supplémentaire : supprimer TOUJOURS les sections "Mon Espace" pour les non-coureurs
-    if (user.userRole !== UserRole.COUREUR) {
-        // Supprimer explicitement toutes les sections "Mon Espace" pour les non-coureurs
-        delete effectivePerms.career;
-        delete effectivePerms.nutrition;
-        delete effectivePerms.riderEquipment;
-        delete effectivePerms.adminDossier;
-        delete effectivePerms.myTrips;
-        delete effectivePerms.myPerformance;
-        delete effectivePerms.performanceProject;
-        delete effectivePerms.automatedPerformanceProfile;
-        delete effectivePerms.myProfile;
-        delete effectivePerms.myCalendar;
-        delete effectivePerms.myResults;
-        delete effectivePerms.bikeSetup;
-        delete effectivePerms.myCareer;
-    }
-    
-    // Logique spéciale pour les coureurs (UserRole.COUREUR) - PRIORITAIRE sur les autres rôles
-    if (user.userRole === UserRole.COUREUR) {
-        // Réinitialiser les permissions pour les coureurs
-        Object.keys(effectivePerms).forEach(key => delete effectivePerms[key as AppSection]);
-        
-        // Sections de base accessibles à tous
-        effectivePerms.events = ['view'];
-        effectivePerms.myDashboard = ['view'];
-        
-        // Coureurs ont accès exclusif aux sections "Mon Espace"
-        effectivePerms.career = ['view', 'edit'];
-        effectivePerms.nutrition = ['view', 'edit'];
-        effectivePerms.riderEquipment = ['view', 'edit'];
-        effectivePerms.adminDossier = ['view', 'edit'];
-        effectivePerms.myTrips = ['view', 'edit'];
-        effectivePerms.myPerformance = ['view', 'edit'];
-        effectivePerms.performanceProject = ['view', 'edit'];
-        effectivePerms.automatedPerformanceProfile = ['view', 'edit'];
-        
-        // Nouvelles sections pour le back-office coureur
-        effectivePerms.myProfile = ['view', 'edit'];
-        effectivePerms.myCalendar = ['view', 'edit'];
-        effectivePerms.myResults = ['view', 'edit'];
-        effectivePerms.bikeSetup = ['view', 'edit'];
-        effectivePerms.myCareer = ['view', 'edit'];
-        
-        // Coureurs n'ont PAS accès aux sections administratives et générales
-        delete effectivePerms.financial;
-        delete effectivePerms.staff;
-        delete effectivePerms.userManagement;
-        delete effectivePerms.permissions;
-        delete effectivePerms.missionSearch; // Missions pas pour les coureurs
-        delete effectivePerms.roster; // Pas d'accès à l'effectif (back-office coureurs)
-        delete effectivePerms.vehicles; // Pas d'accès aux véhicules
-        delete effectivePerms.equipment; // Pas d'accès au matériel
-        delete effectivePerms.stocks; // Pas d'accès aux stocks
-        delete effectivePerms.scouting; // Pas d'accès au scouting
-        delete effectivePerms.performance; // Pas d'accès au Pôle Performance global
-    }
-    
-    // Logique pour les Staff (UserRole.STAFF) - pas d'accès aux finances ni aux sections "Mon Espace"
+    const effectivePerms: Partial<Record<AppSection, PermissionLevel[]>> = structuredClone(
+        resolveRolePermissions(effectiveRoleKey, mergedBase)
+    );
+
+    MY_SPACE_SECTIONS.forEach((section) => delete effectivePerms[section]);
+
+    const staffMember = getStaffMemberForUser(user, staff);
+    Object.assign(
+      effectivePerms,
+      mergeSectionGrants(effectivePerms, getStaffMemberSectionGrants(staffMember)),
+    );
+
     if (user.userRole === UserRole.STAFF) {
         delete effectivePerms.financial;
-        
-        // Staff n'a pas accès aux sections "Mon Espace" réservées aux coureurs
-        delete effectivePerms.career;
-        delete effectivePerms.nutrition;
-        delete effectivePerms.riderEquipment;
+        effectivePerms.myProfile = effectivePerms.myProfile || ['view', 'edit'];
         delete effectivePerms.adminDossier;
-        delete effectivePerms.myTrips;
-        delete effectivePerms.myPerformance;
-        delete effectivePerms.performanceProject;
-        delete effectivePerms.automatedPerformanceProfile;
-        delete effectivePerms.myProfile;
-        delete effectivePerms.myCalendar;
-        delete effectivePerms.myResults;
-        delete effectivePerms.bikeSetup;
-        delete effectivePerms.myCareer;
     }
-    
-    // Logique spéciale pour les missions : uniquement DS, Entraîneur, Assistant et Mécano
+
     if (hasAccessToMissions(user, staff)) {
-        effectivePerms.missionSearch = ['view'];
+        effectivePerms.missionSearch = effectivePerms.missionSearch || ['view', 'edit'];
     } else {
         delete effectivePerms.missionSearch;
     }
-    
+
     if (user.customPermissions) {
         for (const sectionKey in user.customPermissions) {
             const section = sectionKey as AppSection;
-            effectivePerms[section] = user.customPermissions[section];
+            const custom = user.customPermissions[section];
+            if (custom && custom.length > 0) {
+                effectivePerms[section] = custom;
+            } else {
+                delete effectivePerms[section];
+            }
         }
     }
-    
-    // Final safety fallback: if still empty, grant minimal viewer access
+
+    getStaffMemberSectionDenials(staffMember).forEach((section) => {
+        delete effectivePerms[section];
+    });
+
     if (!effectivePerms || Object.keys(effectivePerms).length === 0) {
         return DEFAULT_ROLE_PERMISSIONS[TeamRole.VIEWER] || {};
     }
-    
+
     return effectivePerms;
 };
 
 // --- TEAM DATA ---
-export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> => {
+export const getTeamData = async (
+    teamId: string,
+    viewer?: User
+): Promise<Partial<TeamState>> => {
     const teamDocRef = doc(db, 'teams', teamId);
     
     const teamState: Partial<TeamState> = {};
@@ -796,11 +998,15 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
                     status: 'pilot',
                     pilotEndsAt: new Date(Date.now() + 90 * 86400000).toISOString(),
                 },
+                operationalSettings: teamData.operationalSettings,
                 themePrimaryColor: teamData.themePrimaryColor,
                 themeAccentColor: teamData.themeAccentColor,
                 language: teamData.language,
                 teamLogoUrl: teamData.teamLogoUrl,
                 categoryBudgets: teamData.categoryBudgets,
+                sepaSettings: teamData.sepaSettings,
+                invoiceSettings: teamData.invoiceSettings,
+                gpsWebhookKey: teamData.gpsWebhookKey,
             });
         }
     }
@@ -811,14 +1017,7 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
     const checklistDocs = checklistSnap.docs
         .filter(d => d.id !== '_init_')
         .map(d => ({ id: d.id, ...d.data() } as ChecklistTemplate & { role?: string }));
-    const checklistByRole: Record<ChecklistRole, ChecklistTemplate[]> = {
-        [ChecklistRole.DS]: [],
-        [ChecklistRole.ASSISTANT]: [],
-        [ChecklistRole.MECANO]: [],
-        [ChecklistRole.MANAGER]: [],
-        [ChecklistRole.COMMUNICATION]: [],
-        [ChecklistRole.COUREUR]: [],
-    };
+    const checklistByRole = buildEmptyChecklistTemplatesRecord();
     for (const t of checklistDocs) {
         const role = (t.role as ChecklistRole) || ChecklistRole.DS;
         if (checklistByRole[role]) checklistByRole[role].push({ id: t.id, name: t.name, role, kind: t.kind, eventType: t.eventType, timing: t.timing, timingLabel: t.timingLabel });
@@ -840,6 +1039,10 @@ export const getTeamData = async (teamId: string): Promise<Partial<TeamState>> =
         }
     }
     
+    if (viewer && isCoureurUser(viewer)) {
+        return scopeTeamStateForCoureur(teamState, viewer);
+    }
+
     return teamState;
 };
 
@@ -878,6 +1081,29 @@ export const updateRiderPowerProfiles = async (
   if (Object.keys(cleanedData).length === 0) return;
   const docRef = doc(db, 'teams', teamId, 'riders', riderId);
   await setDoc(docRef, cleanedData, { merge: true });
+};
+
+/** Enregistrement dans une collection racine Firestore (hors équipe). */
+export const saveGlobalData = async <T extends { id?: string }>(
+  collectionName: string,
+  data: T,
+): Promise<string> => {
+  const { id, ...dataToSave } = data;
+  const cleanedData = cleanDataForFirebase(dataToSave);
+  const rootCollectionRef = collection(db, collectionName);
+
+  if (id) {
+    const docRef = doc(rootCollectionRef, id);
+    await setDoc(docRef, cleanedData, { merge: true });
+    return id;
+  }
+
+  const docRef = await addDoc(rootCollectionRef, cleanedData);
+  return docRef.id;
+};
+
+export const deleteGlobalData = async (collectionName: string, id: string): Promise<void> => {
+  await deleteDoc(doc(db, collectionName, id));
 };
 
 export const saveData = async <T extends { id?: string }>(teamId: string, collectionName: string, data: T): Promise<string> => {
@@ -1032,3 +1258,18 @@ export const updateUserProfile = async (userId: string, updatedData: Partial<Use
     
     await updateDoc(userRef, updateData);
 };
+
+export function subscribeVehiclePositions(
+    teamId: string,
+    onUpdate: (positions: VehiclePosition[]) => void
+): () => void {
+    const collRef = collection(doc(db, 'teams', teamId), 'vehiclePositions');
+    const q = query(collRef, orderBy('recordedAt', 'desc'), limit(200));
+    return onSnapshot(q, (snapshot) => {
+        onUpdate(
+            snapshot.docs
+                .filter((d) => d.id !== '_init_')
+                .map((d) => ({ id: d.id, ...d.data() } as VehiclePosition))
+        );
+    });
+}

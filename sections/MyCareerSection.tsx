@@ -1,37 +1,87 @@
-import React, { useState } from 'react';
-import { Rider, User, Team } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Rider, User, Team, AppState, PowerProfile, RaceEvent, AppSection } from '../types';
+import { TeamBenchmarkData } from '../types/teamBenchmarks';
 import SectionWrapper from '../components/SectionWrapper';
-import MyPerformanceSection from './MyPerformanceSection';
 import MyPerformanceProjectSection from './MyPerformanceProjectSection';
+import MyPerformanceHistoryPanel from '../components/MyPerformanceHistoryPanel';
+import PowerPPRTab from '../components/riderDetailTabs/PowerPPRTab';
+import StageCampPerformancePanel from '../components/performance/StageCampPerformancePanel';
+import ActionButton from '../components/ActionButton';
 import { UsersIcon } from '../components/icons';
-import { isValidRidersArray, findRiderByEmail } from '../utils/riderUtils';
-import { getCurrentSeasonYear, getSeasonLabel, getPlanningYears, getSeasonTransitionStatus } from '../utils/seasonUtils';
+import { getOwnRider } from '../utils/riderAccessUtils';
+import { userToRiderProfile } from '../utils/independentUtils';
+import { isValidRidersArray } from '../utils/riderUtils';
+import { getCurrentSeasonYear, getSeasonLabel, getPlanningYears } from '../utils/seasonUtils';
 import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
+import { POWER_ANALYSIS_DURATIONS_CONFIG } from '../constants';
+
+type CareerTab = 'ppr' | 'analyse' | 'history' | 'bilan' | 'quality' | 'project' | 'stages' | 'teams';
+type PowerSubTab = 'ppr' | 'analyse' | 'history' | 'summary';
 
 interface MyCareerSectionProps {
   riders: Rider[];
   currentUser: User;
   onSaveRider: (rider: Rider) => void;
   teams?: Team[];
+  appState: AppState;
+  teamBenchmarks: TeamBenchmarkData;
+  onSaveRaceEvent?: (event: RaceEvent) => Promise<void>;
+  navigateTo?: (section: AppSection, eventId?: string) => void;
+  initialTab?: CareerTab;
 }
 
-type CareerTab = 'performances' | 'project' | 'teams';
+const TABS: { id: CareerTab; label: string }[] = [
+  { id: 'ppr', label: '📊 PPR' },
+  { id: 'analyse', label: '📈 Analyse' },
+  { id: 'history', label: '📈 Historique' },
+  { id: 'stages', label: '🏔 Suivi stages' },
+  { id: 'bilan', label: '📋 Bilan' },
+  { id: 'quality', label: '⭐ Suivi qualité' },
+  { id: 'project', label: '🎯 Projet Performance' },
+  { id: 'teams', label: '👥 Équipes' },
+];
 
-const TABS = [
-  { id: 'performances' as const, label: '📊 Performances' },
-  { id: 'project' as const, label: '🎯 Projet Performance' },
-  { id: 'teams' as const, label: '👥 Équipes' }
-] as const;
+const CAREER_TO_POWER_SUB: Partial<Record<CareerTab, PowerSubTab>> = {
+  ppr: 'ppr',
+  analyse: 'analyse',
+  history: 'history',
+  bilan: 'summary',
+};
 
 const MyCareerSection: React.FC<MyCareerSectionProps> = ({
   riders,
   currentUser,
   onSaveRider,
-  teams = []
+  teams = [],
+  appState,
+  teamBenchmarks,
+  onSaveRaceEvent,
+  navigateTo,
+  initialTab = 'ppr',
 }) => {
-  const [activeTab, setActiveTab] = useState<CareerTab>('performances');
+  const [activeTab, setActiveTab] = useState<CareerTab>(initialTab);
+  const [formData, setFormData] = useState<Rider | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
-  if (!isValidRidersArray(riders)) {
+  const ridersValid = isValidRidersArray(riders);
+  const riderProfile = ridersValid
+    ? getOwnRider(riders, currentUser) || userToRiderProfile(currentUser)
+    : undefined;
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (riderProfile) {
+      setFormData(structuredClone(riderProfile));
+    } else {
+      setFormData(null);
+    }
+  }, [riderProfile]);
+
+  if (!ridersValid) {
     return (
       <SectionWrapper title="Ma Carrière">
         <div className="text-center p-8 bg-gray-50 rounded-lg border">
@@ -42,9 +92,7 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
     );
   }
 
-  const riderProfile = findRiderByEmail(riders, currentUser.email);
-
-  if (!riderProfile) {
+  if (!riderProfile || !formData) {
     return (
       <SectionWrapper title="Ma Carrière">
         <div className="text-center p-8 bg-gray-50 rounded-lg border">
@@ -55,30 +103,76 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
     );
   }
 
-  // Styles et utilitaires
-  const getTabButtonStyle = (tabName: CareerTab) => 
+  const getTabButtonStyle = (tabName: CareerTab) =>
     `px-4 py-2 font-medium text-sm rounded-t-lg whitespace-nowrap transition-colors duration-150 focus:outline-none ${
-      activeTab === tabName 
-        ? 'bg-white text-blue-600 border-b-2 border-blue-500 shadow-sm' 
+      activeTab === tabName
+        ? 'bg-white text-blue-600 border-b-2 border-blue-500 shadow-sm'
         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
     }`;
 
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value, type } = e.target;
+    const keys = name.split('.');
+    setFormData((prev) => {
+      if (!prev) return prev;
+      const updated = structuredClone(prev);
+      let current: any = updated;
+      for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        current[key] = { ...(current[key] || {}) };
+        current = current[key];
+      }
+      const lastKey = keys[keys.length - 1];
+      if (type === 'number') {
+        current[lastKey] = value === '' ? undefined : Number(value);
+      } else {
+        current[lastKey] = value;
+      }
+      return updated;
+    });
+  };
+
+  const handleDeleteProfile = (
+    profileKey: 'powerProfile15KJ' | 'powerProfile30KJ' | 'powerProfile45KJ'
+  ) => {
+    setFormData((prev) => (prev ? { ...prev, [profileKey]: undefined } : prev));
+  };
+
+  const handleSavePpr = async () => {
+    if (!formData) return;
+    setIsSaving(true);
+    setSaveFeedback(null);
+    try {
+      await onSaveRider(formData);
+      setSaveFeedback('Performances enregistrées.');
+    } catch (error) {
+      console.error('Erreur sauvegarde PPR:', error);
+      setSaveFeedback('Erreur lors de la sauvegarde.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleScoutingToggle = async () => {
-    if (!riderProfile) return;
-    
     const updatedRider = {
-      ...riderProfile,
-      isSearchable: !riderProfile.isSearchable
+      ...formData,
+      isSearchable: !formData.isSearchable,
     };
-    
     try {
       await onSaveRider(updatedRider);
+      setFormData(updatedRider);
     } catch (error) {
       console.error('Erreur lors de la mise à jour du profil de scouting:', error);
     }
   };
 
-  // Composant de partage scouting
+  const teamRidersForAnalysis =
+    teamBenchmarks.riders?.length > 0 ? teamBenchmarks.riders : appState.riders || [];
+
+  const powerSubTab = CAREER_TO_POWER_SUB[activeTab];
+
   const ScoutingToggle = () => (
     <div className="bg-white p-6 rounded-lg shadow-sm border">
       <div className="flex justify-between items-center mb-4">
@@ -89,157 +183,159 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
           </p>
         </div>
         <div className="flex items-center space-x-3">
-          <span className={`text-sm font-medium ${riderProfile?.isSearchable ? 'text-green-600' : 'text-gray-500'}`}>
-            {riderProfile?.isSearchable ? 'Profil partagé' : 'Profil privé'}
+          <span
+            className={`text-sm font-medium ${
+              formData.isSearchable ? 'text-green-600' : 'text-gray-500'
+            }`}
+          >
+            {formData.isSearchable ? 'Profil partagé' : 'Profil privé'}
           </span>
           <button
+            type="button"
             onClick={handleScoutingToggle}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              riderProfile?.isSearchable ? 'bg-blue-600' : 'bg-gray-200'
+              formData.isSearchable ? 'bg-blue-600' : 'bg-gray-200'
             }`}
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                riderProfile?.isSearchable ? 'translate-x-6' : 'translate-x-1'
+                formData.isSearchable ? 'translate-x-6' : 'translate-x-1'
               }`}
             />
           </button>
         </div>
       </div>
-      
-      {riderProfile?.isSearchable ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-blue-800">Profil visible pour le scouting</h4>
-              <p className="text-sm text-blue-700 mt-1">
-                Votre profil de performance est maintenant visible par les recruteurs et les équipes. 
-                Ils peuvent voir vos données de puissance, caractéristiques et objectifs de carrière.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-gray-800">Profil privé</h4>
-              <p className="text-sm text-gray-600 mt-1">
-                Votre profil n'est pas visible pour le scouting. Activez le partage pour permettre aux recruteurs de découvrir votre profil.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 
-  const renderPerformancesTab = () => (
-    <div className="space-y-6">
-      <ScoutingToggle />
-      <MyPerformanceSection
-        riders={riders}
-        currentUser={currentUser}
-        onSaveRider={onSaveRider}
-      />
-    </div>
-  );
+  const renderPowerTabs = () => {
+    if (!powerSubTab) return null;
+    return (
+      <div className="space-y-4">
+        {activeTab === 'ppr' && <ScoutingToggle />}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {activeTab === 'ppr' && 'Profils de puissance (PPR)'}
+                {activeTab === 'analyse' && 'Analyse vs groupe'}
+                {activeTab === 'history' && 'Historique PPR'}
+                {activeTab === 'bilan' && 'Bilan des performances'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Mêmes outils que l&apos;onglet performance coach, pour votre dossier athlète.
+              </p>
+            </div>
+            {activeTab === 'ppr' && (
+              <div className="flex items-center gap-2">
+                {saveFeedback && (
+                  <span
+                    className={`text-sm ${
+                      saveFeedback.includes('Erreur') ? 'text-rose-600' : 'text-emerald-600'
+                    }`}
+                  >
+                    {saveFeedback}
+                  </span>
+                )}
+                <ActionButton onClick={handleSavePpr} disabled={isSaving}>
+                  {isSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </ActionButton>
+              </div>
+            )}
+          </div>
+          <PowerPPRTab
+            formData={formData}
+            handleInputChange={handleInputChange}
+            formFieldsEnabled
+            powerDurationsConfig={POWER_ANALYSIS_DURATIONS_CONFIG as {
+              key: keyof PowerProfile;
+              label: string;
+              unit: string;
+              sortable: boolean;
+            }[]}
+            theme="light"
+            onDeleteProfile={handleDeleteProfile}
+            onSaveRequest={handleSavePpr}
+            allRiders={teamRidersForAnalysis}
+            activeSubTab={powerSubTab}
+            hideSubTabNav
+          />
+        </div>
+      </div>
+    );
+  };
 
-  const renderProjectTab = () => (
-    <MyPerformanceProjectSection
-      riders={riders}
-      currentUser={currentUser}
-      onSaveRider={onSaveRider}
-    />
-  );
-
-  // Utilitaires pour les équipes
   const getYear = (dateString: string) => new Date(dateString).getFullYear();
-  
+
   const formatTeamPeriod = (startDate: string, endDate?: string) => {
     const startYear = getYear(startDate);
     const endYear = endDate ? getYear(endDate) : new Date().getFullYear();
     const isCurrent = !endDate;
-    
     if (startYear === endYear) {
       return isCurrent ? `${startYear} - Aujourd'hui` : startYear.toString();
     }
-    return `${startYear} - ${isCurrent ? 'Aujourd\'hui' : endYear}`;
+    return `${startYear} - ${isCurrent ? "Aujourd'hui" : endYear}`;
   };
 
   const prepareTeamsList = () => {
-    const teamsHistory = riderProfile?.teamsHistory || [];
-    const currentTeamName = riderProfile?.teamName;
-    
+    const teamsHistory = formData.teamsHistory || [];
+    const currentTeamName = formData.teamName;
     let allTeams = [...teamsHistory];
-    
-    // Ajouter l'équipe actuelle si elle n'est pas dans l'historique
-    if (currentTeamName && !teamsHistory.some(team => team.teamName === currentTeamName)) {
+    if (currentTeamName && !teamsHistory.some((team) => team.teamName === currentTeamName)) {
       allTeams.unshift({
         teamName: currentTeamName,
         startDate: `${getCurrentSeasonYear()}-01-01`,
         endDate: undefined,
         role: 'Coureur',
         status: 'Actif' as const,
-        achievements: []
+        achievements: [],
       });
     }
-    
-    return allTeams.sort((a, b) => 
-      new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
-    );
-  };
-
-  const TeamCard = ({ team, index }: { team: any; index: number }) => {
-    const isCurrentTeam = !team.endDate;
-    
-    return (
-      <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-        <div className="flex items-center space-x-3">
-          <div className={`w-3 h-3 rounded-full ${isCurrentTeam ? 'bg-green-500' : 'bg-gray-400'}`} />
-          <div>
-            <h4 className="font-semibold text-gray-900">{team.teamName}</h4>
-            <p className="text-sm text-gray-600">
-              {formatTeamPeriod(team.startDate, team.endDate)}
-            </p>
-          </div>
-        </div>
-        <div className="text-right">
-          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-            isCurrentTeam 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {isCurrentTeam ? 'Actuel' : 'Ancien'}
-          </span>
-        </div>
-      </div>
+    return allTeams.sort(
+      (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
     );
   };
 
   const renderTeamsTab = () => {
-    const teams = prepareTeamsList();
-
+    const teamList = prepareTeamsList();
     return (
       <div className="space-y-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Mes Équipes</h3>
-          
-          {teams.length > 0 ? (
+          {teamList.length > 0 ? (
             <div className="space-y-3">
-              {teams.map((team, index) => (
-                <TeamCard key={index} team={team} index={index} />
-              ))}
+              {teamList.map((team, index) => {
+                const isCurrentTeam = !team.endDate;
+                return (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          isCurrentTeam ? 'bg-green-500' : 'bg-gray-400'
+                        }`}
+                      />
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{team.teamName}</h4>
+                        <p className="text-sm text-gray-600">
+                          {formatTeamPeriod(team.startDate, team.endDate)}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        isCurrentTeam
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {isCurrentTeam ? 'Actuel' : 'Ancien'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8">
@@ -252,44 +348,65 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
     );
   };
 
-
-
-  // Rendu des onglets
   const renderActiveTab = () => {
-    const tabComponents = {
-      performances: renderPerformancesTab,
-      project: renderProjectTab,
-      teams: renderTeamsTab
-    };
-    
-    const TabComponent = tabComponents[activeTab] || renderPerformancesTab;
-    return <TabComponent />;
+    if (powerSubTab) return renderPowerTabs();
+    if (activeTab === 'quality') {
+      return (
+        <MyPerformanceHistoryPanel
+          rider={formData}
+          appState={appState}
+          teamBenchmarks={teamBenchmarks}
+          currentUser={currentUser}
+        />
+      );
+    }
+    if (activeTab === 'project') {
+      return (
+        <MyPerformanceProjectSection
+          riders={[formData]}
+          currentUser={currentUser}
+          onSaveRider={onSaveRider}
+        />
+      );
+    }
+    if (activeTab === 'stages') {
+      return (
+        <StageCampPerformancePanel
+          appState={appState}
+          onSaveRaceEvent={onSaveRaceEvent}
+          lockedRiderId={formData.id}
+          readOnly={false}
+          onOpenEvent={
+            navigateTo ? (eventId) => navigateTo('eventDetail', eventId) : undefined
+          }
+        />
+      );
+    }
+    if (activeTab === 'teams') return renderTeamsTab();
+    return null;
   };
 
   return (
     <SectionWrapper title="Ma Carrière">
       <div className="space-y-6">
-        {/* Indicateur de transition de saison */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <h2 className="text-lg font-semibold text-gray-800">
               {getSeasonLabel(getCurrentSeasonYear())}
             </h2>
-            <SeasonTransitionIndicator 
-              seasonYear={getCurrentSeasonYear()} 
-              showDetails={true}
-            />
+            <SeasonTransitionIndicator seasonYear={getCurrentSeasonYear()} showDetails={true} />
           </div>
           <div className="text-sm text-gray-600">
             Années de planification disponibles : {getPlanningYears().join(', ')}
           </div>
         </div>
-        {/* Navigation des onglets */}
+
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Tabs">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={getTabButtonStyle(tab.id)}
               >
@@ -299,7 +416,6 @@ const MyCareerSection: React.FC<MyCareerSectionProps> = ({
           </nav>
         </div>
 
-        {/* Contenu de l'onglet actif */}
         {renderActiveTab()}
       </div>
     </SectionWrapper>

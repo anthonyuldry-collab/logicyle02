@@ -1,0 +1,31 @@
+priorite,mois_cible,action,categorie,budget_eur,livrable,statut
+1,M1,Recherche antériorité marque LogiCycle vs Ippogee,Marque,200,Note INPI/avocat,À faire
+1,M1,Dépôt marque INPI classes 9-42-35,Marque,250,Certificat INPI,À faire
+1,M1,Verrouillage domaines logicycle.*,Marque,50,Whois,À faire
+2,M1,Statuts SAS + clause PI cédée à la société,Société,300,Statuts signés,À faire
+2,M1,Pacte associés vesting + IP,Société,500,Pacte signé,À faire
+2,M1,Contrats freelances cession PI + NDA,Société,0,Modèles signés,À faire
+2,M2,Registre PI interne (auteur/date/module),PI interne,0,Spreadsheet,À faire
+3,M1,Politique zéro copie Ippogee (code/UI/docs),Concurrence,0,Note interne 1p,À faire
+3,M1,Audit licences open source npm,PI interne,0,Rapport,À faire
+3,M1,Note développement indépendant,PI interne,0,PDF daté,À faire
+4,M2,CGU équipes + indépendants FR,Legal SaaS,400,Page /legal/terms,À faire
+4,M2,CGV abonnements Stripe,Legal SaaS,300,Page /legal/sales,À faire
+4,M2,DPA art. 28 RGPD,Legal SaaS,400,Page /legal/dpa,À faire
+4,M3,CGU/CGV/Privacy EN (voie WT),Legal SaaS,400,Pages EN,À faire
+4,M4,CGU marketplace + clause commission 12%,Legal SaaS,300,Annexe CGU,À faire
+5,M2,Registre des traitements RGPD,RGPD,0,Document,À faire
+5,M2,Documentation export/purge produit,RGPD,0,Lien GdprSettingsPanel,À faire
+5,M4,AIPD si données performance WT,RGPD,500,Document,À faire
+6,M3,Template contrat Enterprise FR+EN,Clients WT,500,Google Doc,À faire
+6,M3,NDA mutuel pilotes WT,Clients WT,200,Modèle signé,À faire
+6,M4,Clause coexistence outils tiers (Ippogee),Clients WT,0,Clause contractuelle,À faire
+7,M4,CGU vacataires marketplace + Stripe Connect,Marketplace,200,Annexe,À faire
+7,M6,Revue TVA/facturation commission,Marketplace,300,Note expert-comptable,À faire
+8,M4,Footer © + politique secret des affaires,PI LogiCycle,0,App footer,À faire
+8,M18,Extension marque UK (si traction),Marque,400,Certificat UKIPO,À faire
+9,M12,Data room PI due diligence Seed,Seed,0,Google Drive,À faire
+9,M12,Lettre avocat PI (pas de litige Ippogee),Seed,800,PDF,À faire
+9,M12,Assurance RC Pro + cyber,Seed,600,Contrat assurance,À faire
+10,Continu,Comparatifs commerciaux factuels uniquement,Concurrence,0,Battlecard,À faire
+10,Continu,Stratégie wedge coexistence Ippogee,Concurrence,0,worldtour-strategie-en.md,En cours

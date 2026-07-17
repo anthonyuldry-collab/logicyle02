@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ScoutingProfile, Rider, RiderQualitativeProfile, DisciplinePracticed, FormeStatus, MoralStatus, HealthCondition, PerformanceFactorDetail, PowerProfile, ScoutingStatus, Sex, User, UserRole, AppState } from '../types';
+import { ScoutingProfile, Rider, RiderQualitativeProfile, DisciplinePracticed, FormeStatus, MoralStatus, HealthCondition, PerformanceFactorDetail, PowerProfile, ScoutingStatus, Sex, User, UserRole, AppState, ProspectLevel, ScoutingDataScope, TeamRecruitmentTarget, TeamMembership } from '../types';
 import { SCOUTING_STATUS_COLORS, defaultRiderCharCap, SPIDER_CHART_CHARACTERISTICS_CONFIG, initialScoutingProfileFormState, POWER_PROFILE_REFERENCE_TABLES, riderProfileKeyToRefTableKeyMap, POWER_ANALYSIS_DURATIONS_CONFIG, PROFILE_WEIGHTS, PERFORMANCE_SCORE_WEIGHTS, COLLECTIVE_SCORE_PENALTY_THRESHOLD, COLLECTIVE_SCORE_PENALTY_MULTIPLIER, CATEGORY_ID_TO_SCALE_MAP, EVENT_CATEGORY_POINTS_TABLE, COGGAN_CATEGORY_COLORS, ALL_COUNTRIES, RIDER_LEVEL_CATEGORIES, PERFORMANCE_PROJECT_FACTORS_CONFIG } from '../constants';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
@@ -17,6 +17,19 @@ import { calculateRiderCharacteristics } from '../utils/performanceCalculations'
 import { getRiderCharacteristicSafe } from '../utils/riderUtils';
 import StarIcon from '../components/icons/StarIcon';
 import { ResultsTab } from '../components/riderDetailTabs/ResultsTab';
+import {
+  buildDirectVeloSearchUrl,
+  buildPcsSearchUrl,
+  openExternalUrl,
+} from '../utils/cyclingResultsLinks';
+import { demoUserToScoutingProfile, isDemoPreviewScoutingProfile, isDemoTalentUser } from '../constants/demoTalentProfiles';
+import {
+  buildContactRequestMessage,
+  buildWatchlistProfileFromUser,
+  getProspectLevelLabel,
+  isAthleteOnWatchlist,
+} from '../utils/scoutingProspectUtils';
+import TeamRecruitmentPanel from '../components/TeamRecruitmentPanel';
 
 interface ScoutingSectionProps {
   scoutingProfiles: ScoutingProfile[];
@@ -24,10 +37,21 @@ interface ScoutingSectionProps {
   onSaveScoutingProfile: (profile: ScoutingProfile) => void;
   onDeleteScoutingProfile: (profileId: string) => void;
   onSaveRider?: (rider: Rider) => void | Promise<void>;
-  onCreateScoutingRequest?: (athleteId: string, message?: string) => Promise<string>;
+  onCreateScoutingRequest?: (
+    athleteId: string,
+    message?: string,
+    requestedScopes?: ScoutingDataScope[],
+  ) => Promise<string>;
   effectivePermissions?: any;
   appState?: AppState;
   currentTeamId?: string | null;
+  onRecruitmentTargetChange?: (target: TeamRecruitmentTarget) => void;
+  onReviewRiderApplication?: (
+    membership: TeamMembership,
+    action: 'approve' | 'deny',
+  ) => Promise<void>;
+  setRecruitmentOffers?: React.Dispatch<React.SetStateAction<import('../types').TeamRecruitmentOffer[]>>;
+  setRecruitmentCampaigns?: React.Dispatch<React.SetStateAction<import('../types').TeamRecruitmentCampaign[]>>;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -142,7 +166,7 @@ const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: nu
     );
 };
 
-const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, onCreateScoutingRequest, effectivePermissions, appState, currentTeamId }) => {
+const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, onCreateScoutingRequest, effectivePermissions, appState, currentTeamId, onRecruitmentTargetChange, onReviewRiderApplication, setRecruitmentOffers, setRecruitmentCampaigns }) => {
   // Protection minimale - seulement scoutingProfiles est requis
   if (!scoutingProfiles) {
     return (
@@ -155,7 +179,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'profiles' | 'search' | 'analysis'>('profiles');
+  const [activeTab, setActiveTab] = useState<'profiles' | 'search' | 'analysis' | 'recruitment'>('profiles');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<ScoutingProfile, 'id'> | ScoutingProfile>(initialScoutingProfileFormState);
   const [isEditing, setIsEditing] = useState(false);
@@ -268,27 +292,13 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     });
   };
 
-  const openExternal = (url: string) => {
-    if (!url) return;
-    try {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (e) {
-      console.error('Impossible d’ouvrir le lien:', e);
-    }
-  };
+  const openExternal = openExternalUrl;
 
-  const buildPcsSearchUrl = (firstName?: string, lastName?: string) => {
-    const term = `${firstName ?? ''} ${lastName ?? ''}`.trim();
-    if (!term) return 'https://www.procyclingstats.com/';
-    return `https://www.procyclingstats.com/search.php?term=${encodeURIComponent(term)}`;
-  };
+  const buildPcsSearchUrlForProfile = (firstName?: string, lastName?: string) =>
+    buildPcsSearchUrl(firstName, lastName);
 
-  const buildDirectVeloSearchUrl = (firstName?: string, lastName?: string) => {
-    const term = `${firstName ?? ''} ${lastName ?? ''}`.trim();
-    if (!term) return 'https://www.directvelo.com/';
-    // DirectVélo n’expose pas d’URL de recherche stable : fallback via Google (semi-auto).
-    return `https://www.google.com/search?q=${encodeURIComponent(`site:directvelo.com ${term}`)}`;
-  };
+  const buildDirectVeloSearchUrlForProfile = (firstName?: string, lastName?: string) =>
+    buildDirectVeloSearchUrl(firstName, lastName);
 
   const handleSaveProfile = () => {
     if (isEditing && 'id' in currentItem) {
@@ -368,6 +378,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     setCurrentItem({
       ...initialScoutingProfileFormState,
       ...defaultRiderCharCap,
+      prospectLevel: ProspectLevel.WATCHLIST,
       powerProfileFresh: {},
       powerProfile15KJ: {},
       powerProfile30KJ: {},
@@ -492,6 +503,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             <tr>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('firstName')}>Nom {getSortIndicator('firstName')}</th>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('age')}>Âge {getSortIndicator('age')}</th>
+              <th className="px-3 py-2 text-left">Niveau</th>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('status')}>Statut {getSortIndicator('status')}</th>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('potentialRating')}>Potentiel {getSortIndicator('potentialRating')}</th>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('qualitativeProfile')}>Profil {getSortIndicator('qualitativeProfile')}</th>
@@ -506,7 +518,12 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
               <tr key={profile.id} className="hover:bg-slate-700/50">
                 <td className="px-3 py-2 font-medium text-slate-100">{profile.firstName} {profile.lastName}</td>
                 <td className="px-3 py-2 text-slate-300">{getAge(profile.birthDate)}</td>
-                <td className="px-3 py-2"><span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${SCOUTING_STATUS_COLORS[profile.status]}`}>{profile.status}</span></td>
+                <td className="px-3 py-2 text-slate-300 text-xs">{getProspectLevelLabel(profile.prospectLevel)}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-flex max-w-[11rem] items-center px-2.5 py-1 text-[11px] font-semibold leading-tight rounded-lg whitespace-normal ${SCOUTING_STATUS_COLORS[profile.status]}`}>
+                    {profile.status}
+                  </span>
+                </td>
                 <td className="px-3 py-2 text-slate-300">{profile.potentialRating} / 5</td>
                 <td className="px-3 py-2 text-slate-300">{profile.qualitativeProfile}</td>
                 {SPIDER_CHART_CHARACTERISTICS_CONFIG.map(char => (
@@ -538,30 +555,44 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     return (
       <div className="space-y-4">
         <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-          <h4 className="text-blue-300 font-semibold mb-2">ℹ️ Comment voir des profils de coureurs ?</h4>
-          <p className="text-blue-200 text-sm mb-2">
-            Pour que des profils de coureurs apparaissent dans cette recherche, ils doivent :
-          </p>
+          <h4 className="text-blue-300 font-semibold mb-2">Recrutement — deux niveaux de prospect</h4>
           <ul className="text-blue-200 text-sm list-disc list-inside space-y-1">
-            <li>Avoir un compte Coureur (équipe ou profil indépendant)</li>
-            <li>Activer la visibilité recrutement dans Mon Espace ou Ma Carrière</li>
-            <li>Cliquer sur « Demander le profil » — une demande de suivi est envoyée automatiquement</li>
-            <li>Une fois acceptée, le profil complet est importé dans vos prospects</li>
+            <li>
+              <strong>Suivi discret</strong> : prospect interne, l&apos;athlète n&apos;est pas informé
+            </li>
+            <li>
+              <strong>Demande de contact</strong> : coordination, données performance et/ou projet sportif — l&apos;athlète choisit ce qu&apos;il partage
+            </li>
+            <li>Avant acceptation : nom, âge, nationalité et discipline uniquement</li>
           </ul>
         </div>
         
         <TalentSearchTab 
-          appState={appState} 
-          onRequestScoutingAccess={async (user) => {
+          appState={appState}
+          onRecruitmentTargetChange={onRecruitmentTargetChange}
+          onAddWatchlistProspect={(user) => {
+            if (isAthleteOnWatchlist(user.id, scoutingProfiles)) return;
+            onSaveScoutingProfile(buildWatchlistProfileFromUser(user, riders));
+          }}
+          onRequestScoutingAccess={async (user, requestedScopes) => {
             if (!currentTeamId || !onCreateScoutingRequest) return;
             const teamName = appState?.teams?.find((t) => t.id === currentTeamId)?.name || 'notre équipe';
             await onCreateScoutingRequest(
               user.id,
-              `${teamName} souhaite accéder à votre profil pour un suivi scouting.`
+              buildContactRequestMessage(teamName, requestedScopes),
+              requestedScopes,
             );
           }}
           onProfileSelect={(user) => {
-          // Créer un profil de scouting à partir de l'utilisateur sélectionné
+          if (isDemoTalentUser(user.id)) {
+            const demoProfile = demoUserToScoutingProfile(user);
+            setCurrentItem(demoProfile);
+            setIsEditing(false);
+            setActiveModalTab('info');
+            setIsModalOpen(true);
+            return;
+          }
+
           const newScoutProfile = {
             id: `scout_${generateId()}`,
             firstName: user.firstName,
@@ -579,6 +610,8 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             healthCondition: user.healthCondition || 'BONNE',
             potentialRating: 3,
             status: 'TO_WATCH',
+            prospectLevel: ProspectLevel.CONTACT_REQUEST,
+            linkedAthleteUserId: user.id,
             discipline: user.disciplines?.[0] || DisciplinePracticed.ROUTE,
             powerProfile: user.powerProfile || {},
             characteristics: user.characteristics || {},
@@ -1001,12 +1034,43 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
     );
   };
 
-  const tabButtonStyle = (tab: 'profiles' | 'search' | 'analysis') => 
+  const tabButtonStyle = (tab: 'profiles' | 'search' | 'analysis' | 'recruitment') =>
     `px-3 py-2 font-medium text-sm rounded-t-md whitespace-nowrap transition-colors duration-150 focus:outline-none ${
       activeTab === tab 
         ? 'bg-slate-800 text-white border-b-2 border-blue-500' 
         : 'text-gray-500 hover:text-gray-700 hover:bg-slate-700'
     }`;
+
+  const renderRecruitmentTab = () => {
+    if (!appState || !currentTeamId || !setRecruitmentOffers || !setRecruitmentCampaigns) {
+      return (
+        <p className="text-slate-400 text-sm text-center py-8">Équipe active requise pour le recrutement.</p>
+      );
+    }
+    const team = appState.teams?.find((t) => t.id === currentTeamId);
+    const canEdit = Boolean(effectivePermissions?.scouting?.includes('edit'));
+    return (
+      <TeamRecruitmentPanel
+        teamId={currentTeamId}
+        teamName={team?.name ?? 'Équipe'}
+        users={appState.users ?? []}
+        teamMemberships={appState.teamMemberships ?? []}
+        recruitmentOffers={appState.recruitmentOffers ?? []}
+        recruitmentCampaigns={appState.recruitmentCampaigns ?? []}
+        setRecruitmentOffers={setRecruitmentOffers}
+        setRecruitmentCampaigns={setRecruitmentCampaigns}
+        onApproveMembership={
+          onReviewRiderApplication
+            ? (m) => onReviewRiderApplication(m, 'approve')
+            : undefined
+        }
+        onDenyMembership={
+          onReviewRiderApplication ? (m) => onReviewRiderApplication(m, 'deny') : undefined
+        }
+        canEdit={canEdit}
+      />
+    );
+  };
   
   return (
     <SectionWrapper
@@ -1017,12 +1081,14 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Tabs">
                 <button onClick={() => setActiveTab('profiles')} className={tabButtonStyle('profiles')}>Profils Suivis</button>
                 <button onClick={() => setActiveTab('search')} className={tabButtonStyle('search')}>Recherche de Talents</button>
+                <button onClick={() => setActiveTab('recruitment')} className={tabButtonStyle('recruitment')}>Recrutement</button>
                 <button onClick={() => setActiveTab('analysis')} className={tabButtonStyle('analysis')}>Analyse Comparative</button>
             </nav>
         </div>
       <div className="bg-slate-800 p-4 rounded-b-lg">
           {activeTab === 'profiles' && renderProfilesTab()}
           {activeTab === 'search' && renderSearchTab()}
+          {activeTab === 'recruitment' && renderRecruitmentTab()}
           {activeTab === 'analysis' && renderAnalysisTab()}
       </div>
 
@@ -1066,8 +1132,24 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
           calculateWkg={() => ''}
       />
       
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditing ? "Modifier Prospect" : "Nouveau Prospect"}>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={
+          isDemoPreviewScoutingProfile(currentItem as ScoutingProfile)
+            ? 'Aperçu — Profil exemple'
+            : isEditing
+            ? 'Modifier Prospect'
+            : 'Nouveau Prospect'
+        }
+      >
         <div className="bg-slate-800 p-4 -m-6 rounded-lg">
+            {isDemoPreviewScoutingProfile(currentItem as ScoutingProfile) && (
+              <div className="mb-4 p-3 rounded-lg bg-violet-900/40 border border-violet-500/40 text-violet-100 text-sm">
+                Profil fictif pour tester la recherche recrutement. Aucune demande n&apos;est envoyée. Vous pouvez
+                l&apos;ajouter à vos prospects pour continuer le parcours scouting.
+              </div>
+            )}
             <nav className="flex space-x-1 border-b border-slate-600 mb-4 overflow-x-auto">
                 <button onClick={() => setActiveModalTab('info')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'info' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Infos</button>
                 <button onClick={() => setActiveModalTab('power')} className={`px-3 py-2 text-sm font-medium rounded-t-md whitespace-nowrap ${activeModalTab === 'power' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>Puissance</button>
@@ -1662,7 +1744,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                               type="button"
                               size="sm"
                               variant="secondary"
-                              onClick={() => openExternal(buildPcsSearchUrl(currentItem.firstName, currentItem.lastName))}
+                              onClick={() => openExternal(buildPcsSearchUrlForProfile(currentItem.firstName, currentItem.lastName))}
                               icon={<SearchIcon className="w-3 h-3" />}
                             >
                               Rechercher PCS
@@ -1694,7 +1776,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                               type="button"
                               size="sm"
                               variant="secondary"
-                              onClick={() => openExternal(buildDirectVeloSearchUrl(currentItem.firstName, currentItem.lastName))}
+                              onClick={() => openExternal(buildDirectVeloSearchUrlForProfile(currentItem.firstName, currentItem.lastName))}
                               icon={<SearchIcon className="w-3 h-3" />}
                             >
                               Rechercher DirectVélo
@@ -1750,8 +1832,37 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
                 )}
             </div>
             <div className="flex justify-end space-x-2 mt-4 pt-3 border-t border-slate-700">
-                <ActionButton type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Annuler</ActionButton>
-                <ActionButton type="button" onClick={handleSaveProfile}>Sauvegarder</ActionButton>
+                {isDemoPreviewScoutingProfile(currentItem as ScoutingProfile) ? (
+                  <>
+                    <ActionButton type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+                      Fermer
+                    </ActionButton>
+                    <ActionButton
+                      type="button"
+                      onClick={() => {
+                        const imported = {
+                          ...currentItem,
+                          id: generateId(),
+                          qualitativeNotes: `${(currentItem as ScoutingProfile).qualitativeNotes || ''} (importé depuis démo)`,
+                        } as ScoutingProfile;
+                        onSaveScoutingProfile(imported);
+                        setIsModalOpen(false);
+                        setActiveTab('profiles');
+                      }}
+                    >
+                      Ajouter aux prospects
+                    </ActionButton>
+                  </>
+                ) : (
+                  <>
+                    <ActionButton type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+                      Annuler
+                    </ActionButton>
+                    <ActionButton type="button" onClick={handleSaveProfile}>
+                      Sauvegarder
+                    </ActionButton>
+                  </>
+                )}
             </div>
         </div>
       </Modal>

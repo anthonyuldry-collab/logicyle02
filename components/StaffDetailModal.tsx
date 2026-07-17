@@ -10,6 +10,12 @@ import PlusCircleIcon from './icons/PlusCircleIcon';
 import XCircleIcon from './icons/XCircleIcon';
 import StarIcon from './icons/StarIcon';
 import CalendarDaysIcon from './icons/CalendarDaysIcon';
+import StaffAdminTab from './staffDetailTabs/StaffAdminTab';
+import StaffCareerProfileTab from './staffDetailTabs/StaffCareerProfileTab';
+import {
+  CvExtractedProfile,
+  mergeCvExtractIntoStaff,
+} from '../utils/cvProfileMergeUtils';
 
 interface StaffDetailModalProps {
   isOpen: boolean;
@@ -32,13 +38,14 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   performanceEntries,
   daysAssigned,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'career' | 'skills' | 'calendar' | 'availability' | 'admin'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'career' | 'calendar' | 'availability' | 'admin'>('general');
   const [formData, setFormData] = useState<Omit<StaffMember, 'id'> | StaffMember>(
     staffMember ? structuredClone(staffMember) : { ...globalInitialStaffFormState }
   );
   const [photoPreview, setPhotoPreview] = useState<string | null>(staffMember?.photoUrl || null);
   const [newSkill, setNewSkill] = useState('');
   const [newAvailability, setNewAvailability] = useState<Omit<AvailabilityPeriod, 'id'>>({ startDate: '', endDate: '', status: AvailabilityStatus.NON_DISPONIBLE, notes:''});
+  const [cvExtractSaveHint, setCvExtractSaveHint] = useState<string | null>(null);
   
   const inputFieldSm = "w-full bg-slate-700 text-slate-200 border border-slate-600 rounded-md shadow-sm px-2 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500";
   const checkboxField = "h-4 w-4 rounded border-slate-500 bg-slate-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800";
@@ -52,7 +59,8 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
       setFormData({ ...globalInitialStaffFormState });
       setPhotoPreview(null);
     }
-    setActiveTab('general'); 
+    setActiveTab('general');
+    setCvExtractSaveHint(null);
   }, [staffMember, isOpen]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -309,8 +317,7 @@ const handleRemoveListItem = (listName: 'workHistory' | 'education' | 'languages
         <form onSubmit={handleSubmit}>
           <div className="flex border-b border-slate-600 mb-4 overflow-x-auto">
             <button type="button" onClick={() => setActiveTab('general')} className={tabButtonStyle('general')}>Général</button>
-            <button type="button" onClick={() => setActiveTab('career')} className={tabButtonStyle('career')}>Parcours</button>
-            <button type="button" onClick={() => setActiveTab('skills')} className={tabButtonStyle('skills')}>Compétences</button>
+            <button type="button" onClick={() => setActiveTab('career')} className={tabButtonStyle('career')}>Profil pro</button>
             <button type="button" onClick={() => setActiveTab('calendar')} className={tabButtonStyle('calendar')}>Calendrier</button>
             <button type="button" onClick={() => setActiveTab('availability')} className={tabButtonStyle('availability')}>Disponibilités</button>
             <button type="button" onClick={() => setActiveTab('admin')} className={tabButtonStyle('admin')}>Admin</button>
@@ -366,6 +373,14 @@ const handleRemoveListItem = (listName: 'workHistory' | 'education' | 'languages
                             </div>
                          )}
                          {(formData.status === StaffStatus.VACATAIRE) && <div className="flex items-center"><input type="checkbox" name="openToExternalMissions" checked={(formData as StaffMember).openToExternalMissions} onChange={handleInputChange} className={checkboxField} id="openToMissionsCheckbox"/><label htmlFor="openToMissionsCheckbox" className="ml-2 text-sm">Profil visible pour missions externes</label></div>}
+                         <div className="grid grid-cols-1 gap-2 p-2 border border-slate-700 rounded">
+                            <div className="text-sm font-medium text-slate-300">Coordonnées bancaires (SEPA)</div>
+                            <div><label className="text-sm">IBAN bénéficiaire</label><input type="text" name="bankDetails.iban" value={(formData as StaffMember).bankDetails?.iban || ''} onChange={handleInputChange} className={`${inputFieldSm} font-mono`} placeholder="FR76 3000 6000 0112 3456 7890 189"/></div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div><label className="text-sm">BIC</label><input type="text" name="bankDetails.bic" value={(formData as StaffMember).bankDetails?.bic || ''} onChange={handleInputChange} className={`${inputFieldSm} font-mono`} placeholder="BNPAFRPP"/></div>
+                                <div><label className="text-sm">Titulaire (si différent)</label><input type="text" name="bankDetails.accountHolderName" value={(formData as StaffMember).bankDetails?.accountHolderName || ''} onChange={handleInputChange} className={inputFieldSm}/></div>
+                            </div>
+                         </div>
                     </fieldset>
                     <fieldset className="border border-slate-600 p-3 rounded-md space-y-2">
                         <legend className="text-md font-medium text-slate-200 px-1">Adresse</legend>
@@ -379,68 +394,13 @@ const handleRemoveListItem = (listName: 'workHistory' | 'education' | 'languages
               </div>
             )}
             {activeTab === 'career' && (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-slate-200 mb-2">Expériences Professionnelles</h4>
-                  {(formData as StaffMember).workHistory?.map((exp, index) => (
-                    <div key={exp.id} className="grid grid-cols-12 gap-2 p-2 border border-slate-700 rounded mb-2">
-                      <input type="text" value={exp.position} onChange={e => handleListItemChange('workHistory', index, 'position', e.target.value)} placeholder="Poste" className="input-field-sm col-span-4"/>
-                      <input type="text" value={exp.company} onChange={e => handleListItemChange('workHistory', index, 'company', e.target.value)} placeholder="Employeur" className="input-field-sm col-span-4"/>
-                      <input type="text" value={exp.startDate || ''} onChange={e => handleListItemChange('workHistory', index, 'startDate', e.target.value)} placeholder="Début (AAAA-MM)" className="input-field-sm col-span-2"/>
-                      <input type="text" value={exp.endDate || ''} onChange={e => handleListItemChange('workHistory', index, 'endDate', e.target.value)} placeholder="Fin (AAAA-MM)" className="input-field-sm col-span-2"/>
-                      <textarea value={exp.description || ''} onChange={e => handleListItemChange('workHistory', index, 'description', e.target.value)} placeholder="Description" rows={1} className="input-field-sm col-span-11"/>
-                      <ActionButton type="button" onClick={() => handleRemoveListItem('workHistory', exp.id)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>} className="col-span-1 self-center"/>
-                    </div>
-                  ))}
-                  <ActionButton type="button" onClick={() => handleAddListItem('workHistory')} variant="secondary" size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>}>Ajouter Expérience</ActionButton>
-                </div>
-                 <div>
-                  <h4 className="font-semibold text-slate-200 mb-2">Éducation & Certifications</h4>
-                  {(formData as StaffMember).education?.map((edu, index) => (
-                    <div key={edu.id} className="grid grid-cols-12 gap-2 p-2 border border-slate-700 rounded mb-2">
-                      <input type="text" value={edu.degree} onChange={e => handleListItemChange('education', index, 'degree', e.target.value)} placeholder="Diplôme / Certification" className="input-field-sm col-span-5"/>
-                      <input type="text" value={edu.institution} onChange={e => handleListItemChange('education', index, 'institution', e.target.value)} placeholder="Établissement" className="input-field-sm col-span-5"/>
-                      <input type="number" value={edu.year || ''} onChange={e => handleListItemChange('education', index, 'year', Number(e.target.value))} placeholder="Année" className="input-field-sm col-span-2"/>
-                      <div className="col-start-12"><ActionButton type="button" onClick={() => handleRemoveListItem('education', edu.id)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>}/></div>
-                    </div>
-                  ))}
-                  <ActionButton type="button" onClick={() => handleAddListItem('education')} variant="secondary" size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>}>Ajouter Formation</ActionButton>
-                </div>
-                 <div>
-                  <h4 className="font-semibold text-slate-200 mb-2">Langues Parlées</h4>
-                   {(formData as StaffMember).languages?.map((lang, index) => (
-                    <div key={lang.id} className="grid grid-cols-12 gap-2 p-2 border border-slate-700 rounded mb-2">
-                      <input type="text" value={lang.language} onChange={e => handleListItemChange('languages', index, 'language', e.target.value)} placeholder="Langue" className="input-field-sm col-span-6"/>
-                      <select value={lang.proficiency} onChange={e => handleListItemChange('languages', index, 'proficiency', e.target.value)} className="input-field-sm col-span-5">{Object.values(LanguageProficiency).map(p=><option key={p} value={p}>{p}</option>)}</select>
-                      <div className="col-start-12"><ActionButton type="button" onClick={() => handleRemoveListItem('languages', lang.id)} variant="danger" size="sm" icon={<TrashIcon className="w-4 h-4"/>}/></div>
-                    </div>
-                  ))}
-                  <ActionButton type="button" onClick={() => handleAddListItem('languages')} variant="secondary" size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>}>Ajouter Langue</ActionButton>
-                </div>
-              </div>
-            )}
-            {activeTab === 'skills' && (
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="professionalSummary" className="block text-sm font-medium text-slate-300">Résumé Professionnel (CV)</label>
-                  <textarea id="professionalSummary" name="professionalSummary" value={(formData as StaffMember).professionalSummary} onChange={handleInputChange} rows={5} className={inputFieldSm}/>
-                </div>
-                 <div>
-                  <label className="block text-sm font-medium text-slate-300">Compétences</label>
-                  <div className="flex gap-2">
-                    <input type="text" value={newSkill} onChange={e => setNewSkill(e.target.value)} onKeyDown={e => {if(e.key === 'Enter'){ e.preventDefault(); handleAddSkill();}}} placeholder="Ajouter une compétence..." className="input-field-sm flex-grow"/>
-                    <ActionButton type="button" onClick={handleAddSkill} size="sm" icon={<PlusCircleIcon className="w-4 h-4"/>}>Ajouter</ActionButton>
-                  </div>
-                   <div className="flex flex-wrap gap-2 mt-2">
-                    {((formData as StaffMember).skills || []).map(skill => (
-                      <span key={skill} className="bg-blue-500/80 text-white text-xs px-2 py-1 rounded-full flex items-center">
-                        {skill}
-                        <button type="button" onClick={() => handleRemoveSkill(skill)} className="ml-1.5"><XCircleIcon className="w-4 h-4"/></button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <StaffCareerProfileTab
+                formData={formData as StaffMember}
+                handleInputChange={handleInputChange}
+                formFieldsEnabled
+                theme="dark"
+                onPatch={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
+              />
             )}
             {activeTab === 'calendar' && (
               <div className="space-y-4">
@@ -539,33 +499,42 @@ const handleRemoveListItem = (listName: 'workHistory' | 'education' | 'languages
               </div>
             )}
              {activeTab === 'admin' && (
-              <div>
-                  <h4 className="font-semibold text-slate-200 mb-2">Zone Admin (Manager)</h4>
-                  <div className="p-3 bg-slate-700/50 rounded-md space-y-3">
-                      <div>
-                          <label className="text-sm text-slate-400">UCI ID</label>
-                          <input type="text" name="uciId" value={(formData as StaffMember).uciId || ''} onChange={handleInputChange} className={inputFieldSm} />
-                      </div>
-                      <div>
-                          <label className="text-sm text-slate-400">N° de Licence</label>
-                          <input type="text" name="licenseNumber" value={(formData as StaffMember).licenseNumber || ''} onChange={handleInputChange} className={inputFieldSm} />
-                      </div>
-                       <div>
-                          <label className="text-sm text-slate-400">Image de la Licence</label>
-                          <input type="file" id="staffLicenseUpload" accept="image/*" onChange={handleLicenseUpload} className="block w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-slate-600 file:text-slate-200 hover:file:bg-slate-500"/>
-                          {(formData as StaffMember).licenseImageBase64 && (
-                              <div className="mt-2">
-                                  <img src={`data:${(formData as StaffMember).licenseImageMimeType};base64,${(formData as StaffMember).licenseImageBase64}`} alt="licence" className="max-h-24 rounded border border-slate-500"/>
-                                  <ActionButton type="button" onClick={handleRemoveLicense} variant="danger" size="sm" className="mt-1 text-xs"><TrashIcon className="w-3 h-3 mr-1"/> Supprimer</ActionButton>
-                              </div>
-                          )}
-                      </div>
-                  </div>
-              </div>
+              <StaffAdminTab
+                formData={formData as StaffMember}
+                handleInputChange={handleInputChange}
+                formFieldsEnabled
+                theme="dark"
+                onCvUpdate={({ fileName, mimeType, base64 }) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    cvFileName: fileName,
+                    cvMimeType: mimeType,
+                    cvFileBase64: base64,
+                  }));
+                }}
+                onCvProfileExtracted={(extracted: CvExtractedProfile) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    ...mergeCvExtractIntoStaff(prev, extracted),
+                  }));
+                  setActiveTab('career');
+                  setCvExtractSaveHint('Profil enrichi depuis le CV — cliquez sur Sauvegarder pour confirmer.');
+                }}
+                onLicenseUpdate={(base64, mimeType) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    licenseImageBase64: base64,
+                    licenseImageMimeType: mimeType,
+                  }));
+                }}
+              />
             )}
           </div>
           
-          <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-slate-700">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2 mt-6 pt-4 border-t border-slate-700">
+            {cvExtractSaveHint && (
+              <p className="text-xs text-amber-300 mr-auto">{cvExtractSaveHint}</p>
+            )}
             <ActionButton type="button" variant="secondary" onClick={onClose}>Annuler</ActionButton>
             <ActionButton type="submit">Sauvegarder</ActionButton>
           </div>

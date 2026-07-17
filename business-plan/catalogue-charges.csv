@@ -1,0 +1,48 @@
+categorie,poste,type,base_calcul,montant_indicatif_eur,phase,obligatoire,notes
+COGS variable,"Stripe abonnements (~2 % + 0,25 €/tx)",variable,% MRR équipes/indép.,1–6 €/client/mois,M1+,OUI,Inclus dans COGS par plan
+COGS variable,"Firebase Blaze (Firestore, Auth, Functions, FCM)",variable,€/client actif,"1,5–4 €/client/mois",M1+,OUI,Scale avec usage · index scouting
+COGS variable,"Cloud Storage (photos, justificatifs, exports)",variable,€/client actif,"0,5–3 €/client/mois",M1+,OUI,Pro/Continental plus lourd
+COGS variable,"Google Gemini / OCR (factures, nutrition)",variable,€/client Compétition+,4–12 €/client/mois,M1+,NON,Compétition+ uniquement
+COGS variable,"Support client amorti (email, onboarding)",variable,€/client actif,"2,5–5 €/client/mois",M1+,OUI,CSM réduit le coût unitaire
+COGS variable,"Stripe Connect marketplace (~3,2 % GMV)",variable,% GMV missions,26 €/mission moy.,M18+,OUI,Déduit avant commission nette 12 %
+COGS variable,"Ops marketplace (litiges, matching, modération)",variable,6 % MRR marketplace,variable,M18+,OUI,Dans compute_gross_profit
+COGS variable,Enterprise support & SLA (5 % MRR enterprise),variable,% MRR enterprise,variable,M36+,NON,WT / fédérations
+Infra & outils,Firebase plan minimum / monitoring,fixe,€/mois,200–400,M1–M12,OUI,Inclus dans infra_m1_12
+Infra & outils,"Domaines, DNS, email pro (Google Workspace)",fixe,€/mois,50–120,M1+,OUI,
+Infra & outils,"GitHub, CI/CD, Sentry, analytics",fixe,€/mois,100–300,M1+,OUI,
+Infra & outils,"Figma, Notion, outils design/PM",fixe,€/mois,80–200,M1+,OUI,
+Infra & outils,Traccar GPS / serveur flotte (optionnel),fixe,€/mois,50–150,M12+,NON,Upsell Pro
+Infra & outils,"Conformité RGPD (audit, DPO externalisé)",fixe,€/mois,150–400,M1+,OUI,Panel GDPR · exports
+Infra & outils,i18n / support multilingue (+8–14 % infra),fixe,uplift % infra,8–14 %,M18+,OUI,EU + monde anglophone
+Infra & outils,Scale infra (M25–M60),fixe,€/mois,8 500–15 000,M25–M60,OUI,"Firestore, CDN, backups"
+Infra & outils,Scale infra mature (M61+),fixe,€/mois,32 000+,M61+,OUI,10 K+ indép. · multi-région
+RH & prestations,Comptable / expert-comptable,fixe,€/mois,250,M3+,OUI,Freelance · liasse SAS
+RH & prestations,Designer UI/UX (mission),fixe,€/mois,800,M6+,NON,Freelance
+RH & prestations,Avocat RGPD / contrats SaaS,fixe,€/mois,500,M6+,OUI,CGU · DPA · marketplace
+RH & prestations,Account Executive France,fixe,€/mois employeur,4 500,M24+,NON,CDI · leaderGlobal
+RH & prestations,AE Anglophone (US/AU),fixe,€/mois employeur,4 800,M30+,NON,CDI
+RH & prestations,Customer Success Manager,fixe,€/mois employeur,3 500,M36+,NON,CDI · churn ↓
+RH & prestations,Sales Manager / Head of Sales,fixe,€/mois employeur,5 500–7 000,M42–M48,NON,Post-Series A
+RH & prestations,Country lead (UK/US/AU) — commission,variable,15 % ARR pays,variable,M18+,NON,Pas de salaire fixe · modèle Bourbon
+RH & prestations,Dev full-stack / mobile / DevOps,fixe,€/mois employeur,5 500–5 800,M18+,NON,Selon scénario
+Fondateur,Salaire net président SAS (optimal M1–12),fixe,€ net/mois,2 000,M1–M12,OUI,Évite requalification URSSAF
+Fondateur,Salaire net président (M13–24),fixe,€ net/mois,2 500,M13–M24,OUI,~30 % PASS
+Fondateur,Salaire net président (M25+),fixe,€ net/mois,5 000,M25+,OUI,Plafond volontaire · reste en dividendes
+Fondateur,Charges patronales salaire fondateur,fixe,"×1,87 du net (28K/15K)",3 730–9 330,M1+,OUI,net_to_employer()
+Fondateur,PER épargne retraite (optimal M30+),fixe,€ net/mois,500,M30+,NON,Déduit des dividendes distribuables
+Fondateur,PFU dividendes (30 % ou barème),variable,% dividende brut,27–30 %,M24+,NON,Charge perso · pas société
+Fondateur,Holding SAS mère — montage,ponctuel,one-off,6 500,M24,NON,Avocat + greffe
+Fondateur,Holding — EC annuel,fixe,€/an,1 800,M24+,NON,150 €/mois
+Fiscalité société,Impôt sur les sociétés (IS 25 % · JEI 10 % M1–36),variable,% bénéfice,10–25 %,M1+,OUI,Avant dividendes
+Fiscalité société,Réserve légale (5 % bénéfice),variable,% bénéfice,5 %,M1+,OUI,Jusqu'à 10 % capital
+Fiscalité société,CFE / CVAE / taxes locales,fixe,€/an,500–2 000,M1+,OUI,Faible early stage
+Fiscalité société,TVA (collectée / déductible),neutre,flux,20 %,M1+,OUI,Neutre trésorerie si B2B
+Commercial,"CAC paid (Meta, Google, LinkedIn)",variable,€/équipe acquise,400–1 200,M1+,NON,Continental+ · pas clubs
+Commercial,Parrainage (-10 % filleul + 1 mois parrain),variable,€/conversion,50–300,M1+,NON,CAC organique maîtrisé
+Commercial,Advisor WT (intro DS) — commission Y1,variable,10 % ARR Y1,variable,M1+,NON,Voie EN
+Commercial,"Salon / événement cyclisme (Eurobike, etc.)",ponctuel,€/an,3 000–8 000,M12+,NON,
+Commercial,Stripe Billing / Connect setup prod,ponctuel,one-off,0–500,M1,OUI,Config · pas dev
+Juridique,Création SAS + statuts,ponctuel,one-off,1 500–3 000,Pré-M1,OUI,
+Juridique,PI / marque LogiCycle (INPI),ponctuel,one-off,500–1 500,M1–M6,NON,
+Juridique,Assurance RC Pro / cyber,fixe,€/an,800–2 500,M1+,OUI,WT exigent parfois
+Juridique,Due diligence juridique (Seed/Series A),ponctuel,one-off,5 000–15 000,M24/M48,NON,Levée

@@ -1,0 +1,6 @@
+phase,annee_debut,annee_fin,marches,part_mrr_hors_france_cible,leviers,kpi_equipes,pricing_note
+Phase 1 — France + i18n EN,Y1,Y12,FR + prep EN,0–5 %,UI EN M6 · PMF FR,93 équipes Y1,USD/AUD parité ~€169 · UK £149 · ES/IT après cluster EN
+Phase 2a — Anglo pilote,Y2,Y24,"UK, IE, BE, NL",15–25 %,1 langue = 4 marchés · country lead UK M18,180 équipes Y2,USD/AUD parité ~€169 · UK £149 · ES/IT après cluster EN
+Phase 2b — Anglo scale,Y2,Y36,"+ US, AU, CA",35–45 %,Stripe Connect US · anti-duplication,420 équipes Y3,USD/AUD parité ~€169 · UK £149 · ES/IT après cluster EN
+Phase 3 — EU romane + DE,Y3,Y60,"ES, IT, DE, CH",50–58 %,Series A · ES/IT après traction EN,950 équipes Y5,USD/AUD parité ~€169 · UK £149 · ES/IT après cluster EN
+Phase 4 — Monde,Y5,Y120,"LATAM, ZA, Nordics",68–74 %,Effet réseau global · M&A,3 200+ équipes Y10,USD/AUD parité ~€169 · UK £149 · ES/IT après cluster EN

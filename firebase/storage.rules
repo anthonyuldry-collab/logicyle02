@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userTeamId() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.teamId;
+    }
+
+    function isTeamMember(teamId) {
+      return isSignedIn() && userTeamId() == teamId;
+    }
+
+    function isTeamManager(teamId) {
+      return isTeamMember(teamId)
+        && (
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.userRole == 'MANAGER'
+          || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.permissionRole == 'ADMIN'
+        );
+    }
+
+    match /teams/{teamId}/{allPaths=**} {
+      allow read: if isTeamMember(teamId);
+      allow write, delete: if isTeamManager(teamId)
+        || (isTeamMember(teamId) && allPaths.matches('riders/' + request.auth.uid + '/.*'))
+        || (isTeamMember(teamId) && allPaths.matches('staff/' + request.auth.uid + '/.*'))
+        || (isTeamMember(teamId) && allPaths.matches('expenseReceipts/' + request.auth.uid + '/.*'));
+    }
+
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write, delete: if isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}

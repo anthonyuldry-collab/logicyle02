@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { RaceEvent, AppState, EventAccommodation, AccommodationStatus, EventBudgetItem, BudgetItemCategory, User, AppSection, PermissionLevel } from '../../types';
-import { isStageRace } from '../../utils/stageRaceUtils';
+import { isCompetitiveStageRace } from '../../utils/trainingCampUtils';
 import StageAccommodationEditor from './StageAccommodationEditor';
 import { emptyEventAccommodation } from '../../constants';
 import { saveData, deleteData } from '../../services/firebaseService';
@@ -25,7 +25,7 @@ interface EventAccommodationTabProps {
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
 const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({ event, eventId, updateEvent, appState, setEventAccommodations, setEventBudgetItems, currentUser, effectivePermissions }) => {
-  const stageRace = isStageRace(event);
+  const stageRace = isCompetitiveStageRace(event);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentItem, setCurrentItem] = useState<Omit<EventAccommodation, 'id'> | EventAccommodation>(emptyEventAccommodation(eventId, ''));

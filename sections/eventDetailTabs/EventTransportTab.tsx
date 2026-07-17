@@ -36,8 +36,10 @@ import {
   ensureStageRaceLogistics,
   formatStageDateLabel,
   formatStageTitle,
-  isStageRace,
 } from '../../utils/stageRaceUtils';
+import { isCompetitiveStageRace } from '../../utils/trainingCampUtils';
+import AddressAutocompleteInput from '../../components/AddressAutocompleteInput';
+import { AddressSuggestion } from '../../utils/accommodationGeoUtils';
 import {
   exportVehicleLogisticsHtml,
   exportVehicleLogisticsPdf,
@@ -45,12 +47,21 @@ import {
   hasVehicleLogisticsToExportForScope,
   type VehicleLogisticsExportScope,
 } from '../../utils/transportLogisticsExport';
+import DriverGpsSetupGuide from '../../components/DriverGpsSetupGuide';
+import EventFleetGpsPanel from '../../components/EventFleetGpsPanel';
+import {
+  applyDriverGpsToVehicle,
+  evaluateVehicleDriverGpsSetup,
+} from '../../utils/driverGpsSetupUtils';
 import {
   getAllerSurCourseLegsForStage,
   getPendantCourseLegsForStage,
   inferLogisticsPhase,
   isAllerSurCourseLeg,
   legMatchesStageDate,
+  TRANSPORT_PHASE_UI,
+  buildApresStageTransportDefaults,
+  transportDirectionToPhase,
 } from '../../utils/stageTransportLegUtils';
 
 interface EventTransportTabProps {
@@ -62,6 +73,7 @@ interface EventTransportTabProps {
     React.SetStateAction<EventTransportLeg[]>
   >;
   setEventBudgetItems: React.Dispatch<React.SetStateAction<EventBudgetItem[]>>;
+  setVehicles?: React.Dispatch<React.SetStateAction<Vehicle[]>>;
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
 }
@@ -175,6 +187,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   appState,
   setEventTransportLegs,
   setEventBudgetItems,
+  setVehicles,
   currentUser,
   effectivePermissions,
 }) => {
@@ -197,7 +210,18 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportScope, setExportScope] = useState<VehicleLogisticsExportScope>('coureuses');
   const [exportStageDate, setExportStageDate] = useState<string>('');
-  const stageRace = isStageRace(event);
+  const stageRace = isCompetitiveStageRace(event);
+
+  const transportLegGpsSetup = useMemo(() => {
+    const leg = currentTransportLeg as EventTransportLeg;
+    if (!leg.assignedVehicleId || leg.assignedVehicleId === 'perso' || !leg.driverId) {
+      return null;
+    }
+    const vehicle = appState.vehicles.find((v) => v.id === leg.assignedVehicleId);
+    if (!vehicle) return null;
+    return evaluateVehicleDriverGpsSetup(vehicle, appState.staff, leg.driverId);
+  }, [currentTransportLeg, appState.vehicles, appState.staff]);
+
   const stageDays = useMemo(
     () => (stageRace ? ensureStageRaceLogistics(event).raceInfo.stageDays ?? [] : []),
     [event, stageRace],
@@ -577,6 +601,49 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     }));
   };
 
+  const applyTransportAddress = (
+    kind: 'departure' | 'arrival',
+    address: string,
+    coords?: { lat: number; lng: number } | null,
+  ) => {
+    setCurrentTransportLeg((prev) => ({
+      ...(prev as EventTransportLeg),
+      ...(kind === 'departure'
+        ? {
+            departureLocation: address,
+            departureLatitude: coords?.lat,
+            departureLongitude: coords?.lng,
+          }
+        : {
+            arrivalLocation: address,
+            arrivalLatitude: coords?.lat,
+            arrivalLongitude: coords?.lng,
+          }),
+    }));
+  };
+
+  const handleAddressSelect = (kind: 'departure' | 'arrival', suggestion: AddressSuggestion) => {
+    applyTransportAddress(kind, suggestion.label, { lat: suggestion.lat, lng: suggestion.lng });
+  };
+
+  const handleAddressBlurGeocode = (
+    kind: 'departure' | 'arrival',
+    point: { lat: number; lng: number } | null,
+  ) => {
+    setCurrentTransportLeg((prev) => ({
+      ...(prev as EventTransportLeg),
+      ...(kind === 'departure'
+        ? {
+            departureLatitude: point?.lat,
+            departureLongitude: point?.lng,
+          }
+        : {
+            arrivalLatitude: point?.lat,
+            arrivalLongitude: point?.lng,
+          }),
+    }));
+  };
+
   const handleModalStageChange = (stageDate: string) => {
     setCurrentTransportLeg(prev => {
       const current = prev as EventTransportLeg;
@@ -595,6 +662,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         stageDate,
         stageNumber: stage.stageNumber,
         lockDirection: modalStageContext?.lockDirection ?? false,
+        logisticsPhase: modalStageContext?.logisticsPhase ?? 'aller_course',
       });
     }
   };
@@ -846,6 +914,20 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         await updateCostsForEvent(updatedLegsForEvent);
       }, 0);
 
+      if (
+        appState.activeTeamId &&
+        legToSave.assignedVehicleId &&
+        legToSave.assignedVehicleId !== 'perso' &&
+        legToSave.driverId
+      ) {
+        const vehicle = appState.vehicles.find((v) => v.id === legToSave.assignedVehicleId);
+        if (vehicle) {
+          const patched = applyDriverGpsToVehicle(vehicle, legToSave.driverId);
+          await saveData(appState.activeTeamId, 'vehicles', patched);
+          setVehicles?.((prev) => prev.map((v) => (v.id === patched.id ? patched : v)));
+        }
+      }
+
     closeTransportModal();
     } catch (error) {
       console.error('❌ Erreur lors de la sauvegarde du trajet:', error);
@@ -906,6 +988,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       if (innerTab === 'retour') {
         openAddModal(
           {
+            ...getApresDefaultsForStageIndex(etapeIdx),
             direction: TransportDirection.RETOUR,
             stageDate: stage.date,
             departureDate: stage.date,
@@ -961,7 +1044,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             stageDate: lastStage.date,
             departureDate: lastStage.date,
           },
-          { stageDate: lastStage.date, stageNumber: lastStage.stageNumber, lockDirection: false },
+          { stageDate: lastStage.date, stageNumber: lastStage.stageNumber, lockDirection: false, logisticsPhase: 'retour' },
         );
       } else {
         openAddModal({ direction: TransportDirection.RETOUR });
@@ -1266,8 +1349,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       // Vérifier les occupants directs
       const isDirectOccupant = leg.occupants.some(occ => occ.id === personId && occ.type === personType);
       if (isDirectOccupant) {
-        const direction = leg.direction === TransportDirection.ALLER ? 'Aller' : 
-                         leg.direction === TransportDirection.RETOUR ? 'Retour' : 'Jour J';
+        const direction = TRANSPORT_PHASE_UI[transportDirectionToPhase(leg.direction)].short;
         const vehicle = leg.assignedVehicleId === 'perso' ? 'Véhicule personnel' :
                        leg.assignedVehicleId ? 
                          (appState.vehicles.find(v => v.id === leg.assignedVehicleId)?.name || 'Transport') :
@@ -1279,8 +1361,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       leg.intermediateStops?.forEach(stop => {
         const isInStop = stop.persons?.some(p => p.id === personId && p.type === personType);
         if (isInStop) {
-          const direction = leg.direction === TransportDirection.ALLER ? 'Aller' : 
-                           leg.direction === TransportDirection.RETOUR ? 'Retour' : 'Jour J';
+          const direction = TRANSPORT_PHASE_UI[transportDirectionToPhase(leg.direction)].short;
           assignments.push(`${direction} - Récupération à ${stop.location}`);
         }
       });
@@ -1325,6 +1406,23 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       jourJLegs,
       getStageForDate(stageDate),
     );
+
+  const getApresDefaultsForStageIndex = (etapeIdx: number): Partial<EventTransportLeg> => {
+    const stage = stageDays[etapeIdx];
+    if (!stage) return { direction: TransportDirection.RETOUR, logisticsPhase: 'retour' };
+    const transfer = event.raceInfo?.transfers?.[etapeIdx];
+    const nextStage = stageDays[etapeIdx + 1];
+    const stageHotel = (event.raceInfo?.stageAccommodations || []).find(
+      (a) => a.stageDate === stage.date || a.nightDate === stage.date || a.date === stage.date,
+    );
+    const eventHotel = (appState.eventAccommodations || []).find((a) => a.eventId === eventId);
+    return buildApresStageTransportDefaults(stage, {
+      nextStage,
+      transfer,
+      stageHotel,
+      eventHotel,
+    });
+  };
 
   const getStageInnerTab = (etapeIdx: number): StageInnerTabId =>
     activeStageInnerTab[etapeIdx] ?? 'aller-course';
@@ -1416,20 +1514,22 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     if (unassignedPeople.length === 0) return null;
 
     const tabLabels = {
-      'aller': 'trajets aller',
-      'jourj': options?.label ?? 'trajets du jour J',
-      'retour': 'trajets retour'
+      'aller': options?.label ?? 'trajets Avant',
+      'jourj': options?.label ?? 'trajets Jour J',
+      'retour': options?.label ?? 'trajets Après',
     };
 
                 return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-        <div className="flex items-start space-x-3">
-          <span className="text-2xl">⚠️</span>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+      <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-950 p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl shrink-0" aria-hidden>
+            ⚠️
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="mb-2 text-base font-semibold text-amber-200 sm:text-lg">
               Personnes non assignées pour les {tabLabels[tabType]}
             </h3>
-            <p className="text-yellow-700 mb-3">
+            <p className="mb-3 text-sm leading-relaxed text-amber-100/90">
               {tabType === 'jourj'
                 ? `${unassignedPeople.length} membre${unassignedPeople.length > 1 ? 's' : ''} du staff n'${unassignedPeople.length > 1 ? 'ont' : 'a'} pas encore de véhicule pendant la course (les coureuses sont sur le vélo) :`
                 : `${unassignedPeople.length} personne${unassignedPeople.length > 1 ? 's' : ''} participant${unassignedPeople.length > 1 ? 's' : ''} à l'événement n'${unassignedPeople.length > 1 ? 'ont' : 'a'} pas encore été assignée${unassignedPeople.length > 1 ? 's' : ''} aux ${tabLabels[tabType]} :`}
@@ -1438,12 +1538,16 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               {unassignedPeople.map((person) => {
                 const isRider = appState.riders.some(r => r.id === (person as any).id);
                 const roleLabel = isRider ? getRiderRoleLabel((person as any).id) : 'staff';
-                const badgeClass = isRider ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700';
+                const badgeClass = isRider
+                  ? 'bg-pink-500/35 text-pink-100'
+                  : 'bg-sky-500/35 text-sky-100';
                 return (
-                  <span key={`${person.id}-${isRider ? 'rider' : 'staff'}`} 
-                        className="bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+                  <span
+                    key={`${person.id}-${isRider ? 'rider' : 'staff'}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-slate-900 px-3 py-1.5 text-sm font-medium text-slate-100"
+                  >
                     {person.firstName} {person.lastName}
-                    <span className={`ml-1 text-xs px-1 py-0.5 rounded-full ${badgeClass}`}>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${badgeClass}`}>
                       {roleLabel}
                     </span>
                   </span>
@@ -1475,7 +1579,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Aller sur la course
+          {TRANSPORT_PHASE_UI.avant.short}
+          <span className="hidden sm:inline"> — Emmener</span>
           <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
             innerTab === 'aller-course' ? 'bg-blue-200 text-blue-800' : 'bg-gray-100 text-gray-700'
           }`}>
@@ -1491,7 +1596,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          En course
+          {TRANSPORT_PHASE_UI.pendant.short}
+          <span className="hidden sm:inline"> — En course</span>
           <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
             innerTab === 'en-course' ? 'bg-emerald-200 text-emerald-800' : 'bg-gray-100 text-gray-700'
           }`}>
@@ -1507,7 +1613,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Transferts & retours
+          {TRANSPORT_PHASE_UI.apres.short}
+          <span className="hidden sm:inline"> — Hôtel & transferts</span>
           <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
             innerTab === 'retour' ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-700'
           }`}>
@@ -1518,16 +1625,50 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     );
   };
 
-  const renderStageAllerLegsForStage = (stage: StageDayLogistics) => {
+  const renderStageAllerLegsForStage = (stage: StageDayLogistics, etapeIdx?: number) => {
     const allerOnly = getStageAllerCourseLegs(stage.date);
-    if (allerOnly.length === 0) return null;
+    if (allerOnly.length === 0) {
+      return (
+        <div className="text-center py-10 text-gray-500 border border-dashed border-blue-200 rounded-lg bg-blue-50/40">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            Aucun trajet « Avant » pour l&apos;étape {stage.stageNumber}
+          </h3>
+          <p className="text-sm text-blue-800 mb-4 max-w-lg mx-auto">
+            {TRANSPORT_PHASE_UI.avant.hint}
+          </p>
+          <ActionButton
+            onClick={() =>
+              openAddModal(
+                {
+                  direction: TransportDirection.ALLER,
+                  departureDate: stage.date,
+                  stageDate: stage.date,
+                  arrivalLocation: stage.departLocation || '',
+                  logisticsPhase: 'aller_course',
+                  details: `Avant étape ${stage.stageNumber} — emmener les coureurs`,
+                },
+                {
+                  stageDate: stage.date,
+                  stageNumber: stage.stageNumber,
+                  lockDirection: true,
+                  logisticsPhase: 'aller_course',
+                },
+              )
+            }
+            icon={<PlusCircleIcon className="w-5 h-5" />}
+          >
+            Ajouter un trajet Avant — Étape {stage.stageNumber}
+          </ActionButton>
+        </div>
+      );
+    }
     return (
       <div className="mb-6">
         <h4 className="text-sm font-semibold text-blue-800 mb-1">
-          Aller sur la course — Étape {stage.stageNumber}
+          {TRANSPORT_PHASE_UI.avant.long} — Étape {stage.stageNumber}
         </h4>
         <p className="text-xs text-blue-700 mb-4">
-          Trajets pour rejoindre cette étape uniquement ({formatStageDateLabel(stage.date)}).
+          Trajets pour emmener les coureurs sur cette étape ({formatStageDateLabel(stage.date)}).
         </p>
         <div className="space-y-4">
           {allerOnly.map((leg) => (
@@ -1540,7 +1681,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
 
   const renderStageCourseContext = (stage: StageDayLogistics) => (
     <div className="mb-5 p-4 rounded-lg border border-amber-200 bg-amber-50/80 text-sm text-gray-800">
-      <h4 className="font-semibold text-amber-900 mb-2">Logistique course (référence)</h4>
+      <h4 className="font-semibold text-amber-900 mb-2">{TRANSPORT_PHASE_UI.pendant.long}</h4>
       <p className="text-xs text-amber-800 mb-2">
         Pendant l&apos;étape, les coureuses sont sur le vélo. Planifiez le <strong>véhicule suiveur</strong> (DS + mécano obligatoires), les{' '}
         <strong>ravitos</strong> et les autres <strong>véhicules staff</strong> ci-dessous.
@@ -1568,9 +1709,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <>
             {renderUnassignedAlert('aller', {
               jourJLegsForTab: getStageAllerCourseLegs(stageDate),
-              label: `trajets aller sur la course — étape ${stage.stageNumber}`,
+              label: `trajets avant (emmener) — étape ${stage.stageNumber}`,
             })}
-            {renderStageAllerLegsForStage(stage)}
+            {renderStageAllerLegsForStage(stage, etapeIdx)}
           </>
         ) : innerTab === 'en-course' ? (
           <>
@@ -1586,46 +1727,70 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             </div>
             {renderUnassignedAlert('jourj', {
               jourJLegsForTab: jourJForStage,
-              label: `transports jour J — étape ${stage.stageNumber}`,
+              label: `transports Jour J — étape ${stage.stageNumber}`,
             })}
             <p className="text-xs text-emerald-800 mb-3 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
-              Uniquement les déplacements <strong>pendant</strong> la course (suiveur, staff ce jour-là).
-              Les trajets Lanester → lieu de départ, etc. restent dans <strong>Aller sur la course</strong>.
+              Uniquement les déplacements du <strong>Jour J</strong> (suiveur, staff ce jour-là).
+              Les trajets pour emmener les coureurs restent dans <strong>Avant</strong>.
             </p>
             {renderJourJTab(stageDate, stage.stageNumber)}
           </>
         ) : (
           <>
+            <div className="mb-5 rounded-lg border border-orange-200 bg-orange-50/80 p-4 text-sm text-orange-950">
+              <h4 className="font-semibold text-orange-900 mb-1">{TRANSPORT_PHASE_UI.apres.long}</h4>
+              <p className="text-xs text-orange-800">
+                Après l&apos;arrivée : transfert des coureurs vers l&apos;<strong>hôtel</strong>
+                {etapeIdx < (event.raceInfo?.transfers?.length ?? 0)
+                  ? ', puis transfert vers la prochaine étape'
+                  : ' / retour base'}
+                . Renseignez d&apos;abord le transfert ci-dessous, puis les véhicules.
+              </p>
+            </div>
             {renderUnassignedAlert('retour', {
               jourJLegsForTab: getStageRetourLegs(stageDate),
-              label: `retours — étape ${stage.stageNumber}`,
+              label: `trajets après — étape ${stage.stageNumber}`,
             })}
             {etapeIdx < (event.raceInfo?.transfers?.length ?? 0) && (
-              <StageTransferEditor
-                event={event}
-                eventId={eventId}
-                updateEvent={updateEvent}
-                appState={appState}
-                transferIndex={etapeIdx}
-                embedded
-              />
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold text-orange-900 mb-2">
+                  Transfert inter-étapes (arrivée → hôtel / étape suivante)
+                </h4>
+                <StageTransferEditor
+                  event={event}
+                  eventId={eventId}
+                  updateEvent={updateEvent}
+                  appState={appState}
+                  transferIndex={etapeIdx}
+                  embedded
+                />
+              </div>
             )}
+            <h4 className="text-sm font-semibold text-orange-900 mb-2">
+              Véhicules après l&apos;étape (arrivée → hôtel)
+            </h4>
             {renderRetourTab({
               legs: getStageRetourLegs(stageDate),
-              emptyTitle: `Aucun trajet retour pour l'étape ${stage.stageNumber}`,
+              emptyTitle: `Aucun trajet après l'étape ${stage.stageNumber}`,
               emptyDescription:
-                etapeIdx < (event.raceInfo?.transfers?.length ?? 0)
-                  ? 'Complétez le transfert ci-dessus ou ajoutez un véhicule de retour.'
-                  : 'Ajoutez les véhicules de retour après cette étape (dernière étape : onglet Trajets Retour).',
-              onAdd: () => openAddModal(
-                {
-                  direction: TransportDirection.RETOUR,
-                  stageDate,
-                  departureDate: stageDate,
-                },
-                { stageDate, stageNumber: stage.stageNumber, lockDirection: false },
-              ),
-              addButtonLabel: `Ajouter un retour — Étape ${stage.stageNumber}`,
+                'Ajoutez le transfert arrivée → hôtel (ou vers la prochaine étape) pour cette journée.',
+              onAdd: () =>
+                openAddModal(
+                  {
+                    ...getApresDefaultsForStageIndex(etapeIdx),
+                    direction: TransportDirection.RETOUR,
+                    stageDate,
+                    departureDate: stageDate,
+                    logisticsPhase: 'retour',
+                  },
+                  {
+                    stageDate,
+                    stageNumber: stage.stageNumber,
+                    lockDirection: true,
+                    logisticsPhase: 'retour',
+                  },
+                ),
+              addButtonLabel: `Ajouter transfert hôtel — Étape ${stage.stageNumber}`,
             })}
           </>
         )}
@@ -1647,7 +1812,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
     }[] = [
       {
         id: 'aller',
-        label: 'Trajets Aller',
+        label: stageRace ? 'Avant — Accueil' : 'Avant',
         icon: '✈️',
         count: stageRace ? allerLegs.filter(isGlobalAllerLeg).length : allerLegs.length,
         color: 'blue',
@@ -1680,7 +1845,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
 
     tabs.push({
       id: 'retour',
-      label: 'Retour',
+      label: stageRace ? 'Après — Retour final' : 'Après',
       icon: '🏠',
       count: finalRetourCount,
       color: 'orange',
@@ -1722,17 +1887,17 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       {legsForTab.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <span className="text-6xl mb-4 block">✈️</span>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun trajet aller planifié</h3>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun trajet « Avant » planifié</h3>
           <p className="text-gray-500 mb-6">
             {stageRace
-              ? 'Ajoutez les trajets vers la course (vols, déplacements initiaux). Les arrivées par étape se gèrent dans chaque onglet Étape.'
-              : 'Ajoutez des trajets pour organiser les départs vers l\'événement'}
+              ? 'Ajoutez les trajets d’accueil (vols, base → première étape). Les trajets pour emmener les coureurs chaque jour se gèrent dans chaque onglet Étape → Avant.'
+              : TRANSPORT_PHASE_UI.avant.hint}
           </p>
           <ActionButton
             onClick={() => openAddModal({ direction: TransportDirection.ALLER })}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
-            Ajouter un Trajet Aller
+            Ajouter un trajet Avant
           </ActionButton>
                         </div>
       ) : (
@@ -1752,7 +1917,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       : jourJLegs;
     const stageLabel = stageNumber
       ? `l'étape ${stageNumber}${stageDate ? ` (${formatStageDateLabel(stageDate)})` : ''}`
-      : 'le jour J';
+      : 'la course';
 
     return (
     <div className="space-y-4">
@@ -1760,10 +1925,10 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         <div className="text-center py-12 text-gray-500">
           <span className="text-6xl mb-4 block">🏁</span>
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
-            Aucun transport planifié pour {stageLabel}
+            Aucun transport « Jour J » pour {stageLabel}
           </h3>
           <p className="text-gray-500 mb-6">
-            Ajoutez des trajets pour organiser les déplacements de cette journée
+            {TRANSPORT_PHASE_UI.pendant.hint}
           </p>
           <ActionButton
             onClick={() => {
@@ -1774,16 +1939,19 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                     departureDate: stageDate,
                     arrivalDate: stageDate,
                     stageDate,
+                    logisticsPhase: 'pendant',
                   },
-                  { stageDate, stageNumber, lockDirection: true },
+                  { stageDate, stageNumber, lockDirection: true, logisticsPhase: 'pendant' },
                 );
               } else {
-                openAddModal({ direction: TransportDirection.JOUR_J });
+                openAddModal({ direction: TransportDirection.JOUR_J, logisticsPhase: 'pendant' });
               }
             }}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
-            {stageNumber ? `Ajouter un transport — Étape ${stageNumber}` : 'Ajouter un Transport Jour J'}
+            {stageNumber
+              ? `Ajouter Jour J — Étape ${stageNumber}`
+              : 'Ajouter un transport Jour J'}
           </ActionButton>
         </div>
       ) : (
@@ -1798,17 +1966,18 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                       departureDate: stageDate,
                       arrivalDate: stageDate,
                       stageDate,
+                      logisticsPhase: 'pendant',
                     },
-                    { stageDate, stageNumber, lockDirection: true },
+                    { stageDate, stageNumber, lockDirection: true, logisticsPhase: 'pendant' },
                   );
                 } else {
-                  openAddModal({ direction: TransportDirection.JOUR_J });
+                  openAddModal({ direction: TransportDirection.JOUR_J, logisticsPhase: 'pendant' });
                 }
               }}
               icon={<PlusCircleIcon className="w-5 h-5" />}
               size="sm"
             >
-              {stageNumber ? `Ajouter — Étape ${stageNumber}` : 'Ajouter un transport'}
+              {stageNumber ? `Ajouter Jour J — Étape ${stageNumber}` : 'Ajouter Jour J'}
             </ActionButton>
           </div>
           {legs.map((leg) => (
@@ -1821,8 +1990,8 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                           <h4 className="text-lg font-semibold text-gray-800">
                             {leg.assignedVehicleId === 'perso' ? 'Véhicule personnel' :
                              leg.assignedVehicleId ? 
-                               (appState.vehicles.find(v => v.id === leg.assignedVehicleId)?.name || 'Pendant la course') :
-                               'Pendant la course'}
+                               (appState.vehicles.find(v => v.id === leg.assignedVehicleId)?.name || 'Jour J — En course') :
+                               'Jour J — En course'}
                           </h4>
                           <p className="text-sm text-gray-600">
                             {leg.departureTime} → {leg.arrivalTime}
@@ -1943,13 +2112,13 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       {legs.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <span className="text-6xl mb-4 block">🏠</span>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">{options?.emptyTitle ?? 'Aucun trajet retour planifié'}</h3>
-          <p className="text-gray-500 mb-6">{options?.emptyDescription ?? "Ajoutez des trajets pour organiser les retours après l'événement"}</p>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">{options?.emptyTitle ?? 'Aucun trajet « Après » planifié'}</h3>
+          <p className="text-gray-500 mb-6">{options?.emptyDescription ?? TRANSPORT_PHASE_UI.apres.hint}</p>
           <ActionButton
             onClick={() => (options?.onAdd ? options.onAdd() : openAddModal({ direction: TransportDirection.RETOUR }))}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
-            {options?.addButtonLabel ?? 'Ajouter un Trajet Retour'}
+            {options?.addButtonLabel ?? 'Ajouter un trajet Après'}
           </ActionButton>
         </div>
       ) : (
@@ -2144,7 +2313,18 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Plan de Transport</h2>
           <p className="text-gray-600">Organisation des déplacements pour {event.name}</p>
-                  </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-blue-100 text-blue-800 px-2.5 py-1 font-medium" title={TRANSPORT_PHASE_UI.avant.hint}>
+              1. {TRANSPORT_PHASE_UI.avant.short} — emmener
+            </span>
+            <span className="rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-1 font-medium" title={TRANSPORT_PHASE_UI.pendant.hint}>
+              2. {TRANSPORT_PHASE_UI.pendant.short} — en course
+            </span>
+            <span className="rounded-full bg-orange-100 text-orange-800 px-2.5 py-1 font-medium" title={TRANSPORT_PHASE_UI.apres.hint}>
+              3. {TRANSPORT_PHASE_UI.apres.short} — hôtel & retours
+            </span>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           <ActionButton
             onClick={() => setIsExportModalOpen(true)}
@@ -2154,7 +2334,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             title={
               !canExportVehicleLogistics
                 ? 'Aucune logistique véhicule à exporter'
-                : 'Exporter avant/après (coureuses) ou pendant (staff)'
+                : 'Exporter avant/après (coureuses) ou Jour J (staff)'
             }
           >
             Exporter logistique véhicules
@@ -2167,6 +2347,14 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           </ActionButton>
         </div>
       </div>
+
+      <EventFleetGpsPanel
+        event={event}
+        vehicles={appState.vehicles}
+        positions={appState.vehiclePositions || []}
+        transportLegs={appState.eventTransportLegs}
+        staff={appState.staff}
+      />
 
       {/* Sous-onglets */}
       {renderSubTabs()}
@@ -2202,42 +2390,55 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             <>
               {stageRace && lastStage && (
                 <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mb-4">
-                  Retour général après la dernière étape ({formatStageDateLabel(lastStage.date)}
-                  {lastStage.stageLabel ? ` — ${lastStage.stageLabel}` : ''}). Les transferts entre étapes
-                  se gèrent dans l&apos;onglet Retours de chaque étape.
+                  <strong>Après — retour final</strong> après la dernière étape (
+                  {formatStageDateLabel(lastStage.date)}
+                  {lastStage.stageLabel ? ` — ${lastStage.stageLabel}` : ''}). Les transferts{' '}
+                  <strong>arrivée → hôtel</strong> entre étapes se gèrent dans chaque onglet Étape →{' '}
+                  <strong>Après</strong>.
+                </p>
+              )}
+              {!stageRace && (
+                <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mb-4">
+                  <strong>Après la course</strong> : transfert arrivée → hôtel / base, puis retour domicile.
                 </p>
               )}
               {renderUnassignedAlert('retour', {
                 jourJLegsForTab: finalRetourLegs,
-                label: lastStage ? `retour final — étape ${lastStage.stageNumber}` : 'trajets retour',
+                label: lastStage ? `retour final — étape ${lastStage.stageNumber}` : 'trajets après',
               })}
               {renderRetourTab({
                 legs: finalRetourLegs,
                 emptyTitle: lastStage
                   ? `Aucun retour final après l'étape ${lastStage.stageNumber}`
-                  : 'Aucun trajet retour planifié',
-                emptyDescription: 'Ajoutez le trajet de retour à la maison après la dernière étape.',
+                  : 'Aucun trajet « Après » planifié',
+                emptyDescription: lastStage
+                  ? 'Ajoutez le trajet de retour à la maison après la dernière étape.'
+                  : TRANSPORT_PHASE_UI.apres.hint,
                 onAdd: () => {
                   if (lastStage) {
                     openAddModal(
                       {
+                        ...getApresDefaultsForStageIndex(stageDays.length - 1),
                         direction: TransportDirection.RETOUR,
                         stageDate: lastStage.date,
                         departureDate: lastStage.date,
+                        logisticsPhase: 'retour',
+                        details: 'Retour final après la dernière étape',
                       },
                       {
                         stageDate: lastStage.date,
                         stageNumber: lastStage.stageNumber,
                         lockDirection: false,
+                        logisticsPhase: 'retour',
                       },
                     );
                   } else {
-                    openAddModal({ direction: TransportDirection.RETOUR });
+                    openAddModal({ direction: TransportDirection.RETOUR, logisticsPhase: 'retour' });
                   }
                 },
                 addButtonLabel: lastStage
                   ? `Ajouter le retour final — Étape ${lastStage.stageNumber}`
-                  : 'Ajouter un Trajet Retour',
+                  : 'Ajouter un trajet Après',
               })}
             </>
           );
@@ -2253,7 +2454,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <p>
             Choisissez le public : les <strong>coureuses</strong> n&apos;ont besoin que des trajets{' '}
             <strong>avant et après</strong> la course ; le <strong>staff</strong> reçoit la logistique{' '}
-            <strong>pendant</strong> l&apos;étape (suiveurs, ravitos).
+            <strong>Jour J</strong> de l&apos;étape (suiveurs, ravitos).
           </p>
 
           <div className="space-y-3">
@@ -2285,9 +2486,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                 className="mt-1"
               />
               <span>
-                <span className="font-semibold text-emerald-900">Staff — pendant la course</span>
+                <span className="font-semibold text-emerald-900">Staff — Jour J</span>
                 <span className="block text-xs text-emerald-800 mt-1">
-                  Véhicules suiveur, ravitos et transports jour J pendant l&apos;étape. À envoyer au staff uniquement.
+                  Véhicules suiveur, ravitos et transports pendant l&apos;étape. À envoyer au staff uniquement.
                 </span>
                 {!canExportStaff && (
                   <span className="block text-xs text-amber-700 mt-1">Rien à exporter pour ce choix.</span>
@@ -2353,17 +2554,27 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
         <Modal
           isOpen={isModalOpen}
           onClose={closeTransportModal}
-          title={isEditing ? "Modifier Trajet" : "Ajouter un Trajet"}
+          title={
+            isEditing
+              ? 'Modifier le trajet'
+              : `Ajouter — ${
+                  TRANSPORT_PHASE_UI[
+                    transportDirectionToPhase(
+                      (currentTransportLeg as EventTransportLeg)?.direction ?? TransportDirection.ALLER
+                    )
+                  ].short
+                }`
+          }
         >
           <form
             onSubmit={handleSubmit}
             className="space-y-4 max-h-[85vh] overflow-y-auto p-2 -m-2"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Direction */}
+              {/* Phase Avant / Pendant / Après */}
               <div>
                 <label htmlFor="direction" className="block text-sm font-medium text-gray-700">
-                  Direction
+                  Phase
                 </label>
                 <select
                   name="direction"
@@ -2373,11 +2584,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   disabled={modalStageContext?.lockDirection}
                   className={lightSelectClasses}
                 >
-                  {(Object.values(TransportDirection) as TransportDirection[]).map((dir) => (
-                    <option key={dir} value={dir}>
-                      {dir}
-                    </option>
-                  ))}
+                  <option value={TransportDirection.ALLER}>{TRANSPORT_PHASE_UI.avant.short} — {TRANSPORT_PHASE_UI.avant.hint}</option>
+                  <option value={TransportDirection.JOUR_J}>{TRANSPORT_PHASE_UI.pendant.short} — {TRANSPORT_PHASE_UI.pendant.hint}</option>
+                  <option value={TransportDirection.RETOUR}>{TRANSPORT_PHASE_UI.apres.short} — {TRANSPORT_PHASE_UI.apres.hint}</option>
                 </select>
               </div>
 
@@ -2527,10 +2736,14 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               </div>
             )}
 
-            {/* Dates et lieux */}
+            {transportLegGpsSetup && (
+              <DriverGpsSetupGuide status={transportLegGpsSetup} mode="manager" compact />
+            )}
+
+            {/* Dates et adresses */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-200">
                   Départ
                 </label>
                 <input
@@ -2547,17 +2760,20 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   onChange={handleInputChange}
                   className={lightInputClasses}
                 />
-                <input
-                  type="text"
-                  name="departureLocation"
-                  value={(currentTransportLeg as EventTransportLeg).departureLocation || ""}
-                  onChange={handleInputChange}
-                  placeholder="Lieu de départ"
+                <AddressAutocompleteInput
+                  value={(currentTransportLeg as EventTransportLeg).departureLocation || ''}
+                  onChange={(address) => applyTransportAddress('departure', address, null)}
+                  onSelect={(suggestion) => handleAddressSelect('departure', suggestion)}
+                  onBlurGeocode={(point) => handleAddressBlurGeocode('departure', point)}
+                  latitude={(currentTransportLeg as EventTransportLeg).departureLatitude}
+                  longitude={(currentTransportLeg as EventTransportLeg).departureLongitude}
+                  cityHint={event.location}
+                  placeholder="Adresse précise de départ (ex. 12 rue de la Gare, 35000 Rennes)"
                   className={lightInputClasses}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-200">
                   Arrivée
                 </label>
                 <input
@@ -2574,34 +2790,41 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   onChange={handleInputChange}
                   className={lightInputClasses}
                 />
-                <input
-                  type="text"
-                  name="arrivalLocation"
-                  value={(currentTransportLeg as EventTransportLeg).arrivalLocation || ""}
-                  onChange={handleInputChange}
-                  placeholder="Lieu d'arrivée"
+                <AddressAutocompleteInput
+                  value={(currentTransportLeg as EventTransportLeg).arrivalLocation || ''}
+                  onChange={(address) => applyTransportAddress('arrival', address, null)}
+                  onSelect={(suggestion) => handleAddressSelect('arrival', suggestion)}
+                  onBlurGeocode={(point) => handleAddressBlurGeocode('arrival', point)}
+                  latitude={(currentTransportLeg as EventTransportLeg).arrivalLatitude}
+                  longitude={(currentTransportLeg as EventTransportLeg).arrivalLongitude}
+                  cityHint={event.location}
+                  placeholder="Adresse précise d'arrivée (ex. Hôtel Mercure, 1 place de la République, Quimper)"
                   className={lightInputClasses}
                 />
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Sélectionnez une adresse dans la liste pour éviter les erreurs. Les coordonnées GPS pour l’ETA flotte sont calculées automatiquement.
+                </p>
               </div>
             </div>
 
             {/* Sélection des occupants */}
             <div>
-              <div className="flex justify-between items-center mb-2">
-                <div>
-                <label className="block text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center mb-2 gap-3">
+                <div className="min-w-0">
+                <label className="block text-sm font-medium text-slate-200">
                   {isRaceDayTransportLeg(currentTransportLeg as EventTransportLeg)
                     ? 'Staff à bord'
                     : 'Occupants'}
                 </label>
                   {isRaceDayTransportLeg(currentTransportLeg as EventTransportLeg) ? (
-                    <p className="text-xs text-emerald-800 mt-1 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                    <p className="text-xs text-emerald-100 mt-1 bg-emerald-950 border border-emerald-700/50 rounded-lg px-2.5 py-1.5 leading-relaxed">
                       Transport pendant la course : uniquement le <strong>staff</strong> (les coureuses sont sur le vélo).
                     </p>
                   ) : (
-                  <p className="text-xs text-gray-500 mt-1">
-                    💡 Les personnes récupérées aux étapes sont automatiquement ajoutées ici<br/>
-                    ⚠️ Vous pouvez assigner une personne à plusieurs transports (survoler l'avertissement pour voir les détails)
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Les personnes récupérées aux étapes sont automatiquement ajoutées ici.
+                    <br />
+                    Vous pouvez assigner une personne à plusieurs transports (survolez l’avertissement pour les détails).
                   </p>
                   )}
                 </div>
@@ -2619,22 +2842,22 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   }
                   
                   return (
-                    <div className="text-xs text-gray-600">
-                      <span className={`font-medium ${currentOccupants >= maxCapacity ? 'text-red-600' : 'text-gray-600'}`}>
+                    <div className="text-xs text-slate-400 shrink-0 tabular-nums">
+                      <span className={`font-semibold ${currentOccupants >= maxCapacity ? 'text-rose-300' : 'text-slate-200'}`}>
                         {currentOccupants}
                       </span>
                       {maxCapacity !== Infinity && (
-                        <span className="text-gray-500"> / {maxCapacity}</span>
+                        <span className="text-slate-500"> / {maxCapacity}</span>
                       )}
                       {maxCapacity !== Infinity && currentOccupants >= maxCapacity && (
-                        <span className="text-red-600 font-medium ml-1">(Plein)</span>
+                        <span className="text-rose-300 font-medium ml-1">(Plein)</span>
                       )}
                     </div>
                   );
                 })()}
               </div>
-              <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-3 bg-gray-50">
-                <div className="space-y-2">
+              <div className="max-h-48 overflow-y-auto border border-white/15 rounded-xl p-3 bg-slate-950">
+                <div className="space-y-1.5">
                   {modalAvailablePeople.map((person) => {
                     const isSelected = (currentTransportLeg as EventTransportLeg).occupants?.some(
                       (occ) => occ.id === person.id && occ.type === person.type
@@ -2655,36 +2878,54 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                     const assignedPeople = getAssignedPeople();
                     const isAssignedElsewhere = assignedPeople.has(`${person.id}-${person.type}`) && !isSelected;
                     const isDisabled = (!isSelected && currentOccupants >= maxCapacity);
+                    const roleLabel = person.type === 'rider' ? getRiderRoleLabel(person.id) : 'staff';
                     
                     return (
                       <label
                         key={`${person.id}-${person.type}`}
-                        className={`flex items-center space-x-2 text-sm ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors ${
+                          isDisabled
+                            ? 'opacity-45 cursor-not-allowed'
+                            : 'cursor-pointer hover:bg-white/5'
+                        }`}
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleOccupantChange(person.id, person.type)}
                           disabled={isDisabled}
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
+                          className="h-4 w-4 shrink-0 rounded border-slate-500 bg-slate-900 text-indigo-500 focus:ring-indigo-500 disabled:opacity-50"
                         />
-                        <span className={`${person.isParticipant ? "font-semibold text-blue-700" : "text-gray-600"} ${isDisabled ? 'text-gray-400' : ''}`}>
-                          {person.name}
-                          <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
-                            person.type === 'rider' 
-                              ? 'bg-pink-100 text-pink-700' 
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {person.type === "rider" ? getRiderRoleLabel(person.id) : "staff"}
+                        <span className="min-w-0 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`font-medium truncate ${
+                              person.isParticipant ? 'text-white' : 'text-slate-300'
+                            }`}
+                          >
+                            {person.name}
                           </span>
-                          {person.isParticipant && " - Participant"}
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              person.type === 'rider'
+                                ? 'bg-pink-500/30 text-pink-100'
+                                : 'bg-sky-500/30 text-sky-100'
+                            }`}
+                          >
+                            {roleLabel}
+                          </span>
+                          {person.isParticipant && (
+                            <span className="text-[11px] text-slate-400">Participant</span>
+                          )}
                           {isAssignedElsewhere && (
-                            <span className="text-orange-500 text-xs ml-1" title={getPersonAssignments(person.id, person.type).join(', ')}>
-                              ⚠️ (Aussi assigné ailleurs)
+                            <span
+                              className="text-[11px] text-amber-300"
+                              title={getPersonAssignments(person.id, person.type).join(', ')}
+                            >
+                              Aussi assigné ailleurs
                             </span>
                           )}
                           {!isSelected && currentOccupants >= maxCapacity && !isAssignedElsewhere && (
-                            <span className="text-red-500 text-xs ml-1">(Véhicule plein)</span>
+                            <span className="text-[11px] text-rose-300">Véhicule plein</span>
                           )}
                         </span>
                       </label>

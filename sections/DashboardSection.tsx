@@ -1,7 +1,6 @@
 
 import React, { useMemo } from 'react';
 import { AppSection, RaceEvent, ChecklistItemStatus, User, TeamRole, HealthCondition, TransportMode, RiderEventStatus, Rider, StaffMember, ScoutingProfile, Vehicle, EventBudgetItem, EventTransportLeg, EventChecklistItem, IncomeItem, RiderEventSelection, PerformanceEntry, PermissionLevel } from '../types';
-import SectionWrapper from '../components/SectionWrapper';
 import CheckCircleIcon from '../components/icons/CheckCircleIcon'; 
 import XCircleIcon from '../components/icons/XCircleIcon'; 
 import TrophyIcon from '../components/icons/TrophyIcon';
@@ -28,6 +27,7 @@ import SeasonTransitionNotification from '../components/SeasonTransitionNotifica
 import SeasonTransitionIndicator from '../components/SeasonTransitionIndicator';
 import { getCurrentSeasonYear, getAvailableSeasonYears, getSeasonLabel } from '../utils/seasonUtils';
 import { getActiveRidersForCurrentSeason, getActiveStaffForCurrentSeason } from '../utils/rosterArchiveUtils';
+import { calculateTotalIncome, calculateTotalExpenses } from '../utils/financialUtils';
 
 interface DashboardSectionProps {
   navigateTo: (section: AppSection, eventId?: string) => void;
@@ -97,132 +97,131 @@ const OperationalDashboardView: React.FC<OperationalDashboardViewProps> = ({
   recentEventsAwaitingDebriefing,
   navigateTo 
 }: OperationalDashboardViewProps) => {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
+  const glass = 'rounded-2xl border border-white/12 bg-white/[0.06] backdrop-blur-xl';
   return (
-    <div className="space-y-6">
-        {/* En-tête simplifié */}
-        <div className="bg-blue-600 text-white p-6 rounded-lg">
-          <h1 className="text-2xl font-bold mb-1">Tableau de Bord</h1>
-          <p className="text-blue-100">Vue d'ensemble de l'équipe</p>
+    <div className="lc-dash relative overflow-hidden text-white min-h-screen">
+      <style>{`
+        @keyframes lc-dash-rise {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .lc-dash-rise { animation: lc-dash-rise 0.55s ease-out both; }
+      `}</style>
+      <div className="relative z-10 max-w-7xl mx-auto p-5 sm:p-8 space-y-6 pb-12 lc-dash-rise">
+        <div className="text-center sm:text-left">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-300/90">
+            {t('titleDashboard')}
+          </p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-white" style={{ letterSpacing: '-0.03em' }}>
+            {t('titleDashboard')}
+          </h1>
+          <p className="mt-2 text-slate-300 text-sm max-w-xl">{t('loginSlogan')}</p>
         </div>
 
-        {/* KPI essentiels - Version compacte */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Prochaine Course</p>
-                  <p className="text-lg font-bold text-red-600">{stats.nextRace}</p>
-                </div>
-                <FlagIcon className="w-8 h-8 text-red-500" />
-              </div>
-            </div>
-            
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Athlètes Actifs</p>
-                  <p className="text-lg font-bold text-blue-600">{stats.activeRiders}</p>
-                  {stats.ridersSubtext && (
-                    <p className="text-xs text-orange-600">{stats.ridersSubtext}</p>
-                  )}
-                </div>
-                <UsersIcon className="w-8 h-8 text-blue-500" />
-              </div>
-            </div>
-            
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Staff Actif</p>
-                  <p className="text-lg font-bold text-green-600">{stats.activeStaff}</p>
-                </div>
-                <UserGroupIcon className="w-8 h-8 text-green-500" />
-              </div>
-            </div>
+          <div className={`${glass} p-4`}>
+            <p className="text-xs text-slate-400">{language === 'fr' ? 'Prochaine course' : 'Next race'}</p>
+            <p className="text-lg font-bold text-white mt-1">{stats.nextRace}</p>
+          </div>
+          <div className={`${glass} p-4`}>
+            <p className="text-xs text-slate-400">{language === 'fr' ? 'Athlètes actifs' : 'Active athletes'}</p>
+            <p className="text-lg font-bold text-indigo-200 mt-1">{stats.activeRiders}</p>
+            {stats.ridersSubtext && <p className="text-xs text-amber-300 mt-0.5">{stats.ridersSubtext}</p>}
+          </div>
+          <div className={`${glass} p-4`}>
+            <p className="text-xs text-slate-400">{language === 'fr' ? 'Staff actif' : 'Active staff'}</p>
+            <p className="text-lg font-bold text-emerald-300 mt-1">{stats.activeStaff}</p>
+          </div>
         </div>
 
-        {/* Section principale - Événements et Alertes */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Prochains événements - Version simplifiée */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                    <FlagIcon className="w-5 h-5 mr-2 text-blue-500" />
-                    Prochains Événements
-                </h3>
-                <div className="space-y-3">
-                    {upcomingEvents && upcomingEvents.length > 0 ? (
-                        upcomingEvents.slice(0, 2).map((event: RaceEvent) => (
-                            <div key={event.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-gray-800">{event.name}</h4>
-                                        <p className="text-sm text-gray-600">
-                                            {new Date(event.date + 'T12:00:00Z').toLocaleDateString('fr-FR', { 
-                                                day: 'numeric', 
-                                                month: 'short' 
-                                            })} - {event.location}
-                                        </p>
-                                        <div className="flex items-center space-x-3 text-sm text-gray-500 mt-1">
-                                          <span>{event.selectedRiderIds.length} coureur{event.selectedRiderIds.length > 1 ? 's' : ''}</span>
-                                          {event.isLogisticsValidated ? 
-                                              <span className="text-green-600">✓ Logistique OK</span> :
-                                              <span className="text-red-600">⚠ Logistique en attente</span>
-                                          }
-                                        </div>
-                                    </div>
-                                    <ActionButton 
-                                      onClick={() => navigateTo('eventDetail', event.id)} 
-                                      size="sm" 
-                                      variant="secondary"
-                                    >
-                                        Voir
-                                    </ActionButton>
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        <div className="text-center py-8 bg-gray-50 rounded-lg">
-                            <FlagIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500">Aucun événement à venir</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className={`${glass} p-4`}>
+            <h3 className="text-sm font-semibold text-indigo-200 uppercase tracking-wide mb-3">
+              {language === 'fr' ? 'Prochains événements' : 'Upcoming events'}
+            </h3>
+            <div className="space-y-3">
+              {upcomingEvents && upcomingEvents.length > 0 ? (
+                upcomingEvents.slice(0, 2).map((event: RaceEvent) => (
+                  <div key={event.id} className="p-3 rounded-xl border border-white/10 bg-white/[0.04]">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <h4 className="font-semibold text-white truncate">{event.name}</h4>
+                        <p className="text-sm text-slate-400">
+                          {new Date(event.date + 'T12:00:00Z').toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}{' '}
+                          — {event.location}
+                        </p>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                          <span>
+                            {event.selectedRiderIds.length}{' '}
+                            {language === 'fr' ? 'coureur(s)' : 'rider(s)'}
+                          </span>
+                          {event.isLogisticsValidated ? (
+                            <span className="text-emerald-400">
+                              {language === 'fr' ? 'Logistique OK' : 'Logistics OK'}
+                            </span>
+                          ) : (
+                            <span className="text-amber-300">
+                              {language === 'fr' ? 'Logistique en attente' : 'Logistics pending'}
+                            </span>
+                          )}
                         </div>
-                    )}
-                </div>
+                      </div>
+                      <ActionButton
+                        onClick={() => navigateTo('eventDetail', event.id)}
+                        size="sm"
+                        variant="secondary"
+                        className="!bg-white/10 !text-white !border-white/15 shrink-0"
+                      >
+                        {language === 'fr' ? 'Voir' : 'View'}
+                      </ActionButton>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center py-6 text-slate-500 text-sm">
+                  {language === 'fr' ? 'Aucun événement à venir' : 'No upcoming events'}
+                </p>
+              )}
             </div>
+          </div>
 
-            {/* Alertes - Version simplifiée */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                    <ExclamationTriangleIcon className="w-5 h-5 mr-2 text-orange-500" />
-                    Alertes
-                </h3>
-                <div className="space-y-3">
-                    {alerts && alerts.length > 0 ? (
-                        alerts.slice(0, 2).map(alert => (
-                            <div key={alert.id} className="p-3 bg-red-50 border-l-4 border-red-400 rounded-lg">
-                                <p className="text-sm text-red-800 mb-2">{alert.text}</p>
-                                {alert.eventId && (
-                                    <ActionButton 
-                                        onClick={() => navigateTo('eventDetail', alert.eventId)} 
-                                        size="sm" 
-                                        variant="secondary"
-                                        className="text-xs"
-                                    >
-                                        Voir
-                                    </ActionButton>
-                                )}
-                            </div>
-                        ))
-                    ) : (
-                        <div className="text-center py-6 bg-green-50 rounded-lg">
-                            <CheckCircleIcon className="w-12 h-12 text-green-400 mx-auto mb-3"/>
-                            <p className="text-sm text-green-600 font-medium">Tout est en ordre !</p>
-                        </div>
+          <div className={`${glass} p-4`}>
+            <h3 className="text-sm font-semibold text-indigo-200 uppercase tracking-wide mb-3">
+              {language === 'fr' ? 'Alertes' : 'Alerts'}
+            </h3>
+            <div className="space-y-3">
+              {alerts && alerts.length > 0 ? (
+                alerts.slice(0, 2).map((alert) => (
+                  <div key={alert.id} className="p-3 rounded-xl border border-rose-400/30 bg-rose-500/10">
+                    <p className="text-sm text-rose-100 mb-2">{alert.text}</p>
+                    {alert.eventId && (
+                      <ActionButton
+                        onClick={() => navigateTo('eventDetail', alert.eventId)}
+                        size="sm"
+                        variant="secondary"
+                        className="!bg-white/10 !text-white !border-white/15 text-xs"
+                      >
+                        {language === 'fr' ? 'Voir' : 'View'}
+                      </ActionButton>
                     )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 rounded-xl border border-emerald-400/20 bg-emerald-500/10">
+                  <CheckCircleIcon className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+                  <p className="text-sm text-emerald-200 font-medium">
+                    {language === 'fr' ? 'Tout est en ordre' : 'All clear'}
+                  </p>
                 </div>
+              )}
             </div>
+          </div>
         </div>
-
+      </div>
     </div>
   );
 };
@@ -407,12 +406,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
   // Protection contre currentUser undefined
   if (!currentUser) {
     return (
-      <SectionWrapper title={t('titleDashboard')}>
-        <div className="text-center p-8 bg-gray-50 rounded-lg border">
-          <h3 className="text-xl font-semibold text-gray-700">Chargement...</h3>
-          <p className="mt-2 text-gray-500">Initialisation des données utilisateur...</p>
+      <div className="min-h-[40vh] flex items-center justify-center bg-slate-950 text-slate-300">
+        <div className="text-center p-8">
+          <h3 className="text-xl font-semibold text-white">Chargement...</h3>
+          <p className="mt-2 text-slate-400">Initialisation des données utilisateur...</p>
         </div>
-      </SectionWrapper>
+      </div>
     );
   }
   
@@ -475,15 +474,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
         r.healthCondition && r.healthCondition !== HealthCondition.PRET_A_COURIR && r.healthCondition !== HealthCondition.INCONNU && r.healthCondition !== HealthCondition.EN_RECUPERATION
     ).length;
 
-    const totalIncome = incomeItems.reduce((sum, item) => sum + item.amount, 0);
-
-    const budget = eventBudgetItems.reduce((acc, item) => {
-        acc.estimated += item.estimatedCost;
-        acc.actual += item.actualCost || 0;
-        return acc;
-    }, { estimated: 0, actual: 0 });
-
-    const totalSpent = budget.actual > 0 ? budget.actual : budget.estimated;
+    const totalIncome = calculateTotalIncome(incomeItems);
+    const totalSpent = calculateTotalExpenses(eventBudgetItems);
     const balance = totalIncome - totalSpent;
 
     // Vérifier si l'utilisateur a accès à la section scouting
@@ -667,8 +659,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
   }, [raceEvents, upcomingSelections, isViewer, today]);
 
   return (
-    <SectionWrapper title={t('titleDashboard')}>
-      <SeasonTransitionNotification className="mb-6" />
+    <>
+      <SeasonTransitionNotification className="mb-0" />
       {isViewer ? (
         <AthleteDashboardView
           currentUser={currentUser}
@@ -691,6 +683,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ navigateTo, 
           />
         )
       )}
-    </SectionWrapper>
+    </>
   );
 };

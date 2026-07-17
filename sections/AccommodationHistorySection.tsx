@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AppSection, AppState, EventAccommodation, RaceEvent, User } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
+import AccommodationPlacesMapPanel from '../components/AccommodationPlacesMapPanel';
 import { saveData } from '../services/firebaseService';
+import { useTranslations } from '../hooks/useTranslations';
+import { buildAccommodationPlaceGroups } from '../utils/accommodationGeoUtils';
 
 type YearFilter = 'all' | number;
 type OutcomeFilter = 'all' | NonNullable<EventAccommodation['reviewOutcome']> | 'none';
 type SortKey = 'dateDesc' | 'dateAsc' | 'hotelAsc';
-type ViewTab = 'monthly' | 'recommended' | 'notRecommended' | 'all';
+type ViewTab = 'monthly' | 'recommended' | 'notRecommended' | 'byPlaces' | 'all';
 type MonthlyScope = 'selectedYear' | 'allYears';
 
 function getEventYear(event: RaceEvent): number | null {
@@ -36,17 +39,14 @@ function getEventGroupKey(event: RaceEvent): string {
   return loc ? `${name}__${loc}` : name;
 }
 
-const outcomeLabel: Record<NonNullable<EventAccommodation['reviewOutcome']>, string> = {
-  good: 'Bien',
-  neutral: 'Neutre',
-  bad: 'Pas bien',
-};
-
 const outcomeBadgeClass: Record<NonNullable<EventAccommodation['reviewOutcome']>, string> = {
   good: 'bg-green-100 text-green-800',
   neutral: 'bg-gray-200 text-gray-800',
   bad: 'bg-red-100 text-red-800',
 };
+
+const MONTH_LABELS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+const MONTH_LABELS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 interface AccommodationHistorySectionProps {
   appState: AppState;
@@ -61,18 +61,29 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
   currentUser,
   navigateTo,
 }) => {
+  const { t, language } = useTranslations();
   const isRider = currentUser.userRole === 'Coureur';
+  const monthLabels = language === 'en' ? MONTH_LABELS_EN : MONTH_LABELS_FR;
+
+  const outcomeLabel = (outcome: NonNullable<EventAccommodation['reviewOutcome']>) => {
+    if (outcome === 'good') return t('accHistoryOutcomeGood');
+    if (outcome === 'bad') return t('accHistoryOutcomeBad');
+    return t('accHistoryOutcomeNeutral');
+  };
 
   const [viewTab, setViewTab] = useState<ViewTab>('monthly');
   const [yearFilter, setYearFilter] = useState<YearFilter>('all');
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('dateDesc');
-  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth()); // 0-11
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [monthlyScope, setMonthlyScope] = useState<MonthlyScope>('selectedYear');
-  const [expandedEventGroups, setExpandedEventGroups] = useState<Record<string, boolean>>({});
   const [selectedEventGroupKey, setSelectedEventGroupKey] = useState<string | null>(null);
+  const [selectedPlaceKey, setSelectedPlaceKey] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({});
+  const [dirtyIds, setDirtyIds] = useState<Record<string, boolean>>({});
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const eventById = useMemo(() => new Map(appState.raceEvents.map(e => [e.id, e])), [appState.raceEvents]);
 
@@ -115,6 +126,7 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
       if (viewTab === 'recommended') return r.acc.reviewOutcome === 'good';
       if (viewTab === 'notRecommended') return r.acc.reviewOutcome === 'bad';
       if (viewTab === 'monthly') return r.monthIndex === selectedMonth;
+      // byPlaces + all : pas de filtre tab supplémentaire ici
       return true;
     });
 
@@ -192,11 +204,7 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
       return acc.reviewOutcome === outcomeFilter;
     };
 
-    const applyViewTabFilter = (acc: EventAccommodation) => {
-      if (viewTab === 'recommended') return acc.reviewOutcome === 'good';
-      if (viewTab === 'notRecommended') return acc.reviewOutcome === 'bad';
-      return true;
-    };
+    const applyViewTabFilter = (_acc: EventAccommodation) => true;
 
     // 2) Pour chaque groupe d'événement, montrer les logements multi-années
     const groups = anchorEvents
@@ -276,6 +284,24 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
     search,
   ]);
 
+  const placeGroups = useMemo(() => {
+    const sourceAccs =
+      viewTab === 'byPlaces'
+        ? rows.map((r) => r.acc)
+        : appState.eventAccommodations;
+    return buildAccommodationPlaceGroups(sourceAccs, eventById);
+  }, [viewTab, rows, appState.eventAccommodations, eventById]);
+
+  useEffect(() => {
+    if (viewTab !== 'byPlaces') return;
+    if (placeGroups.length === 0) {
+      setSelectedPlaceKey(null);
+      return;
+    }
+    if (selectedPlaceKey && placeGroups.some((g) => g.key === selectedPlaceKey)) return;
+    setSelectedPlaceKey(placeGroups[0].key);
+  }, [viewTab, placeGroups, selectedPlaceKey]);
+
   useEffect(() => {
     if (viewTab !== 'monthly') return;
     if (!monthlyGroups || monthlyGroups.length === 0) {
@@ -305,6 +331,7 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
 
   const updateLocal = (id: string, patch: Partial<EventAccommodation>) => {
     setEventAccommodations(prev => prev.map(a => (a.id === id ? { ...a, ...patch } : a)));
+    setDirtyIds(prev => ({ ...prev, [id]: true }));
   };
 
   const saveReview = async (item: EventAccommodation) => {
@@ -314,540 +341,456 @@ export const AccommodationHistorySection: React.FC<AccommodationHistorySectionPr
     }
     try {
       await saveData(appState.activeTeamId, 'eventAccommodations', item);
+      setDirtyIds(prev => ({ ...prev, [item.id]: false }));
+      setSaveMessage(t('accHistorySaved'));
+      setTimeout(() => setSaveMessage(null), 2500);
     } catch (e) {
       console.error('❌ Erreur sauvegarde avis hébergement:', e);
       alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
     }
   };
 
-  // Un peu plus "confort" que compact : padding + font un cran au-dessus
-  const lightInputClass =
-    'mt-1 block w-full px-4 py-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
-  const lightSelectClass =
-    'mt-1 block w-full px-4 py-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
+  const inputClass =
+    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
+  const selectClass =
+    'mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm';
+
+  const tabButtonStyle = (tab: ViewTab) =>
+    `px-3 py-2 font-medium text-sm rounded-full whitespace-nowrap transition-all ${
+      viewTab === tab
+        ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-300/40'
+        : 'text-slate-300 hover:bg-white/10 hover:text-white'
+    }`;
+
+  type HistoryRow = { acc: EventAccommodation; event: RaceEvent; year: number | null; monthIndex: number | null };
+
+  const renderAccommodationCard = (row: HistoryRow, compact = false) => {
+    const { acc, event, year } = row;
+    const outcome = acc.reviewOutcome;
+    const note = acc.reviewNote || '';
+    const isExpanded = !!expandedCardIds[acc.id];
+    const isDirty = !!dirtyIds[acc.id];
+
+    return (
+      <article
+        key={`${acc.id}-${event.id}`}
+        className={`rounded-xl border bg-white shadow-sm overflow-hidden ${isDirty ? 'border-amber-300 ring-1 ring-amber-100' : 'border-gray-200'}`}
+      >
+        <div className={`p-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-semibold text-gray-900 truncate">{acc.hotelName || t('accHistoryNoName')}</h4>
+                {year != null && (
+                  <span className="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800">{year}</span>
+                )}
+                {outcome && (
+                  <span className={`shrink-0 px-2 py-0.5 text-xs font-medium rounded-full ${outcomeBadgeClass[outcome]}`}>
+                    {outcomeLabel(outcome)}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-600 mt-1">{acc.address || t('accHistoryNoAddress')}</p>
+              {!compact && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {event.name}{event.location ? ` · ${event.location}` : ''} · {event.date || '—'}
+                </p>
+              )}
+            </div>
+            <ActionButton size="sm" variant="secondary" onClick={() => navigateTo('eventDetail', acc.eventId)}>
+              {t('accHistoryOpenEvent')}
+            </ActionButton>
+          </div>
+
+          {!isRider && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+              <div>
+                <label className="block text-xs font-medium text-gray-500">{t('accHistoryOutcome')}</label>
+                <select
+                  className={selectClass}
+                  value={acc.reviewOutcome || ''}
+                  onChange={e =>
+                    updateLocal(acc.id, {
+                      reviewOutcome: (e.target.value || undefined) as EventAccommodation['reviewOutcome'],
+                    })
+                  }
+                >
+                  <option value="">—</option>
+                  <option value="good">{t('accHistoryOutcomeGood')}</option>
+                  <option value="neutral">{t('accHistoryOutcomeNeutral')}</option>
+                  <option value="bad">{t('accHistoryOutcomeBad')}</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={() => setExpandedCardIds(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))}
+                >
+                  {isExpanded ? '▾' : '▸'} {t('accHistoryExpandNote')}
+                  {note.trim() && !isExpanded && `: ${note.length > 60 ? `${note.slice(0, 60)}…` : note}`}
+                </button>
+                {isExpanded && (
+                  <textarea
+                    className={`${inputClass} mt-1`}
+                    rows={3}
+                    value={note}
+                    onChange={e => updateLocal(acc.id, { reviewNote: e.target.value })}
+                    placeholder={t('accHistoryNotePlaceholder')}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {isRider && note.trim() && (
+            <p className="text-sm text-gray-600 border-t border-gray-100 pt-2">{note}</p>
+          )}
+
+          {!isRider && isDirty && (
+            <div className="flex justify-end pt-1">
+              <ActionButton
+                size="sm"
+                onClick={() => {
+                  const latest = appState.eventAccommodations.find(a => a.id === acc.id) || acc;
+                  saveReview(latest);
+                }}
+              >
+                {t('accHistorySave')}
+              </ActionButton>
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  };
+
+  const renderKpis = () => (
+    <div className="mx-auto mb-4 grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4">
+      {[
+        { label: t('accHistoryKpiTotal'), value: totals.total, tone: 'text-white' },
+        { label: t('accHistoryKpiReviewed'), value: totals.withReview, tone: 'text-indigo-300' },
+        { label: t('accHistoryKpiGood'), value: totals.good, tone: 'text-emerald-300' },
+        { label: t('accHistoryKpiBad'), value: totals.bad, tone: 'text-rose-300' },
+      ].map(kpi => (
+        <div key={kpi.label} className="rounded-2xl border border-white/12 bg-slate-950/40 p-3 text-center shadow-sm">
+          <p className="text-[10px] uppercase tracking-wide text-slate-400">{kpi.label}</p>
+          <p className={`text-2xl font-bold ${kpi.tone}`}>{kpi.value}</p>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <SectionWrapper title="Historique hébergements">
+    <SectionWrapper title={t('accHistoryTitle')}>
       <div className="space-y-4">
-        <div className="sticky top-0 z-10 bg-gray-100/90 backdrop-blur supports-[backdrop-filter]:bg-gray-100/70 -mx-6 px-6 py-4 border-b">
-          <div className="flex flex-col gap-3 mb-3">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setViewTab('monthly')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  viewTab === 'monthly'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                Mensuel
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewTab('recommended')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  viewTab === 'recommended'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                Recommandés
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewTab('notRecommended')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  viewTab === 'notRecommended'
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                Non recommandés
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewTab('all')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  viewTab === 'all'
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                Tous
-              </button>
-            </div>
+        {saveMessage && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+            {saveMessage}
+          </div>
+        )}
 
+        {renderKpis()}
+
+        <div className="relative mx-auto w-full max-w-4xl">
+          <input
+            type="search"
+            className="w-full rounded-xl border border-white/15 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 shadow-sm focus:border-indigo-400 focus:ring-indigo-500/30"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t('accHistorySearch')}
+          />
+        </div>
+
+        <div className="mx-auto flex w-full max-w-4xl justify-center rounded-2xl border border-white/10 bg-slate-950/50 p-1.5">
+          <nav className="flex flex-wrap justify-center gap-1" aria-label="Tabs">
+            {([
+              ['monthly', t('accHistoryTabMonthly')],
+              ['byPlaces', t('accHistoryTabByPlaces')],
+              ['recommended', t('accHistoryTabRecommended')],
+              ['notRecommended', t('accHistoryTabNotRecommended')],
+              ['all', t('accHistoryTabAll')],
+            ] as const).map(([tab, label]) => (
+              <button key={tab} type="button" onClick={() => setViewTab(tab)} className={tabButtonStyle(tab)}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {viewTab === 'monthly' && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {monthLabels.map((label, idx) => {
+              const count = monthCounts[idx] || 0;
+              const disabled = count === 0;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setSelectedMonth(idx)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                    selectedMonth === idx
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  {label}
+                  {count > 0 && <span className="ml-1.5 text-xs opacity-80">{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(o => !o)}
+          className="text-sm text-gray-600 hover:text-gray-900"
+        >
+          {filtersOpen ? '▾' : '▸'} {t('accHistoryFilters')}
+        </button>
+
+        {filtersOpen && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <div>
+              <label className="block text-xs font-medium text-gray-600">{t('accHistoryYear')}</label>
+              <select
+                className={selectClass}
+                value={yearFilter === 'all' ? 'all' : String(yearFilter)}
+                onChange={e => setYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              >
+                <option value="all">{t('accHistoryYearAll')}</option>
+                {availableYears.map(y => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600">{t('accHistoryOutcome')}</label>
+              <select
+                className={selectClass}
+                value={outcomeFilter}
+                onChange={e => setOutcomeFilter(e.target.value as OutcomeFilter)}
+                disabled={viewTab === 'recommended' || viewTab === 'notRecommended'}
+              >
+                <option value="all">{t('accHistoryOutcomeAll')}</option>
+                <option value="good">{t('accHistoryOutcomeGood')}</option>
+                <option value="neutral">{t('accHistoryOutcomeNeutral')}</option>
+                <option value="bad">{t('accHistoryOutcomeBad')}</option>
+                <option value="none">{t('accHistoryOutcomeNone')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600">{t('accHistorySort')}</label>
+              <select className={selectClass} value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
+                <option value="dateDesc">{t('accHistorySortDateDesc')}</option>
+                <option value="dateAsc">{t('accHistorySortDateAsc')}</option>
+                <option value="hotelAsc">{t('accHistorySortHotel')}</option>
+              </select>
+            </div>
             {viewTab === 'monthly' && (
-              <div className="flex flex-wrap gap-2">
-                {[
-                  'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
-                  'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
-                ].map((label, idx) => {
-                  const count = monthCounts[idx] || 0;
-                  const disabled = count === 0;
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setSelectedMonth(idx)}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                        selectedMonth === idx
-                          ? 'bg-blue-100 text-blue-800 border-blue-200'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      } ${disabled ? 'opacity-40 cursor-not-allowed hover:bg-white' : ''}`}
-                      title={disabled ? 'Aucune course ce mois' : `${count} hébergement(s)`}
-                    >
-                      {label}
-                      {count > 0 && <span className="ml-2 text-xs text-gray-500">{count}</span>}
-                    </button>
-                  );
-                })}
+              <div className="sm:col-span-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMonthlyScope('selectedYear')}
+                  className={`px-3 py-1.5 rounded-full text-xs border ${
+                    monthlyScope === 'selectedYear' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white border-gray-200'
+                  }`}
+                >
+                  {t('accHistoryScopeYear')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonthlyScope('allYears')}
+                  className={`px-3 py-1.5 rounded-full text-xs border ${
+                    monthlyScope === 'allYears' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white border-gray-200'
+                  }`}
+                >
+                  {t('accHistoryScopeAllYears')}
+                </button>
               </div>
             )}
           </div>
+        )}
 
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm text-gray-600">
-                <span className="font-semibold text-gray-800">{totals.total}</span> hébergements trouvés ·{' '}
-                <span className="font-semibold text-gray-800">{totals.withReview}</span> avec retour ·{' '}
-                <span className="font-semibold text-gray-800">{totals.good}</span> “Bien” ·{' '}
-                <span className="font-semibold text-gray-800">{totals.bad}</span> “Pas bien”
-              </p>
+        {viewTab === 'byPlaces' ? (
+          placeGroups.length === 0 ? (
+            <div className="text-center p-10 rounded-2xl border border-dashed border-white/15 bg-slate-900">
+              <p className="text-slate-300">{t('accHistoryPlacesEmpty')}</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 w-full lg:w-auto">
+          ) : (
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Année</label>
-                <select
-                  className={lightSelectClass}
-                  value={yearFilter === 'all' ? 'all' : String(yearFilter)}
-                  onChange={e => setYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                >
-                  <option value="all">Toutes</option>
-                  {availableYears.map(y => (
-                    <option key={y} value={String(y)}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
+                <h3 className="text-lg font-semibold text-white">{t('accHistoryPlacesTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-0.5">{t('accHistoryPlacesSubtitle')}</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Avis</label>
-                <select
-                  className={lightSelectClass}
-                  value={outcomeFilter}
-                  onChange={e => setOutcomeFilter(e.target.value as OutcomeFilter)}
-                  disabled={viewTab === 'recommended' || viewTab === 'notRecommended'}
-                >
-                  <option value="all">Tous</option>
-                  <option value="good">Bien</option>
-                  <option value="neutral">Neutre</option>
-                  <option value="bad">Pas bien</option>
-                  <option value="none">Sans avis</option>
-                </select>
-              </div>
+              <AccommodationPlacesMapPanel
+                places={placeGroups}
+                selectedKey={selectedPlaceKey}
+                onSelectPlace={setSelectedPlaceKey}
+                language={language}
+                onCoordsResolved={(key, lat, lng) => {
+                  // Persiste les coords sur le premier séjour du lieu (best-effort)
+                  const group = placeGroups.find((g) => g.key === key);
+                  const first = group?.stays[0]?.acc;
+                  if (!first || !appState.activeTeamId) return;
+                  if (first.latitude === lat && first.longitude === lng) return;
+                  const updated = { ...first, latitude: lat, longitude: lng };
+                  setEventAccommodations((prev) =>
+                    prev.map((a) => (a.id === first.id ? updated : a)),
+                  );
+                  void saveData(appState.activeTeamId, 'eventAccommodations', updated).catch(() => undefined);
+                }}
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Tri</label>
-                <select
-                  className={lightSelectClass}
-                  value={sortKey}
-                  onChange={e => setSortKey(e.target.value as SortKey)}
-                >
-                  <option value="dateDesc">Date (récent → ancien)</option>
-                  <option value="dateAsc">Date (ancien → récent)</option>
-                  <option value="hotelAsc">Hôtel (A → Z)</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Recherche</label>
-                <input
-                  className={lightInputClass}
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Hôtel, adresse, course, lieu, note…"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="text-center p-6 bg-gray-50 rounded-lg border">
-            <p className="text-gray-600">Aucun hébergement trouvé avec ces filtres.</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              {viewTab === 'monthly' ? (
-                <div className="p-4 space-y-4">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="text-sm text-gray-600">
-                      Regroupé par <span className="font-semibold text-gray-800">événement</span> (multi-années).
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700">Portée :</span>
-                      <button
-                        type="button"
-                        onClick={() => setMonthlyScope('selectedYear')}
-                        className={`px-3 py-1.5 rounded-full text-sm border ${
-                          monthlyScope === 'selectedYear'
-                            ? 'bg-blue-100 text-blue-800 border-blue-200'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        Année sélectionnée
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMonthlyScope('allYears')}
-                        className={`px-3 py-1.5 rounded-full text-sm border ${
-                          monthlyScope === 'allYears'
-                            ? 'bg-blue-100 text-blue-800 border-blue-200'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        Toutes années
-                      </button>
-                    </div>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div className="lg:col-span-4 rounded-2xl border border-white/15 overflow-hidden bg-slate-900">
+                  <div className="bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-200 border-b border-white/10">
+                    {placeGroups.length} {language === 'fr' ? 'lieux' : 'places'}
                   </div>
-
-                  {monthlyGroups.length === 0 ? (
-                    <div className="text-center p-6 bg-gray-50 rounded-lg border">
-                      <p className="text-gray-600">Aucun événement trouvé pour ce mois avec ces filtres.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                      <div className="lg:col-span-4 border rounded-lg overflow-hidden">
-                        <div className="bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 border-b">
-                          Événements
-                        </div>
-                        <div className="max-h-[65vh] overflow-y-auto divide-y">
-                          {monthlyGroups.map((g: any) => {
-                            const isSelected = g.key === selectedEventGroupKey;
-                            return (
-                              <button
-                                key={g.key}
-                                type="button"
-                                onClick={() => setSelectedEventGroupKey(g.key)}
-                                className={`w-full text-left px-3 py-3 hover:bg-gray-50 ${
-                                  isSelected ? 'bg-blue-50' : ''
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-gray-900 truncate">{g.name}</div>
-                                    {g.location && <div className="text-xs text-gray-500 truncate">{g.location}</div>}
-                                    <div className="mt-1 flex flex-wrap gap-1">
-                                      {(g.years || []).slice(0, 6).map((y: number) => (
-                                        <span key={y} className="px-2 py-0.5 text-[11px] rounded-full bg-blue-100 text-blue-800">
-                                          {y}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="shrink-0 text-right">
-                                    <div className="text-sm font-semibold text-gray-800">{g.stats.total}</div>
-                                    <div className="text-[11px] text-gray-500">logements</div>
-                                  </div>
-                                </div>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {g.stats.good > 0 && (
-                                    <span className="px-2 py-0.5 text-[11px] rounded-full bg-green-100 text-green-800">
-                                      {g.stats.good} bien
-                                    </span>
-                                  )}
-                                  {g.stats.bad > 0 && (
-                                    <span className="px-2 py-0.5 text-[11px] rounded-full bg-red-100 text-red-800">
-                                      {g.stats.bad} pas bien
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="lg:col-span-8 border rounded-lg overflow-hidden">
-                        <div className="bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 border-b flex items-center justify-between gap-2">
-                          <div className="min-w-0 truncate">
-                            {monthlyGroups.find((g: any) => g.key === selectedEventGroupKey)?.name || 'Détails'}
+                  <div className="max-h-[55vh] overflow-y-auto divide-y divide-white/10">
+                    {placeGroups.map((g) => {
+                      const isSelected = g.key === selectedPlaceKey;
+                      return (
+                        <button
+                          key={g.key}
+                          type="button"
+                          onClick={() => setSelectedPlaceKey(g.key)}
+                          className={`w-full text-left px-4 py-3 transition-colors ${
+                            isSelected
+                              ? 'bg-indigo-500/20 border-l-4 border-l-indigo-400'
+                              : 'hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="font-semibold text-white truncate">{g.hotelName}</div>
+                          <div className="text-xs text-slate-400 truncate mt-0.5">{g.address}</div>
+                          {g.cityHint && (
+                            <div className="text-[11px] text-slate-500 truncate mt-0.5">{g.cityHint}</div>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="text-xs text-slate-400">
+                              {g.stays.length} {t('accHistoryPlaceStays')}
+                            </span>
+                            {g.good > 0 && (
+                              <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-emerald-500/25 text-emerald-200">
+                                {g.good} ✓
+                              </span>
+                            )}
+                            {g.bad > 0 && (
+                              <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-rose-500/25 text-rose-200">
+                                {g.bad} ✗
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            Multi-années · logements
-                          </div>
-                        </div>
-
-                        {(() => {
-                          const g = monthlyGroups.find((x: any) => x.key === selectedEventGroupKey);
-                          if (!g) {
-                            return (
-                              <div className="p-6 text-center text-gray-600">
-                                Sélectionne un événement à gauche.
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="overflow-x-auto">
-                              <table className="min-w-[980px] w-full text-sm">
-                                <thead className="bg-white border-b">
-                                  <tr className="text-left text-gray-600">
-                                    <th className="px-4 py-3 font-semibold">Année</th>
-                                    <th className="px-4 py-3 font-semibold">Date</th>
-                                    <th className="px-4 py-3 font-semibold">Hôtel</th>
-                                    <th className="px-4 py-3 font-semibold">Adresse</th>
-                                    <th className="px-4 py-3 font-semibold">Avis</th>
-                                    <th className="px-4 py-3 font-semibold">Note</th>
-                                    <th className="px-4 py-3 font-semibold">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                  {g.items.map((r: any) => {
-                                    const acc = r.acc as EventAccommodation;
-                                    const ev = r.event as RaceEvent;
-                                    const outcome = acc.reviewOutcome;
-                                    const note = acc.reviewNote || '';
-                                    const isExpanded = !!expandedNotes[acc.id];
-                                    const hasNote = !!note.trim();
-                                    return (
-                                      <React.Fragment key={`${acc.id}-${ev.id}`}>
-                                        <tr className="align-top hover:bg-gray-50">
-                                          <td className="px-4 py-4 whitespace-nowrap text-gray-800 font-medium">{r.year}</td>
-                                          <td className="px-4 py-4 whitespace-nowrap text-gray-700">{ev?.date || '—'}</td>
-                                          <td className="px-4 py-4 text-gray-900 max-w-[280px]">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              <span className="truncate font-semibold" title={acc.hotelName || ''}>
-                                                {acc.hotelName || '—'}
-                                              </span>
-                                              {outcome && (
-                                                <span className={`shrink-0 px-2 py-0.5 text-xs font-medium rounded-full ${outcomeBadgeClass[outcome]}`}>
-                                                  {outcomeLabel[outcome]}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-4 text-gray-700 max-w-[380px]">
-                                            <div className="truncate" title={acc.address || ''}>{acc.address || '—'}</div>
-                                          </td>
-                                          <td className="px-4 py-4 min-w-[180px]">
-                                            <select
-                                              className={lightSelectClass}
-                                              disabled={isRider}
-                                              value={acc.reviewOutcome || ''}
-                                              onChange={ev2 =>
-                                                updateLocal(acc.id, {
-                                                  reviewOutcome: (ev2.target.value || undefined) as EventAccommodation['reviewOutcome'],
-                                                })
-                                              }
-                                            >
-                                              <option value="">—</option>
-                                              <option value="good">Bien</option>
-                                              <option value="neutral">Neutre</option>
-                                              <option value="bad">Pas bien</option>
-                                            </select>
-                                          </td>
-                                          <td className="px-4 py-4 min-w-[320px]">
-                                            <div className="flex items-start gap-3">
-                                              <span className={`text-gray-600 leading-relaxed ${hasNote ? '' : 'italic'}`}>
-                                                {hasNote ? (isExpanded ? note : (note.length > 90 ? `${note.slice(0, 90)}…` : note)) : '—'}
-                                              </span>
-                                              {hasNote && (
-                                                <button
-                                                  type="button"
-                                                  className="text-sm text-blue-600 hover:underline whitespace-nowrap"
-                                                  onClick={() => setExpandedNotes(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))}
-                                                >
-                                                  {isExpanded ? 'Réduire' : 'Voir'}
-                                                </button>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-4 whitespace-nowrap">
-                                            <div className="flex items-center gap-3">
-                                              <ActionButton size="sm" variant="secondary" onClick={() => navigateTo('eventDetail', acc.eventId)}>
-                                                Ouvrir
-                                              </ActionButton>
-                                              {!isRider && (
-                                                <ActionButton
-                                                  size="sm"
-                                                  variant="secondary"
-                                                  onClick={() => {
-                                                    const latest = appState.eventAccommodations.find(a => a.id === acc.id) || acc;
-                                                    saveReview(latest);
-                                                  }}
-                                                >
-                                                  Sauvegarder
-                                                </ActionButton>
-                                              )}
-                                            </div>
-                                          </td>
-                                        </tr>
-                                        {!isRider && (
-                                          <tr className="bg-gray-50/50">
-                                            <td className="px-4 py-4 text-xs text-gray-500" colSpan={7}>
-                                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-                                                <div className="lg:col-span-2 text-xs font-semibold text-gray-600 pt-2">Éditer la note</div>
-                                                <div className="lg:col-span-10">
-                                                  <textarea
-                                                    className={lightInputClass}
-                                                    rows={3}
-                                                    value={acc.reviewNote || ''}
-                                                    onChange={ev3 => updateLocal(acc.id, { reviewNote: ev3.target.value })}
-                                                    placeholder="Retour d’expérience (parking, repas, bruit, accueil, etc.)"
-                                                  />
-                                                </div>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </React.Fragment>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              ) : (
-                <table className="min-w-[1100px] w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr className="text-left text-gray-600">
-                    <th className="px-3 py-2 font-semibold">Année</th>
-                    <th className="px-3 py-2 font-semibold">Date</th>
-                    <th className="px-3 py-2 font-semibold">Course</th>
-                    <th className="px-3 py-2 font-semibold">Lieu</th>
-                    <th className="px-3 py-2 font-semibold">Hôtel</th>
-                    <th className="px-3 py-2 font-semibold">Adresse</th>
-                    <th className="px-3 py-2 font-semibold">Avis</th>
-                    <th className="px-3 py-2 font-semibold">Note</th>
-                    <th className="px-3 py-2 font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map(({ acc, event, year }) => {
-                    const outcome = acc.reviewOutcome;
-                    const note = acc.reviewNote || '';
-                    const isExpanded = !!expandedNotes[acc.id];
-                    const hasNote = !!note.trim();
 
+                <div className="lg:col-span-8 space-y-3">
+                  {(() => {
+                    const g = placeGroups.find((x) => x.key === selectedPlaceKey);
+                    if (!g) {
+                      return <p className="text-slate-400 text-sm p-4">{t('accHistorySelectEvent')}</p>;
+                    }
+                    const mapsQuery = encodeURIComponent(`${g.hotelName}, ${g.address}`);
                     return (
-                      <React.Fragment key={acc.id}>
-                        <tr className="align-top hover:bg-gray-50">
-                          <td className="px-3 py-2 whitespace-nowrap text-gray-800 font-medium">{year}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-gray-700">{event?.date || '—'}</td>
-                          <td className="px-3 py-2 text-gray-800 max-w-[220px]">
-                            <div className="truncate" title={event?.name || ''}>{event?.name || '—'}</div>
-                          </td>
-                          <td className="px-3 py-2 text-gray-700 max-w-[220px]">
-                            <div className="truncate" title={event?.location || ''}>{event?.location || '—'}</div>
-                          </td>
-                          <td className="px-3 py-2 text-gray-900 max-w-[220px]">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="truncate font-semibold" title={acc.hotelName || ''}>
-                                {acc.hotelName || '—'}
-                              </span>
-                              {outcome && (
-                                <span className={`shrink-0 px-2 py-0.5 text-xs font-medium rounded-full ${outcomeBadgeClass[outcome]}`}>
-                                  {outcomeLabel[outcome]}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-gray-700 max-w-[260px]">
-                            <div className="truncate" title={acc.address || ''}>{acc.address || '—'}</div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <select
-                              className={lightSelectClass}
-                              disabled={isRider}
-                              value={acc.reviewOutcome || ''}
-                              onChange={ev =>
-                                updateLocal(acc.id, {
-                                  reviewOutcome: (ev.target.value || undefined) as EventAccommodation['reviewOutcome'],
-                                })
-                              }
-                            >
-                              <option value="">—</option>
-                              <option value="good">Bien</option>
-                              <option value="neutral">Neutre</option>
-                              <option value="bad">Pas bien</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-start gap-2">
-                              <span className={`text-gray-600 ${hasNote ? '' : 'italic'}`}>
-                                {hasNote ? (isExpanded ? note : (note.length > 60 ? `${note.slice(0, 60)}…` : note)) : '—'}
-                              </span>
-                              {hasNote && (
-                                <button
-                                  type="button"
-                                  className="text-xs text-blue-600 hover:underline whitespace-nowrap"
-                                  onClick={() => setExpandedNotes(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))}
-                                >
-                                  {isExpanded ? 'Réduire' : 'Voir'}
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <ActionButton
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => navigateTo('eventDetail', acc.eventId)}
-                              >
-                                Ouvrir
-                              </ActionButton>
-                              {!isRider && (
-                                <ActionButton
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => {
-                                    const latest = appState.eventAccommodations.find(a => a.id === acc.id) || acc;
-                                    saveReview(latest);
-                                  }}
-                                >
-                                  Sauvegarder
-                                </ActionButton>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-
-                        {!isRider && (
-                          <tr className="bg-gray-50/50">
-                            <td className="px-3 py-2 text-xs text-gray-500" colSpan={9}>
-                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-                                <div className="lg:col-span-2 text-xs font-semibold text-gray-600 pt-2">Éditer la note</div>
-                                <div className="lg:col-span-10">
-                                  <textarea
-                                    className={lightInputClass}
-                                    rows={2}
-                                    value={acc.reviewNote || ''}
-                                    onChange={ev => updateLocal(acc.id, { reviewNote: ev.target.value })}
-                                    placeholder="Retour d’expérience (parking, repas, bruit, accueil, etc.)"
-                                  />
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-lg font-semibold text-white">{g.hotelName}</h3>
+                            <p className="text-sm text-slate-300 mt-0.5">{g.address}</p>
+                          </div>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-indigo-200 hover:bg-white/10"
+                          >
+                            {t('accHistoryPlaceOpenMaps')}
+                          </a>
+                        </div>
+                        {g.stays.map(({ acc, event }) => {
+                          if (!event) return null;
+                          const year = getEventYear(event);
+                          const monthIndex = getEventMonthIndex(event);
+                          return renderAccommodationCard(
+                            { acc, event, year, monthIndex },
+                            true,
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )
+        ) : rows.length === 0 ? (
+          <div className="text-center p-10 bg-gray-50 rounded-xl border border-dashed">
+            <p className="text-gray-600">{t('accHistoryEmpty')}</p>
+          </div>
+        ) : viewTab === 'monthly' ? (
+          monthlyGroups.length === 0 ? (
+            <div className="text-center p-10 bg-gray-50 rounded-xl border border-dashed">
+              <p className="text-gray-600">{t('accHistoryEmptyMonth')}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div className="lg:col-span-4 rounded-xl border border-gray-200 overflow-hidden bg-white">
+                <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700 border-b">
+                  {t('accHistoryEvents')}
+                </div>
+                <div className="max-h-[65vh] overflow-y-auto divide-y">
+                  {monthlyGroups.map((g: any) => {
+                    const isSelected = g.key === selectedEventGroupKey;
+                    return (
+                      <button
+                        key={g.key}
+                        type="button"
+                        onClick={() => setSelectedEventGroupKey(g.key)}
+                        className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                      >
+                        <div className="font-semibold text-gray-900 truncate">{g.name}</div>
+                        {g.location && <div className="text-xs text-gray-500 truncate">{g.location}</div>}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <span className="text-xs text-gray-500">{g.stats.total} {t('accHistoryStays')}</span>
+                          {g.stats.good > 0 && (
+                            <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-green-100 text-green-800">{g.stats.good} ✓</span>
+                          )}
+                          {g.stats.bad > 0 && (
+                            <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-red-100 text-red-800">{g.stats.bad} ✗</span>
+                          )}
+                        </div>
+                      </button>
                     );
                   })}
-                </tbody>
-                </table>
-              )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-8 space-y-3">
+                <p className="text-xs text-gray-500">{t('accHistoryGroupedByEvent')}</p>
+                {(() => {
+                  const g = monthlyGroups.find((x: any) => x.key === selectedEventGroupKey);
+                  if (!g) {
+                    return <p className="text-gray-500 text-sm p-4">{t('accHistorySelectEvent')}</p>;
+                  }
+                  return (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold text-gray-900">{g.name}</h3>
+                      {g.items.map((r: HistoryRow) => renderAccommodationCard(r, true))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
+          )
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {rows.map(row => renderAccommodationCard(row as HistoryRow))}
           </div>
         )}
       </div>

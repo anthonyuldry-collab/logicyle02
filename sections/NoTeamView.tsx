@@ -9,6 +9,12 @@ import {
   getDefaultPlanForTeamLevel,
   getRecommendedPlansForTeamLevel,
 } from '../constants/subscriptionPlans';
+import {
+  canRiderApplyToTeam,
+  getMarketMismatchMessage,
+  resolveRiderMarketSegmentFromUser,
+  RIDER_SEGMENT_LABELS,
+} from '../utils/riderTeamMarketSegment';
 
 interface NoTeamViewProps {
   currentUser: User;
@@ -37,7 +43,13 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
 }) => {
   const isManager = currentUser.userRole === UserRole.MANAGER;
   const isStaff = currentUser.userRole === UserRole.STAFF;
+  const isAthlete = currentUser.userRole === UserRole.COUREUR;
   const joinRole = isStaff ? UserRole.STAFF : UserRole.COUREUR;
+
+  const riderSegment = useMemo(
+    () => (isAthlete ? resolveRiderMarketSegmentFromUser(currentUser) : null),
+    [currentUser, isAthlete],
+  );
 
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,11 +92,45 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
     });
   }, [teams, searchQuery, countryFilter]);
 
+  const teamEligibility = useMemo(() => {
+    const map = new Map<string, { eligible: boolean; reason?: string }>();
+    if (!isAthlete || !riderSegment) {
+      filteredTeams.forEach((team) => map.set(team.id, { eligible: true }));
+      return map;
+    }
+    filteredTeams.forEach((team) => {
+      const eligible = canRiderApplyToTeam(riderSegment, team, team.operationalSettings);
+      map.set(team.id, {
+        eligible,
+        reason: eligible ? undefined : getMarketMismatchMessage(riderSegment, team),
+      });
+    });
+    return map;
+  }, [filteredTeams, isAthlete, riderSegment]);
+
+  const eligibleTeams = useMemo(
+    () => filteredTeams.filter((team) => teamEligibility.get(team.id)?.eligible !== false),
+    [filteredTeams, teamEligibility],
+  );
+
+  useEffect(() => {
+    if (selectedTeamId && !eligibleTeams.some((team) => team.id === selectedTeamId)) {
+      setSelectedTeamId('');
+    }
+  }, [eligibleTeams, selectedTeamId]);
+
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTeamId) {
       setError(t('signupSelectTeamError'));
       return;
+    }
+    const selectedTeam = teams.find((team) => team.id === selectedTeamId);
+    if (isAthlete && riderSegment && selectedTeam) {
+      if (!canRiderApplyToTeam(riderSegment, selectedTeam, selectedTeam.operationalSettings)) {
+        setError(getMarketMismatchMessage(riderSegment, selectedTeam));
+        return;
+      }
     }
     setError('');
     setIsSubmitting(true);
@@ -267,6 +313,13 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
               {isStaff ? t('noTeamJoinAsStaff') : t('noTeamJoinAsAthlete')}
             </h3>
 
+            {isAthlete && riderSegment && (
+              <div className="rounded-lg border border-slate-600 bg-slate-700/40 p-3 text-sm text-slate-300">
+                Votre profil marché : <strong className="text-slate-100">{RIDER_SEGMENT_LABELS[riderSegment]}</strong>.
+                Seules les équipes compatibles avec votre niveau sont sélectionnables.
+              </div>
+            )}
+
             <div>
               <label htmlFor="team-search" className="text-sm font-medium text-slate-300">
                 {t('signupSearchTeam')}
@@ -312,12 +365,25 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
                 required
               >
                 <option value="">{t('signupSelectTeamPlaceholder')}</option>
-                {filteredTeams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name} ({getCountryName(team.country)})
-                  </option>
-                ))}
+                {filteredTeams.map((team) => {
+                  const eligibility = teamEligibility.get(team.id);
+                  const isEligible = eligibility?.eligible !== false;
+                  return (
+                    <option key={team.id} value={team.id} disabled={!isEligible}>
+                      {team.name} ({getCountryName(team.country)})
+                      {!isEligible ? ' — incompatible' : ''}
+                    </option>
+                  );
+                })}
               </select>
+              {isAthlete && eligibleTeams.length === 0 && filteredTeams.length > 0 && (
+                <p className="text-xs text-amber-300 mt-2">
+                  Aucune équipe compatible avec votre niveau ({RIDER_SEGMENT_LABELS[riderSegment!]}).
+                </p>
+              )}
+              {isAthlete && selectedTeamId && teamEligibility.get(selectedTeamId)?.reason && (
+                <p className="text-xs text-red-300 mt-2">{teamEligibility.get(selectedTeamId)?.reason}</p>
+              )}
             </div>
 
             <ActionButton type="submit" className="w-full" disabled={isSubmitting}>

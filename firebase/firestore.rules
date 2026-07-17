@@ -20,8 +20,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function userDoc() {
+      return userData();
+    }
+
     function isTeamMember(teamId) {
       return userExists() && userData().teamId == teamId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        userDoc().email == 'anthony.uldry@hotmail.fr' ||
+        userDoc().email == 'ds.lanesterwomen@gmail.com'
+      );
     }
 
     function isTeamManager(teamId) {
@@ -39,18 +50,54 @@ service cloud.firestore {
       allow read: if isSelf(userId)
         || (userExists() && resource.data.teamId == userData().teamId);
       allow create: if isSelf(userId);
-      allow update: if isSelf(userId) || isTeamManager(resource.data.teamId);
+      allow update: if isSelf(userId)
+        || isTeamManager(resource.data.teamId)
+        || (userExists()
+            && userData().userRole == 'Manager'
+            && request.resource.data.teamId != null
+            && isTeamManager(request.resource.data.teamId));
       allow delete: if isSelf(userId);
     }
 
+    function isCoureur() {
+      return userExists() && userData().userRole == 'Coureur';
+    }
+
+    function canReadTeamSubdoc(teamId, subcollection, docId) {
+      return isTeamManager(teamId)
+        || !isCoureur()
+        || subcollection != 'riders'
+        || docId == request.auth.uid
+        || (resource.data.email == request.auth.token.email);
+    }
+
+    function canCoureurReadCollection(subcollection) {
+      return subcollection != 'performanceArchives'
+        && subcollection != 'scoutingProfiles'
+        && subcollection != 'peerRatings'
+        && subcollection != 'riderSelfDebriefs';
+    }
+
+    function isPartnerMember(teamId) {
+      return userExists()
+        && userData().userRole == 'Partenaire'
+        && userData().teamId == teamId;
+    }
+
+    function canReadTeam(teamId) {
+      return isTeamMember(teamId) || isPartnerMember(teamId);
+    }
+
     match /teams/{teamId} {
-      allow read: if isTeamMember(teamId);
+      allow read: if canReadTeam(teamId);
       allow create: if isSignedIn();
       allow update: if isTeamManager(teamId) && subscriptionUnchanged();
       allow delete: if isTeamManager(teamId);
 
     match /{subcollection}/{docId} {
-        allow read: if isTeamMember(teamId);
+        allow read: if canReadTeam(teamId)
+          && canCoureurReadCollection(subcollection)
+          && canReadTeamSubdoc(teamId, subcollection, docId);
         allow write: if isTeamManager(teamId)
           || (isTeamMember(teamId) && isSelf(docId))
           || (subcollection == 'expenseReceipts'
@@ -59,7 +106,7 @@ service cloud.firestore {
       }
 
       match /expenseReceipts/{receiptId} {
-        allow read: if isTeamMember(teamId);
+        allow read: if canReadTeam(teamId);
         allow create: if isTeamMember(teamId)
           && request.resource.data.submittedByUserId == request.auth.uid;
         allow update: if isTeamManager(teamId)
@@ -68,6 +115,30 @@ service cloud.firestore {
               && request.resource.data.submittedByUserId == resource.data.submittedByUserId);
         allow delete: if isTeamManager(teamId)
           || (isTeamMember(teamId) && resource.data.submittedByUserId == request.auth.uid);
+      }
+
+      match /peerRatings/{ratingId} {
+        allow read: if isTeamManager(teamId)
+          || (isTeamMember(teamId) && resource.data.raterUserId == request.auth.uid);
+        allow create: if isTeamMember(teamId)
+          && request.resource.data.raterUserId == request.auth.uid;
+        allow update: if isTeamManager(teamId)
+          || (isTeamMember(teamId)
+              && resource.data.raterUserId == request.auth.uid
+              && request.resource.data.raterUserId == resource.data.raterUserId);
+        allow delete: if isTeamManager(teamId);
+      }
+
+      match /riderSelfDebriefs/{debriefId} {
+        allow read: if isTeamManager(teamId)
+          || (isTeamMember(teamId) && resource.data.userId == request.auth.uid);
+        allow create: if isTeamMember(teamId)
+          && request.resource.data.userId == request.auth.uid;
+        allow update: if isTeamManager(teamId)
+          || (isTeamMember(teamId)
+              && resource.data.userId == request.auth.uid
+              && request.resource.data.userId == resource.data.userId);
+        allow delete: if isTeamManager(teamId);
       }
     }
 
@@ -88,12 +159,18 @@ service cloud.firestore {
 
     match /permissions/{docId} {
       allow read: if isSignedIn();
-      allow write: if false;
+      allow write: if isSignedIn() && (
+        userDoc().permissionRole == 'Administrateur' ||
+        userDoc().userRole == 'Manager'
+      );
     }
 
     match /permissionRoles/{docId} {
       allow read: if isSignedIn();
-      allow write: if false;
+      allow write: if isSignedIn() && (
+        userDoc().permissionRole == 'Administrateur' ||
+        userDoc().userRole == 'Manager'
+      );
     }
 
     match /gdprAuditLogs/{logId} {
@@ -108,14 +185,105 @@ service cloud.firestore {
     match /scoutingRequests/{requestId} {
       allow read: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
-        isTeamManager(resource.data.requesterTeamId)
+        isTeamManager(resource.data.requesterTeamId) ||
+        isSuperAdmin()
       );
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
         isTeamManager(resource.data.requesterTeamId) ||
-        resource.data.athleteId == request.auth.uid
+        resource.data.athleteId == request.auth.uid ||
+        isSuperAdmin()
       );
-      allow delete: if isTeamManager(resource.data.requesterTeamId);
+      allow delete: if isTeamManager(resource.data.requesterTeamId) || isSuperAdmin();
+    }
+
+    match /userNotifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.sentByUserId == request.auth.uid
+        && isTeamMember(request.resource.data.teamId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isTeamManager(resource.data.teamId) || isSuperAdmin();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        request.auth.uid in resource.data.adminUserIds ||
+        userData().userRole == 'Manager'
+      );
+      allow create, update, delete: if isSignedIn() && (
+        isSuperAdmin() ||
+        request.auth.uid in request.resource.data.adminUserIds ||
+        userData().userRole == 'Manager'
+      );
+    }
+
+    match /partnerAccesses/{accessId} {
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        isTeamManager(resource.data.teamId)
+      );
+      allow create, update: if isSignedIn() && (
+        isSuperAdmin() ||
+        isTeamManager(request.resource.data.teamId)
+      );
+      allow delete: if isSignedIn() && (
+        isSuperAdmin() ||
+        isTeamManager(resource.data.teamId)
+      );
+    }
+
+    match /partnerMarketplaceProfiles/{profileId} {
+      allow read: if isSignedIn() && (
+        resource.data.isVisible == true ||
+        resource.data.userId == request.auth.uid ||
+        userData().userRole == 'Manager' ||
+        isSuperAdmin()
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    match /teamSponsorshipNeeds/{needId} {
+      allow read: if isSignedIn() && (
+        resource.data.isOpen == true ||
+        isTeamManager(resource.data.teamId) ||
+        isSuperAdmin()
+      );
+      allow create: if isSignedIn()
+        && isTeamManager(request.resource.data.teamId);
+      allow update, delete: if isSignedIn() && (
+        isTeamManager(resource.data.teamId) ||
+        isSuperAdmin()
+      );
+    }
+
+    match /partnershipMatchRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.partnerUserId == request.auth.uid ||
+        isTeamManager(resource.data.teamId) ||
+        isSuperAdmin()
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.partnerUserId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        isTeamManager(resource.data.teamId) ||
+        isSuperAdmin() ||
+        (resource.data.partnerUserId == request.auth.uid
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.teamId == resource.data.teamId)
+      );
+      allow delete: if isSuperAdmin();
     }
   }
 }

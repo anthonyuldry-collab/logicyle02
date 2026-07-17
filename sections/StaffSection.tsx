@@ -21,7 +21,8 @@ import {
 } from '@heroicons/react/24/outline';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
-import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection, MeetingReport, MeetingRecurrence, EventTransportLeg } from '../types';
+import { StaffMember, RaceEvent, User, AppState, StaffRole, StaffStatus, ContractType, StaffArchive, StaffTransition, StaffEventSelection, MeetingReport, MeetingRecurrence, EventTransportLeg, Mission, MissionApplication, StaffEventStatus, StaffEventPreference, StaffAvailability } from '../types';
+import { generateId } from '../utils/themeUtils';
 import { getCurrentSeasonYear, getAvailableSeasonYears } from '../utils/seasonUtils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -46,6 +47,16 @@ import { StaffTransitionManager, StaffArchiveViewer, StaffArchiveDetailModal, St
 import StaffSearchTab from '../components/StaffSearchTab';
 import { getGlobalRecruitableStaff } from '../utils/independentUtils';
 import { useTranslations } from '../hooks/useTranslations';
+import {
+  canManageMeetingReports,
+  filterVisibleMeetingReports,
+  shouldShowMeetingsTab,
+} from '../utils/meetingReportAccessUtils';
+import {
+  DEFAULT_MEETING_VISIBILITY,
+  MEETING_REPORT_AUDIENCE_OPTIONS,
+  getAudienceLabel,
+} from '../constants/meetingReportAudiences';
 
 interface StaffSectionProps {
   staff: StaffMember[];
@@ -65,7 +76,8 @@ interface StaffSectionProps {
   setEventBudgetItems?: any;
   team?: any;
   performanceEntries?: any[];
-  missions?: any[];
+  missions?: Mission[];
+  setMissions?: (updater: React.SetStateAction<Mission[]>) => void;
   teams?: any[];
   users?: any[];
   permissionRoles?: any[];
@@ -331,7 +343,8 @@ export default function StaffSection({
   setEventBudgetItems,
   team,
   performanceEntries,
-  missions,
+  missions = [],
+  setMissions,
   teams,
   users,
   permissionRoles,
@@ -395,20 +408,58 @@ export default function StaffSection({
     agenda: '',
     content: '',
     actionItems: [],
+    visibilityAudiences: DEFAULT_MEETING_VISIBILITY,
   });
+
+  const visibleMeetingReports = useMemo(() => {
+    if (!currentUser) return meetingReports;
+    return filterVisibleMeetingReports(currentUser, staff, meetingReports);
+  }, [currentUser, staff, meetingReports]);
+
+  const showMeetingsTab = useMemo(() => {
+    if (!currentUser) return false;
+    return shouldShowMeetingsTab(currentUser, staff, meetingReports);
+  }, [currentUser, staff, meetingReports]);
+
+  const userCanManageMeetingReports = useMemo(() => {
+    if (!currentUser) return false;
+    return canManageMeetingReports(currentUser, staff);
+  }, [currentUser, staff]);
+
+  useEffect(() => {
+    if (activeTab === 'meetings' && !showMeetingsTab) {
+      setActiveTab('staff');
+    }
+  }, [activeTab, showMeetingsTab]);
 
   // Obtenir le staff actif pour la saison courante
   const activeStaff = staff && staff.length > 0 ? getActiveStaffForCurrentSeason(staff) : [];
   const seasonYears = useMemo(() => getAvailableSeasonYears(), []);
 
-  const staffTabs = useMemo(() => ([
-    { id: 'staff' as const, label: 'Liste', icon: UserGroupIcon, count: activeStaff.length },
-    { id: 'workload' as const, label: 'Jours', icon: CalendarDaysIcon },
-    { id: 'planning' as const, label: 'Planning', icon: TableCellsIcon },
-    { id: 'archives' as const, label: 'Archives', icon: ArchiveBoxIcon },
-    { id: 'recruitment' as const, label: t('staffRecruitmentTab'), icon: UserPlusIcon },
-    { id: 'meetings' as const, label: 'Réunions', icon: DocumentTextIcon, count: meetingReports.length || undefined },
-  ]), [activeStaff.length, meetingReports.length, t]);
+  const staffTabs = useMemo(() => {
+    type StaffTabDef = {
+      id: 'staff' | 'workload' | 'planning' | 'archives' | 'recruitment' | 'meetings';
+      label: string;
+      icon: typeof UserGroupIcon;
+      count?: number;
+    };
+    const tabs: StaffTabDef[] = [
+      { id: 'staff' as const, label: 'Liste', icon: UserGroupIcon, count: activeStaff.length },
+      { id: 'workload' as const, label: 'Jours', icon: CalendarDaysIcon },
+      { id: 'planning' as const, label: 'Planning', icon: TableCellsIcon },
+      { id: 'archives' as const, label: 'Archives', icon: ArchiveBoxIcon },
+      { id: 'recruitment' as const, label: t('staffRecruitmentTab'), icon: UserPlusIcon },
+    ];
+    if (showMeetingsTab) {
+      tabs.push({
+        id: 'meetings' as const,
+        label: 'Réunions',
+        icon: DocumentTextIcon,
+        count: visibleMeetingReports.length || undefined,
+      });
+    }
+    return tabs;
+  }, [activeStaff.length, showMeetingsTab, visibleMeetingReports.length, t]);
   const handleAssignStaffToEvent = (eventId: string, staffId: string, status: any) => {
     try {
       const event = (raceEvents || []).find((e: any) => e.id === eventId);
@@ -447,6 +498,84 @@ export default function StaffSection({
       }
     } catch (e) {
       // Erreur silencieuse - l'assignation a échoué
+    }
+  };
+
+  /** Acceptation mission week-end → sélection événement + calendrier staff */
+  const handleIntegrateAcceptedMissionStaff = (payload: {
+    mission: Mission;
+    application: MissionApplication;
+    eventId: string;
+  }) => {
+    const { application, eventId, mission } = payload;
+    let staffMember =
+      (staff || []).find(
+        (s) =>
+          s.userId === application.userId ||
+          s.id === application.userId ||
+          (application.email &&
+            s.email?.trim().toLowerCase() === application.email.trim().toLowerCase()),
+      ) ||
+      getGlobalRecruitableStaff(appState?.users || [], staff || []).find(
+        (s) =>
+          s.id === application.userId ||
+          (application.email &&
+            s.email?.trim().toLowerCase() === application.email.trim().toLowerCase()),
+      );
+
+    if (!staffMember && onSave) {
+      staffMember = {
+        id: application.userId,
+        userId: application.userId,
+        firstName: application.firstName || 'Vacataire',
+        lastName: application.lastName || '',
+        email: application.email || '',
+        phone: application.phone,
+        role: mission.role,
+        status: StaffStatus.VACATAIRE,
+        skills: [],
+        openToExternalMissions: true,
+      };
+      onSave(staffMember);
+    }
+
+    if (!staffMember) return;
+
+    handleAssignStaffToEvent(eventId, staffMember.id, 'SELECTIONNE');
+
+    if (setStaffEventSelections) {
+      setStaffEventSelections((prev) => {
+        const list = prev || [];
+        const existing = list.find(
+          (s) => s.eventId === eventId && s.staffId === staffMember!.id,
+        );
+        if (existing) {
+          return list.map((s) =>
+            s.id === existing.id
+              ? {
+                  ...s,
+                  status: StaffEventStatus.SELECTIONNE,
+                  staffPreference: StaffEventPreference.VEUT_PARTICIPER,
+                  staffAvailability: StaffAvailability.DISPONIBLE,
+                  notes: s.notes || `Mission acceptée : ${mission.title}`,
+                  validatedAt: new Date().toISOString(),
+                }
+              : s,
+          );
+        }
+        const selection: StaffEventSelection = {
+          id: generateId(),
+          eventId,
+          staffId: staffMember!.id,
+          status: StaffEventStatus.SELECTIONNE,
+          staffPreference: StaffEventPreference.VEUT_PARTICIPER,
+          staffAvailability: StaffAvailability.DISPONIBLE,
+          staffObjectives: '',
+          notes: `Mission acceptée : ${mission.title}`,
+          validatedAt: new Date().toISOString(),
+        };
+        return [...list, selection];
+      });
     }
   };
 
@@ -1017,6 +1146,7 @@ export default function StaffSection({
         actionItems: [],
         recurrence: MeetingRecurrence.NONE,
         isScheduled: true,
+        visibilityAudiences: DEFAULT_MEETING_VISIBILITY,
       });
       setSelectedMeetingReport(null);
       setIsMeetingReportModalOpen(true);
@@ -1044,6 +1174,7 @@ export default function StaffSection({
         recurrenceCount: report.recurrenceCount,
         isScheduled: report.isScheduled !== undefined ? report.isScheduled : true,
         meetingSeriesId: report.meetingSeriesId,
+        visibilityAudiences: report.visibilityAudiences ?? DEFAULT_MEETING_VISIBILITY,
       });
       setIsMeetingReportModalOpen(true);
     };
@@ -1155,6 +1286,7 @@ export default function StaffSection({
         nextMeetingDate: nextMeetingDate,
         isScheduled: meetingReportForm.isScheduled !== undefined ? meetingReportForm.isScheduled : true,
         meetingSeriesId: meetingSeriesId,
+        visibilityAudiences: meetingReportForm.visibilityAudiences ?? DEFAULT_MEETING_VISIBILITY,
       };
 
       try {
@@ -1280,12 +1412,12 @@ export default function StaffSection({
     };
 
     // Trouver le dernier compte rendu et la prochaine réunion
-    const sortedReports = [...meetingReports].sort((a, b) => 
+    const sortedReports = [...visibleMeetingReports].sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
     
     const lastReport = sortedReports.find(r => r.content && r.content.trim() !== '') || sortedReports[0];
-    const upcomingMeetings = meetingReports
+    const upcomingMeetings = visibleMeetingReports
       .filter(r => {
         const meetingDate = new Date(r.date);
         return meetingDate >= new Date() || (r.recurrence && r.recurrence !== MeetingRecurrence.NONE);
@@ -1304,9 +1436,11 @@ export default function StaffSection({
           <h3 className="text-lg font-semibold text-gray-900">
             Comptes Rendus de Réunions
           </h3>
-          <ActionButton onClick={handleNewMeetingReport} icon={<PlusCircleIcon className="w-5 h-5" />}>
-            Planifier une Réunion
-          </ActionButton>
+          {userCanManageMeetingReports && (
+            <ActionButton onClick={handleNewMeetingReport} icon={<PlusCircleIcon className="w-5 h-5" />}>
+              Planifier une Réunion
+            </ActionButton>
+          )}
         </div>
 
         {/* Section: Dernier compte rendu et prochaine réunion */}
@@ -1397,7 +1531,7 @@ export default function StaffSection({
                   >
                     {nextMeeting.content && nextMeeting.content.trim() !== '' 
                       ? 'Voir le compte rendu' 
-                      : 'Créer le compte rendu'}
+                      : userCanManageMeetingReports ? 'Créer le compte rendu' : 'Voir la réunion'}
                   </ActionButton>
                 </div>
               </div>
@@ -1414,12 +1548,14 @@ export default function StaffSection({
             </p>
           </div>
 
-          {meetingReports.length === 0 ? (
+          {visibleMeetingReports.length === 0 ? (
             <div className="text-center py-8">
               <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun compte rendu</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Créez votre premier compte rendu de réunion
+                {userCanManageMeetingReports
+                  ? 'Créez votre premier compte rendu de réunion'
+                  : 'Aucun compte rendu partagé avec votre profil'}
               </p>
             </div>
           ) : (
@@ -1436,6 +1572,11 @@ export default function StaffSection({
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Organisateur
                     </th>
+                    {userCanManageMeetingReports && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Visibilité CR
+                      </th>
+                    )}
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Participants
                     </th>
@@ -1448,7 +1589,7 @@ export default function StaffSection({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {meetingReports
+                  {visibleMeetingReports
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map((report) => (
                       <tr key={report.id} className="hover:bg-gray-50">
@@ -1464,6 +1605,20 @@ export default function StaffSection({
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{getOrganizerName(report.organizerId)}</div>
                         </td>
+                        {userCanManageMeetingReports && (
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {(report.visibilityAudiences ?? []).map(audience => (
+                                <span
+                                  key={audience}
+                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700"
+                                >
+                                  {getAudienceLabel(audience)}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        )}
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <span className="text-sm text-gray-900">
                             {report.participantIds?.length || 0}
@@ -1484,12 +1639,12 @@ export default function StaffSection({
                           <div className="flex items-center justify-center space-x-2">
                             <ActionButton
                               onClick={() => handleEditMeetingReport(report)}
-                              variant="warning"
+                              variant={userCanManageMeetingReports ? 'warning' : 'secondary'}
                               size="sm"
-                              icon={<PencilIcon className="w-4 h-4" />}
-                              title="Modifier"
+                              icon={userCanManageMeetingReports ? <PencilIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                              title={userCanManageMeetingReports ? 'Modifier' : 'Consulter'}
                             />
-                            {!report.emailSent && (
+                            {userCanManageMeetingReports && !report.emailSent && (
                               <ActionButton
                                 onClick={() => handleSendEmail(report)}
                                 variant="primary"
@@ -1513,7 +1668,9 @@ export default function StaffSection({
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-semibold mb-4">
-                {selectedMeetingReport 
+                {!userCanManageMeetingReports
+                  ? 'Consulter le compte rendu'
+                  : selectedMeetingReport 
                   ? (selectedMeetingReport.content && selectedMeetingReport.content.trim() !== '' 
                       ? 'Modifier le Compte Rendu' 
                       : 'Modifier la Réunion')
@@ -1667,6 +1824,39 @@ export default function StaffSection({
                   </div>
                 </div>
 
+                {userCanManageMeetingReports && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Visibilité du compte rendu
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1 mb-2">
+                      Définissez qui peut consulter le CR (les vacataires n&apos;y ont pas accès par défaut).
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border border-gray-300 rounded-md p-3">
+                      {MEETING_REPORT_AUDIENCE_OPTIONS.map(({ value, label, description }) => (
+                        <label key={value} className="flex items-start space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={meetingReportForm.visibilityAudiences?.includes(value) || false}
+                            onChange={(e) => {
+                              const current = meetingReportForm.visibilityAudiences || [];
+                              const next = e.target.checked
+                                ? [...current, value]
+                                : current.filter(a => a !== value);
+                              setMeetingReportForm({ ...meetingReportForm, visibilityAudiences: next });
+                            }}
+                            className="mt-1 rounded border-gray-300"
+                          />
+                          <span className="text-sm text-gray-700">
+                            <span className="font-medium">{label}</span>
+                            <span className="block text-xs text-gray-500">{description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Ordre du jour</label>
                   <textarea
@@ -1776,11 +1966,13 @@ export default function StaffSection({
                   setSelectedMeetingReport(null);
                   setMeetingReportForm({});
                 }} variant="secondary">
-                  Annuler
+                  {userCanManageMeetingReports ? 'Annuler' : 'Fermer'}
                 </ActionButton>
-                <ActionButton onClick={handleSaveMeetingReport} variant="primary">
-                  Sauvegarder
-                </ActionButton>
+                {userCanManageMeetingReports && (
+                  <ActionButton onClick={handleSaveMeetingReport} variant="primary">
+                    Sauvegarder
+                  </ActionButton>
+                )}
               </div>
             </div>
           </div>
@@ -1797,7 +1989,7 @@ export default function StaffSection({
           <ActionButton onClick={handleAddStaff} icon={<PlusCircleIcon className="w-5 h-5"/>}>
             Ajouter membre
           </ActionButton>
-        ) : activeTab === 'meetings' ? (
+        ) : activeTab === 'meetings' && userCanManageMeetingReports ? (
           <ActionButton onClick={() => {
             const now = new Date();
             setMeetingReportForm({
@@ -1812,6 +2004,7 @@ export default function StaffSection({
               actionItems: [],
               recurrence: MeetingRecurrence.NONE,
               isScheduled: true,
+              visibilityAudiences: DEFAULT_MEETING_VISIBILITY,
             });
             setSelectedMeetingReport(null);
             setIsMeetingReportModalOpen(true);
@@ -1822,8 +2015,11 @@ export default function StaffSection({
       }
     >
       {/* Navigation par onglets */}
-      <div className="mb-4">
-        <nav className="flex flex-wrap gap-2" aria-label="Onglets staff">
+      <div className="mb-5 flex justify-center">
+        <nav
+          className="inline-flex flex-wrap justify-center gap-2"
+          aria-label="Onglets staff"
+        >
           {staffTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1832,18 +2028,20 @@ export default function StaffSection({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-gray-200'
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-300/40'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 shrink-0 opacity-90" />
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
-                  <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-semibold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
                     {tab.count}
                   </span>
                 )}
@@ -1877,6 +2075,18 @@ export default function StaffSection({
              raceEvents={raceEvents}
              teamAddress={team?.address}
              performanceEntries={performanceEntries || []}
+             missions={missions}
+             setMissions={setMissions}
+             teamId={team?.id || appState?.activeTeamId}
+             teamName={team?.name || 'Équipe'}
+             currentUser={currentUser}
+             canEditOffers={
+               Boolean(
+                 effectivePermissions?.staff?.includes('edit') ||
+                 effectivePermissions?.staff?.includes('view')
+               )
+             }
+             onIntegrateAcceptedStaff={handleIntegrateAcceptedMissionStaff}
            />
          ) :
          activeTab === 'meetings' ? <MeetingReportsTab /> :

@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type EventDetailTab } from "./EventDetailView";
 import {
   DEFAULT_THEME_ACCENT_COLOR,
   DEFAULT_THEME_PRIMARY_COLOR,
   getInitialGlobalState,
   getInitialTeamState,
+  LANGUAGE_OPTIONS,
 } from "./constants";
 import {
   AppSection,
@@ -20,8 +22,11 @@ import {
   EventRadioAssignment,
   EventBudgetItem,
   ExpenseReceipt,
+  TeamSepaSettings,
+  TeamInvoiceSettings,
   EventChecklistItem,
   PeerRating,
+  RiderSelfDebrief,
   RaceEvent,
   Rider,
   RiderEventSelection,
@@ -36,9 +41,25 @@ import {
   StaffEventSelection,
   MeetingReport,
   StockItem,
+  EquipmentStockItem,
+  ClientRecord,
+  SupplierInvoice,
+  SepaBatch,
+  BankTransaction,
+  Organization,
+  OrganizerContact,
+  PartnerAccess,
+  PartnerMarketplaceProfile,
+  TeamSponsorshipNeed,
+  PartnershipMatchRequest,
+  PartnershipMatchStatus,
+  PartnerNewsletter,
+  Quote,
   TeamProduct,
   Mission,
   TeamLevel,
+  TeamOperationalSettings,
+  TeamRecruitmentTarget,
   SubscriptionPlanId,
   TeamMembershipStatus,
   TeamMembership,
@@ -60,6 +81,8 @@ import {
   PowerProfileHistory,
   PowerProfile,
   ScoutingRequestStatus,
+  ProspectLevel,
+  ScoutingDataScope,
 } from "./types";
 
 // Firebase imports
@@ -74,15 +97,30 @@ import { doc, setDoc, updateDoc, deleteDoc, addDoc, collection } from "firebase/
 import * as firebaseService from "./services/firebaseService";
 import { addRiderToSeasonArchive } from "./utils/performanceArchiveUtils";
 import { getCurrentSeasonYear } from "./utils/seasonUtils";
+import {
+  getRecommendedOperationalSettings,
+  normalizeOperationalSettings,
+} from "./utils/teamOperationalUtils";
+import {
+  canRiderApplyToTeam,
+  getMarketMismatchMessage,
+  resolveRiderMarketSegmentFromUser,
+  teamAcceptsRiderApplications,
+} from "./utils/riderTeamMarketSegment";
 import { buildDefaultRider, buildDefaultStaffMember } from "./utils/defaultTeamMemberProfiles";
+import { getStaffMemberForUser } from "./utils/staffMemberUtils";
 
 
 import MobileShell from "./components/mobile/MobileShell";
+import { useUserNotifications } from "./hooks/useUserNotifications";
 import { SectionErrorBoundary } from "./components/SectionErrorBoundary";
+import SectionWrapper from "./components/SectionWrapper";
+import { isSponsorshipIncome } from "./utils/financialUtils";
 import { LanguageProvider } from "./contexts/LanguageContext";
-import { useTranslations } from "./hooks/useTranslations";
+import { translations, TranslationKey } from "./translations";
 import LoginView from "./sections/LoginView";
 import NoTeamView from "./sections/NoTeamView";
+import PartnerLobbyView from "./sections/PartnerLobbyView";
 import PendingApprovalView from "./sections/PendingApprovalView";
 import SignupView, { SignupData } from "./sections/SignupView";
 import {
@@ -99,47 +137,99 @@ import {
   LazyFinancialSection,
   LazyExpenseReceiptsSection,
   LazyMissionSearchSection,
+  LazyTeamSearchSection,
   LazyMyTripsSection,
   LazyNutritionSection,
   LazyPerformanceProjectSection,
   LazyPerformanceSection,
+  LazyMyPerformanceSection,
   LazyPerformancePoleSection,
-  LazyPermissionsSection,
+  LazyTeamAccessSection,
   LazyRiderEquipmentSection,
   LazyRosterSection,
   LazySeasonPlanningSection,
   LazyScoutingSection,
-  LazySettingsSection,
   LazyStaffSection,
   LazyStocksSection,
   LazyAccommodationHistorySection,
-  LazyUserManagementSection,
   LazyUserSettingsSection,
   LazyVehiclesSection,
   LazyMyDashboardSection,
   LazyMyProfileSection,
   LazyMyCalendarSection,
+  LazyIndependentStaffCalendarSection,
+  LazyIndependentAthleteCalendarSection,
   LazyMyResultsSection,
-  LazyBikeSetupSection,
   LazyMyCareerSection,
   LazyMyAdminSection,
-  LazyTalentAvailabilitySection,
   LazyIndependentSpaceSection,
+  LazyIndependentDashboardSection,
   LazyPricingSection,
+  LazyOrganizationDashboardSection,
+  LazyPartnerPortalSection,
 } from "./sections/lazySections";
 import { getContrastYIQ, generateId, lightenDarkenColor } from "./utils/themeUtils";
-import { isIndependentUser } from "./utils/independentUtils";
+import { isIndependentUser, userToRiderProfile, userToStaffProfile, resolveRiderForUser, riderProfileToUserUpdates, resolveStaffForUser, staffProfileToUserUpdates } from "./utils/independentUtils";
+import { buildDemoAcceptedMissionsForUser } from "./constants/demoMissions";
+import { isSuperAdminUser, resolveSuperAdminTeamId } from "./utils/superAdminUtils";
+import StageCampPerformancePanel from "./components/performance/StageCampPerformancePanel";
+import { enrichIncomeWithAccounting } from "./utils/invoiceUtils";
+import { enrichBudgetWithAccounting } from "./utils/accountingEntryUtils";
+import { persistActiveTeamId, restoreActiveTeamId, resolveOrganizationForUser, canViewOrgDashboard } from "./utils/organizationUtils";
+import { resolvePartnerPortalSession, resolvePartnerTeamId, getPartnerUserTeamPatch, isPartnerUser, isSectionAllowedForPartner } from "./utils/partnerAccessUtils";
+import { prepareDemoPartnerInstall } from "./utils/demoPartnerUtils";
+import {
+  installDemoPresentationTeam,
+  teamAlreadyHasDemoPresentation,
+} from "./utils/demoTeamSeedUtils";
+import {
+  DEMO_PRES_LEVEL,
+  DEMO_PRES_TEAM_NAME,
+} from "./constants/demoPresentationTeam";
+import {
+  isCoureurUser,
+  isSectionAllowedForCoureur,
+  resolveScopedAppStateForUser,
+  scopeAppStateForCoureur,
+  getOwnRider,
+} from "./utils/riderAccessUtils";
+import { consumeNolioOAuthState, exchangeNolioCode } from "./services/nolioService";
+import {
+  buildPreviewUser,
+  loadSuperAdminPreview,
+  normalizeSuperAdminPreview,
+  saveSuperAdminPreview,
+  SuperAdminPreviewConfig,
+  DEFAULT_SUPER_ADMIN_PREVIEW,
+  canAccessHoldingDashboard,
+  isIndependentPreviewMode,
+} from "./utils/superAdminPreview";
 import { activateIndependentProfile, saveIndependentProfile } from "./services/independentProfileService";
 import SeasonTransitionManager from "./components/SeasonTransitionManager";
-import { processPendingInvitesOnLogin } from "./services/inviteService";
+import {
+  buildOrganizerContactsFromEvents,
+  mergeOrganizerContactDirectories,
+  mergeOrganizerContactList,
+  upsertOrganizerContactFromEvent,
+} from "./utils/organizerContactUtils";
+import { mergeDemoOrganizerContacts } from "./constants/demoOrganizerContacts";
 import SubscriptionBanner from "./components/SubscriptionBanner";
-import { getDefaultPlanForTeamLevel } from "./constants/subscriptionPlans";
+import { getDefaultPlanForTeamLevel, getIndependentPlanIdForRole } from "./constants/subscriptionPlans";
 import {
   canAccessSection,
+  getIndependentSubscriptionAccess,
   getLockedSections,
   getSubscriptionAccess,
+  hasActiveIndependentSubscription,
 } from "./utils/subscriptionEntitlements";
-import { requestPlanUpgrade, createBillingPortalSession } from "./services/billingService";
+import {
+  requestPlanUpgrade,
+  createBillingPortalSession,
+  requestIndependentPlanUpgrade,
+  createIndependentBillingPortalSession,
+} from "./services/billingService";
+import { captureReferralFromUrl, getPendingReferralCode } from "./services/referralService";
+import { processPendingInvitesOnLogin } from "./services/inviteService";
 
 // Fonction de sécurité pour StaffRole et StaffStatus
 function getSafeStaffRole(role: string): string {
@@ -245,21 +335,142 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
-    "login" | "signup" | "app" | "pending" | "no_team" | "load_error" | "pricing"
+    "login" | "signup" | "app" | "pending" | "no_team" | "partner_lobby" | "load_error" | "pricing"
   >("login");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
   const pendingSignupDataRef = useRef<SignupData | null>(null); // Référence pour éviter les problèmes de closure
   const isMountedRef = useRef(true);
 
-  const [language, setLanguageState] = useState<"fr" | "en">("fr");
+  const [language, setLanguageState] = useState<"fr" | "en">(() => {
+    try {
+      const saved = localStorage.getItem("logicycle_lang");
+      if (saved === "en" || saved === "fr") return saved;
+    } catch {
+      /* ignore */
+    }
+    return "fr";
+  });
+  const [superAdminPreview, setSuperAdminPreview] = useState<SuperAdminPreviewConfig>(loadSuperAdminPreview);
   const [receiptScanDefaults, setReceiptScanDefaults] = useState<{
     eventId?: string;
     transportLegId?: string;
     openScanner?: boolean;
   }>({});
+  const [partnerPortalPreviewIncomeId, setPartnerPortalPreviewIncomeId] = useState<string | null>(null);
 
-  const { t } = useTranslations();
+  const t = (key: TranslationKey): string => {
+    const entry = translations[key];
+    if (!entry) return key;
+    return entry[language] || entry.en || key;
+  };
+
+  const setLanguage = (lang?: "fr" | "en") => {
+    if (!lang) return;
+    setLanguageState(lang);
+    setAppState((prev) => (prev ? { ...prev, language: lang } : prev));
+    try {
+      localStorage.setItem("logicycle_lang", lang);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    captureReferralFromUrl();
+  }, []);
+
+  useEffect(() => {
+    saveSuperAdminPreview(superAdminPreview);
+  }, [superAdminPreview]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code || !currentUser) return;
+
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    if (!consumeNolioOAuthState(state)) return;
+
+    void (async () => {
+      try {
+        await exchangeNolioCode(code, redirectUri);
+        window.history.replaceState({}, '', window.location.pathname);
+        setCurrentSection('myCareer');
+      } catch (err) {
+        console.error('Nolio OAuth:', err);
+      }
+    })();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !isSuperAdminUser(currentUser)) return;
+    setSuperAdminPreview((prev) =>
+      normalizeSuperAdminPreview(prev, appState.riders, appState.staff, appState.incomeItems || [])
+    );
+  }, [appState.activeTeamId, appState.riders, appState.staff, appState.incomeItems, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !isSuperAdminUser(currentUser)) return;
+    if (superAdminPreview.mode !== 'partenaire' || view !== 'app') return;
+    setCurrentSection('partnerPortal');
+  }, [superAdminPreview.mode, view, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !isSuperAdminUser(currentUser)) return;
+    if (!isIndependentPreviewMode(superAdminPreview.mode) || view !== 'app') return;
+    setCurrentSection('myDashboard');
+  }, [superAdminPreview.mode, view, currentUser]);
+
+  useEffect(() => {
+    if (view !== 'app' || !currentUser) return;
+    if (currentSection !== 'adminDossier') return;
+    const isStaffNav =
+      currentUser.userRole === UserRole.STAFF ||
+      currentUser.userRole === UserRole.MANAGER ||
+      Boolean(getStaffMemberForUser(currentUser, appState.staff));
+    if (isStaffNav && currentUser.userRole !== UserRole.COUREUR) {
+      setCurrentSection('myProfile');
+    }
+  }, [view, currentUser, currentSection, appState.staff]);
+
+  useEffect(() => {
+    if (view !== 'app' || !currentUser || currentUser.userRole !== UserRole.PARTNER) return;
+    if (currentSection === 'partnerPortal') return;
+    const session = resolvePartnerPortalSession({
+      partnerAccesses: appState.partnerAccesses || [],
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      teamId: appState.activeTeamId,
+      incomeItems: appState.incomeItems || [],
+      userRole: currentUser.userRole,
+      permissionRole: currentUser.permissionRole,
+    });
+    if (session.access) {
+      setCurrentSection('partnerPortal');
+    }
+  }, [
+    view,
+    currentUser,
+    currentSection,
+    appState.activeTeamId,
+    appState.partnerAccesses,
+    appState.incomeItems,
+  ]);
+
+  const displayUser = useMemo(() => {
+    if (!currentUser) return null;
+    if (!isSuperAdminUser(currentUser) || superAdminPreview.mode === "full") {
+      return currentUser;
+    }
+    return buildPreviewUser(currentUser, superAdminPreview, {
+      riders: appState.riders,
+      staff: appState.staff,
+      users: appState.users,
+      incomeItems: appState.incomeItems || [],
+    });
+  }, [currentUser, superAdminPreview, appState.riders, appState.staff, appState.users, appState.incomeItems]);
 
   const loadDataForUser = useCallback(async (user: User) => {
     if (!isMountedRef.current) return;
@@ -281,37 +492,104 @@ const App: React.FC = () => {
       // Vérifier d'abord le membership actif
       if (activeMembership) {
         finalActiveTeamId = activeMembership.teamId;
+        const storedTeamId = restoreActiveTeamId();
+        if (
+          storedTeamId &&
+          userMemberships.some(
+            (m) => m.teamId === storedTeamId && m.status === TeamMembershipStatus.ACTIVE
+          )
+        ) {
+          finalActiveTeamId = storedTeamId;
+        }
       } 
       // Si pas de membership mais l'utilisateur a un teamId (cas après création d'équipe)
       else if (user.teamId) {
         finalActiveTeamId = user.teamId;
       }
+      // Compte partenaire invité : charger l'équipe liée au partenariat
+      else if (user.userRole === UserRole.PARTNER) {
+        const partnerTeamId = resolvePartnerTeamId({
+          partnerAccesses: globalData.partnerAccesses || [],
+          userId: user.id,
+          userEmail: user.email,
+        });
+        if (partnerTeamId) {
+          finalActiveTeamId = partnerTeamId;
+        }
+      }
+
+      if (isSuperAdminUser(user)) {
+        finalActiveTeamId = resolveSuperAdminTeamId(
+          user,
+          globalData.teams || [],
+          finalActiveTeamId
+        );
+      }
+
+      let activeUser = user;
+      if (
+        finalActiveTeamId
+        && user.userRole === UserRole.PARTNER
+        && user.teamId !== finalActiveTeamId
+      ) {
+        const teamPatch = getPartnerUserTeamPatch(user, finalActiveTeamId);
+        if (teamPatch) {
+          try {
+            await firebaseService.updateUserProfile(user.id, teamPatch);
+            activeUser = { ...user, ...teamPatch };
+          } catch (syncError) {
+            console.warn('Synchronisation teamId partenaire:', syncError);
+          }
+        }
+      }
 
       if (finalActiveTeamId) {
-        teamData = await firebaseService.getTeamData(finalActiveTeamId);
+        teamData = await firebaseService.getTeamData(finalActiveTeamId, activeUser);
         if (!isMountedRef.current) return;
         setView("app");
+        if (user.userRole === UserRole.PARTNER) {
+          setCurrentSection("partnerPortal");
+        }
       } else if (
         userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
       ) {
         setView("pending");
+      } else if (isSuperAdminUser(user)) {
+        if (!isMountedRef.current) return;
+        setView("app");
       } else if (isIndependentUser(user)) {
         const globalMissions = await firebaseService.getOpenMissionsGlobal();
         teamData = { ...getInitialTeamState(), missions: globalMissions };
         if (!isMountedRef.current) return;
         setView("app");
-        setCurrentSection("independentHub");
+        setCurrentSection("myDashboard");
+      } else if (user.userRole === UserRole.PARTNER) {
+        setView("partner_lobby");
       } else {
         setView("no_team");
       }
+
+      if (activeUser.id === user.id && activeUser.teamId !== user.teamId) {
+        setCurrentUser(activeUser);
+      }
+
+      const openRecruitmentOffers = await firebaseService.getOpenRecruitmentOffersGlobal();
 
       setAppState({
         ...getInitialGlobalState(),
         ...getInitialTeamState(),
         ...globalData,
         ...teamData,
+        openRecruitmentOffers,
+        operationalSettings: normalizeOperationalSettings(
+          teamData.teamLevel as TeamLevel | undefined,
+          teamData.operationalSettings as TeamOperationalSettings | undefined
+        ),
         activeEventId: null, // Reset event detail view on user/team change
         activeTeamId: finalActiveTeamId,
+        users: (globalData.users || []).map((u) =>
+          u.id === activeUser.id ? { ...u, ...activeUser } : u,
+        ),
       });
 
       setLanguageState(teamData.language || "fr");
@@ -493,7 +771,7 @@ const App: React.FC = () => {
       getContrastYIQ(primaryColor)
     );
     root.style.setProperty("--theme-accent-color", accentColor);
-    document.body.style.backgroundColor = lightenDarkenColor(primaryColor, -20);
+    document.body.style.backgroundColor = '#020617';
   }, [primaryColor, accentColor]);
 
   // Fonction utilitaire pour comparer deux profils de puissance
@@ -984,13 +1262,77 @@ const App: React.FC = () => {
         const newCollection = exists
           ? collection.map((i: RaceEvent) => (i.id === finalItem.id ? finalItem : i))
           : [...collection, finalItem];
-        return { ...prev, raceEvents: newCollection };
+
+        let organizerContacts = prev.organizerContacts || [];
+        const upserted = upsertOrganizerContactFromEvent(finalItem, organizerContacts);
+        if (upserted) {
+          organizerContacts = mergeOrganizerContactList(organizerContacts, upserted);
+          firebaseService
+            .saveData(appState.activeTeamId!, "organizerContacts", upserted)
+            .catch((err) => console.warn("Sync contact organisateur:", err));
+        }
+
+        return { ...prev, raceEvents: newCollection, organizerContacts };
       });
     } catch (error) {
       console.error("Erreur lors de la sauvegarde de l'événement:", error);
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
     }
   }, [appState.activeTeamId]);
+
+  const onSaveOrganizerContact = useCallback(async (contact: OrganizerContact) => {
+    if (!appState.activeTeamId) return;
+    try {
+      await firebaseService.saveData(appState.activeTeamId, "organizerContacts", contact);
+      setAppState((prev: AppState) => ({
+        ...prev,
+        organizerContacts: mergeOrganizerContactList(prev.organizerContacts || [], contact),
+      }));
+    } catch (error) {
+      console.error("Erreur sauvegarde contact organisateur:", error);
+    }
+  }, [appState.activeTeamId]);
+
+  const onSyncOrganizerContactsFromEvents = useCallback(async () => {
+    if (!appState.activeTeamId) return;
+    try {
+      const fromEvents = buildOrganizerContactsFromEvents(appState.raceEvents || []);
+      const merged = mergeOrganizerContactDirectories(
+        appState.organizerContacts || [],
+        fromEvents
+      );
+      for (const contact of merged) {
+        await firebaseService.saveData(appState.activeTeamId, "organizerContacts", contact);
+      }
+      setAppState((prev: AppState) => ({
+        ...prev,
+        organizerContacts: merged,
+      }));
+    } catch (error) {
+      console.error("Erreur sync contacts organisateurs:", error);
+      alert("Erreur lors de la synchronisation des contacts organisateurs.");
+    }
+  }, [appState.activeTeamId, appState.raceEvents]);
+
+  const onLoadDemoOrganizerExamples = useCallback(async () => {
+    if (!appState.activeTeamId) return;
+    try {
+      const merged = mergeDemoOrganizerContacts(appState.organizerContacts || []);
+      const existingIds = new Set((appState.organizerContacts || []).map((c) => c.id));
+      for (const contact of merged) {
+        if (!existingIds.has(contact.id)) {
+          await firebaseService.saveData(appState.activeTeamId, "organizerContacts", contact);
+        }
+      }
+      setAppState((prev: AppState) => ({
+        ...prev,
+        organizerContacts: merged,
+      }));
+    } catch (error) {
+      console.error("Erreur chargement exemples candidatures:", error);
+      alert("Impossible de charger les exemples de candidatures.");
+    }
+  }, [appState.activeTeamId, appState.organizerContacts]);
 
   const onDeleteRaceEvent = useCallback(async (item: RaceEvent) => {
     if (!appState.activeTeamId || !item.id) return;
@@ -1014,7 +1356,6 @@ const App: React.FC = () => {
     }
   }, [appState.activeTeamId]);
 
-  // Handlers pour les autres types
   const onSavePerformanceEntry = useCallback(async (item: PerformanceEntry) => {
     if (!appState.activeTeamId) return;
     try {
@@ -1035,6 +1376,29 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Erreur lors de la sauvegarde de la performance:", error);
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
+  }, [appState.activeTeamId]);
+
+  const onSaveRiderSelfDebrief = useCallback(async (item: RiderSelfDebrief) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        'riderSelfDebriefs',
+        item,
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.riderSelfDebriefs || [];
+        const exists = collection.some((i) => i.id === finalItem.id);
+        const newCollection = exists
+          ? collection.map((i) => (i.id === finalItem.id ? finalItem : i))
+          : [...collection, finalItem];
+        return { ...prev, riderSelfDebriefs: newCollection };
+      });
+    } catch (error) {
+      console.error('Erreur sauvegarde débriefing coureur:', error);
+      throw error;
     }
   }, [appState.activeTeamId]);
 
@@ -1060,12 +1424,17 @@ const App: React.FC = () => {
   const onSaveIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId) return;
     try {
+      const enriched = enrichIncomeWithAccounting(
+        item,
+        appState.language || 'fr',
+        appState.invoiceSettings?.defaultVatRate
+      );
       const savedId = await firebaseService.saveData(
         appState.activeTeamId,
         "incomeItems",
-        item
+        enriched
       );
-      const finalItem = { ...item, id: item.id || savedId };
+      const finalItem = { ...enriched, id: enriched.id || savedId };
       setAppState((prev: AppState) => {
         const collection = prev.incomeItems;
         const exists = collection.some((i: IncomeItem) => i.id === finalItem.id);
@@ -1078,7 +1447,7 @@ const App: React.FC = () => {
       console.error("Erreur lors de la sauvegarde du revenu:", error);
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
     }
-  }, [appState.activeTeamId]);
+  }, [appState.activeTeamId, appState.language, appState.invoiceSettings?.defaultVatRate]);
 
   const onDeleteIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId || !item.id) return;
@@ -1098,15 +1467,218 @@ const App: React.FC = () => {
     }
   }, [appState.activeTeamId]);
 
-  const onSaveBudgetItem = useCallback(async (item: EventBudgetItem) => {
+  const onSavePartnerNewsletter = useCallback(async (newsletter: PartnerNewsletter) => {
     if (!appState.activeTeamId) return;
     try {
       const savedId = await firebaseService.saveData(
         appState.activeTeamId,
-        "eventBudgetItems",
-        item
+        'partnerNewsletters',
+        newsletter,
       );
-      const finalItem = { ...item, id: item.id || savedId };
+      const finalNewsletter = { ...newsletter, id: newsletter.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.partnerNewsletters || [];
+        const exists = collection.some((n) => n.id === finalNewsletter.id);
+        const next = exists
+          ? collection.map((n) => (n.id === finalNewsletter.id ? finalNewsletter : n))
+          : [...collection, finalNewsletter];
+        return { ...prev, partnerNewsletters: next };
+      });
+    } catch (error) {
+      console.error('Erreur sauvegarde newsletter partenaire:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onSavePartnerAccess = useCallback(async (access: PartnerAccess) => {
+    try {
+      const payload = {
+        ...access,
+        id: access.id?.startsWith('preview-') ? undefined : access.id,
+      };
+      const savedId = await firebaseService.saveGlobalData('partnerAccesses', payload);
+      const finalAccess = { ...access, id: savedId };
+      setAppState((prev: AppState) => {
+        const existing = prev.partnerAccesses || [];
+        const withoutDup = existing.filter(
+          (a) => !(a.userId === finalAccess.userId && a.incomeItemId === finalAccess.incomeItemId),
+        );
+        return {
+          ...prev,
+          partnerAccesses: [...withoutDup.filter((a) => a.id !== savedId), finalAccess],
+        };
+      });
+      const invitedUser = (appState.users || []).find((u) => u.id === finalAccess.userId);
+      if (invitedUser && invitedUser.teamId !== finalAccess.teamId) {
+        try {
+          await firebaseService.updateUserProfile(finalAccess.userId, { teamId: finalAccess.teamId });
+          setAppState((prev: AppState) => ({
+            ...prev,
+            users: (prev.users || []).map((u) =>
+              u.id === finalAccess.userId ? { ...u, teamId: finalAccess.teamId } : u,
+            ),
+          }));
+        } catch (linkError) {
+          console.warn('Liaison teamId partenaire invité:', linkError);
+        }
+      }
+      return savedId;
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde de l\'accès partenaire:', error);
+      throw error;
+    }
+  }, [appState.users]);
+
+  const onRevokePartnerAccess = useCallback(async (accessId: string) => {
+    try {
+      await firebaseService.deleteGlobalData('partnerAccesses', accessId);
+      setAppState((prev: AppState) => ({
+        ...prev,
+        partnerAccesses: (prev.partnerAccesses || []).filter((a) => a.id !== accessId),
+      }));
+    } catch (error) {
+      console.error('Erreur lors de la révocation de l\'accès partenaire:', error);
+      throw error;
+    }
+  }, []);
+
+  const onSavePartnerMarketplaceProfile = useCallback(async (profile: PartnerMarketplaceProfile) => {
+    const savedId = await firebaseService.saveGlobalData('partnerMarketplaceProfiles', profile);
+    const finalProfile = { ...profile, id: savedId };
+    setAppState((prev: AppState) => {
+      const existing = prev.partnerMarketplaceProfiles || [];
+      return {
+        ...prev,
+        partnerMarketplaceProfiles: [
+          ...existing.filter((p) => p.userId !== finalProfile.userId && p.id !== savedId),
+          finalProfile,
+        ],
+      };
+    });
+  }, []);
+
+  const onSubmitPartnershipMatchRequest = useCallback(
+    async (request: Omit<PartnershipMatchRequest, 'id' | 'createdAt'>) => {
+      const payload: PartnershipMatchRequest = {
+        ...request,
+        id: `pmr-${request.partnerUserId}-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+      };
+      const savedId = await firebaseService.saveGlobalData('partnershipMatchRequests', payload);
+      const finalRequest = { ...payload, id: savedId };
+      setAppState((prev: AppState) => ({
+        ...prev,
+        partnershipMatchRequests: [
+          ...(prev.partnershipMatchRequests || []).filter((r) => r.id !== savedId),
+          finalRequest,
+        ],
+      }));
+    },
+    [],
+  );
+
+  const onSaveTeamSponsorshipNeed = useCallback(async (need: TeamSponsorshipNeed) => {
+    const savedId = await firebaseService.saveGlobalData('teamSponsorshipNeeds', need);
+    const finalNeed = { ...need, id: savedId };
+    setAppState((prev: AppState) => ({
+      ...prev,
+      teamSponsorshipNeeds: [
+        ...(prev.teamSponsorshipNeeds || []).filter((n) => n.id !== savedId),
+        finalNeed,
+      ],
+    }));
+  }, []);
+
+  const onRespondPartnershipMatchRequest = useCallback(
+    async (
+      requestId: string,
+      status: Extract<PartnershipMatchStatus, 'accepted' | 'declined' | 'contracted'>,
+      contractedAmountEur?: number,
+    ) => {
+      const existing = (appState.partnershipMatchRequests || []).find((r) => r.id === requestId);
+      if (!existing) return;
+      const updated: PartnershipMatchRequest = {
+        ...existing,
+        status,
+        respondedAt: new Date().toISOString(),
+        contractedAmountEur: contractedAmountEur ?? existing.contractedAmountEur,
+      };
+      await firebaseService.saveGlobalData('partnershipMatchRequests', updated);
+      setAppState((prev: AppState) => ({
+        ...prev,
+        partnershipMatchRequests: (prev.partnershipMatchRequests || []).map((r) =>
+          r.id === requestId ? updated : r,
+        ),
+      }));
+    },
+    [appState.partnershipMatchRequests],
+  );
+
+  const onInstallDemoPartnerExample = useCallback(async (): Promise<{
+    partnerUserFound: boolean;
+    incomeItemId: string;
+  }> => {
+    if (!appState.activeTeamId) {
+      throw new Error('no team');
+    }
+    const teamName =
+      appState.teams?.find((t) => t.id === appState.activeTeamId)?.name
+      || 'équipe';
+    const pack = prepareDemoPartnerInstall({
+      teamId: appState.activeTeamId,
+      teamName,
+      language: appState.language === 'en' ? 'en' : 'fr',
+      users: appState.users || [],
+      grantedByUserId: currentUser?.id,
+    });
+
+    const hasIncome = (appState.incomeItems || []).some((i) => i.id === pack.income.id);
+    if (!hasIncome) {
+      await onSaveIncomeItem(pack.income);
+    }
+
+    const hasNewsletter = (appState.partnerNewsletters || []).some((n) => n.id === pack.newsletter.id);
+    if (!hasNewsletter) {
+      await onSavePartnerNewsletter(pack.newsletter);
+    }
+
+    if (pack.access) {
+      const existingAccess = (appState.partnerAccesses || []).some(
+        (a) => a.userId === pack.access!.userId && a.incomeItemId === pack.access!.incomeItemId && a.isActive,
+      );
+      if (!existingAccess) {
+        await onSavePartnerAccess(pack.access);
+      }
+    }
+
+    return {
+      partnerUserFound: pack.partnerUserFound,
+      incomeItemId: pack.income.id,
+    };
+  }, [
+    appState.activeTeamId,
+    appState.incomeItems,
+    appState.partnerNewsletters,
+    appState.partnerAccesses,
+    appState.teams,
+    appState.language,
+    appState.users,
+    currentUser?.id,
+    onSaveIncomeItem,
+    onSavePartnerNewsletter,
+    onSavePartnerAccess,
+  ]);
+
+  const onSaveBudgetItem = useCallback(async (item: EventBudgetItem) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const enriched = enrichBudgetWithAccounting(item, appState.language || 'fr');
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        "eventBudgetItems",
+        enriched
+      );
+      const finalItem = { ...enriched, id: enriched.id || savedId };
       setAppState((prev: AppState) => {
         const collection = prev.eventBudgetItems;
         const exists = collection.some((i: EventBudgetItem) => i.id === finalItem.id);
@@ -1120,6 +1692,119 @@ const App: React.FC = () => {
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
     }
   }, [appState.activeTeamId]);
+
+  const onInstallPresentationDemo = useCallback(async () => {
+    if (!currentUser) {
+      throw new Error('Aucun utilisateur connecté.');
+    }
+
+    const existingDemoTeam = (appState.teams || []).find(
+      (t) =>
+        t.name === DEMO_PRES_TEAM_NAME ||
+        (t as { isPresentationDemo?: boolean }).isPresentationDemo === true
+    );
+
+    let teamId = existingDemoTeam?.id;
+
+    if (!teamId) {
+      const created = await firebaseService.createTeamForUser(
+        currentUser.id,
+        {
+          name: DEMO_PRES_TEAM_NAME,
+          level: DEMO_PRES_LEVEL,
+          country: 'France',
+          planId: SubscriptionPlanId.CONTINENTAL,
+        },
+        UserRole.MANAGER
+      );
+      teamId = created.teamId;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+
+    const globalData = await firebaseService.getGlobalData();
+    const teamData = await firebaseService.getTeamData(teamId, currentUser);
+    persistActiveTeamId(teamId);
+
+    setAppState((prev) => ({
+      ...prev,
+      ...globalData,
+      ...teamData,
+      activeTeamId: teamId,
+      activeEventId: null,
+    }));
+    setLanguageState(teamData.language || 'fr');
+
+    if (currentUser.teamId !== teamId) {
+      setCurrentUser({ ...currentUser, teamId, userRole: UserRole.MANAGER, permissionRole: TeamRole.ADMIN });
+    }
+
+    const upsertLocal = <T extends { id?: string }>(
+      collectionName: keyof TeamState,
+      item: T
+    ) => {
+      setAppState((prev) => {
+        const collection = ((prev[collectionName] as T[]) || []) as T[];
+        const exists = collection.some((i) => i.id === item.id);
+        const next = exists
+          ? collection.map((i) => (i.id === item.id ? item : i))
+          : [...collection, item];
+        return { ...prev, [collectionName]: next };
+      });
+    };
+
+    const saveInTeam =
+      <T extends { id?: string }>(collectionName: string, stateKey: keyof TeamState) =>
+      async (item: T) => {
+        const savedId = await firebaseService.saveData(teamId!, collectionName, item);
+        const finalItem = { ...item, id: item.id || savedId } as T;
+        upsertLocal(stateKey, finalItem);
+      };
+
+    return installDemoPresentationTeam({
+      saveRider: saveInTeam<Rider>('riders', 'riders'),
+      saveStaff: saveInTeam<StaffMember>('staff', 'staff'),
+      saveVehicle: saveInTeam<Vehicle>('vehicles', 'vehicles'),
+      saveRaceEvent: saveInTeam<RaceEvent>('raceEvents', 'raceEvents'),
+      saveRiderEventSelection: saveInTeam<RiderEventSelection>(
+        'riderEventSelections',
+        'riderEventSelections'
+      ),
+      saveBudgetItem: saveInTeam<EventBudgetItem>('eventBudgetItems', 'eventBudgetItems'),
+      saveIncomeItem: saveInTeam<IncomeItem>('incomeItems', 'incomeItems'),
+      savePerformanceEntry: saveInTeam<PerformanceEntry>(
+        'performanceEntries',
+        'performanceEntries'
+      ),
+      applyTeamIdentity: async (patch) => {
+        await firebaseService.saveTeamSettings(teamId!, {
+          name: patch.name,
+          level: patch.level,
+          themePrimaryColor: patch.primaryColor,
+          themeAccentColor: patch.accentColor,
+          address: patch.address,
+          isPresentationDemo: true,
+          language: 'fr',
+        });
+        setAppState((prev) => ({
+          ...prev,
+          teamLevel: patch.level,
+          themePrimaryColor: patch.primaryColor,
+          themeAccentColor: patch.accentColor,
+          teams: (prev.teams || []).map((t) =>
+            t.id === teamId
+              ? {
+                  ...t,
+                  name: patch.name,
+                  level: patch.level,
+                  address: patch.address || t.address,
+                  country: patch.address?.country || t.country || 'France',
+                }
+              : t
+          ),
+        }));
+      },
+    });
+  }, [currentUser, appState.teams]);
 
   const onDeleteBudgetItem = useCallback(async (item: EventBudgetItem) => {
     if (!appState.activeTeamId || !item.id) return;
@@ -1138,6 +1823,126 @@ const App: React.FC = () => {
       alert("Erreur lors de la suppression. Veuillez réessayer.");
     }
   }, [appState.activeTeamId]);
+
+  const createTeamCollectionSaver = useCallback(
+    <T extends { id?: string }>(collectionName: keyof TeamState) =>
+      async (item: T) => {
+        if (!appState.activeTeamId) return;
+        const savedId = await firebaseService.saveData(
+          appState.activeTeamId,
+          collectionName as string,
+          item
+        );
+        const finalItem = { ...item, id: item.id || savedId } as T;
+        setAppState((prev: AppState) => {
+          const collection = (prev[collectionName] as T[]) || [];
+          const exists = collection.some((i) => i.id === finalItem.id);
+          const newCollection = exists
+            ? collection.map((i) => (i.id === finalItem.id ? finalItem : i))
+            : [...collection, finalItem];
+          return { ...prev, [collectionName]: newCollection };
+        });
+      },
+    [appState.activeTeamId]
+  );
+
+  const createTeamCollectionDeleter = useCallback(
+    <T extends { id?: string }>(collectionName: keyof TeamState) =>
+      async (item: T) => {
+        if (!appState.activeTeamId || !item.id) return;
+        await firebaseService.deleteData(appState.activeTeamId, collectionName as string, item.id);
+        setAppState((prev: AppState) => ({
+          ...prev,
+          [collectionName]: ((prev[collectionName] as T[]) || []).filter((i) => i.id !== item.id),
+        }));
+      },
+    [appState.activeTeamId]
+  );
+
+  const onSaveClientRecord = useMemo(
+    () => createTeamCollectionSaver<ClientRecord>('clientRecords'),
+    [createTeamCollectionSaver]
+  );
+  const onDeleteClientRecord = useMemo(
+    () => createTeamCollectionDeleter<ClientRecord>('clientRecords'),
+    [createTeamCollectionDeleter]
+  );
+  const onSaveSupplierInvoice = useMemo(
+    () => createTeamCollectionSaver<SupplierInvoice>('supplierInvoices'),
+    [createTeamCollectionSaver]
+  );
+  const onDeleteSupplierInvoice = useMemo(
+    () => createTeamCollectionDeleter<SupplierInvoice>('supplierInvoices'),
+    [createTeamCollectionDeleter]
+  );
+  const onSaveBankTransaction = useMemo(
+    () => createTeamCollectionSaver<BankTransaction>('bankTransactions'),
+    [createTeamCollectionSaver]
+  );
+  const onSaveSepaBatch = useMemo(
+    () => createTeamCollectionSaver<SepaBatch>('sepaBatches'),
+    [createTeamCollectionSaver]
+  );
+  const onSaveQuote = useMemo(
+    () => createTeamCollectionSaver<Quote>('quotes'),
+    [createTeamCollectionSaver]
+  );
+  const onDeleteQuote = useMemo(
+    () => createTeamCollectionDeleter<Quote>('quotes'),
+    [createTeamCollectionDeleter]
+  );
+
+  const onImportBankTransactions = useCallback(
+    async (txs: BankTransaction[]) => {
+      for (const tx of txs) {
+        await onSaveBankTransaction(tx);
+      }
+    },
+    [onSaveBankTransaction]
+  );
+
+  const onMarkSalariesPaid = useCallback(
+    async (sourceIds: string[]) => {
+      if (!appState.activeTeamId) return;
+      const paidAt = new Date().toISOString();
+      await Promise.all(
+        sourceIds.map(async (id) => {
+          const rider = appState.riders.find((r) => r.id === id);
+          if (rider) {
+            await onSaveRider({ ...rider, sepaLastPaidAt: paidAt });
+            return;
+          }
+          const member = appState.staff.find((s) => s.id === id);
+          if (member) await onSaveStaff({ ...member, sepaLastPaidAt: paidAt });
+        })
+      );
+    },
+    [appState.activeTeamId, appState.riders, appState.staff, onSaveRider, onSaveStaff]
+  );
+
+  const handleTeamSwitch = useCallback(
+    async (teamId: string) => {
+      if (!currentUser || teamId === appState.activeTeamId) return;
+      setIsLoading(true);
+      try {
+        const teamData = await firebaseService.getTeamData(teamId, currentUser);
+        persistActiveTeamId(teamId);
+        setAppState((prev: AppState) => ({
+          ...prev,
+          ...teamData,
+          activeTeamId: teamId,
+          activeEventId: null,
+        }));
+        setLanguageState(teamData.language || 'fr');
+      } catch (error) {
+        console.error('Erreur lors du changement d\'équipe:', error);
+        alert('Impossible de charger cette équipe.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentUser, appState.activeTeamId]
+  );
 
   const onSaveExpenseReceipt = useCallback(async (receipt: ExpenseReceipt) => {
     if (!appState.activeTeamId) return;
@@ -1161,6 +1966,37 @@ const App: React.FC = () => {
       alert("Erreur lors de la sauvegarde du justificatif. Veuillez réessayer.");
     }
   }, [appState.activeTeamId]);
+
+  const onSaveSepaSettings = useCallback(async (settings: TeamSepaSettings) => {
+    if (!appState.activeTeamId) return;
+    try {
+      await firebaseService.saveTeamSettings(appState.activeTeamId, { sepaSettings: settings });
+      setAppState((prev: AppState) => ({ ...prev, sepaSettings: settings }));
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde des paramètres SEPA:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onSaveInvoiceSettings = useCallback(async (settings: TeamInvoiceSettings) => {
+    if (!appState.activeTeamId) return;
+    try {
+      await firebaseService.saveTeamSettings(appState.activeTeamId, { invoiceSettings: settings });
+      setAppState((prev: AppState) => ({ ...prev, invoiceSettings: settings }));
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde des paramètres de facturation:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onConvertQuote = useCallback(
+    async (quote: Quote, income: IncomeItem, settings: TeamInvoiceSettings) => {
+      await onSaveQuote(quote);
+      await onSaveIncomeItem(income);
+      await onSaveInvoiceSettings(settings);
+    },
+    [onSaveQuote, onSaveIncomeItem, onSaveInvoiceSettings]
+  );
 
   const onSaveScoutingProfile = useCallback(async (item: ScoutingProfile) => {
     if (!appState.activeTeamId) return;
@@ -1271,6 +2107,41 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Erreur lors de la sauvegarde du modèle checklist:", error);
       alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+    }
+  }, [appState.activeTeamId]);
+
+  const onImportChecklistTemplates = useCallback(async (items: ChecklistTemplate[]) => {
+    if (!appState.activeTeamId || items.length === 0) return 0;
+    try {
+      const toSave = items.map((item) => ({
+        ...item,
+        id: item.id || '',
+        role: item.role ?? ChecklistRole.DS,
+        kind: item.kind || 'task',
+      }));
+      const savedIds = await firebaseService.saveDataBatch(
+        appState.activeTeamId,
+        'checklistTemplates',
+        toSave
+      );
+      const finalItems = toSave.map((item, index) => ({ ...item, id: item.id || savedIds[index] }));
+      setAppState((prev: AppState) => {
+        const record = { ...(prev.checklistTemplates ?? {}) } as TeamState['checklistTemplates'];
+        finalItems.forEach((item) => {
+          const role = item.role ?? ChecklistRole.DS;
+          const arr = record[role] || [];
+          const dupKey = `${(item.name || '').trim().toLowerCase()}|${item.eventType || ''}|${item.timingLabel || ''}`;
+          if (arr.some((t) => `${(t.name || '').trim().toLowerCase()}|${t.eventType || ''}|${t.timingLabel || ''}` === dupKey)) {
+            return;
+          }
+          record[role] = [...arr, item];
+        });
+        return { ...prev, checklistTemplates: record };
+      });
+      return finalItems.length;
+    } catch (error) {
+      console.error('Erreur lors de l\'import des modèles checklist:', error);
+      throw error;
     }
   }, [appState.activeTeamId]);
 
@@ -1563,20 +2434,81 @@ const App: React.FC = () => {
 
   const handleSaveIndependentProfile = async (updates: Partial<User>) => {
     if (!currentUser) return;
-    await saveIndependentProfile(currentUser.id, updates);
-    const merged = { ...currentUser, ...updates };
-    setCurrentUser(merged);
-    setAppState((prev) => ({
-      ...prev,
-      users: prev.users.map((u) => (u.id === currentUser.id ? { ...u, ...updates } : u)),
-    }));
+    if (isSuperAdminUser(currentUser) && superAdminPreview.mode !== "full") {
+      alert("En mode aperçu, les modifications ne sont pas enregistrées.");
+      return;
+    }
+    const gatedUpdates = { ...updates };
+    if (
+      !hasActiveIndependentSubscription(currentUser) &&
+      (gatedUpdates.isSearchable !== undefined || gatedUpdates.openToExternalMissions !== undefined)
+    ) {
+      alert("Abonnement actif requis pour activer la visibilité scouting ou marketplace.");
+      return;
+    }
+    try {
+      await saveIndependentProfile(currentUser.id, gatedUpdates);
+      const merged = { ...currentUser, ...gatedUpdates };
+      setCurrentUser(merged);
+      setAppState((prev) => ({
+        ...prev,
+        users: prev.users.map((u) => (u.id === currentUser.id ? { ...u, ...gatedUpdates } : u)),
+      }));
+    } catch (error) {
+      console.error("Erreur sauvegarde profil indépendant:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible d'enregistrer le profil. Réessayez.",
+      );
+      throw error;
+    }
   };
+
+  const onSaveIndependentRider = useCallback(
+    async (rider: Rider) => {
+      if (!currentUser) return;
+      await handleSaveIndependentProfile(riderProfileToUserUpdates(rider));
+    },
+    [currentUser, superAdminPreview.mode],
+  );
+
+  const onSaveIndependentStaff = useCallback(
+    async (member: StaffMember) => {
+      if (!currentUser) return;
+      await handleSaveIndependentProfile(staffProfileToUserUpdates(member));
+    },
+    [currentUser, superAdminPreview.mode],
+  );
+
+  const onSaveIndependentExpenseReceipt = useCallback(
+    async (receipt: ExpenseReceipt) => {
+      if (!currentUser) return;
+      const existing = currentUser.personalExpenseReceipts || [];
+      const finalItem = { ...receipt, id: receipt.id || generateId() };
+      const updated = existing.some((r) => r.id === finalItem.id)
+        ? existing.map((r) => (r.id === finalItem.id ? finalItem : r))
+        : [...existing, finalItem];
+      await handleSaveIndependentProfile({ personalExpenseReceipts: updated });
+    },
+    [currentUser, superAdminPreview.mode],
+  );
 
   const handleJoinTeamRequest = async (teamId: string, joinRole: UserRole) => {
     if (!currentUser) {
       alert("Vous devez être connecté pour rejoindre une équipe.");
       return;
     }
+
+    if (joinRole === UserRole.COUREUR) {
+      const team = appState.teams?.find((t) => t.id === teamId);
+      const riderSegment = resolveRiderMarketSegmentFromUser(currentUser);
+      if (!canRiderApplyToTeam(riderSegment, team, team?.operationalSettings)) {
+        alert(getMarketMismatchMessage(riderSegment, team));
+        return;
+      }
+    }
+
     try {
       await firebaseService.requestToJoinTeam(
         currentUser.id,
@@ -1595,6 +2527,28 @@ const App: React.FC = () => {
       const errorMessage = error instanceof Error ? error.message : t("errorJoinTeam");
       alert(errorMessage);
     }
+  };
+
+  const handleTeamPortalApply = async (teamId: string) => {
+    if (!currentUser) return;
+    const team = appState.teams?.find((t) => t.id === teamId);
+    const riderSegment = resolveRiderMarketSegmentFromUser(currentUser);
+    if (!teamAcceptsRiderApplications(team, team?.operationalSettings)) {
+      throw new Error(`${team?.name ?? 'Cette équipe'} n'accepte pas les candidatures pour le moment.`);
+    }
+    if (!canRiderApplyToTeam(riderSegment, team, team?.operationalSettings)) {
+      throw new Error(getMarketMismatchMessage(riderSegment, team));
+    }
+    await firebaseService.requestToJoinTeam(currentUser.id, teamId, UserRole.COUREUR, {
+      firstName: currentUser.firstName,
+      lastName: currentUser.lastName,
+      email: currentUser.email,
+    });
+    const globalData = await firebaseService.getGlobalData();
+    setAppState((prev) => ({
+      ...prev,
+      teamMemberships: globalData.teamMemberships ?? prev.teamMemberships,
+    }));
   };
 
   const handleCreateTeam = async (teamData: {
@@ -1654,8 +2608,45 @@ const App: React.FC = () => {
 
 
 
-  const navigateTo = (section: AppSection, eventId?: string) => {
-    if (currentUser && appState?.activeTeamId && !isIndependentUser(currentUser)) {
+  const [sectionTabHint, setSectionTabHint] = useState<string | undefined>();
+
+  const VEHICLE_TAB_HINTS = new Set(['list', 'assignmentCalendar', 'gps']);
+  const FINANCIAL_TAB_HINTS = new Set(['payroll', 'accounting', 'sepa']);
+  const EVENT_DETAIL_TAB_HINTS = new Set([
+    'logisticsSummary', 'info', 'participants', 'opLogistics', 'transport', 'accommodation',
+    'accommodationHistory', 'documents', 'budget', 'checklist', 'peerReview', 'performance',
+    'riderDebrief', 'staffMission', 'campMonitoring',
+  ]);
+
+  const navigateTo = (section: AppSection, eventIdOrTab?: string, tabHint?: string) => {
+    let eventId = eventIdOrTab;
+    let resolvedTabHint = tabHint;
+    if (!tabHint && eventIdOrTab) {
+      if (section === 'vehicles' && VEHICLE_TAB_HINTS.has(eventIdOrTab)) {
+        resolvedTabHint = eventIdOrTab;
+        eventId = undefined;
+      } else if (section === 'financial' && FINANCIAL_TAB_HINTS.has(eventIdOrTab)) {
+        resolvedTabHint = eventIdOrTab;
+        eventId = undefined;
+      } else if (section === 'eventDetail' && EVENT_DETAIL_TAB_HINTS.has(eventIdOrTab)) {
+        resolvedTabHint = eventIdOrTab;
+        eventId = undefined;
+      }
+    }
+    if (section === 'bikeSetup') section = 'riderEquipment';
+    if (section === 'talentAvailability') section = 'season-planning';
+    const accessUser = displayUser ?? currentUser;
+    if (accessUser && isCoureurUser(accessUser) && !isSectionAllowedForCoureur(section)) {
+      setCurrentSection("myCareer");
+      return;
+    }
+    if (accessUser && isPartnerUser(accessUser) && !isSectionAllowedForPartner(section)) {
+      setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+      setCurrentSection("partnerPortal");
+      setSectionTabHint(undefined);
+      return;
+    }
+    if (currentUser && appState?.activeTeamId && !isIndependentUser(displayUser ?? currentUser)) {
       const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
       if (!canAccessSection(section, appState.subscription, fallbackPlan)) {
         setCurrentSection("pricing");
@@ -1671,7 +2662,42 @@ const App: React.FC = () => {
       setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
     }
     setCurrentSection(section);
+    if (resolvedTabHint) {
+      setSectionTabHint(resolvedTabHint);
+    } else if (section !== 'vehicles' && section !== 'financial' && section !== 'eventDetail') {
+      setSectionTabHint(undefined);
+    }
   };
+
+  const handleOpenPartnerPortal = useCallback((incomeItemId?: string) => {
+    if (incomeItemId) {
+      setPartnerPortalPreviewIncomeId(incomeItemId);
+    }
+    setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
+    setCurrentSection('partnerPortal');
+  }, []);
+
+  const handleOpenConvocationNotification = useCallback(
+    (eventId: string) => {
+      navigateTo('eventDetail', eventId);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentUser, appState?.activeTeamId, appState?.subscription, appState?.teamLevel],
+  );
+
+  const {
+    notifications: userNotifications,
+    unreadCount: notificationUnreadCount,
+    pushPermission,
+    pushSupported,
+    enablePush,
+    markRead: markNotificationRead,
+    markAllRead: markAllNotificationsRead,
+  } = useUserNotifications({
+    userId: currentUser?.id,
+    enabled: !!currentUser && view === 'app',
+    onNavigateToConvocation: handleOpenConvocationNotification,
+  });
 
   if (isLoading) {
     return (
@@ -1706,23 +2732,51 @@ const App: React.FC = () => {
     }
     if (view === "pricing") {
       return (
-        <div className="min-h-screen bg-gray-50 py-12 px-4">
-          <div className="max-w-6xl mx-auto">
-          <SectionSuspense>
-            <LazyPricingSection isPublic />
-          </SectionSuspense>
-            <div className="text-center mt-8 space-x-4">
+        <div className="relative min-h-screen overflow-hidden text-white">
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse 70% 55% at 75% 20%, rgba(79,70,229,0.4), transparent 55%), radial-gradient(ellipse 50% 40% at 15% 85%, rgba(14,165,233,0.18), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.06]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(-18deg, transparent, transparent 22px, #fff 22px, #fff 23px)",
+            }}
+          />
+          <div className="absolute top-4 right-4 z-20">
+            <select
+              onChange={(e) => setLanguage(e.target.value as "fr" | "en")}
+              value={language}
+              aria-label="Select language"
+              className="rounded-lg border border-white/15 bg-slate-900/70 text-slate-200 text-sm px-3 py-1.5 backdrop-blur-sm outline-none focus:ring-2 focus:ring-indigo-500/40"
+            >
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} className="bg-slate-900">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+            <SectionSuspense>
+              <LazyPricingSection isPublic />
+            </SectionSuspense>
+            <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={() => setView("signup")}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+                className="px-6 py-2.5 rounded-xl bg-indigo-500 text-white font-semibold hover:bg-indigo-400 transition shadow-lg shadow-indigo-950/40"
               >
                 {t("loginSignUpLink")}
               </button>
               <button
                 type="button"
                 onClick={() => setView("login")}
-                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+                className="px-6 py-2.5 rounded-xl border border-white/20 text-slate-200 font-medium hover:bg-white/10 transition"
               >
                 {t("loginSubmitButton")}
               </button>
@@ -1793,6 +2847,19 @@ const App: React.FC = () => {
         />
       );
     }
+    if (view === "partner_lobby" && currentUser) {
+      return (
+        <PartnerLobbyView
+          currentUser={currentUser}
+          partnerProfiles={appState.partnerMarketplaceProfiles || []}
+          sponsorshipNeeds={appState.teamSponsorshipNeeds || []}
+          matchRequests={appState.partnershipMatchRequests || []}
+          onSaveProfile={onSavePartnerMarketplaceProfile}
+          onSubmitMatchRequest={onSubmitPartnershipMatchRequest}
+          onLogout={handleLogout}
+        />
+      );
+    }
     // Fallback : no_team sans currentUser (ex. erreur au chargement) → retour login
     if (view === "no_team") {
       return (
@@ -1803,20 +2870,33 @@ const App: React.FC = () => {
       );
     }
 
-    if (view === "app" && currentUser && (appState.activeTeamId || isIndependentUser(currentUser))) {
-      const userIsIndependent = isIndependentUser(currentUser);
+    if (view === "app" && currentUser && (appState.activeTeamId || isIndependentUser(currentUser) || isSuperAdminUser(currentUser))) {
+      const uiUser = displayUser ?? currentUser;
+      const userIsIndependent = isIndependentUser(uiUser);
+      const userIsSuperAdmin = isSuperAdminUser(currentUser);
       const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
       const subscriptionAccess = userIsIndependent
-        ? null
+        ? getIndependentSubscriptionAccess(uiUser)
         : getSubscriptionAccess(appState.subscription, fallbackPlan);
-      const lockedSections = userIsIndependent
-        ? []
-        : getLockedSections(appState.subscription, fallbackPlan);
+      const lockedSections = [
+        ...(userIsIndependent
+          ? (subscriptionAccess?.isActive
+              ? []
+              : uiUser.userRole === UserRole.STAFF
+                ? (['missionSearch'] as AppSection[])
+                : (['teamSearch'] as AppSection[]))
+          : getLockedSections(appState.subscription, fallbackPlan)),
+      ];
 
-      const handleUpgradePlan = async (planId: SubscriptionPlanId) => {
-        if (!appState.activeTeamId) return;
+      const handleUpgradePlan = async (planId: SubscriptionPlanId, referralCode?: string) => {
         try {
-          await requestPlanUpgrade(appState.activeTeamId, planId, "year");
+          const code = referralCode ?? getPendingReferralCode();
+          if (userIsIndependent) {
+            await requestIndependentPlanUpgrade(planId, "year", code);
+            return;
+          }
+          if (!appState.activeTeamId) return;
+          await requestPlanUpgrade(appState.activeTeamId, planId, "year", code);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           alert(message.includes('Stripe') ? message : 'Impossible de lancer le paiement. Réessayez ou contactez le support.');
@@ -1824,8 +2904,13 @@ const App: React.FC = () => {
       };
 
       const handleBillingPortal = async () => {
-        if (!appState.activeTeamId) return;
         try {
+          if (userIsIndependent) {
+            const { url } = await createIndependentBillingPortalSession();
+            window.location.href = url;
+            return;
+          }
+          if (!appState.activeTeamId) return;
           const { url } = await createBillingPortalSession(appState.activeTeamId);
           window.location.href = url;
         } catch {
@@ -1834,36 +2919,84 @@ const App: React.FC = () => {
       };
 
       let effectivePermissions = firebaseService.getEffectivePermissions(
-        currentUser,
+        uiUser,
         appState.permissions,
-        appState.staff
+        appState.staff,
+        userIsSuperAdmin && superAdminPreview.mode !== "full"
+          ? { skipSuperAdminBypass: true }
+          : undefined
       );
-      
-      // FORCER les permissions si l'utilisateur est Manager/Admin
-      if (currentUser.userRole === UserRole.MANAGER || currentUser.permissionRole === TeamRole.ADMIN) {
+
+      const canAccessHoldingView = canAccessHoldingDashboard(uiUser, {
+        realUser: userIsSuperAdmin ? currentUser : undefined,
+        previewMode: superAdminPreview.mode,
+      });
+
+      const partnerPreviewIncomeId =
+        superAdminPreview.mode === 'partenaire'
+          ? superAdminPreview.subjectId ?? null
+          : partnerPortalPreviewIncomeId;
+
+      const partnerPortalSession = resolvePartnerPortalSession({
+        partnerAccesses: appState.partnerAccesses || [],
+        userId: currentUser.id,
+        userEmail: uiUser.email,
+        teamId: appState.activeTeamId,
+        incomeItems: appState.incomeItems || [],
+        userRole: uiUser.userRole,
+        permissionRole: uiUser.permissionRole,
+        previewIncomeItemId: partnerPreviewIncomeId,
+      });
+
+      if (partnerPortalSession.access) {
         effectivePermissions = {
-          events: ['view', 'edit'],
-          financial: ['view', 'edit'],
-          performance: ['view', 'edit'],
-          staff: ['view', 'edit'],
-          roster: ['view', 'edit'],
-          vehicles: ['view', 'edit'],
-          equipment: ['view', 'edit'],
-          stocks: ['view', 'edit'],
-          accommodationHistory: ['view', 'edit'],
-          scouting: ['view', 'edit'],
-          userManagement: ['view', 'edit'],
-          permissions: ['view', 'edit'],
-          checklist: ['view', 'edit'],
-          settings: ['view', 'edit'],
-          pricing: ['view', 'edit'],
-          // Exclure les sections "Mon Espace"
+          ...effectivePermissions,
+          partnerPortal: effectivePermissions.partnerPortal || ['view'],
         };
       }
-      const activeEvent = appState.activeEventId
-        ? appState.raceEvents.find((e) => e.id === appState.activeEventId)
+
+      const viewAppState =
+        !userIsIndependent
+          ? resolveScopedAppStateForUser(appState, uiUser)
+          : appState;
+      const saveRiderForUiUser = userIsIndependent ? onSaveIndependentRider : onSaveRider;
+      const saveStaffForUiUser = userIsIndependent ? onSaveIndependentStaff : onSaveStaff;
+      const resolvedUiRider =
+        userIsIndependent && (uiUser.userRole === UserRole.COUREUR || String(uiUser.userRole).toLowerCase() === 'coureur')
+          ? resolveRiderForUser(viewAppState.riders || appState.riders || [], uiUser) ??
+            userToRiderProfile(uiUser)
+          : resolveRiderForUser(viewAppState.riders || appState.riders || [], uiUser);
+      const ridersForUi =
+        userIsIndependent && resolvedUiRider
+          ? [
+              resolvedUiRider,
+              ...(viewAppState.riders || appState.riders || []).filter(
+                (r) => r.id !== resolvedUiRider.id,
+              ),
+            ]
+          : viewAppState.riders?.length
+            ? viewAppState.riders
+            : appState.riders || [];
+      const staffForUi =
+        userIsIndependent &&
+        (uiUser.userRole === UserRole.STAFF ||
+          String(uiUser.userRole).toLowerCase() === 'staff')
+          ? [resolveStaffForUser(appState.staff, uiUser) ?? userToStaffProfile(uiUser)]
+          : appState.staff;
+      const isIndependentRiderUi =
+        userIsIndependent &&
+        (uiUser.userRole === UserRole.COUREUR ||
+          String(uiUser.userRole).toLowerCase() === 'coureur');
+      const isIndependentStaffUi =
+        userIsIndependent &&
+        (uiUser.userRole === UserRole.STAFF ||
+          String(uiUser.userRole).toLowerCase() === 'staff');
+      const activeEvent = viewAppState.activeEventId
+        ? viewAppState.raceEvents.find((e) => e.id === viewAppState.activeEventId)
         : null;
-      const userTeams = appState.teams.filter((team) =>
+      const userTeams = userIsSuperAdmin
+        ? appState.teams
+        : appState.teams.filter((team) =>
         appState.teamMemberships.some(
           (m) =>
             m.teamId === team.id &&
@@ -1872,32 +3005,82 @@ const App: React.FC = () => {
         )
       );
 
+      const resolvedOrganization = canAccessHoldingView
+        ? resolveOrganizationForUser({
+            organizations: appState.organizations || [],
+            teams: appState.teams,
+            activeTeamId: appState.activeTeamId,
+            currentUser,
+            memberships: appState.teamMemberships,
+            userTeams,
+            isHoldingSuperAdmin: true,
+          })
+        : null;
+
+      const canViewOrganization =
+        canAccessHoldingView &&
+        !!resolvedOrganization &&
+        canViewOrgDashboard({
+          isHoldingSuperAdmin: true,
+        });
+
+      const resolvedPartnerAccess = partnerPortalSession.access;
+
+      if (!canViewOrganization) {
+        lockedSections.push('organizationDashboard');
+      }
+      if (!resolvedPartnerAccess) {
+        lockedSections.push('partnerPortal');
+      }
+
       return (
-        <LanguageProvider
-          language={language}
-          setLanguage={(lang) => {
-            if (lang) setLanguageState(lang);
-          }}
-        >
           <MobileShell
             currentSection={currentSection}
             onSelectSection={navigateTo}
             teamLogoUrl={appState.teamLogoUrl}
             onLogout={handleLogout}
-            currentUser={currentUser}
+            currentUser={uiUser}
             effectivePermissions={effectivePermissions}
             staff={appState.staff}
             permissionRoles={appState.permissionRoles}
             userTeams={userTeams}
             currentTeamId={appState.activeTeamId}
-            onTeamSwitch={() => {
-              /* TODO */
-            }}
+            onTeamSwitch={handleTeamSwitch}
             isIndependent={userIsIndependent}
             onGoToLobby={() => setView("no_team")}
             lockedSections={lockedSections}
+            realUser={userIsSuperAdmin ? currentUser : undefined}
+            superAdminPreview={userIsSuperAdmin ? superAdminPreview : undefined}
+            onSuperAdminPreviewChange={
+              userIsSuperAdmin
+                ? (config) =>
+                    setSuperAdminPreview(
+                      normalizeSuperAdminPreview(
+                        config,
+                        appState.riders,
+                        appState.staff,
+                        appState.incomeItems || [],
+                      ),
+                    )
+                : undefined
+            }
+            riders={appState.riders}
+            incomeItems={appState.incomeItems || []}
+            onExitSuperAdminPreview={
+              userIsSuperAdmin
+                ? () => setSuperAdminPreview(DEFAULT_SUPER_ADMIN_PREVIEW)
+                : undefined
+            }
+            notifications={userNotifications}
+            notificationUnreadCount={notificationUnreadCount}
+            pushPermission={pushPermission}
+            pushSupported={pushSupported}
+            onEnablePush={enablePush}
+            onMarkNotificationRead={markNotificationRead}
+            onMarkAllNotificationsRead={markAllNotificationsRead}
+            onOpenConvocation={handleOpenConvocationNotification}
             subscriptionBanner={
-              subscriptionAccess && !userIsIndependent ? (
+              subscriptionAccess ? (
                 <SubscriptionBanner
                   access={subscriptionAccess}
                   onManageBilling={() => setCurrentSection("pricing")}
@@ -1915,19 +3098,20 @@ const App: React.FC = () => {
                 <LazyEventDetailView
                   event={activeEvent}
                   eventId={activeEvent.id}
-                  appState={appState as AppState}
+                  appState={viewAppState as AppState}
                   navigateTo={navigateTo}
                   deleteRaceEvent={(eventId) => {
                     onDeleteRaceEvent({ id: eventId } as RaceEvent);
                     navigateTo("events");
                   }}
-                  currentUser={currentUser}
+                  currentUser={uiUser}
                   effectivePermissions={effectivePermissions}
                   setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
                   onSaveRaceEvent={onSaveRaceEvent}
                   setEventTransportLegs={createBatchSetHandler<EventTransportLeg>(
                     "eventTransportLegs"
                   )}
+                  setVehicles={createBatchSetHandler<Vehicle>("vehicles")}
                   setEventAccommodations={createBatchSetHandler<EventAccommodation>(
                     "eventAccommodations"
                   )}
@@ -1949,12 +3133,18 @@ const App: React.FC = () => {
                   setPerformanceEntries={createBatchSetHandler<PerformanceEntry>(
                     "performanceEntries"
                   )}
-                  setPeerRatings={createBatchSetHandler<PeerRating>(
+                  setPeerRatings={createPersistedBatchSetHandler<PeerRating>(
                     "peerRatings"
                   )}
                   riderEventSelections={appState.riderEventSelections}
                   setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                   onSavePerformanceEntry={onSavePerformanceEntry}
+                  onSaveRiderSelfDebrief={onSaveRiderSelfDebrief}
+                  initialTab={
+                    sectionTabHint && EVENT_DETAIL_TAB_HINTS.has(sectionTabHint)
+                      ? (sectionTabHint as EventDetailTab)
+                      : undefined
+                  }
                 />
                 </SectionSuspense>
               ) : (
@@ -1971,8 +3161,24 @@ const App: React.FC = () => {
                   ) : (
                     <SectionSuspense>
                     <>
-                      {currentSection === "myDashboard" && currentUser && (
+                      {currentSection === "myDashboard" && uiUser && (
                         <>
+                          {userIsIndependent ? (
+                            <LazyIndependentDashboardSection
+                              currentUser={uiUser}
+                              riders={ridersForUi}
+                              staff={staffForUi}
+                              missions={appState.missions || []}
+                              teams={appState.teams}
+                              subscriptionAccess={subscriptionAccess}
+                              onNavigateTo={navigateTo}
+                              includeDemoMissions={
+                                userIsSuperAdmin &&
+                                isIndependentPreviewMode(superAdminPreview.mode)
+                              }
+                            />
+                          ) : (
+                            <>
                           {/* Gestionnaire de basculement sur 2026 */}
                           <SeasonTransitionManager
                             riders={appState.riders}
@@ -1982,11 +3188,11 @@ const App: React.FC = () => {
                           />
                           
                           {/* Redirection automatique pour les administrateurs */}
-                          {currentUser.permissionRole === TeamRole.ADMIN || currentUser.userRole === UserRole.MANAGER ? (
+                          {uiUser.permissionRole === TeamRole.ADMIN || uiUser.userRole === UserRole.MANAGER ? (
                             <LazyAdminDashboardSection
                               riders={appState.riders}
                               staff={appState.staff}
-                              currentUser={currentUser}
+                              currentUser={uiUser}
                               raceEvents={appState.raceEvents}
                               riderEventSelections={appState.riderEventSelections}
                               appState={appState}
@@ -1994,28 +3200,91 @@ const App: React.FC = () => {
                             />
                           ) : (
                             <LazyMyDashboardSection
-                              riders={appState.riders}
-                              staff={appState.staff}
-                              currentUser={currentUser}
-                              raceEvents={appState.raceEvents}
-                              riderEventSelections={appState.riderEventSelections}
-                              appState={appState}
+                              riders={viewAppState.riders}
+                              staff={viewAppState.staff}
+                              currentUser={uiUser}
+                              raceEvents={viewAppState.raceEvents}
+                              riderEventSelections={viewAppState.riderEventSelections}
+                              eventTransportLegs={viewAppState.eventTransportLegs}
+                              eventChecklistItems={viewAppState.eventChecklistItems}
+                              effectivePermissions={effectivePermissions}
+                              appState={viewAppState}
                               navigateTo={navigateTo}
+                              onUpdateRiderPreference={handleUpdateRiderPreference}
+                              onSaveRider={onSaveRider}
                             />
+                          )}
+                            </>
                           )}
                         </>
                       )}
-                      {currentSection === "adminDashboard" && currentUser && (
+                      {currentSection === "adminDashboard" && uiUser && (
                         <LazyAdminDashboardSection
                           riders={appState.riders}
                           staff={appState.staff}
-                          currentUser={currentUser}
+                          currentUser={uiUser}
                           raceEvents={appState.raceEvents}
                           riderEventSelections={appState.riderEventSelections}
                           appState={appState}
                           navigateTo={navigateTo}
                         />
                       )}
+                      {currentSection === "organizationDashboard" && uiUser && canViewOrganization && (() => {
+                        if (!resolvedOrganization) {
+                          return (
+                            <SectionWrapper title={t('orgDashboardTitle')}>
+                              <p className="text-sm text-gray-500">{t('orgDashboardEmpty')}</p>
+                            </SectionWrapper>
+                          );
+                        }
+                        return (
+                          <LazyOrganizationDashboardSection
+                            organization={resolvedOrganization}
+                            teams={appState.teams}
+                            riders={appState.riders}
+                            staff={appState.staff}
+                            raceEvents={appState.raceEvents}
+                            currentUser={uiUser}
+                            memberships={appState.teamMemberships}
+                            activeTeamId={appState.activeTeamId}
+                            isHoldingSuperAdmin={canAccessHoldingView}
+                            onSelectTeam={handleTeamSwitch}
+                            onNavigate={navigateTo}
+                            vehicles={appState.vehicles}
+                            vehiclePositions={appState.vehiclePositions || []}
+                            eventTransportLegs={appState.eventTransportLegs}
+                          />
+                        );
+                      })()}
+                      {currentSection === "partnerPortal" && uiUser && (() => {
+                        const { access, incomeItem, isPreview } = partnerPortalSession;
+                        if (!access) {
+                          return (
+                            <SectionWrapper title={t('partnerPortalTitle')}>
+                              <p className="text-sm text-gray-500">{t('partnerPortalNoAccess')}</p>
+                            </SectionWrapper>
+                          );
+                        }
+                        if (!incomeItem) {
+                          return (
+                            <SectionWrapper title={t('partnerPortalTitle')}>
+                              <p className="text-sm text-gray-500">{t('partnerPortalNoSponsor')}</p>
+                            </SectionWrapper>
+                          );
+                        }
+                        return (
+                          <LazyPartnerPortalSection
+                            access={access}
+                            incomeItem={incomeItem}
+                            teamName={appState.teams.find((tm) => tm.id === access.teamId)?.name || 'Équipe'}
+                            raceEvents={appState.raceEvents}
+                            invoiceSettings={appState.invoiceSettings}
+                            partnerNewsletters={appState.partnerNewsletters || []}
+                            themePrimaryColor={appState.themePrimaryColor}
+                            isPreview={isPreview}
+                          />
+                        );
+                      })()}
                   {currentSection === "events" && (
                     <LazyEventsSection
                       raceEvents={appState.raceEvents}
@@ -2034,7 +3303,12 @@ const App: React.FC = () => {
                       riders={appState.riders}
                       staff={appState.staff}
                       teamLevel={appState.teamLevel}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
+                      teamName={appState.teams.find((tm) => tm.id === appState.activeTeamId)?.name}
+                      organizerContacts={viewAppState.organizerContacts || []}
+                      onSaveOrganizerContact={onSaveOrganizerContact}
+                      onSyncOrganizerContactsFromEvents={onSyncOrganizerContactsFromEvents}
+                      onLoadDemoOrganizerExamples={onLoadDemoOrganizerExamples}
                     />
                   )}
                   {currentSection === "roster" && appState.riders && (
@@ -2049,7 +3323,7 @@ const App: React.FC = () => {
                       performanceEntries={appState.performanceEntries}
                       scoutingProfiles={appState.scoutingProfiles}
                       teamProducts={appState.teamProducts}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       appState={appState}
                       effectivePermissions={effectivePermissions}
                     />
@@ -2066,13 +3340,13 @@ const App: React.FC = () => {
                       performanceEntries={appState.performanceEntries}
                       scoutingProfiles={appState.scoutingProfiles}
                       teamProducts={appState.teamProducts}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       appState={appState}
                       onSaveRaceEvent={onSaveRaceEvent}
                       navigateTo={navigateTo}
                     />
                   )}
-                  {currentSection === "staff" && appState.staff && currentUser && (
+                  {currentSection === "staff" && appState.staff && uiUser && (
                     <LazyStaffSection
                       staff={appState.staff}
                       onSave={onSaveStaff}
@@ -2089,10 +3363,11 @@ const App: React.FC = () => {
                       eventStaffAvailabilities={appState.eventStaffAvailabilities}
                       eventBudgetItems={appState.eventBudgetItems}
                       setEventBudgetItems={createBatchSetHandler<EventBudgetItem>("eventBudgetItems")}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       team={appState.teams.find(t => t.id === appState.activeTeamId)}
                       performanceEntries={appState.performanceEntries}
                       missions={appState.missions}
+                      setMissions={createPersistedBatchSetHandler<Mission>("missions")}
                       teams={appState.teams}
                       users={appState.users}
                       permissionRoles={appState.permissionRoles}
@@ -2103,7 +3378,7 @@ const App: React.FC = () => {
                       appState={appState}
                     />
                   )}
-                  {currentSection === "vehicles" && (
+                  {currentSection === "vehicles" && effectivePermissions?.vehicles?.includes('view') && (
                     <LazyVehiclesSection
                       vehicles={appState.vehicles}
                       onSave={onSaveVehicle}
@@ -2116,9 +3391,28 @@ const App: React.FC = () => {
                       eventTransportLegs={appState.eventTransportLegs}
                       raceEvents={appState.raceEvents}
                       navigateTo={navigateTo}
+                      vehiclePositions={appState.vehiclePositions || []}
+                      teamId={appState.activeTeamId || undefined}
+                      teamName={
+                        appState.teams.find((t) => t.id === appState.activeTeamId)?.name || 'team'
+                      }
+                      gpsWebhookKey={appState.gpsWebhookKey}
+                      onGpsWebhookKeyUpdated={(key) =>
+                        setAppState((prev) => ({ ...prev, gpsWebhookKey: key }))
+                      }
+                      initialTab={
+                        currentSection === 'vehicles' && sectionTabHint === 'gps'
+                          ? 'gps'
+                          : currentSection === 'vehicles' && sectionTabHint === 'assignmentCalendar'
+                            ? 'assignmentCalendar'
+                            : undefined
+                      }
+                      onVehiclePositionsUpdate={(positions) =>
+                        setAppState((prev) => ({ ...prev, vehiclePositions: positions }))
+                      }
                     />
                   )}
-                  {currentSection === "equipment" && (
+                  {currentSection === "equipment" && effectivePermissions?.equipment?.includes('view') && (
                     <LazyEquipmentSection
                       equipment={appState.equipment}
                       onSave={onSaveEquipment}
@@ -2128,7 +3422,11 @@ const App: React.FC = () => {
                       }}
                       effectivePermissions={effectivePermissions}
                       equipmentStockItems={appState.equipmentStockItems}
-                      currentUser={currentUser}
+                      setEquipmentStockItems={createPersistedBatchSetHandler<EquipmentStockItem>("equipmentStockItems")}
+                      riders={appState.riders}
+                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={onSaveRider}
+                      currentUser={uiUser}
                     />
                   )}
                   {currentSection === "accommodationHistory" && (
@@ -2137,19 +3435,51 @@ const App: React.FC = () => {
                       setEventAccommodations={createBatchSetHandler<EventAccommodation>(
                         "eventAccommodations"
                       )}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       navigateTo={navigateTo}
                     />
                   )}
-                  {currentSection === "performance" && appState.riders && currentUser && (
+                  {currentSection === "performance" && appState.riders && uiUser && (
                     <LazyPerformancePoleSection
                       appState={appState}
                       effectivePermissions={effectivePermissions}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
+                      onSaveRaceEvent={onSaveRaceEvent}
+                      navigateTo={navigateTo}
                     />
                   )}
-                  {currentSection === "settings" && (
-                    <LazySettingsSection
+                  {(currentSection === "settings" ||
+                    currentSection === "userSettings" ||
+                    currentSection === "pricing") &&
+                    currentUser && (
+                    <LazyUserSettingsSection
+                      currentUser={uiUser}
+                      initialTab={
+                        currentSection === "pricing"
+                          ? "abonnement"
+                          : currentSection === "settings"
+                            ? "equipe"
+                            : "compte"
+                      }
+                      canManageTeam={
+                        Boolean(appState.activeTeamId) &&
+                        (uiUser.userRole === UserRole.MANAGER ||
+                          uiUser.permissionRole === TeamRole.ADMIN)
+                      }
+                      showSubscriptionTab={true}
+                      currentPlanId={subscriptionAccess?.planId}
+                      onSelectPlan={handleUpgradePlan}
+                      isIndependent={userIsIndependent}
+                      userRole={uiUser.userRole}
+                      canManageTeamBilling={
+                        Boolean(appState.activeTeamId) &&
+                        !userIsIndependent &&
+                        (uiUser.userRole === UserRole.MANAGER ||
+                          uiUser.permissionRole === TeamRole.ADMIN)
+                      }
+                      teamName={
+                        appState.teams.find((t) => t.id === appState.activeTeamId)?.name
+                      }
                       teamLogoBase64={appState.teamLogoUrl}
                       teamLogoMimeType={undefined}
                       setTeamLogoBase64={() => {}}
@@ -2166,16 +3496,56 @@ const App: React.FC = () => {
                       setTeamLevel={(level) => {
                         setAppState((prev) => ({ ...prev, teamLevel: level }));
                       }}
-                      language={appState.language}
-                      setLanguage={(lang) => {
-                        setAppState((prev) => ({ ...prev, language: lang }));
-                        setLanguageState(lang);
+                      operationalSettings={appState.operationalSettings}
+                      setOperationalSettings={(settings) => {
+                        setAppState((prev) => ({ ...prev, operationalSettings: settings }));
                       }}
+                      onSaveOperationalSettings={async () => {
+                        if (!appState.activeTeamId) return;
+                        await firebaseService.saveTeamSettings(appState.activeTeamId, {
+                          level: appState.teamLevel,
+                          operationalSettings: appState.operationalSettings,
+                          themePrimaryColor: appState.themePrimaryColor,
+                          themeAccentColor: appState.themeAccentColor,
+                          language: appState.language,
+                          gender: appState.operationalSettings?.gender,
+                        });
+                        setAppState((prev) => ({
+                          ...prev,
+                          teams: (prev.teams || []).map((t) =>
+                            t.id === appState.activeTeamId
+                              ? {
+                                  ...t,
+                                  gender: appState.operationalSettings?.gender ?? t.gender,
+                                  operationalSettings: appState.operationalSettings,
+                                }
+                              : t
+                          ),
+                        }));
+                      }}
+                      onTeamLevelChanged={async (level) => {
+                        const nextOps = getRecommendedOperationalSettings(level);
+                        setAppState((prev) => ({
+                          ...prev,
+                          operationalSettings: nextOps,
+                        }));
+                        if (appState.activeTeamId) {
+                          await firebaseService.saveTeamSettings(appState.activeTeamId, {
+                            level,
+                            operationalSettings: nextOps,
+                          });
+                        }
+                      }}
+                      onNavigateToChecklist={() => navigateTo('checklist')}
+                      raceEvents={appState.raceEvents}
+                      language={language}
+                      setLanguage={(lang) => setLanguage(lang)}
                       team={appState.teams.find((t) => t.id === appState.activeTeamId)}
                       onUpdateTeam={async (team) => {
                         if (!appState.activeTeamId) return;
                         await firebaseService.saveTeamSettings(appState.activeTeamId, {
                           level: appState.teamLevel,
+                          operationalSettings: appState.operationalSettings,
                           themePrimaryColor: appState.themePrimaryColor,
                           themeAccentColor: appState.themeAccentColor,
                           language: appState.language,
@@ -2186,8 +3556,8 @@ const App: React.FC = () => {
                         }));
                       }}
                       canDeleteTeam={
-                        currentUser.userRole === UserRole.MANAGER ||
-                        currentUser.permissionRole === TeamRole.ADMIN
+                        uiUser.userRole === UserRole.MANAGER ||
+                        uiUser.permissionRole === TeamRole.ADMIN
                       }
                       onDeleteTeam={async (password) => {
                         if (!appState.activeTeamId) return;
@@ -2210,13 +3580,18 @@ const App: React.FC = () => {
                       subscriptionAccess={subscriptionAccess ?? undefined}
                       onUpgradePlan={handleUpgradePlan}
                       onManageBillingPortal={handleBillingPortal}
-                    />
-                  )}
-                  {currentSection === "pricing" && (
-                    <LazyPricingSection
-                      currentPlanId={subscriptionAccess?.planId}
-                      teamLevel={appState.teamLevel}
-                      onSelectPlan={handleUpgradePlan}
+                      onInstallPresentationDemo={
+                        uiUser.userRole === UserRole.MANAGER ||
+                        uiUser.permissionRole === TeamRole.ADMIN
+                          ? onInstallPresentationDemo
+                          : undefined
+                      }
+                      presentationDemoAlreadyInstalled={teamAlreadyHasDemoPresentation({
+                        riders: appState.riders,
+                        staff: appState.staff,
+                        raceEvents: appState.raceEvents,
+                        teams: appState.teams,
+                      })}
                     />
                   )}
                   {currentSection === "financial" && appState.incomeItems && appState.eventBudgetItems && (
@@ -2235,19 +3610,69 @@ const App: React.FC = () => {
                       staffEventSelections={appState.staffEventSelections}
                       expenseReceipts={appState.expenseReceipts || []}
                       eventTransportLegs={appState.eventTransportLegs}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       teamId={appState.activeTeamId || ''}
                       onSaveExpenseReceipt={onSaveExpenseReceipt}
+                      onSaveSepaSettings={onSaveSepaSettings}
+                      onSaveInvoiceSettings={onSaveInvoiceSettings}
+                      sepaSettings={appState.sepaSettings}
+                      invoiceSettings={appState.invoiceSettings}
                       subscription={appState.subscription}
                       fallbackPlanId={getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN)}
+                      clientRecords={appState.clientRecords || []}
+                      supplierInvoices={appState.supplierInvoices || []}
+                      sepaBatches={appState.sepaBatches || []}
+                      bankTransactions={appState.bankTransactions || []}
+                      onSaveClientRecord={onSaveClientRecord}
+                      onDeleteClientRecord={onDeleteClientRecord}
+                      onSaveSupplierInvoice={onSaveSupplierInvoice}
+                      onDeleteSupplierInvoice={onDeleteSupplierInvoice}
+                      onSaveBankTransaction={onSaveBankTransaction}
+                      onImportBankTransactions={onImportBankTransactions}
+                      onSaveSepaBatch={onSaveSepaBatch}
+                      onMarkSalariesPaid={onMarkSalariesPaid}
+                      users={appState.users}
+                      partnerAccesses={appState.partnerAccesses || []}
+                      onSavePartnerAccess={onSavePartnerAccess}
+                      onRevokePartnerAccess={onRevokePartnerAccess}
+                      onOpenPartnerPortal={handleOpenPartnerPortal}
+                      partnerNewsletters={appState.partnerNewsletters || []}
+                      onSavePartnerNewsletter={onSavePartnerNewsletter}
+                      onInstallDemoPartnerExample={onInstallDemoPartnerExample}
+                      partnerMarketplaceProfiles={appState.partnerMarketplaceProfiles || []}
+                      teamSponsorshipNeeds={appState.teamSponsorshipNeeds || []}
+                      partnershipMatchRequests={appState.partnershipMatchRequests || []}
+                      onSaveTeamSponsorshipNeed={onSaveTeamSponsorshipNeed}
+                      onRespondPartnershipMatchRequest={onRespondPartnershipMatchRequest}
+                      quotes={appState.quotes || []}
+                      onSaveQuote={onSaveQuote}
+                      onDeleteQuote={onDeleteQuote}
+                      onConvertQuote={onConvertQuote}
                     />
                   )}
-                  {currentSection === "expenseReceipts" && currentUser && appState.activeTeamId && (
+                  {currentSection === "expenseReceipts" && currentUser && (
+                    isIndependentStaffUi ? (
+                    <LazyExpenseReceiptsSection
+                      receipts={uiUser.personalExpenseReceipts || []}
+                      raceEvents={[]}
+                      transportLegs={[]}
+                      currentUser={uiUser}
+                      staff={staffForUi}
+                      teamId={uiUser.id}
+                      teamName="Espace vacataire"
+                      effectivePermissions={effectivePermissions}
+                      onSaveReceipt={onSaveIndependentExpenseReceipt}
+                      defaultEventId={receiptScanDefaults.eventId}
+                      defaultTransportLegId={receiptScanDefaults.transportLegId}
+                      autoOpenScanner={receiptScanDefaults.openScanner}
+                      onScannerOpened={() => setReceiptScanDefaults({})}
+                    />
+                    ) : appState.activeTeamId ? (
                     <LazyExpenseReceiptsSection
                       receipts={appState.expenseReceipts || []}
                       raceEvents={appState.raceEvents}
                       transportLegs={appState.eventTransportLegs}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       staff={appState.staff}
                       teamId={appState.activeTeamId}
                       teamName={appState.teams.find((t) => t.id === appState.activeTeamId)?.name ?? 'equipe'}
@@ -2259,6 +3684,7 @@ const App: React.FC = () => {
                       autoOpenScanner={receiptScanDefaults.openScanner}
                       onScannerOpened={() => setReceiptScanDefaults({})}
                     />
+                    ) : null
                   )}
                   {currentSection === "scouting" && (
                     <LazyScoutingSection
@@ -2267,12 +3693,17 @@ const App: React.FC = () => {
                       onSaveScoutingProfile={onSaveScoutingProfile}
                       onDeleteScoutingProfile={onDeleteScoutingProfile}
                       onSaveRider={onSaveRider}
-                      onCreateScoutingRequest={async (athleteId, message) => {
-                        if (!appState.activeTeamId) throw new Error('Équipe active requise');
+                      onCreateScoutingRequest={async (athleteId, message, requestedScopes) => {
+                        const teamId =
+                          appState.activeTeamId ||
+                          resolveSuperAdminTeamId(currentUser, appState.teams);
+                        if (!teamId) throw new Error('Aucune équipe disponible pour le scouting');
                         const requestId = await firebaseService.createScoutingRequest({
-                          requesterTeamId: appState.activeTeamId,
+                          requesterTeamId: teamId,
                           athleteId,
                           message,
+                          requestedScopes,
+                          prospectLevel: ProspectLevel.CONTACT_REQUEST,
                         });
                         setAppState((prev) => ({
                           ...prev,
@@ -2280,9 +3711,11 @@ const App: React.FC = () => {
                             ...(prev.scoutingRequests || []),
                             {
                               id: requestId,
-                              requesterTeamId: appState.activeTeamId!,
+                              requesterTeamId: teamId,
                               athleteId,
                               status: ScoutingRequestStatus.PENDING,
+                              prospectLevel: ProspectLevel.CONTACT_REQUEST,
+                              requestedScopes: requestedScopes ?? [],
                               requestDate: new Date().toISOString(),
                               message: message || '',
                             },
@@ -2292,13 +3725,119 @@ const App: React.FC = () => {
                       }}
                       effectivePermissions={effectivePermissions}
                       appState={appState}
-                      currentTeamId={appState.activeTeamId}
+                      currentTeamId={
+                        appState.activeTeamId ||
+                        resolveSuperAdminTeamId(currentUser, appState.teams)
+                      }
+                      onRecruitmentTargetChange={async (target: TeamRecruitmentTarget) => {
+                        const teamId =
+                          appState.activeTeamId ||
+                          resolveSuperAdminTeamId(currentUser, appState.teams);
+                        if (!teamId) return;
+                        const nextOps: TeamOperationalSettings = {
+                          ...(appState.operationalSettings ?? {}),
+                          recruitmentTarget: target,
+                        };
+                        setAppState((prev) => ({ ...prev, operationalSettings: nextOps }));
+                        await firebaseService.saveTeamSettings(teamId, { operationalSettings: nextOps });
+                      }}
+                      setRecruitmentOffers={createPersistedBatchSetHandler("recruitmentOffers")}
+                      setRecruitmentCampaigns={createPersistedBatchSetHandler("recruitmentCampaigns")}
+                      onReviewRiderApplication={async (membership, action) => {
+                        if (action === "deny") {
+                          if (!window.confirm(`Refuser la candidature de ${membership.email} ?`)) return;
+                          await deleteDoc(doc(db, "teamMemberships", membership.id));
+                          setAppState((prev) => ({
+                            ...prev,
+                            teamMemberships: prev.teamMemberships.filter((m) => m.id !== membership.id),
+                          }));
+                          return;
+                        }
+                        const existingUser =
+                          appState.users.find((u) => u.id === membership.userId) ||
+                          appState.users.find((u) => u.email === membership.email);
+                        const userId = membership.userId || existingUser?.id;
+                        const email = membership.email || existingUser?.email;
+                        if (!userId || !email || !membership.teamId) {
+                          alert("Utilisateur introuvable pour cette candidature.");
+                          return;
+                        }
+                        const approvedRole = (membership.userRole || UserRole.COUREUR) as UserRole;
+                        const { riderCreated } = await firebaseService.approveTeamMembership(
+                          {
+                            membershipId: membership.id,
+                            userId,
+                            teamId: membership.teamId,
+                            userRole: approvedRole,
+                            email,
+                            firstName: membership.firstName || existingUser?.firstName,
+                            lastName: membership.lastName || existingUser?.lastName,
+                          },
+                          currentUser!.id,
+                          existingUser,
+                        );
+                        setAppState((prev) => {
+                          const updatedUsers = prev.users.map((u) =>
+                            u.id === userId
+                              ? { ...u, teamId: membership.teamId, userRole: approvedRole, permissionRole: TeamRole.MEMBER }
+                              : u,
+                          );
+                          let riders = prev.riders;
+                          if (riderCreated) {
+                            riders = [
+                              ...riders,
+                              buildDefaultRider(
+                                {
+                                  id: userId,
+                                  firstName: membership.firstName || existingUser?.firstName || "",
+                                  lastName: membership.lastName || existingUser?.lastName || "",
+                                  email,
+                                },
+                                existingUser?.signupInfo,
+                              ),
+                            ];
+                          }
+                          return {
+                            ...prev,
+                            users: updatedUsers,
+                            riders,
+                            teamMemberships: prev.teamMemberships.map((m) =>
+                              m.id === membership.id
+                                ? { ...m, status: TeamMembershipStatus.ACTIVE, approvedAt: new Date().toISOString() }
+                                : m,
+                            ),
+                          };
+                        });
+                        alert("Candidature acceptée.");
+                      }}
                     />
                   )}
-                  {currentSection === "userManagement" && appState.users && appState.teamMemberships && (
-                    <LazyUserManagementSection
+                  {(currentSection === "userManagement" || currentSection === "permissions") &&
+                    appState.users &&
+                    appState.teamMemberships && (
+                    <LazyTeamAccessSection
+                      initialTab={currentSection === "permissions" ? "roles" : "membres"}
                       appState={appState}
                       currentTeamId={appState.activeTeamId || ''}
+                      permissions={appState.permissions}
+                      setPermissions={(updater) => {
+                        setAppState((prev) => ({
+                          ...prev,
+                          permissions: typeof updater === 'function' ? updater(prev.permissions) : updater,
+                        }));
+                      }}
+                      permissionRoles={appState.permissionRoles}
+                      setPermissionRoles={(updater) => {
+                        setAppState((prev) => ({
+                          ...prev,
+                          permissionRoles: typeof updater === 'function' ? updater(prev.permissionRoles) : updater,
+                        }));
+                      }}
+                      users={appState.users}
+                      onSave={async (permissions, permissionRoles) => {
+                        await firebaseService.savePermissionsConfig(permissions, permissionRoles);
+                        setAppState((prev) => ({ ...prev, permissions, permissionRoles }));
+                      }}
                       onApprove={async (membership) => {
                         try {
                           if (!membership?.id || !membership.teamId) {
@@ -2312,6 +3851,7 @@ const App: React.FC = () => {
                           }
 
                           const canApproveMemberships =
+                            isSuperAdminUser(currentUser) ||
                             (effectivePermissions?.userManagement?.includes('edit')) ||
                             currentUser.permissionRole === TeamRole.ADMIN ||
                             currentUser.userRole === UserRole.MANAGER;
@@ -2424,9 +3964,11 @@ const App: React.FC = () => {
                           }
 
                           // Vérifier si l'utilisateur a le droit de refuser des adhésions
-                          const canDenyMemberships = (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) || 
-                                                   currentUser.permissionRole === TeamRole.ADMIN ||
-                                                   currentUser.userRole === UserRole.MANAGER;
+                          const canDenyMemberships =
+                            isSuperAdminUser(currentUser) ||
+                            (effectivePermissions && effectivePermissions['userManagement'] && Array.isArray(effectivePermissions['userManagement']) && effectivePermissions['userManagement'].includes('edit')) ||
+                            currentUser.permissionRole === TeamRole.ADMIN ||
+                            currentUser.userRole === UserRole.MANAGER;
                           
                           if (!canDenyMemberships) {
                             alert('Erreur: Vous n\'avez pas les permissions nécessaires pour refuser des adhésions.');
@@ -2706,7 +4248,7 @@ const App: React.FC = () => {
                             ...prev,
                             users: prev.users.map(u => 
                               u.id === userId 
-                                ? { ...u, permissionRole: newPermissionRole }
+                                ? { ...u, permissionRole: newPermissionRole as TeamRole }
                                 : u
                             )
                           }));
@@ -2717,18 +4259,22 @@ const App: React.FC = () => {
                           alert('Erreur lors de la mise à jour des permissions');
                         }
                       }}
-                      onUpdateUserCustomPermissions={async (userId, newEffectivePermissions) => {
+                      onUpdateUserCustomPermissions={async (userId, customDeltas) => {
                         const userDocRef = doc(db, "users", userId);
-                        await setDoc(
-                          userDocRef,
-                          { customPermissions: newEffectivePermissions },
-                          { merge: true }
-                        );
+                        const payload =
+                          Object.keys(customDeltas).length > 0
+                            ? { customPermissions: customDeltas, updatedAt: new Date().toISOString() }
+                            : { customPermissions: null, updatedAt: new Date().toISOString() };
+                        await setDoc(userDocRef, payload, { merge: true });
                         setAppState((prev) => ({
                           ...prev,
                           users: prev.users.map((u) =>
                             u.id === userId
-                              ? { ...u, customPermissions: newEffectivePermissions }
+                              ? {
+                                  ...u,
+                                  customPermissions:
+                                    Object.keys(customDeltas).length > 0 ? customDeltas : undefined,
+                                }
                               : u
                           ),
                         }));
@@ -2791,33 +4337,19 @@ const App: React.FC = () => {
                       }}
                     />
                   )}
-                  {currentSection === "permissions" && (
-                    <LazyPermissionsSection
-                      permissions={appState.permissions}
-                      setPermissions={(updater) => {
-                        setAppState((prev) => ({
-                          ...prev,
-                          permissions: typeof updater === 'function' ? updater(prev.permissions) : updater,
-                        }));
-                      }}
-                      permissionRoles={appState.permissionRoles}
-                      setPermissionRoles={(updater) => {
-                        setAppState((prev) => ({
-                          ...prev,
-                          permissionRoles: typeof updater === 'function' ? updater(prev.permissionRoles) : updater,
-                        }));
-                      }}
-                      users={appState.users}
-                    />
-                  )}
                   {currentSection === "independentHub" && currentUser && userIsIndependent && (
                     <LazyIndependentSpaceSection
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       teams={appState.teams}
                       scoutingRequests={appState.scoutingRequests || []}
+                      subscriptionAccess={subscriptionAccess ?? undefined}
+                      onUpgradePlan={() =>
+                        handleUpgradePlan(getIndependentPlanIdForRole(uiUser.userRole))
+                      }
+                      onManageBilling={handleBillingPortal}
                       onUpdateProfile={handleSaveIndependentProfile}
-                      onRespondToScoutingRequest={async (requestId, response) => {
-                        await firebaseService.respondToScoutingRequest(requestId, response);
+                      onRespondToScoutingRequest={async (requestId, response, grantedScopes) => {
+                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
                         setAppState((prev) => ({
                           ...prev,
                           scoutingRequests: (prev.scoutingRequests || []).map((r) =>
@@ -2826,6 +4358,9 @@ const App: React.FC = () => {
                                   ...r,
                                   status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
                                   responseDate: new Date().toISOString(),
+                                  ...(response === 'accepted' && grantedScopes?.length
+                                    ? { grantedScopes }
+                                    : {}),
                                 }
                               : r
                           ),
@@ -2838,7 +4373,7 @@ const App: React.FC = () => {
                     <LazyCareerSection
                       riders={appState.riders}
                       staff={appState.staff}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       setRiders={createBatchSetHandler<Rider>("riders")}
                       setStaff={createBatchSetHandler<StaffMember>("staff")}
                       teams={appState.teams}
@@ -2848,8 +4383,8 @@ const App: React.FC = () => {
                         // TODO: Implémenter la logique de demande de transfert
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
-                      onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected') => {
-                        await firebaseService.respondToScoutingRequest(requestId, response);
+                      onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected', grantedScopes) => {
+                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
                         setAppState((prev) => ({
                           ...prev,
                           scoutingRequests: (prev.scoutingRequests || []).map((r) =>
@@ -2858,6 +4393,9 @@ const App: React.FC = () => {
                                   ...r,
                                   status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
                                   responseDate: new Date().toISOString(),
+                                  ...(response === 'accepted' && grantedScopes?.length
+                                    ? { grantedScopes }
+                                    : {}),
                                 }
                               : r
                           ),
@@ -2957,36 +4495,50 @@ const App: React.FC = () => {
                   )}
                   {currentSection === "nutrition" && (
                     <LazyNutritionSection
-                      rider={appState.riders.find((r) => r.email === currentUser.email)}
+                      rider={
+                        resolvedUiRider ||
+                        (uiUser.userRole === UserRole.COUREUR
+                          ? userToRiderProfile(uiUser)
+                          : undefined)
+                      }
                       setRiders={createBatchSetHandler<Rider>("riders")}
-                      onSaveRider={onSaveRider}
-                      teamProducts={appState.teamProducts}
+                      onSaveRider={saveRiderForUiUser}
+                      teamProducts={
+                        viewAppState.teamProducts?.length
+                          ? viewAppState.teamProducts
+                          : appState.teamProducts
+                      }
                       setTeamProducts={createBatchSetHandler<TeamProduct>("teamProducts")}
                     />
                   )}
-                  {currentSection === "userSettings" && currentUser && (
-                    <LazyUserSettingsSection currentUser={currentUser} />
-                  )}
                   {currentSection === "riderEquipment" && (
                     <LazyRiderEquipmentSection
-                      riders={appState.riders}
-                      equipment={appState.equipment}
-                      currentUser={currentUser}
+                      riders={ridersForUi}
+                      equipment={
+                        viewAppState.equipment?.length
+                          ? viewAppState.equipment
+                          : appState.equipment
+                      }
+                      currentUser={uiUser}
                       setRiders={createBatchSetHandler<Rider>("riders")}
+                      onSaveRider={saveRiderForUiUser}
                     />
                   )}
-                  
-                  {/* Nouvelles sections pour le back-office coureur */}
                   {currentSection === "myProfile" && currentUser && (
                     <LazyMyProfileSection
-                      riders={appState.riders}
-                      staff={appState.staff}
-                      currentUser={currentUser}
+                      riders={ridersForUi}
+                      staff={staffForUi}
+                      currentUser={uiUser}
                       setRiders={createBatchSetHandler<Rider>("riders")}
-                      onSaveRider={onSaveRider}
+                      onSaveRider={saveRiderForUiUser}
+                      onSaveStaff={saveStaffForUiUser}
                       setStaff={createBatchSetHandler<StaffMember>("staff")}
                       onUpdateUser={(updatedUser) => setCurrentUser(updatedUser)}
-                      currentTeam={appState.teams.find(team => team.id === appState.activeTeamId)}
+                      currentTeam={
+                        userIsIndependent
+                          ? undefined
+                          : appState.teams.find(team => team.id === appState.activeTeamId)
+                      }
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
                       setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
@@ -2994,42 +4546,69 @@ const App: React.FC = () => {
                     />
                   )}
                   {currentSection === "myCalendar" && currentUser && (
+                    isIndependentStaffUi ? (
+                    <LazyIndependentStaffCalendarSection
+                      currentUser={uiUser}
+                      missions={[
+                        ...(appState.missions || []),
+                        ...buildDemoAcceptedMissionsForUser(uiUser.id),
+                      ]}
+                      teams={appState.teams}
+                      raceEvents={appState.raceEvents}
+                      onNavigateToMissions={() => navigateTo('missionSearch')}
+                      onOpenEvent={(eventId) => navigateTo('eventDetail', eventId)}
+                    />
+                    ) : isIndependentRiderUi ? (
+                    <LazyIndependentAthleteCalendarSection
+                      currentUser={uiUser}
+                      includeDemo={
+                        userIsSuperAdmin &&
+                        isIndependentPreviewMode(superAdminPreview.mode)
+                      }
+                      readOnly={
+                        userIsSuperAdmin &&
+                        isIndependentPreviewMode(superAdminPreview.mode)
+                      }
+                      onSaveCalendar={async (entries) => {
+                        await handleSaveIndependentProfile({ personalRaceCalendar: entries });
+                      }}
+                      onNavigateToTeamSearch={() => navigateTo('teamSearch')}
+                    />
+                    ) : (
                     <LazyMyCalendarSection
-                      riders={appState.riders}
-                      currentUser={currentUser}
+                      riders={ridersForUi}
+                      currentUser={uiUser}
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
                       setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       effectivePermissions={effectivePermissions}
                       navigateTo={navigateTo}
+                      convocationNotifications={userNotifications}
+                      onMarkConvocationRead={markNotificationRead}
                     />
-                  )}
-                  {currentSection === "talentAvailability" && currentUser && (
-                    <LazyTalentAvailabilitySection
-                      riders={appState.riders}
-                      raceEvents={appState.raceEvents}
-                      riderEventSelections={appState.riderEventSelections}
-                      currentUser={currentUser}
-                      effectivePermissions={effectivePermissions}
-                    />
+                    )
                   )}
                   {currentSection === "myResults" && currentUser && (
                     <LazyMyResultsSection
-                      riders={appState.riders}
-                      currentUser={currentUser}
+                      riders={ridersForUi}
+                      currentUser={uiUser}
+                      onSaveRider={saveRiderForUiUser}
                     />
                   )}
-                  {currentSection === "bikeSetup" && currentUser && (
-                    <LazyBikeSetupSection
-                      riders={appState.riders}
-                      currentUser={currentUser}
+                  {currentSection === "myPerformance" && currentUser && isIndependentRiderUi && (
+                    <LazyMyPerformanceSection
+                      riders={ridersForUi}
+                      currentUser={uiUser}
+                      onSaveRider={saveRiderForUiUser}
                     />
                   )}
+                  
+                  {/* Nouvelles sections pour le back-office coureur */}
                   {currentSection === "myCareer" && currentUser && userIsIndependent && (
                     <LazyCareerSection
-                      riders={appState.riders}
-                      staff={appState.staff}
-                      currentUser={currentUser}
+                      riders={ridersForUi}
+                      staff={staffForUi}
+                      currentUser={uiUser}
                       setRiders={createBatchSetHandler<Rider>("riders")}
                       setStaff={createBatchSetHandler<StaffMember>("staff")}
                       teams={appState.teams}
@@ -3037,8 +4616,23 @@ const App: React.FC = () => {
                       teamMemberships={appState.teamMemberships || []}
                       onRequestTransfer={async () => {}}
                       scoutingRequests={appState.scoutingRequests || []}
-                      onRespondToScoutingRequest={async (requestId, response) => {
-                        await firebaseService.respondToScoutingRequest(requestId, response);
+                      onRespondToScoutingRequest={async (requestId, response, grantedScopes) => {
+                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
+                        setAppState((prev) => ({
+                          ...prev,
+                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
+                            r.id === requestId
+                              ? {
+                                  ...r,
+                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
+                                  responseDate: new Date().toISOString(),
+                                  ...(response === 'accepted' && grantedScopes?.length
+                                    ? { grantedScopes }
+                                    : {}),
+                                }
+                              : r
+                          ),
+                        }));
                       }}
                       onUpdateVisibility={async (updates) => {
                         await handleSaveIndependentProfile({
@@ -3051,21 +4645,49 @@ const App: React.FC = () => {
                   )}
                   {currentSection === "myCareer" && currentUser && !userIsIndependent && (
                     <LazyMyCareerSection
-                      riders={appState.riders}
-                      currentUser={currentUser}
+                      riders={viewAppState.riders}
+                      currentUser={uiUser}
                       onSaveRider={onSaveRider}
                       teams={appState.teams}
+                      appState={viewAppState as AppState}
+                      teamBenchmarks={{
+                        riders: appState.riders,
+                        performanceArchives: appState.performanceArchives ?? [],
+                      }}
+                      onSaveRaceEvent={onSaveRaceEvent}
+                      navigateTo={navigateTo}
                     />
+                  )}
+                  {currentSection === "myStages" && currentUser && (
+                    <SectionSuspense>
+                      <div className="space-y-4">
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h2 className="text-lg font-bold text-gray-900">Mes Stages</h2>
+                          <p className="text-sm text-gray-500 mt-1">
+                            Suivi quotidien (HRV, SpO₂, hydratation…) et monitoring graphique de vos camps.
+                          </p>
+                        </div>
+                        <StageCampPerformancePanel
+                          appState={viewAppState as AppState}
+                          onSaveRaceEvent={onSaveRaceEvent}
+                          lockedRiderId={getOwnRider(viewAppState.riders, uiUser)?.id}
+                          readOnly={false}
+                          onOpenEvent={(eventId) => navigateTo('eventDetail', eventId)}
+                        />
+                      </div>
+                    </SectionSuspense>
                   )}
                   {currentSection === "adminDossier" && currentUser && (
                     <LazyMyAdminSection
-                      riders={appState.riders}
-                      currentUser={currentUser}
-                      raceEvents={appState.raceEvents}
-                      riderEventSelections={appState.riderEventSelections}
+                      riders={viewAppState.riders}
+                      staff={viewAppState.staff}
+                      currentUser={uiUser}
+                      raceEvents={viewAppState.raceEvents}
+                      riderEventSelections={viewAppState.riderEventSelections}
                       onSaveRider={onSaveRider}
+                      onSaveStaff={onSaveStaff}
                       onUpdateRiderPreference={handleUpdateRiderPreference}
-                      appState={appState}
+                      appState={viewAppState}
                       effectivePermissions={effectivePermissions}
                     />
                   )}
@@ -3082,21 +4704,93 @@ const App: React.FC = () => {
                   {currentSection === "myTrips" && (
                     <LazyMyTripsSection
                       riders={appState.riders}
-                      staff={appState.staff}
+                      staff={staffForUi}
                       eventTransportLegs={appState.eventTransportLegs}
                       raceEvents={appState.raceEvents}
-                      currentUser={currentUser}
+                      eventDocuments={appState.eventDocuments}
+                      teams={appState.teams}
+                      activeTeamId={userIsIndependent ? null : appState.activeTeamId}
+                      teamLevel={appState.teamLevel}
+                      riderEventSelections={appState.riderEventSelections}
+                      currentUser={uiUser}
                       onNavigateToReceipts={(eventId, transportLegId) => {
                         setReceiptScanDefaults({ eventId, transportLegId, openScanner: true });
                         setCurrentSection('expenseReceipts');
                       }}
+                      onOpenEvent={(eventId) => navigateTo('eventDetail', eventId)}
+                      onOpenEventDocuments={(eventId) => navigateTo('eventDetail', eventId)}
+                      onUpdateEventDocument={(doc) => {
+                        createBatchSetHandler<EventRaceDocument>('eventDocuments')(
+                          prev => prev.map(d => (d.id === doc.id ? doc : d)),
+                        );
+                      }}
+                      onEnsureUciDocuments={(docs) => {
+                        createBatchSetHandler<EventRaceDocument>('eventDocuments')(
+                          prev => [...prev, ...docs],
+                        );
+                      }}
+                      vehicles={appState.vehicles}
+                      teamId={appState.activeTeamId || undefined}
+                      onDriverGpsRecorded={({
+                        staffId,
+                        latitude,
+                        longitude,
+                        speedKmh,
+                        recordedAt,
+                        vehicleIds,
+                      }) => {
+                        setAppState((prev) => ({
+                          ...prev,
+                          staff: prev.staff.map((s) =>
+                            s.id === staffId
+                              ? {
+                                  ...s,
+                                  lastLatitude: latitude,
+                                  lastLongitude: longitude,
+                                  lastPositionAt: recordedAt,
+                                  lastSpeedKmh: speedKmh,
+                                }
+                              : s,
+                          ),
+                          vehicles: prev.vehicles.map((v) =>
+                            vehicleIds.includes(v.id)
+                              ? {
+                                  ...v,
+                                  lastLatitude: latitude,
+                                  lastLongitude: longitude,
+                                  lastPositionAt: recordedAt,
+                                  lastSpeedKmh: speedKmh,
+                                  gpsSource: 'driver_app' as const,
+                                  gpsTrackingEnabled: true,
+                                }
+                              : v,
+                          ),
+                          vehiclePositions: [
+                            {
+                              id: `driver-${staffId}-${recordedAt}`,
+                              vehicleId: vehicleIds[0] || '',
+                              latitude,
+                              longitude,
+                              speedKmh,
+                              recordedAt,
+                              source: 'driver_app' as const,
+                            },
+                            ...(prev.vehiclePositions || []),
+                          ].slice(0, 200),
+                        }));
+                      }}
                     />
                   )}
-                  {currentSection === "stocks" && appState.stockItems && (
+                  {currentSection === "stocks" && appState.stockItems && effectivePermissions?.stocks?.includes('view') && (
                     <LazyStocksSection
                       stockItems={appState.stockItems}
                       setStockItems={createPersistedBatchSetHandler<StockItem>("stockItems")}
                       staff={appState.staff}
+                      warehouses={appState.warehouses}
+                      setWarehouses={createPersistedBatchSetHandler("warehouses")}
+                      stockMovements={appState.stockMovements || []}
+                      setStockMovements={createPersistedBatchSetHandler("stockMovements")}
+                      teamName={appState.teams.find((tm) => tm.id === appState.activeTeamId)?.name}
                     />
                   )}
                   {currentSection === "checklist" && (
@@ -3104,14 +4798,19 @@ const App: React.FC = () => {
                       checklistTemplates={appState.checklistTemplates}
                       onSaveChecklistTemplate={onSaveChecklistTemplate}
                       onDeleteChecklistTemplate={onDeleteChecklistTemplate}
+                      onImportChecklistTemplates={onImportChecklistTemplates}
                       effectivePermissions={effectivePermissions}
+                      teamLevel={appState.teamLevel}
+                      operationalSettings={appState.operationalSettings}
+                      raceEvents={appState.raceEvents}
+                      onNavigateToSettings={() => navigateTo('settings')}
                     />
                   )}
                   {currentSection === "missionSearch" && currentUser && (
                     <LazyMissionSearchSection
                       missions={appState.missions}
                       teams={appState.teams}
-                      currentUser={currentUser}
+                      currentUser={uiUser}
                       setMissions={userIsIndependent
                         ? (updater) => {
                             setAppState((prev) => ({
@@ -3121,20 +4820,35 @@ const App: React.FC = () => {
                           }
                         : createPersistedBatchSetHandler<Mission>("missions")}
                       onApplyToMission={async (mission) => {
-                        await firebaseService.applyToMission(mission.teamId, mission.id, currentUser.id);
+                        await firebaseService.applyToMission(mission.teamId, mission.id, currentUser.id, {
+                          firstName: currentUser.firstName,
+                          lastName: currentUser.lastName,
+                          email: currentUser.email,
+                          phone: currentUser.phone,
+                        });
                       }}
+                    />
+                  )}
+                  {currentSection === "teamSearch" && currentUser && (
+                    <LazyTeamSearchSection
+                      teams={appState.teams ?? []}
+                      teamMemberships={appState.teamMemberships ?? []}
+                      currentUser={uiUser}
+                      currentTeamId={appState.activeTeamId}
+                      openRecruitmentOffers={appState.openRecruitmentOffers ?? []}
+                      onApplyToTeam={handleTeamPortalApply}
                     />
                   )}
                   {currentSection === "automatedPerformanceProfile" && (
                     <LazyAutomatedPerformanceProfileSection
-                      rider={appState.riders.find((r) => r.email === currentUser.email)}
+                      rider={resolvedUiRider}
                     />
                   )}
                   {currentSection === "performanceProject" && (
                     <LazyPerformanceProjectSection
-                      rider={appState.riders.find((r) => r.email === currentUser.email)}
+                      rider={resolvedUiRider}
                       setRiders={createBatchSetHandler<Rider>("riders")}
-                      onSaveRider={onSaveRider}
+                      onSaveRider={saveRiderForUiUser}
                     />
                   )}
                     </>
@@ -3144,7 +4858,6 @@ const App: React.FC = () => {
               )}
               </SectionErrorBoundary>
           </MobileShell>
-        </LanguageProvider>
       );
     }
     // Fallback final : éviter l'écran blanc (ex. état incohérent)
@@ -3164,7 +4877,11 @@ const App: React.FC = () => {
     );
   };
 
-  return <>{renderContent()}</>;
+  return (
+    <LanguageProvider language={language} setLanguage={setLanguage}>
+      {renderContent()}
+    </LanguageProvider>
+  );
 };
 
 export default App;

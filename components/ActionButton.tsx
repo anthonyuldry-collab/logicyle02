@@ -33,9 +33,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       variantStyleClasses = "focus:ring-blue-500"; 
       break;
     case 'secondary':
-      // Secondary variant now uses fixed Tailwind classes
-      variantStyleClasses = "bg-gray-200 hover:bg-gray-300 text-gray-800 focus:ring-gray-400";
-      // dynamicStyles for secondary removed
+      variantStyleClasses =
+        'bg-white/10 hover:bg-white/15 text-slate-100 border border-white/15 focus:ring-indigo-400/40 shadow-none';
       break;
     case 'danger':
       variantStyleClasses = "bg-red-500 hover:bg-red-600 text-white focus:ring-red-400";

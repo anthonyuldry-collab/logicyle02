@@ -16,6 +16,7 @@ import {
 interface PerformanceProjectDetailsProps {
   riders: Rider[];
   onRiderSelect?: (rider: Rider) => void;
+  highlightRiderId?: string;
 }
 
 interface WorkAreaContent {
@@ -30,7 +31,8 @@ interface WorkAreaContent {
 
 const PerformanceProjectDetails: React.FC<PerformanceProjectDetailsProps> = ({
   riders,
-  onRiderSelect
+  onRiderSelect,
+  highlightRiderId,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedArea, setSelectedArea] = useState<string>('all');
@@ -179,7 +181,11 @@ const PerformanceProjectDetails: React.FC<PerformanceProjectDetailsProps> = ({
                 {areaContent.riders.map((rider) => (
                   <div 
                     key={rider.id} 
-                    className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    className={`flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors ${
+                      highlightRiderId === rider.id
+                        ? 'bg-indigo-50 ring-2 ring-indigo-300'
+                        : 'bg-gray-50'
+                    }`}
                     onClick={() => onRiderSelect?.(rider)}
                   >
                     <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
