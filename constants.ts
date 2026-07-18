@@ -850,6 +850,9 @@ export const emptyEventAccommodation = (eventId: string, id: string): EventAccom
     numberOfNights: 1,
     reviewOutcome: undefined,
     reviewNote: '',
+    expenseReceiptIds: [],
+    proofDocumentUrl: '',
+    proofDocumentName: '',
 });
 
 export const RIDER_LEVEL_CATEGORIES: string[] = ["Elite", "Pro", "Open 1", "Open 2", "Open 3", "Handisport"];

@@ -45,9 +45,9 @@ describe('buildApresStageTransportDefaults', () => {
     expect(defaults.details).toMatch(/hôtel/i);
   });
 
-  it('expose les libellés Avant / Jour J / Après', () => {
+  it('expose les libellés Avant / Pendant / Après', () => {
     expect(TRANSPORT_PHASE_UI.avant.short).toBe('Avant');
-    expect(TRANSPORT_PHASE_UI.pendant.short).toBe('Jour J');
+    expect(TRANSPORT_PHASE_UI.pendant.short).toBe('Pendant');
     expect(TRANSPORT_PHASE_UI.apres.short).toBe('Après');
   });
 

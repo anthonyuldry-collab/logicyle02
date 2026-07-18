@@ -3,10 +3,12 @@
  * Duplique la logique du planning de saison des coureurs pour le staff
  */
 
+import type { SetStateAction } from 'react';
 import { StaffMember, RaceEvent, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability, TeamRole, User, UserRole } from '../types';
 import { isFutureEvent, getEventYear, formatEventDate } from './dateUtils';
 import { getStaffRoleKey } from './staffRoleUtils';
 import { getStaffMemberForUser } from './staffMemberUtils';
+import { isSuperAdminUser } from './superAdminUtils';
 
 /** Rôles qui ne voient que leur propre ligne dans le planning staff */
 const STAFF_PLANNING_SELF_VIEW_ROLE_KEYS = new Set(['ASSISTANT', 'MECANO']);
@@ -114,7 +116,7 @@ export const addStaffToEvent = (
   staffId: string, 
   status: StaffEventStatus = StaffEventStatus.SELECTIONNE,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void
 ) => {
   try {
     const existingSelection = staffEventSelections.find(
@@ -152,7 +154,7 @@ export const updateStaffPreference = (
   staffId: string, 
   preference: StaffEventPreference,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void
 ) => {
   const existingSelection = staffEventSelections.find(
     sel => sel.eventId === eventId && sel.staffId === staffId
@@ -187,7 +189,7 @@ export const updateStaffAvailability = (
   staffId: string, 
   availability: StaffAvailability,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void
 ) => {
   const existingSelection = staffEventSelections.find(
     sel => sel.eventId === eventId && sel.staffId === staffId
@@ -358,13 +360,28 @@ export const getStaffAvailabilityColor = (availability: StaffAvailability | null
   }
 };
 
+/**
+ * Qui peut valider / assigner le planning staff d'une équipe :
+ * - Admin d'équipe (permission TeamRole.ADMIN)
+ * - Manager d'équipe (UserRole.MANAGER)
+ * - Directeur Sportif, Responsable Performance, Manager (fiche staff)
+ *
+ * Le Super Admin plateforme n'a pas de rôle logistique fonctionnel :
+ * il ne valide que s'il a une fiche staff DS / Manager / Resp. Perf. dans l'équipe.
+ */
 export function isStaffPlanningValidator(user: User, staff: StaffMember[]): boolean {
-  if (user.userRole === UserRole.MANAGER) return true;
-  if (user.permissionRole === TeamRole.ADMIN || user.permissionRole === TeamRole.EDITOR) return true;
   const member = getStaffMemberForUser(user, staff);
-  if (!member) return false;
-  const key = getStaffRoleKey(member.role);
-  return key === 'DS' || key === 'MANAGER';
+  const staffKey = member ? getStaffRoleKey(member.role) : null;
+  const hasStaffValidatorRole =
+    staffKey === 'DS' || staffKey === 'MANAGER' || staffKey === 'RESP_PERF';
+
+  if (isSuperAdminUser(user)) {
+    return hasStaffValidatorRole;
+  }
+
+  if (user.permissionRole === TeamRole.ADMIN) return true;
+  if (user.userRole === UserRole.MANAGER) return true;
+  return hasStaffValidatorRole;
 }
 
 /** Assistant / mécano : vue centrée sur soi (candidatures), pas la grille de toute l'équipe */
@@ -388,29 +405,28 @@ export function isOwnStaffMember(user: User, member: StaffMember): boolean {
 function upsertStaffSelection(
   eventId: string,
   staffId: string,
-  staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+  _staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void,
   patch: Partial<StaffEventSelection>,
-): StaffEventSelection {
-  const existing = staffEventSelections.find(sel => sel.eventId === eventId && sel.staffId === staffId);
-  if (existing) {
-    const updated = { ...existing, ...patch };
-    setStaffEventSelections(prev => prev.map(sel => (sel.id === existing.id ? updated : sel)));
-    return updated;
-  }
-  const created: StaffEventSelection = {
-    id: `${eventId}_${staffId}_${Date.now()}`,
-    eventId,
-    staffId,
-    status: StaffEventStatus.EN_ATTENTE,
-    staffPreference: StaffEventPreference.EN_ATTENTE,
-    staffAvailability: StaffAvailability.A_CONFIRMER,
-    staffObjectives: '',
-    notes: '',
-    ...patch,
-  };
-  setStaffEventSelections(prev => [...prev, created]);
-  return created;
+): void {
+  setStaffEventSelections((prev) => {
+    const existing = prev.find((sel) => sel.eventId === eventId && sel.staffId === staffId);
+    if (existing) {
+      return prev.map((sel) => (sel.id === existing.id ? { ...existing, ...patch } : sel));
+    }
+    const created: StaffEventSelection = {
+      id: `${eventId}_${staffId}_${Date.now()}`,
+      eventId,
+      staffId,
+      status: StaffEventStatus.EN_ATTENTE,
+      staffPreference: StaffEventPreference.EN_ATTENTE,
+      staffAvailability: StaffAvailability.A_CONFIRMER,
+      staffObjectives: '',
+      notes: '',
+      ...patch,
+    };
+    return [...prev, created];
+  });
 }
 
 /** Le staff candidate pour un événement */
@@ -418,7 +434,7 @@ export function submitStaffCandidature(
   eventId: string,
   staffId: string,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void,
 ) {
   upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
     staffPreference: StaffEventPreference.VEUT_PARTICIPER,
@@ -436,7 +452,7 @@ export function declineStaffCandidature(
   eventId: string,
   staffId: string,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void,
 ) {
   upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
     staffPreference: StaffEventPreference.NE_VEUT_PAS,
@@ -449,23 +465,51 @@ export function declineStaffCandidature(
   });
 }
 
-/** DS / manager valide ou refuse une candidature */
+/** DS / manager valide ou refuse une candidature (ou assigne directement) */
 export function validateStaffCandidature(
   eventId: string,
   staffId: string,
   approved: boolean,
   validator: User,
   staffEventSelections: StaffEventSelection[],
-  setStaffEventSelections: (updater: React.SetStateAction<StaffEventSelection[]>) => void,
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void,
 ) {
   const validatorName = `${validator.firstName || ''} ${validator.lastName || ''}`.trim() || validator.email;
   upsertStaffSelection(eventId, staffId, staffEventSelections, setStaffEventSelections, {
     status: approved ? StaffEventStatus.SELECTIONNE : StaffEventStatus.NON_SELECTIONNE,
+    staffPreference: approved
+      ? StaffEventPreference.VEUT_PARTICIPER
+      : StaffEventPreference.NE_VEUT_PAS,
     validatedAt: new Date().toISOString(),
     validatedByUserId: validator.id,
     validatedByName: validatorName,
     staffAvailability: approved ? StaffAvailability.DISPONIBLE : StaffAvailability.INDISPONIBLE,
   });
+}
+
+/** Cycle rapide manager : — → Retenu → Non → — */
+export function cycleStaffAssignment(
+  eventId: string,
+  staffId: string,
+  selection: StaffEventSelection | undefined,
+  validator: User,
+  staffEventSelections: StaffEventSelection[],
+  setStaffEventSelections: (updater: SetStateAction<StaffEventSelection[]>) => void,
+) {
+  if (!selection || selection.status !== StaffEventStatus.SELECTIONNE) {
+    if (selection?.status === StaffEventStatus.NON_SELECTIONNE || selection?.status === StaffEventStatus.REFUSE) {
+      // Non → clear
+      setStaffEventSelections((prev) =>
+        prev.filter((sel) => !(sel.eventId === eventId && sel.staffId === staffId)),
+      );
+      return;
+    }
+    // — / en attente → Retenu
+    validateStaffCandidature(eventId, staffId, true, validator, staffEventSelections, setStaffEventSelections);
+    return;
+  }
+  // Retenu → Non
+  validateStaffCandidature(eventId, staffId, false, validator, staffEventSelections, setStaffEventSelections);
 }
 
 export function formatValidationLabel(selection: StaffEventSelection | undefined): string | null {
@@ -483,11 +527,17 @@ export function formatValidationLabel(selection: StaffEventSelection | undefined
 
 export function getCandidatureLabel(selection: StaffEventSelection | undefined): string {
   if (!selection) return '—';
+  if (selection.status === StaffEventStatus.SELECTIONNE) return 'Retenu';
+  if (
+    selection.status === StaffEventStatus.NON_SELECTIONNE ||
+    selection.status === StaffEventStatus.REFUSE
+  ) {
+    return selection.staffPreference === StaffEventPreference.NE_VEUT_PAS ||
+      selection.staffPreference === StaffEventPreference.ABSENT
+      ? 'Indispo'
+      : 'Refusé';
+  }
   if (selection.staffPreference === StaffEventPreference.VEUT_PARTICIPER) {
-    if (selection.status === StaffEventStatus.SELECTIONNE) return 'Retenu';
-    if (selection.status === StaffEventStatus.NON_SELECTIONNE || selection.status === StaffEventStatus.REFUSE) {
-      return 'Refusé';
-    }
     return 'Candidaté';
   }
   if (

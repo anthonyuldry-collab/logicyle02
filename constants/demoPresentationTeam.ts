@@ -33,10 +33,16 @@ import {
   TeamLevel,
   Vehicle,
   VehicleType,
+  ClothingType,
   ContractType,
   CounterpartDeliverableStatus,
 } from '../types';
 import { getCurrentSeasonYear } from '../utils/seasonUtils';
+import {
+  buildDemoPresentationExtras,
+  countDemoPresentationExtras,
+  type DemoPresentationExtras,
+} from './demoPresentationTeamExtras';
 
 export const DEMO_PRES_PREFIX = 'demo_pres_';
 export const DEMO_PRES_TEAM_NAME = 'Horizon Atlantique';
@@ -94,12 +100,12 @@ const factor = (
   besoinsActions,
   actionItems: [
     {
-      id: `${DEMO_PRES_PREFIX}act_${Math.random().toString(36).slice(2, 8)}`,
+      id: `${DEMO_PRES_PREFIX}act_${besoinsActions.slice(0, 24).replace(/\W+/g, '_').toLowerCase() || 'plan'}`,
       title: besoinsActions.slice(0, 80) || 'Action à planifier',
       status: 'in_progress',
       targetDate: `${getCurrentSeasonYear()}-06-15`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: `${getCurrentSeasonYear()}-01-15T10:00:00.000Z`,
+      updatedAt: `${getCurrentSeasonYear()}-01-15T10:00:00.000Z`,
     },
   ],
 });
@@ -576,7 +582,10 @@ function buildRider(seed: RiderSeed, season: number): Rider {
       },
     },
     ttBikeSetup: emptyBike(),
-    clothing: [],
+    clothing: [
+      { id: `${seed.id}_kit_race`, type: ClothingType.MAILLOT, quantity: 2, size: seed.heightCm >= 170 ? 'M' : 'S', brand: 'CyclePro', notes: 'Saison en cours' },
+      { id: `${seed.id}_kit_train`, type: ClothingType.CUISSARD, quantity: 2, size: seed.heightCm >= 170 ? 'M' : 'S', brand: 'CyclePro' },
+    ],
     powerProfileFresh: seed.power,
     powerProfile15KJ: scalePower(seed.power, -8),
     powerProfile30KJ: scalePower(seed.power, -15),
@@ -635,6 +644,7 @@ type StaffSeed = {
   firstName: string;
   lastName: string;
   role: StaffRole;
+  sex: Sex;
   salary: number;
   skills: string[];
   summary: string;
@@ -646,6 +656,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Claire',
     lastName: 'Armand',
     role: StaffRole.MANAGER,
+    sex: Sex.FEMALE,
     salary: 48000,
     skills: ['Budget', 'Sponsoring', 'RH', 'UCI'],
     summary: 'Manager générale · 12 ans en structures continentales. Pilotage budget et partenaires.',
@@ -655,6 +666,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Marc',
     lastName: 'Delorme',
     role: StaffRole.DS,
+    sex: Sex.MALE,
     salary: 42000,
     skills: ['Tactique', 'Course', 'Leadership', 'Radio'],
     summary: 'Directeur sportif · ancien pro. Spécialiste courses d’un jour et lead-out.',
@@ -664,6 +676,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Sophie',
     lastName: 'Nguyen',
     role: StaffRole.ASSISTANT,
+    sex: Sex.FEMALE,
     salary: 32000,
     skills: ['Logistique', 'Nutrition course', 'Hôtellerie'],
     summary: 'Assistante d’équipe · coordination hôtel, repas et timing permanence.',
@@ -673,6 +686,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Julien',
     lastName: 'Faure',
     role: StaffRole.MECANO,
+    sex: Sex.MALE,
     salary: 34000,
     skills: ['Groupe transmission', 'Roues', 'CLM', 'UCI compliance'],
     summary: 'Mécanicien chef · parc 22 vélos route + 8 CLM. Suivi usure et pressions.',
@@ -682,6 +696,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Élise',
     lastName: 'Morel',
     role: StaffRole.KINE,
+    sex: Sex.FEMALE,
     salary: 36000,
     skills: ['Récupération', 'Blessures', 'Travel therapy'],
     summary: 'Kinésithérapeute · prévention genou/dos et récupération post-course.',
@@ -691,6 +706,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Thomas',
     lastName: 'Girard',
     role: StaffRole.RESP_PERF,
+    sex: Sex.MALE,
     salary: 40000,
     skills: ['PPR', 'Charge', 'Fatigue', 'Tests'],
     summary: 'Responsable performance · suivi W/kg, durabilité et projets individuels.',
@@ -700,6 +716,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Anna',
     lastName: 'Keller',
     role: StaffRole.ENTRAINEUR,
+    sex: Sex.FEMALE,
     salary: 38000,
     skills: ['Planification', 'Zones', 'Altitude'],
     summary: 'Entraîneure · plans individualisés et camps d’entraînement.',
@@ -709,6 +726,7 @@ const STAFF_SEEDS: StaffSeed[] = [
     firstName: 'Hugo',
     lastName: 'Blanc',
     role: StaffRole.COMMUNICATION,
+    sex: Sex.MALE,
     salary: 30000,
     skills: ['Réseaux sociaux', 'Presse', 'Contenus'],
     summary: 'Chargé de communication · newsletters partenaires et story course.',
@@ -761,7 +779,7 @@ function buildStaff(seed: StaffSeed, season: number): StaffMember {
     contractType: ContractType.CDI,
     birthDate: '1988-04-12',
     nationality: 'France',
-    sex: Sex.FEMALE,
+    sex: seed.sex,
     seasonObjectives: `Assurer le dispositif ${seed.role} sur toute la saison ${season}.`,
     openToExternalMissions: false,
   };
@@ -799,9 +817,10 @@ export interface DemoPresentationPack {
   eventBudgetItems: EventBudgetItem[];
   incomeItems: IncomeItem[];
   performanceEntries: PerformanceEntry[];
+  extras: DemoPresentationExtras;
 }
 
-export function buildDemoPresentationPack(season = getCurrentSeasonYear()): DemoPresentationPack {
+export function buildDemoPresentationPack(season = getCurrentSeasonYear(), teamId?: string): DemoPresentationPack {
   const riders = RIDER_SEEDS.map((s) => buildRider(s, season));
   const staff = STAFF_SEEDS.map((s) => buildStaff(s, season));
 
@@ -815,6 +834,14 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
   const perfId = `${DEMO_PRES_PREFIX}staff_perf`;
   const comId = `${DEMO_PRES_PREFIX}staff_com`;
   const managerId = `${DEMO_PRES_PREFIX}staff_manager`;
+
+  const eventClassicId = `${DEMO_PRES_PREFIX}event_classic`;
+  const eventStageId = `${DEMO_PRES_PREFIX}event_bretagne`;
+  const eventTrainId = `${DEMO_PRES_PREFIX}event_fontromeu`;
+  const eventClmId = `${DEMO_PRES_PREFIX}event_clm`;
+  const eventEarlyId = `${DEMO_PRES_PREFIX}event_early`;
+  const eventMeetingId = `${DEMO_PRES_PREFIX}event_reunion`;
+  const eventCoupeId = `${DEMO_PRES_PREFIX}event_coupe`;
 
   const vehicles: Vehicle[] = [
     {
@@ -864,9 +891,6 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
     },
   ];
 
-  const eventClassicId = `${DEMO_PRES_PREFIX}event_classic`;
-  const eventStageId = `${DEMO_PRES_PREFIX}event_stage`;
-  const eventTrainId = `${DEMO_PRES_PREFIX}event_train`;
 
   const raceEvents: RaceEvent[] = [
     {
@@ -970,9 +994,54 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
             distanceKm: 98,
             radioFrequency: '160.125',
           },
+          {
+            id: `${eventStageId}_s2`,
+            date: `${season}-05-21`,
+            stageNumber: 2,
+            stageLabel: 'Lannion → Morlaix',
+            departLocation: 'Lannion',
+            arriveeLocation: 'Morlaix',
+            permanenceAddress: 'Place Centrale Lannion',
+            permanenceTime: '09:30',
+            permanenceDate: `${season}-05-21`,
+            reunionDSTime: '10:15',
+            presentationTime: '11:45',
+            departFictifTime: '12:15',
+            departReelTime: '12:30',
+            arriveePrevueTime: '16:10',
+            distanceKm: 112,
+            radioFrequency: '160.125',
+          },
+          {
+            id: `${eventStageId}_s3`,
+            date: `${season}-05-22`,
+            stageNumber: 3,
+            stageLabel: 'Morlaix → Quimper',
+            departLocation: 'Morlaix',
+            arriveeLocation: 'Quimper',
+            permanenceAddress: 'Parking Morlaix Gare',
+            permanenceTime: '09:00',
+            permanenceDate: `${season}-05-22`,
+            reunionDSTime: '09:45',
+            presentationTime: '11:15',
+            departFictifTime: '11:45',
+            departReelTime: '12:00',
+            arriveePrevueTime: '16:20',
+            distanceKm: 102,
+            radioFrequency: '160.125',
+          },
         ],
       },
-      operationalLogistics: [],
+      operationalLogistics: [
+        {
+          id: `${eventStageId}_log_1`,
+          dayName: MealDay.MARDI,
+          keyTimings: [
+            { id: 'b1', description: 'Petit-déj hôtel', time: '06:45', category: OperationalTimingCategory.REPAS },
+            { id: 'b2', description: 'Transfert départ étape 1', time: '08:30', category: OperationalTimingCategory.TRANSPORT },
+          ],
+        },
+      ],
       selectedRiderIds: principalIds.slice(0, 7),
       selectedStaffIds: [dsId, assistantId, mecanoId, kineId, perfId, comId, managerId],
       selectedVehicleIds: vehicles.map((v) => v.id),
@@ -1145,16 +1214,164 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
         },
       ],
     },
+    {
+      id: eventEarlyId,
+      name: 'Grand Prix de Loire-Atlantique',
+      date: `${season}-03-08`,
+      startDate: `${season}-03-08`,
+      endDate: `${season}-03-08`,
+      location: 'Ancenis (44)',
+      eventType: EventType.COMPETITION,
+      eligibleCategory: 'Elite',
+      discipline: Discipline.ROUTE,
+      raceInfo: {
+        ...emptyRaceInfo(),
+        permanenceAddress: 'Stade d\'Ancenis',
+        permanenceDate: `${season}-03-08`,
+        permanenceTime: '09:00',
+        reunionDSTime: '10:00',
+        distanceKm: 118,
+        radioFrequency: '160.100',
+      },
+      operationalLogistics: [],
+      selectedRiderIds: principalIds.slice(0, 6),
+      selectedStaffIds: [dsId, assistantId, mecanoId, kineId],
+      selectedVehicleIds: [vehicles[0].id, vehicles[1].id],
+      checklistEmailSimulated: false,
+      isLogisticsValidated: true,
+      minRiders: 5,
+      maxRiders: 6,
+      directeurSportifId: [dsId],
+      assistantId: [assistantId],
+      mecanoId: [mecanoId],
+      kineId: [kineId],
+    },
+    {
+      id: eventClmId,
+      name: 'CLM par équipes — Challenge Atlantique',
+      date: `${season}-06-14`,
+      startDate: `${season}-06-14`,
+      endDate: `${season}-06-14`,
+      location: 'Les Sables-d\'Olonne',
+      eventType: EventType.COMPETITION,
+      eligibleCategory: 'Elite',
+      discipline: Discipline.ROUTE,
+      raceInfo: {
+        ...emptyRaceInfo(),
+        permanenceAddress: 'Casino des Sables',
+        permanenceDate: `${season}-06-14`,
+        permanenceTime: '08:00',
+        reunionDSTime: '08:45',
+        distanceKm: 28,
+        radioFrequency: '160.150',
+      },
+      operationalLogistics: [],
+      selectedRiderIds: principalIds.slice(0, 6),
+      selectedStaffIds: [dsId, assistantId, mecanoId, perfId, comId],
+      selectedVehicleIds: vehicles.map((v) => v.id),
+      checklistEmailSimulated: false,
+      isLogisticsValidated: true,
+      minRiders: 4,
+      maxRiders: 6,
+      directeurSportifId: [dsId],
+      mecanoId: [mecanoId],
+      respPerfId: [perfId],
+    },
+    {
+      id: eventCoupeId,
+      name: 'Coupe de France — Manche Ouest',
+      date: `${season}-08-23`,
+      startDate: `${season}-08-23`,
+      endDate: `${season}-08-23`,
+      location: 'Vannes (56)',
+      eventType: EventType.COMPETITION,
+      eligibleCategory: 'Elite',
+      discipline: Discipline.ROUTE,
+      raceInfo: {
+        ...emptyRaceInfo(),
+        permanenceAddress: 'Parc du Golfe',
+        permanenceDate: `${season}-08-23`,
+        permanenceTime: '09:30',
+        reunionDSTime: '10:30',
+        distanceKm: 126,
+        radioFrequency: '160.175',
+      },
+      operationalLogistics: [],
+      selectedRiderIds: principalIds,
+      selectedStaffIds: [dsId, assistantId, mecanoId, kineId, perfId, comId, managerId],
+      selectedVehicleIds: vehicles.map((v) => v.id),
+      checklistEmailSimulated: false,
+      isLogisticsValidated: false,
+      minRiders: 6,
+      maxRiders: 7,
+      directeurSportifId: [dsId],
+      managerId: [managerId],
+    },
+    {
+      id: eventMeetingId,
+      name: 'Réunion staff mi-saison + bilan partenaires',
+      date: `${season}-06-02`,
+      startDate: `${season}-06-02`,
+      endDate: `${season}-06-02`,
+      location: 'Nantes — Siège Horizon Atlantique',
+      eventType: EventType.ENTRAINEMENT,
+      eligibleCategory: 'Staff',
+      discipline: Discipline.ROUTE,
+      raceInfo: emptyRaceInfo(),
+      operationalLogistics: [],
+      selectedRiderIds: [],
+      selectedStaffIds: staff.map((s) => s.id),
+      selectedVehicleIds: [],
+      checklistEmailSimulated: false,
+      isLogisticsValidated: true,
+      minRiders: 0,
+      maxRiders: 0,
+      managerId: [managerId],
+    },
   ];
 
-  const riderEventSelections: RiderEventSelection[] = startSix.map((riderId, i) => ({
-    id: `${DEMO_PRES_PREFIX}sel_${i}`,
-    eventId: eventClassicId,
-    riderId,
-    status: RiderEventStatus.TITULAIRE,
-    riderPreference: RiderEventPreference.VEUT_PARTICIPER,
-    riderObjectives: i === 0 ? 'GC / classement général' : i === 1 ? 'Sprint final' : 'Travail d’équipe',
-  }));
+  const riderEventSelections: RiderEventSelection[] = [
+    ...startSix.map((riderId, i) => ({
+      id: `${DEMO_PRES_PREFIX}sel_classic_${i}`,
+      eventId: eventClassicId,
+      riderId,
+      status: RiderEventStatus.TITULAIRE,
+      riderPreference: RiderEventPreference.VEUT_PARTICIPER,
+      riderObjectives: i === 0 ? 'GC / classement général' : i === 1 ? 'Sprint final' : 'Travail d’équipe',
+    })),
+    ...principalIds.slice(0, 7).map((riderId, i) => ({
+      id: `${DEMO_PRES_PREFIX}sel_bzh_${i}`,
+      eventId: eventStageId,
+      riderId,
+      status: RiderEventStatus.TITULAIRE,
+      riderPreference: RiderEventPreference.VEUT_PARTICIPER,
+      riderObjectives: i < 2 ? 'Classement général' : 'Équipière / échappée',
+    })),
+    ...riders.map((r, i) => ({
+      id: `${DEMO_PRES_PREFIX}sel_font_${i}`,
+      eventId: eventTrainId,
+      riderId: r.id,
+      status: RiderEventStatus.TITULAIRE,
+      riderPreference: RiderEventPreference.VEUT_PARTICIPER,
+      riderObjectives: 'Adaptation altitude + volume aérobie',
+    })),
+    ...principalIds.slice(0, 6).map((riderId, i) => ({
+      id: `${DEMO_PRES_PREFIX}sel_early_${i}`,
+      eventId: eventEarlyId,
+      riderId,
+      status: RiderEventStatus.TITULAIRE,
+      riderPreference: RiderEventPreference.VEUT_PARTICIPER,
+      riderObjectives: 'Première course saison',
+    })),
+    ...principalIds.slice(0, 6).map((riderId, i) => ({
+      id: `${DEMO_PRES_PREFIX}sel_clm_${i}`,
+      eventId: eventClmId,
+      riderId,
+      status: RiderEventStatus.TITULAIRE,
+      riderPreference: RiderEventPreference.VEUT_PARTICIPER,
+      riderObjectives: 'CLM équipe — rythme stable',
+    })),
+  ];
 
   const eventBudgetItems: EventBudgetItem[] = [
     {
@@ -1203,6 +1420,67 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
       category: BudgetItemCategory.VOITURE_EQUIPE,
       description: 'Location renfort utilitaire',
       estimatedCost: 380,
+      actualCost: 380,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_7`,
+      eventId: eventStageId,
+      category: BudgetItemCategory.REPAS,
+      description: 'Repas 3 jours Bretagne',
+      estimatedCost: 2100,
+      actualCost: 1980,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_8`,
+      eventId: eventStageId,
+      category: BudgetItemCategory.TRANSPORT,
+      description: 'Carburant + péages Bretagne',
+      estimatedCost: 520,
+      actualCost: 545,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_9`,
+      eventId: eventTrainId,
+      category: BudgetItemCategory.HEBERGEMENT,
+      description: 'Résidence altitude 14 nuits',
+      estimatedCost: 9800,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_10`,
+      eventId: eventTrainId,
+      category: BudgetItemCategory.REPAS,
+      description: 'Courses alimentaires stage',
+      estimatedCost: 3200,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_11`,
+      eventId: eventTrainId,
+      category: BudgetItemCategory.POLE_PERFORMANCE,
+      description: 'Tests lactate + matériel SpO₂',
+      estimatedCost: 650,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_12`,
+      eventId: eventClmId,
+      category: BudgetItemCategory.FRAIS_COURSE,
+      description: 'Engagement CLM + licences',
+      estimatedCost: 420,
+      actualCost: 420,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_13`,
+      eventId: eventEarlyId,
+      category: BudgetItemCategory.FRAIS_COURSE,
+      description: 'Engagement GP Loire-Atlantique',
+      estimatedCost: 280,
+      actualCost: 280,
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}bud_14`,
+      eventId: eventCoupeId,
+      category: BudgetItemCategory.HEBERGEMENT,
+      description: 'Hôtel Vannes (prévision)',
+      estimatedCost: 2400,
     },
   ];
 
@@ -1254,7 +1532,23 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
       date: `${season}-01-20`,
       category: IncomeCategory.SPONSORING,
       sponsorCompanyName: 'CyclePro Gear',
+      sponsorshipContactName: 'Marc Lefort',
+      sponsorshipContactEmail: 'm.lefort@cyclepro.demo',
+      sponsorshipContractStart: `${season}-01-01`,
+      sponsorshipContractEnd: `${season}-12-31`,
       partnershipCounterparts: 'Dotation textile + roues + atelier',
+      partnershipDeliverables: [
+        { id: `${DEMO_PRES_PREFIX}del_eq1`, label: 'Livraison maillots S1', status: CounterpartDeliverableStatus.DELIVERED },
+        { id: `${DEMO_PRES_PREFIX}del_eq2`, label: 'Roues carbone réserve', status: CounterpartDeliverableStatus.IN_PROGRESS },
+      ],
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}inc_prize`,
+      description: 'Primes courses S1 (Classic + Bretagne)',
+      amount: 4500,
+      date: `${season}-05-25`,
+      category: IncomeCategory.AUTRE,
+      notes: 'Primes classement + étape',
     },
   ];
 
@@ -1271,7 +1565,58 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
       dsGeneralFeedback:
         'Belle course collective. Prochaine priorités : timing lead-out et hydratation finale.',
     },
+    {
+      id: `${DEMO_PRES_PREFIX}perf_early`,
+      eventId: eventEarlyId,
+      date: `${season}-03-08`,
+      generalObjectives: 'Première course · rythme collectif · pas de prise de risque inutile.',
+      resultsSummary: '12e Léa · 15e Inès · 4 coureuses dans le top 30 — entrée en matière solide.',
+      keyLearnings: 'Communication radio à densifier · alimentation J-1 à standardiser.',
+      raceOverallRanking: '12e',
+      teamRiderRankings: 'Moreau 12 · Bernard 15 · Rousseau 22 · Petit 28',
+      dsGeneralFeedback: 'Bonne base · monter l’intensité avant Classic Atlantique.',
+    },
+    {
+      id: `${DEMO_PRES_PREFIX}perf_bzh`,
+      eventId: eventStageId,
+      date: `${season}-05-22`,
+      generalObjectives: 'GC pour Léa · sprints d’étape pour Inès · protéger les jeunes.',
+      resultsSummary: '5e au GC (Léa) · 1 victoire d’étape (Inès, étape 2) · esprit d’équipe excellent.',
+      keyLearnings: 'Gestion 3 jours OK · attention récupération étape 3.',
+      raceOverallRanking: '5e GC',
+      teamRiderRankings: 'Moreau 5 GC · Bernard 1e étape 2 · Rousseau 18 GC',
+      dsGeneralFeedback: 'Meilleure course étape de la saison à ce stade.',
+    },
   ];
+
+  const extras = buildDemoPresentationExtras({
+    season,
+    teamId,
+    eventClassicId,
+    eventStageId,
+    eventTrainId,
+    eventClmId,
+    eventEarlyId,
+    eventMeetingId,
+    startSix,
+    principalIds,
+    riderIds: riders.map((r) => r.id),
+    staffIds: {
+      manager: managerId,
+      ds: dsId,
+      assistant: assistantId,
+      mecano: mecanoId,
+      kine: kineId,
+      perf: perfId,
+      coach: `${DEMO_PRES_PREFIX}staff_coach`,
+      com: comId,
+    },
+    vehicleIds: {
+      ds: vehicles[0].id,
+      bus: vehicles[1].id,
+      truck: vehicles[2].id,
+    },
+  });
 
   return {
     meta: {
@@ -1290,6 +1635,7 @@ export function buildDemoPresentationPack(season = getCurrentSeasonYear()): Demo
     eventBudgetItems,
     incomeItems,
     performanceEntries,
+    extras,
   };
 }
 
@@ -1302,6 +1648,7 @@ export function countDemoPresentationEntities(pack: DemoPresentationPack): numbe
     pack.riderEventSelections.length +
     pack.eventBudgetItems.length +
     pack.incomeItems.length +
-    pack.performanceEntries.length
+    pack.performanceEntries.length +
+    countDemoPresentationExtras(pack.extras)
   );
 }

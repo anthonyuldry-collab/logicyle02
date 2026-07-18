@@ -417,8 +417,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
             </p>
             <ul className="text-xs text-teal-700 mb-4 list-disc list-inside space-y-0.5">
               <li>Apparaît dans le menu Contexte comme une équipe séparée</li>
-              <li>10 coureuses · 8 staff · 3 événements · budgets · sponsors</li>
-              <li>Vos équipes Lanester ne sont pas modifiées</li>
+              <li>10 coureuses · 8 staff · 7 événements · logistique complète</li>
+              <li>Scouting, matériel, notes de frais, stock, partenaires, debriefs</li>
+              <li>Vos autres équipes (ex. Lanester) ne sont pas modifiées</li>
             </ul>
             {presentationDemoAlreadyInstalled && (
               <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
@@ -442,7 +443,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     `Équipe « ${result.teamName} » prête.\n` +
                       `${result.riders} coureuses · ${result.staff} staff · ${result.events} événements\n` +
                       `${result.entityCount} éléments.\n\n` +
-                      `Sélectionnez-la dans Contexte si besoin, puis ouvrez Effectif / Événements / Finances / Pôle Performance.`
+                      `Sélectionnez-la dans Contexte si besoin, puis parcourez Effectif, Événements, Finances, Scouting, Matériel et Espace partenaire.`
                   );
                 } catch (err) {
                   console.error(err);

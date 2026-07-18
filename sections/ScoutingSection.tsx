@@ -30,6 +30,7 @@ import {
   isAthleteOnWatchlist,
 } from '../utils/scoutingProspectUtils';
 import TeamRecruitmentPanel from '../components/TeamRecruitmentPanel';
+import SpiderChart from '../components/SpiderChart';
 
 interface ScoutingSectionProps {
   scoutingProfiles: ScoutingProfile[];
@@ -89,82 +90,6 @@ const getInitialPerformanceFactorDetail = (factorId: keyof Pick<Rider, 'physique
 };
 
 type SortKey = keyof ScoutingProfile | 'age' | keyof PowerProfile | string;
-
-const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: number; maxValue?: number }> = ({ data, size = 150, maxValue = 100 }) => {
-    const numAxes = data.length;
-    if (numAxes < 3) return <p className="text-xs text-center text-gray-400">Données insuffisantes pour le graphique radar.</p>;
-
-    const angleSlice = (Math.PI * 2) / numAxes;
-    const radius = size / 3;
-    const center = size / 2;
-
-    const points = data.map((d, i) => {
-        const value = Math.max(0, Math.min(d.value || 0, maxValue));
-        const x = center + radius * (value / maxValue) * Math.cos(angleSlice * i - Math.PI / 2);
-        const y = center + radius * (value / maxValue) * Math.sin(angleSlice * i - Math.PI / 2);
-        return `${x},${y}`;
-    }).join(' ');
-
-    const axisLines = data.map((d, i) => {
-        const angle = angleSlice * i - Math.PI / 2;
-        const cosAngle = Math.cos(angle);
-        const sinAngle = Math.sin(angle);
-        
-        const x2 = center + radius * cosAngle;
-        const y2 = center + radius * sinAngle;
-
-        const labelOffset = 10;
-        const lx = center + (radius + labelOffset) * cosAngle;
-        const ly = center + (radius + labelOffset) * sinAngle;
-        
-        const anchorTolerance = 3;
-        let textAnchor = "middle";
-        if (lx > center + anchorTolerance) {
-            textAnchor = "start";
-        } else if (lx < center - anchorTolerance) {
-            textAnchor = "end";
-        }
-
-        return { x1: center, y1: center, x2, y2, label: d.axis, lx, ly, textAnchor };
-    });
-    
-    const gridLevels = 5;
-    const concentricPolygons = Array.from({ length: gridLevels }).map((_, levelIndex) => {
-        const levelRadius = radius * ((levelIndex + 1) / gridLevels);
-        return data.map((d, i) => {
-            const x = center + levelRadius * Math.cos(angleSlice * i - Math.PI / 2);
-            const y = center + levelRadius * Math.sin(angleSlice * i - Math.PI / 2);
-            return `${x},${y}`;
-        }).join(' ');
-    });
-
-    return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto">
-            <g>
-                {concentricPolygons.map((polyPoints, i) => (
-                    <polygon key={`grid-${i}`} points={polyPoints} fill="none" stroke="rgba(107, 114, 128, 0.5)" strokeWidth="0.5" />
-                ))}
-                {axisLines.map((line, i) => (
-                    <line key={`axis-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="rgba(107, 114, 128, 0.7)" strokeWidth="0.5" />
-                ))}
-                <polygon points={points} fill="rgba(74, 222, 128, 0.4)" stroke="rgba(74, 222, 128, 1)" strokeWidth="1" />
-                {axisLines.map((line, i) => (
-                    <text
-                        key={`label-${i}`}
-                        x={line.lx}
-                        y={line.ly}
-                        fontSize="6"
-                        fill="rgb(203, 213, 225)"
-                        textAnchor={line.textAnchor as any}
-                        dominantBaseline="middle"
-                    >
-                        {line.label}
-                    </text>
-                ))}
-            </g>
-        </svg>
-    );
-};
 
 const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, riders = [], onSaveScoutingProfile, onDeleteScoutingProfile, onSaveRider, onCreateScoutingRequest, effectivePermissions, appState, currentTeamId, onRecruitmentTargetChange, onReviewRiderApplication, setRecruitmentOffers, setRecruitmentCampaigns }) => {
   // Protection minimale - seulement scoutingProfiles est requis
@@ -489,57 +414,89 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   };
 
   const renderProfilesTab = () => (
-    <>
-      <div className="mb-4 p-3 bg-slate-700 rounded-md grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-        <input type="text" name="name" value={filters.name} onChange={handleFilterChange} placeholder="Rechercher par nom..." className="input-field-sm col-span-full md:col-span-1" />
-        <select name="status" value={filters.status} onChange={handleFilterChange} className="input-field-sm"><option value="all">Tous Statuts</option>{Object.values(ScoutingStatus).map(s => <option key={s} value={s}>{s}</option>)}</select>
-        <select name="discipline" value={filters.discipline} onChange={handleFilterChange} className="input-field-sm"><option value="all">Toutes Disciplines</option>{Object.values(DisciplinePracticed).map(d => <option key={d} value={d}>{d}</option>)}</select>
-        <select name="nationality" value={filters.nationality} onChange={handleFilterChange} className="input-field-sm"><option value="all">Toutes Nationalités</option>{ALL_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-3 sm:p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-center shadow-sm">
+        <input
+          type="text"
+          name="name"
+          value={filters.name}
+          onChange={handleFilterChange}
+          placeholder="Rechercher par nom..."
+          className="input-field-sm col-span-full md:col-span-1 !rounded-full"
+        />
+        <select name="status" value={filters.status} onChange={handleFilterChange} className="input-field-sm !rounded-full">
+          <option value="all">Tous Statuts</option>
+          {Object.values(ScoutingStatus).map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select name="discipline" value={filters.discipline} onChange={handleFilterChange} className="input-field-sm !rounded-full">
+          <option value="all">Toutes Disciplines</option>
+          {Object.values(DisciplinePracticed).map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select name="nationality" value={filters.nationality} onChange={handleFilterChange} className="input-field-sm !rounded-full">
+          <option value="all">Toutes Nationalités</option>
+          {ALL_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
       </div>
 
-      <div className="overflow-x-auto max-w-full">
-        <table className="min-w-full text-sm max-w-full">
-          <thead className="bg-slate-700 text-slate-300">
-            <tr>
-              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('firstName')}>Nom {getSortIndicator('firstName')}</th>
-              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('age')}>Âge {getSortIndicator('age')}</th>
-              <th className="px-3 py-2 text-left">Niveau</th>
-              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('status')}>Statut {getSortIndicator('status')}</th>
-              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('potentialRating')}>Potentiel {getSortIndicator('potentialRating')}</th>
-              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort('qualitativeProfile')}>Profil {getSortIndicator('qualitativeProfile')}</th>
-              {SPIDER_CHART_CHARACTERISTICS_CONFIG.map(char => (
-                  <th key={char.key} className="px-3 py-2 text-left cursor-pointer" onClick={() => requestSort(char.key)}>{char.label} {getSortIndicator(char.key)}</th>
-              ))}
-              <th className="px-3 py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {filteredProfiles.map(profile => (
-              <tr key={profile.id} className="hover:bg-slate-700/50">
-                <td className="px-3 py-2 font-medium text-slate-100">{profile.firstName} {profile.lastName}</td>
-                <td className="px-3 py-2 text-slate-300">{getAge(profile.birthDate)}</td>
-                <td className="px-3 py-2 text-slate-300 text-xs">{getProspectLevelLabel(profile.prospectLevel)}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-flex max-w-[11rem] items-center px-2.5 py-1 text-[11px] font-semibold leading-tight rounded-lg whitespace-normal ${SCOUTING_STATUS_COLORS[profile.status]}`}>
-                    {profile.status}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-slate-300">{profile.potentialRating} / 5</td>
-                <td className="px-3 py-2 text-slate-300">{profile.qualitativeProfile}</td>
+      <div className="rounded-2xl border border-white/10 bg-slate-900/50 overflow-hidden shadow-xl shadow-black/20">
+        <div className="overflow-x-auto max-w-full p-2 sm:p-3">
+          <table className="min-w-full text-sm max-w-full border-separate border-spacing-y-2 border-spacing-x-1.5">
+            <thead>
+              <tr>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort('firstName')}>Nom {getSortIndicator('firstName')}</th>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort('age')}>Âge {getSortIndicator('age')}</th>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10">Niveau</th>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort('status')}>Statut {getSortIndicator('status')}</th>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort('potentialRating')}>Potentiel {getSortIndicator('potentialRating')}</th>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort('qualitativeProfile')}>Profil {getSortIndicator('qualitativeProfile')}</th>
                 {SPIDER_CHART_CHARACTERISTICS_CONFIG.map(char => (
-                    <td key={char.key} className="px-3 py-2 font-mono text-slate-200">{getRiderCharacteristicSafe(profile, char.key).toFixed(0)}</td>
+                  <th key={char.key} className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 cursor-pointer" onClick={() => requestSort(char.key)}>{char.label} {getSortIndicator(char.key)}</th>
                 ))}
-                <td className="px-3 py-2 text-right space-x-1">
-                  <ActionButton onClick={() => openEditModal(profile)} variant="secondary" size="sm" icon={<PencilIcon className="w-3 h-3"/>} />
-                  <ActionButton onClick={() => handlePromoteToRoster(profile)} variant="primary" size="sm" icon={<ArrowUpCircleIcon className="w-4 h-4" />} title="Promouvoir dans l'effectif"/>
-                  <ActionButton onClick={() => handleDeleteProfile(profile.id)} variant="danger" size="sm" icon={<TrashIcon className="w-3 h-3" />} />
-                </td>
+                <th className="rounded-xl bg-slate-800/90 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredProfiles.map(profile => (
+                <tr key={profile.id} className="group">
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center font-semibold text-slate-100 group-hover:bg-slate-800/80 transition-colors">
+                    {profile.firstName} {profile.lastName}
+                  </td>
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center text-slate-300 group-hover:bg-slate-800/80 transition-colors">
+                    {getAge(profile.birthDate)}
+                  </td>
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center text-slate-300 text-xs group-hover:bg-slate-800/80 transition-colors">
+                    {getProspectLevelLabel(profile.prospectLevel)}
+                  </td>
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center group-hover:bg-slate-800/80 transition-colors">
+                    <span className={`inline-flex max-w-[11rem] items-center justify-center px-2.5 py-1 text-[11px] font-semibold leading-tight rounded-full whitespace-normal ${SCOUTING_STATUS_COLORS[profile.status]}`}>
+                      {profile.status}
+                    </span>
+                  </td>
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center text-slate-300 group-hover:bg-slate-800/80 transition-colors">
+                    {profile.potentialRating} / 5
+                  </td>
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center text-slate-300 group-hover:bg-slate-800/80 transition-colors">
+                    {profile.qualitativeProfile}
+                  </td>
+                  {SPIDER_CHART_CHARACTERISTICS_CONFIG.map(char => (
+                    <td key={char.key} className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center font-mono text-slate-200 group-hover:bg-slate-800/80 transition-colors">
+                      {getRiderCharacteristicSafe(profile, char.key).toFixed(0)}
+                    </td>
+                  ))}
+                  <td className="rounded-2xl border border-white/10 bg-slate-800/55 px-3 py-3 text-center group-hover:bg-slate-800/80 transition-colors">
+                    <div className="inline-flex items-center justify-center gap-1">
+                      <ActionButton onClick={() => openEditModal(profile)} variant="secondary" size="sm" icon={<PencilIcon className="w-3 h-3"/>} />
+                      <ActionButton onClick={() => handlePromoteToRoster(profile)} variant="primary" size="sm" icon={<ArrowUpCircleIcon className="w-4 h-4" />} title="Promouvoir dans l'effectif"/>
+                      <ActionButton onClick={() => handleDeleteProfile(profile.id)} variant="danger" size="sm" icon={<TrashIcon className="w-3 h-3" />} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </>
+    </div>
   );
 
   const renderSearchTab = () => {
@@ -738,295 +695,467 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
         return 'bg-green-800/60 text-green-200';
     };
 
+    const getDominantProfileLabel = (p: any): string => {
+      const sprint = getRiderCharacteristicSafe(p, 'charSprint');
+      const anaer = getRiderCharacteristicSafe(p, 'charAnaerobic');
+      const punch = getRiderCharacteristicSafe(p, 'charPuncher');
+      const climb = getRiderCharacteristicSafe(p, 'charClimbing');
+      const roul = getRiderCharacteristicSafe(p, 'charRouleur');
+      const scores: Array<{ label: string; v: number }> = [
+        { label: 'Sprinteur', v: sprint + anaer * 0.7 },
+        { label: 'Puncheur', v: punch + anaer * 0.4 },
+        { label: 'Grimpeur', v: climb },
+        { label: 'Rouleur', v: roul },
+      ];
+      scores.sort((a, b) => b.v - a.v);
+      return scores[0]?.label ?? 'Polyvalent';
+    };
+
+    const getRecruitmentScore = (p: any): number => {
+      const gen = typeof p.generalPerformanceScore === 'number' ? p.generalPerformanceScore : 0;
+      const pot = 'potentialRating' in p && typeof p.potentialRating === 'number' ? p.potentialRating * 20 : 0;
+      const fat = typeof p.fatigueResistanceScore === 'number' ? p.fatigueResistanceScore : 0;
+      const ftp = getWkg(p, 'powerProfileFresh', 'criticalPower') ?? 0;
+      const ftpNorm = Math.min(Math.max(ftp, 0), 6.5) / 6.5 * 100;
+      return Math.round(gen * 0.4 + pot * 0.25 + fat * 0.2 + ftpNorm * 0.15);
+    };
+
+    const rankedProfiles = [...selectedProfiles]
+      .map((p) => ({
+        profile: p,
+        score: getRecruitmentScore(p),
+        dominant: getDominantProfileLabel(p),
+        age: getAge(p.birthDate),
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    const leader = rankedProfiles[0];
+    const keyLeaders = [
+      {
+        label: 'Note générale',
+        winner: [...selectedProfiles].sort(
+          (a, b) => (b.generalPerformanceScore || 0) - (a.generalPerformanceScore || 0),
+        )[0],
+        value: (p: any) => p.generalPerformanceScore,
+        format: (v: number) => `${Math.round(v)}`,
+      },
+      {
+        label: 'Potentiel',
+        winner: [...selectedProfiles].sort((a, b) => {
+          const av = 'potentialRating' in a ? a.potentialRating || 0 : 0;
+          const bv = 'potentialRating' in b ? b.potentialRating || 0 : 0;
+          return bv - av;
+        })[0],
+        value: (p: any) => ('potentialRating' in p ? p.potentialRating : null),
+        format: (v: number) => `${v}/5`,
+      },
+      {
+        label: 'FTP (W/kg)',
+        winner: [...selectedProfiles].sort(
+          (a, b) =>
+            (getWkg(b, 'powerProfileFresh', 'criticalPower') ?? 0) -
+            (getWkg(a, 'powerProfileFresh', 'criticalPower') ?? 0),
+        )[0],
+        value: (p: any) => getWkg(p, 'powerProfileFresh', 'criticalPower'),
+        format: (v: number) => v.toFixed(1),
+      },
+      {
+        label: 'Résistance fatigue',
+        winner: [...selectedProfiles].sort(
+          (a, b) => (b.fatigueResistanceScore || 0) - (a.fatigueResistanceScore || 0),
+        )[0],
+        value: (p: any) => p.fatigueResistanceScore,
+        format: (v: number) => `${Math.round(v)}`,
+      },
+    ];
+
+    const filterChip = (active: boolean, accent: 'indigo' | 'emerald' | 'sky' = 'indigo') => {
+      if (!active) return 'bg-slate-900/70 text-slate-200 border-white/15 hover:bg-slate-800';
+      if (accent === 'emerald') return 'bg-emerald-600 text-white border-emerald-400 shadow-sm';
+      if (accent === 'sky') return 'bg-sky-600 text-white border-sky-400 shadow-sm';
+      return 'bg-indigo-500 text-white border-indigo-400 shadow-sm';
+    };
+
     return (
-      <div className="space-y-4">
-        <div className="space-y-4">
-            <div className="bg-slate-700 p-3 rounded-lg">
-                <div className="flex justify-between items-center mb-3">
-                    <span className="text-slate-200 font-medium">Sélectionner les profils à comparer ({selectedProfileIdsForAnalysis.length} / 6)</span>
-                    <div className="text-xs text-slate-400">
-                        {selectedProfileIdsForAnalysis.length > 0 && (
-                            <button 
-                                onClick={() => setSelectedProfileIdsForAnalysis([])}
-                                className="text-red-400 hover:text-red-300 underline"
-                            >
-                                Effacer la sélection
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="space-y-1.5 mb-2">
-                  <div className="flex flex-col md:flex-row md:items-center gap-1.5">
-                    <div className="relative w-full md:flex-1">
-                      <input
-                        type="text"
-                        value={analysisSearch}
-                        onChange={(e) => setAnalysisSearch(e.target.value)}
-                        placeholder="Rechercher un nom…"
-                        className="input-field-sm w-full pr-9 py-1.5 text-xs"
-                      />
-                      {analysisSearch.trim().length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setAnalysisSearch('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white"
-                          title="Effacer la recherche"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProfileIdsForAnalysis([])}
-                        disabled={selectedProfileIdsForAnalysis.length === 0}
-                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
-                          selectedProfileIdsForAnalysis.length === 0
-                            ? 'bg-slate-700/30 text-slate-500 border-slate-700 cursor-not-allowed'
-                            : 'bg-slate-800 text-white border-red-500 hover:bg-slate-900'
-                        }`}
-                        title="Tout décocher"
-                      >
-                        Aucun
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setAnalysisSelectedFirst(v => !v)}
-                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
-                          analysisSelectedFirst
-                            ? 'bg-slate-800 text-white border-emerald-500'
-                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                        }`}
-                        title="Mettre les sélectionnés en haut"
-                      >
-                        Sélectionnés ↑
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {([
-                      { id: 'all', label: 'Tous profils' },
-                      { id: 'sprinteur', label: 'Sprinteur' },
-                      { id: 'puncheur', label: 'Puncheur' },
-                      { id: 'grimpeur', label: 'Grimpeur' },
-                      { id: 'rouleur', label: 'Rouleur' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setAnalysisProfileFilter(opt.id as any)}
-                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
-                          analysisProfileFilter === opt.id
-                            ? 'bg-slate-800 text-white border-blue-500'
-                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                        }`}
-                        title="Filtrer par profil dominant"
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {([
-                      { id: 'all', label: 'Tous' },
-                      { id: 'scoot', label: 'Scoot' },
-                      { id: 'n1', label: 'N1' },
-                      { id: 'reserve', label: 'Réserve' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setAnalysisTypeFilter(opt.id)}
-                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
-                          analysisTypeFilter === opt.id
-                            ? 'bg-slate-800 text-white border-emerald-500'
-                            : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                    {filteredProfilesForPicker.map(p => (
-                        <div key={p.id} className={`flex items-center p-1.5 rounded border transition-colors ${
-                            selectedProfileIdsForAnalysis.includes(p.id) 
-                                ? 'bg-blue-600/20 border-blue-500' 
-                                : 'bg-slate-600/50 border-slate-500 hover:bg-slate-600'
-                        }`}>
-                            <input 
-                                type="checkbox" 
-                                id={`analysis-select-${p.id}`} 
-                                checked={selectedProfileIdsForAnalysis.includes(p.id)} 
-                                onChange={() => handleProfileSelectionForAnalysis(p.id)} 
-                                disabled={!selectedProfileIdsForAnalysis.includes(p.id) && selectedProfileIdsForAnalysis.length >= 6} 
-                                className="h-4 w-4 rounded border-slate-500 bg-slate-800 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
-                            />
-                            <label htmlFor={`analysis-select-${p.id}`} className="ml-3 flex-1 cursor-pointer">
-                                <div className="text-slate-200 font-medium text-sm leading-4">{p.name}</div>
-                                <div className={`text-xs ${
-                                    p.type === 'Scoot' ? 'text-yellow-400' : 'text-green-400'
-                                }`}>
-                                    {p.type}
-                                </div>
-                            </label>
-                        </div>
-                    ))}
-                </div>
-                
-                {filteredProfilesForPicker.length === 0 && (
-                    <div className="text-center py-4 text-slate-400">
-                        Aucun profil ne correspond aux filtres
-                    </div>
-                )}
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-indigo-500/25 bg-gradient-to-br from-indigo-950/70 via-slate-900 to-slate-950 p-4 sm:p-5 shadow-lg shadow-black/20">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-indigo-50 tracking-tight">
+                Analyse comparative — aide au recrutement
+              </h3>
+              <p className="mt-1 text-sm text-indigo-100/75 max-w-2xl">
+                Sélectionnez jusqu&apos;à 6 profils pour comparer puissance, profil et fatigue, puis classer les meilleurs candidats.
+              </p>
             </div>
+            <div className="rounded-full border border-indigo-400/30 bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-100">
+              {selectedProfileIdsForAnalysis.length} / 6 sélectionnés
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <div className="relative w-full md:flex-1">
+                <input
+                  type="text"
+                  value={analysisSearch}
+                  onChange={(e) => setAnalysisSearch(e.target.value)}
+                  placeholder="Rechercher un nom…"
+                  className="input-field-sm !rounded-full w-full pr-9"
+                />
+                {analysisSearch.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAnalysisSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white"
+                    title="Effacer la recherche"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProfileIdsForAnalysis([])}
+                  disabled={selectedProfileIdsForAnalysis.length === 0}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                    selectedProfileIdsForAnalysis.length === 0
+                      ? 'opacity-40 cursor-not-allowed border-white/10 text-slate-400'
+                      : 'border-rose-400/40 text-rose-100 bg-rose-950/40 hover:bg-rose-900/50'
+                  }`}
+                >
+                  Tout effacer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisSelectedFirst((v) => !v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${filterChip(analysisSelectedFirst, 'emerald')}`}
+                >
+                  Sélectionnés ↑
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {([
+                { id: 'all', label: 'Tous profils' },
+                { id: 'sprinteur', label: 'Sprinteur' },
+                { id: 'puncheur', label: 'Puncheur' },
+                { id: 'grimpeur', label: 'Grimpeur' },
+                { id: 'rouleur', label: 'Rouleur' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setAnalysisProfileFilter(opt.id as any)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${filterChip(analysisProfileFilter === opt.id, 'sky')}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {([
+                { id: 'all', label: 'Tous' },
+                { id: 'scoot', label: 'Prospects' },
+                { id: 'n1', label: 'N1' },
+                { id: 'reserve', label: 'Réserve' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setAnalysisTypeFilter(opt.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${filterChip(analysisTypeFilter === opt.id, 'emerald')}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1">
+          {filteredProfilesForPicker.map((p) => {
+            const selected = selectedProfileIdsForAnalysis.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleProfileSelectionForAnalysis(p.id)}
+                disabled={!selected && selectedProfileIdsForAnalysis.length >= 6}
+                className={`rounded-2xl border px-3 py-3 text-center transition-all disabled:opacity-40 ${
+                  selected
+                    ? 'border-indigo-400/60 bg-indigo-500/20 shadow-md shadow-indigo-950/40 ring-1 ring-indigo-400/30'
+                    : 'border-white/10 bg-slate-800/55 hover:bg-slate-800/80'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold ${
+                      selected
+                        ? 'border-indigo-300 bg-indigo-500 text-white'
+                        : 'border-white/25 bg-slate-950 text-slate-400'
+                    }`}
+                  >
+                    {selected ? '✓' : ''}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-50">{p.name}</span>
+                </div>
+                <div className={`mt-1.5 text-[11px] font-medium ${p.type === 'Scoot' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                  {p.type === 'Scoot' ? 'Prospect scouting' : p.type}
+                </div>
+                <div className="mt-1 text-[10px] text-slate-400">{getDominantProfileLabel(p)}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredProfilesForPicker.length === 0 && (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/50 py-8 text-center text-slate-400">
+            Aucun profil ne correspond aux filtres
+          </div>
+        )}
+
+        {selectedProfiles.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/40 px-4 py-10 text-center">
+            <p className="text-slate-200 font-medium">Sélectionnez au moins 2 profils</p>
+            <p className="mt-1 text-sm text-slate-400">
+              La synthèse recrutement, le classement et le tableau comparatif apparaîtront ici.
+            </p>
+          </div>
+        )}
+
+        {selectedProfiles.length === 1 && (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-950/35 px-4 py-3 text-sm text-amber-100">
+            Ajoutez un second profil pour activer le classement et la recommandation de recrutement.
+          </div>
+        )}
+
+        {selectedProfiles.length > 1 && leader && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/60 to-slate-950 p-4 sm:p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300/90">
+                Recommandation recrutement
+              </p>
+              <h4 className="mt-1 text-xl font-semibold text-emerald-50">
+                Priorité : {leader.profile.name}
+              </h4>
+              <p className="mt-2 text-sm text-emerald-100/80 leading-relaxed">
+                Meilleur score recrutement ({leader.score}/100) — profil dominant{' '}
+                <strong>{leader.dominant}</strong>
+                {leader.age != null ? `, ${leader.age} ans` : ''}.
+                {rankedProfiles[1]
+                  ? ` Écart de ${leader.score - rankedProfiles[1].score} pts sur ${rankedProfiles[1].profile.name}.`
+                  : ''}
+                {' '}Utilisez le tableau ci-dessous pour valider FTP, fatigue et cohérence de profil avant contact.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {keyLeaders.map((item) => {
+                const raw = item.value(item.winner);
+                return (
+                  <div
+                    key={item.label}
+                    className="rounded-2xl border border-white/10 bg-slate-800/60 px-3 py-3 text-center shadow-sm"
+                  >
+                    <p className="text-[11px] font-medium text-slate-400">{item.label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-50">{item.winner?.name ?? '—'}</p>
+                    <p className="mt-0.5 text-xs font-mono text-indigo-200">
+                      {typeof raw === 'number' && !Number.isNaN(raw) ? item.format(raw) : 'N/A'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-white/10">
+                <h4 className="text-sm font-semibold text-slate-100 text-center">Classement recrutement</h4>
+              </div>
+              <div className="divide-y divide-white/5">
+                {rankedProfiles.map((row, index) => (
+                  <div
+                    key={row.profile.id}
+                    className={`flex items-center gap-3 px-4 py-3 ${index === 0 ? 'bg-emerald-500/10' : ''}`}
+                  >
+                    <span
+                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                        index === 0
+                          ? 'bg-emerald-500 text-white'
+                          : index === 1
+                            ? 'bg-slate-600 text-white'
+                            : 'bg-slate-800 text-slate-300 border border-white/10'
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="text-sm font-semibold text-slate-50 truncate">{row.profile.name}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {row.dominant}
+                        {row.age != null ? ` · ${row.age} ans` : ''}
+                        {' · '}
+                        {row.profile.type === 'Scoot' ? 'Prospect' : row.profile.type}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-indigo-200">{row.score}</p>
+                      <p className="text-[10px] text-slate-500">/ 100</p>
+                    </div>
+                    <div className="hidden sm:block w-24 h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${index === 0 ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+                        style={{ width: `${Math.min(100, row.score)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {selectedProfiles.length > 0 && (
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
               <button
                 type="button"
                 onClick={() => setAnalysisSubTab('synthese')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                  analysisSubTab === 'synthese'
-                    ? 'bg-slate-800 text-white border-blue-500'
-                    : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                }`}
+                className={`rounded-full px-4 py-2 text-xs font-semibold border transition-colors ${filterChip(analysisSubTab === 'synthese')}`}
               >
                 Synthèse
               </button>
               <button
                 type="button"
                 onClick={() => setAnalysisSubTab('fatigue')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                  analysisSubTab === 'fatigue'
-                    ? 'bg-slate-800 text-white border-blue-500'
-                    : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                }`}
+                className={`rounded-full px-4 py-2 text-xs font-semibold border transition-colors ${filterChip(analysisSubTab === 'fatigue')}`}
               >
                 Fatigue & % pertes
               </button>
             </div>
 
             {analysisSubTab === 'fatigue' && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFatigueKjTab('15')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                    fatigueKjTab === '15'
-                      ? 'bg-slate-800 text-white border-emerald-500'
-                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                  }`}
-                >
-                  15 kJ/kg
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFatigueKjTab('30')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                    fatigueKjTab === '30'
-                      ? 'bg-slate-800 text-white border-emerald-500'
-                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                  }`}
-                >
-                  30 kJ/kg
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFatigueKjTab('45')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                    fatigueKjTab === '45'
-                      ? 'bg-slate-800 text-white border-emerald-500'
-                      : 'bg-slate-700/60 text-slate-200 border-slate-600 hover:bg-slate-700'
-                  }`}
-                >
-                  45 kJ/kg
-                </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                {(['15', '30', '45'] as const).map((kj) => (
+                  <button
+                    key={kj}
+                    type="button"
+                    onClick={() => setFatigueKjTab(kj)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${filterChip(fatigueKjTab === kj, 'emerald')}`}
+                  >
+                    {kj} kJ/kg
+                  </button>
+                ))}
               </div>
             )}
 
-            <div className="overflow-x-auto">
-            <table className="min-w-full text-sm text-center border-collapse">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-800">
-                  <th className="sticky left-0 bg-slate-800 p-2 text-left font-semibold text-slate-300 w-48">Métrique</th>
-                  {selectedProfiles.map(p => (
-                    <th key={p.id} className="p-2 border-l border-slate-700">
-                      <p className="font-bold text-slate-100">{p.name}</p>
-                      <SpiderChart data={SPIDER_CHART_CHARACTERISTICS_CONFIG.map(char => ({ axis: char.label, value: getRiderCharacteristicSafe(p, char.key) }))} size={80}/>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {analysisMetrics.map(metric => {
-                  const values = selectedProfiles.map(p => {
-                      if (metric.key === 'age') return getAge(p.birthDate) || 0;
-                      if (metric.key === 'potentialRating') return 'potentialRating' in p ? p.potentialRating || 0 : 0;
-                      if (metric.key === 'generalPerformanceScore') return p.generalPerformanceScore || 0;
-                      if (metric.key === 'fatigueResistanceScore') return p.fatigueResistanceScore || 0;
-                      if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
-                          const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
-                          return getDeltaPct(p, profileKey, powerKey) ?? 0;
-                      }
-                      if (metric.key.startsWith('powerProfile')) {
-                          const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
-                          const wkg = getWkg(p, String(profileKey), String(powerKey));
-                          return wkg ?? 0;
-                      }
-                      return 0;
-                  }).filter(v => v > 0);
-                  
-                  const min = Math.min(...values);
-                  const max = Math.max(...values);
-                  
-                  return (
-                      <tr key={metric.key}>
-                          <td className="sticky left-0 bg-slate-800 p-2 text-left font-medium text-slate-300 w-48">{metric.label}</td>
-                          {selectedProfiles.map(p => {
-                              let value: number | null = null;
-                              if (metric.key === 'age') {
-                                const age = getAge(p.birthDate);
-                                value = typeof age === 'number' && !isNaN(age) ? age : null;
-                              } else if (metric.key === 'potentialRating') {
-                                const rating = 'potentialRating' in p ? p.potentialRating : null;
-                                value = typeof rating === 'number' && !isNaN(rating) ? rating : null;
-                              } else if (metric.key === 'generalPerformanceScore') {
-                                const score = p.generalPerformanceScore;
-                                value = typeof score === 'number' && !isNaN(score) ? score : null;
-                              } else if (metric.key === 'fatigueResistanceScore') {
-                                const score = p.fatigueResistanceScore;
-                                value = typeof score === 'number' && !isNaN(score) ? score : null;
-                              } else if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
-                                const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
-                                const d = getDeltaPct(p, profileKey, powerKey);
-                                value = typeof d === 'number' && !Number.isNaN(d) ? d : null;
-                              } else if (metric.key.startsWith('powerProfile')) {
-                                const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
-                                value = getWkg(p, String(profileKey), String(powerKey));
-                              }
-                              
-                              return (
-                                  <td key={p.id} className={`p-2 font-mono border-l border-slate-700 ${value !== null && typeof value === 'number' ? getHeatmapColor(value, min, max, metric.invertColor) : 'bg-slate-700/50 text-slate-400'}`}>
-                                      {value !== null && typeof value === 'number' ? metric.format(value) : 'N/A'}
-                                  </td>
-                              )
+            <div className="rounded-2xl border border-white/10 bg-slate-900/40 overflow-hidden shadow-xl shadow-black/20">
+              <div className="overflow-x-auto p-2 sm:p-3">
+                <table className="min-w-full text-sm text-center border-separate border-spacing-y-2 border-spacing-x-1.5">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-10 rounded-xl bg-slate-800/95 p-3 text-center font-semibold text-slate-300 border border-white/10 min-w-[9rem]">
+                        Métrique
+                      </th>
+                      {selectedProfiles.map((p) => (
+                        <th key={p.id} className="rounded-xl bg-slate-800/90 p-3 border border-white/10 min-w-[11.5rem]">
+                          <p className="font-semibold text-slate-50">{p.name}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{getDominantProfileLabel(p)}</p>
+                          <div className="mt-2 flex justify-center overflow-visible">
+                            <SpiderChart
+                              data={SPIDER_CHART_CHARACTERISTICS_CONFIG.map((char) => ({
+                                axis: char.label,
+                                value: getRiderCharacteristicSafe(p, char.key),
+                              }))}
+                              size={148}
+                            />
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysisMetrics.map((metric) => {
+                      const values = selectedProfiles
+                        .map((p) => {
+                          if (metric.key === 'age') return getAge(p.birthDate) || 0;
+                          if (metric.key === 'potentialRating') return 'potentialRating' in p ? p.potentialRating || 0 : 0;
+                          if (metric.key === 'generalPerformanceScore') return p.generalPerformanceScore || 0;
+                          if (metric.key === 'fatigueResistanceScore') return p.fatigueResistanceScore || 0;
+                          if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
+                            const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
+                            return getDeltaPct(p, profileKey, powerKey) ?? 0;
+                          }
+                          if (metric.key.startsWith('powerProfile')) {
+                            const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
+                            return getWkg(p, String(profileKey), String(powerKey)) ?? 0;
+                          }
+                          return 0;
+                        })
+                        .filter((v) => v > 0);
+
+                      const min = values.length ? Math.min(...values) : 0;
+                      const max = values.length ? Math.max(...values) : 0;
+
+                      return (
+                        <tr key={metric.key}>
+                          <td className="sticky left-0 z-10 rounded-2xl bg-slate-900 border border-white/10 p-2.5 text-center font-medium text-slate-300 min-w-[9rem]">
+                            {metric.label}
+                          </td>
+                          {selectedProfiles.map((p) => {
+                            let value: number | null = null;
+                            if (metric.key === 'age') {
+                              const age = getAge(p.birthDate);
+                              value = typeof age === 'number' && !isNaN(age) ? age : null;
+                            } else if (metric.key === 'potentialRating') {
+                              const rating = 'potentialRating' in p ? p.potentialRating : null;
+                              value = typeof rating === 'number' && !isNaN(rating) ? rating : null;
+                            } else if (metric.key === 'generalPerformanceScore') {
+                              const score = p.generalPerformanceScore;
+                              value = typeof score === 'number' && !isNaN(score) ? score : null;
+                            } else if (metric.key === 'fatigueResistanceScore') {
+                              const score = p.fatigueResistanceScore;
+                              value = typeof score === 'number' && !isNaN(score) ? score : null;
+                            } else if (typeof metric.key === 'string' && metric.key.startsWith('deltaPct.')) {
+                              const [, profileKey, powerKey] = metric.key.split('.') as [string, string, string];
+                              const d = getDeltaPct(p, profileKey, powerKey);
+                              value = typeof d === 'number' && !Number.isNaN(d) ? d : null;
+                            } else if (metric.key.startsWith('powerProfile')) {
+                              const [profileKey, powerKey] = metric.key.split('.') as [keyof Rider, keyof PowerProfile];
+                              value = getWkg(p, String(profileKey), String(powerKey));
+                            }
+
+                            const isBest =
+                              value !== null &&
+                              values.length > 1 &&
+                              (metric.invertColor ? value === min : value === max);
+
+                            return (
+                              <td key={p.id} className="p-0 align-middle">
+                                <div
+                                  className={`rounded-2xl border px-2.5 py-2.5 font-mono text-center ${
+                                    value !== null && typeof value === 'number'
+                                      ? `${getHeatmapColor(value, min, max, metric.invertColor)} border-white/10`
+                                      : 'bg-slate-800/50 text-slate-400 border-white/10'
+                                  } ${isBest ? 'ring-2 ring-emerald-400/70' : ''}`}
+                                >
+                                  {value !== null && typeof value === 'number' ? metric.format(value) : 'N/A'}
+                                  {isBest && (
+                                    <span className="ml-1 text-[9px] font-sans font-bold text-emerald-200">★</span>
+                                  )}
+                                </div>
+                              </td>
+                            );
                           })}
-                      </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1035,10 +1164,10 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
   };
 
   const tabButtonStyle = (tab: 'profiles' | 'search' | 'analysis' | 'recruitment') =>
-    `px-3 py-2 font-medium text-sm rounded-t-md whitespace-nowrap transition-colors duration-150 focus:outline-none ${
-      activeTab === tab 
-        ? 'bg-slate-800 text-white border-b-2 border-blue-500' 
-        : 'text-gray-500 hover:text-gray-700 hover:bg-slate-700'
+    `inline-flex items-center justify-center px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors duration-150 focus:outline-none ${
+      activeTab === tab
+        ? 'bg-indigo-500 text-white shadow-md shadow-indigo-900/40'
+        : 'bg-transparent text-slate-200 hover:bg-white/10 hover:text-white'
     }`;
 
   const renderRecruitmentTab = () => {
@@ -1077,15 +1206,15 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
       title="Scouting & Détection"
       actionButton={<ActionButton onClick={openAddModal} icon={<PlusCircleIcon className="w-5 h-5"/>}>Ajouter Prospect</ActionButton>}
     >
-        <div className="mb-4 border-b border-slate-600">
-            <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Tabs">
+        <div className="mb-4 flex justify-center">
+            <nav className="inline-flex flex-wrap items-center justify-center gap-1.5 rounded-full border border-white/10 bg-slate-950/60 p-1.5 shadow-inner shadow-black/20" aria-label="Tabs">
                 <button onClick={() => setActiveTab('profiles')} className={tabButtonStyle('profiles')}>Profils Suivis</button>
                 <button onClick={() => setActiveTab('search')} className={tabButtonStyle('search')}>Recherche de Talents</button>
                 <button onClick={() => setActiveTab('recruitment')} className={tabButtonStyle('recruitment')}>Recrutement</button>
                 <button onClick={() => setActiveTab('analysis')} className={tabButtonStyle('analysis')}>Analyse Comparative</button>
             </nav>
         </div>
-      <div className="bg-slate-800 p-4 rounded-b-lg">
+      <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-3 sm:p-4">
           {activeTab === 'profiles' && renderProfilesTab()}
           {activeTab === 'search' && renderSearchTab()}
           {activeTab === 'recruitment' && renderRecruitmentTab()}

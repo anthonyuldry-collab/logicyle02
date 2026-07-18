@@ -597,30 +597,6 @@ export default function SeasonPlanningSection({
     };
   }, [eventValidations]);
 
-  const renderValidationAlerts = () => {
-    if (validationStats.events === 0) return null;
-    if (validationStats.needsAction === 0) {
-      return (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          Toutes les sélections à venir sont alignées (préférences coureurs + disponibilités staff).
-        </div>
-      );
-    }
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-sm font-medium text-amber-900">
-          {validationStats.needsAction} course(s) nécessitent une vérification
-        </p>
-        <p className="text-xs text-amber-800 mt-1">
-          {validationStats.missingPref > 0 && `${validationStats.missingPref} préférence(s) coureur en attente · `}
-          {validationStats.missingStaff > 0 && `${validationStats.missingStaff} dispo staff à confirmer · `}
-          {validationStats.conflicts > 0 && `${validationStats.conflicts} conflit(s)`}
-          {validationStats.missingPref > 0 && ' — les coureurs répondent depuis Mon Calendrier.'}
-        </p>
-      </div>
-    );
-  };
-
   const renderAvailabilitySelect = (eventId: string, riderId: string, compact = false) => {
     const event = raceEvents.find(e => e.id === eventId);
     if (!event) return null;
@@ -633,10 +609,10 @@ export default function SeasonPlanningSection({
           const next = e.target.value as TalentAvailability;
           if (next) updateRiderAvailability(eventId, riderId, next);
         }}
-        className={`${compact ? 'text-[10px] px-1 py-0.5' : 'text-xs px-2 py-1.5'} border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full ${
+        className={`${compact ? 'text-[11px] px-2 py-1.5' : 'text-xs px-2.5 py-2'} rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500/40 w-full transition-colors ${
           value
-            ? 'border-white/15 bg-slate-900/80 text-slate-100'
-            : 'border-amber-400/40 bg-amber-500/15 text-amber-100'
+            ? 'border-white/15 bg-slate-950/90 text-slate-100'
+            : 'border-amber-400/50 bg-amber-950/50 text-amber-100'
         }`}
         title="Disponibilité staff"
       >
@@ -645,6 +621,30 @@ export default function SeasonPlanningSection({
           <option key={opt} value={opt}>{opt}</option>
         ))}
       </select>
+    );
+  };
+
+  const renderValidationAlerts = () => {
+    if (validationStats.events === 0) return null;
+    if (validationStats.needsAction === 0) {
+      return (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
+          Toutes les sélections à venir sont alignées (préférences coureurs + disponibilités staff).
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-2xl border border-amber-500/35 bg-amber-950/45 px-4 py-3">
+        <p className="text-sm font-medium text-amber-100">
+          {validationStats.needsAction} course(s) nécessitent une vérification
+        </p>
+        <p className="text-xs text-amber-200/90 mt-1">
+          {validationStats.missingPref > 0 && `${validationStats.missingPref} préférence(s) coureur en attente · `}
+          {validationStats.missingStaff > 0 && `${validationStats.missingStaff} dispo staff à confirmer · `}
+          {validationStats.conflicts > 0 && `${validationStats.conflicts} conflit(s)`}
+          {validationStats.missingPref > 0 && ' — les coureurs répondent depuis Mon Calendrier.'}
+        </p>
+      </div>
     );
   };
 
@@ -1005,29 +1005,28 @@ export default function SeasonPlanningSection({
 
   // Rendu de la vue préférences/choix des athlètes
   const renderPreferencesView = () => (
-    <div className="space-y-6">
-      {/* En-tête */}
-      <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl border border-green-200">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-          <div className="mb-4 lg:mb-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">🎯 Choix & disponibilités</h2>
-            <p className="text-gray-600">
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-950 p-5 sm:p-6 shadow-lg shadow-black/20">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-emerald-50">
+              Choix & disponibilités
+            </h2>
+            <p className="mt-1.5 text-sm text-emerald-100/75 leading-relaxed max-w-2xl">
               Préférences des coureurs (Mon Calendrier) et confirmation staff avant de figer les titulaires
             </p>
           </div>
-          
-          {/* Sélecteur d'année */}
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Année :</label>
+          <div className="flex items-center gap-2 shrink-0">
+            <label className="text-xs font-medium text-emerald-200/80">Année</label>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              className="rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
             >
               <option value="all">Toutes</option>
               {availableYears.map(year => (
                 <option key={year} value={year}>
-                  {year === 2026 ? `📅 ${year} (Planification)` : year}
+                  {year === 2026 ? `${year} (Planification)` : year}
                 </option>
               ))}
             </select>
@@ -1037,108 +1036,118 @@ export default function SeasonPlanningSection({
 
       {renderValidationAlerts()}
 
-      {/* Filtre par préférence */}
-      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <FunnelIcon className="w-5 h-5 mr-2 text-green-500" />
+      <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3.5 sm:px-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+            <FunnelIcon className="w-4 h-4 text-emerald-400" />
             Filtrer par préférence
           </h3>
           <select
             value={preferenceFilter}
             onChange={(e) => setPreferenceFilter(e.target.value as 'all' | 'wants' | 'objectives' | 'unavailable' | 'waiting')}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+            className="rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
           >
             <option value="all">Toutes les préférences</option>
-            <option value="wants">👍 Veut participer</option>
-            <option value="objectives">🎯 Objectifs spécifiques</option>
-            <option value="unavailable">❌ Indisponible (absent ou ne veut pas)</option>
-            <option value="waiting">⏳ En attente</option>
+            <option value="wants">Veut participer</option>
+            <option value="objectives">Objectifs spécifiques</option>
+            <option value="unavailable">Indisponible (absent ou ne veut pas)</option>
+            <option value="waiting">En attente</option>
           </select>
         </div>
       </div>
 
-      {/* Vue TABLEAU des préférences uniquement */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-w-full">
-          <div className="px-6 py-4 border-b border-gray-200 bg-emerald-600 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold">Tableau des préférences</h3>
-                <p className="text-emerald-100 text-sm mt-1">
-                  {filteredRiders.length} athlètes × {displayEvents.length} événements
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto" style={{ maxWidth: 'calc(100vw - 400px)' }}>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
-                    Athlète
-                  </th>
-                  {displayEvents.map(event => {
-                    const validation = eventValidations[event.id];
-                    return (
-                    <th key={event.id} className="px-3 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[160px] border-l border-gray-200">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="font-bold text-sm text-gray-700">{event.name}</div>
-                        <div className="text-xs text-gray-500 font-medium">{formatEventDateRange(event)}</div>
+      <div className="rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl shadow-black/25 overflow-hidden max-w-full">
+        <div className="px-5 py-4 border-b border-white/10 bg-gradient-to-r from-emerald-700 to-teal-700">
+          <h3 className="text-lg font-semibold text-white tracking-tight">Tableau des préférences</h3>
+          <p className="text-emerald-100/90 text-sm mt-0.5">
+            {filteredRiders.length} athlète{filteredRiders.length !== 1 ? 's' : ''} × {displayEvents.length} événement{displayEvents.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div className="overflow-x-auto p-3 sm:p-4" style={{ maxWidth: 'calc(100vw - 400px)' }}>
+          <table className="min-w-full border-separate border-spacing-y-2 border-spacing-x-2">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-20 rounded-xl bg-slate-800/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-300 border border-white/10 shadow-md">
+                  Athlète
+                </th>
+                {displayEvents.map(event => {
+                  const validation = eventValidations[event.id];
+                  return (
+                    <th
+                      key={event.id}
+                      className="rounded-xl bg-slate-800/80 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-300 min-w-[168px] border border-white/10"
+                    >
+                      <div className="flex flex-col items-center gap-1.5 normal-case tracking-normal">
+                        <div className="font-semibold text-sm text-slate-100 leading-snug">{event.name}</div>
+                        <div className="text-[11px] text-slate-400 font-medium">{formatEventDateRange(event)}</div>
                         {validation && !validation.isComplete && (
-                          <span className="text-[10px] font-normal normal-case text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-medium text-amber-100 bg-amber-500/25 border border-amber-400/30 px-2 py-0.5 rounded-full">
                             {validation.attentionRiders.length} à traiter
                           </span>
                         )}
                       </div>
                     </th>
-                  );})}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredRiders.map((rider, index) => (
-                  <tr key={rider.id} className={`hover:bg-gray-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">
-                      {rider.firstName} {rider.lastName}
-                    </td>
-                    {displayEvents.map(event => {
-                      const pref = getRiderEventPreference(event.id, rider.id);
-                      const selection = resolveRiderEventSelection(event, rider.id, riderEventSelections);
-                      const issues = selection.status && selection.status !== RiderEventStatus.NON_RETENU
-                        ? analyzeRiderEventIssues(selection)
-                        : [];
-                      const color = pref === RiderEventPreference.VEUT_PARTICIPER ? 'bg-green-100 text-green-800'
-                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'bg-blue-100 text-blue-800'
-                        : pref === RiderEventPreference.EN_ATTENTE ? 'bg-gray-100 text-gray-800'
-                        : pref === RiderEventPreference.ABSENT || pref === RiderEventPreference.NE_VEUT_PAS ? 'bg-red-100 text-red-800'
-                        : 'bg-white text-gray-400';
-                      const label = pref === RiderEventPreference.VEUT_PARTICIPER ? '👍 Veut'
-                        : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? '🎯 Obj.'
-                        : pref === RiderEventPreference.ABSENT ? '❌ Absent'
-                        : pref === RiderEventPreference.NE_VEUT_PAS ? '🚫 Refus'
-                        : pref === RiderEventPreference.EN_ATTENTE ? '⏳ Attente'
-                        : '—';
-                      const isEngaged = selection.status && selection.status !== RiderEventStatus.NON_RETENU;
-                      return (
-                        <td key={event.id} className={`px-2 py-2 text-center text-sm border-l border-gray-200 min-w-[140px] ${issues.length > 0 ? 'bg-amber-50/50' : ''}`}>
-                          <div className="space-y-1">
-                            <div className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
-                              {label}
-                            </div>
-                            {isEngaged && renderAvailabilitySelect(event.id, rider.id, true)}
-                            {issues.length > 0 && (
-                              <div className="text-[10px] text-amber-700">⚠ {issues.length}</div>
-                            )}
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRiders.map((rider) => (
+                <tr key={rider.id}>
+                  <td className="sticky left-0 z-10 rounded-xl px-4 py-3 text-sm font-semibold text-slate-50 border border-white/10 shadow-md align-middle bg-slate-900">
+                    {rider.firstName} {rider.lastName}
+                  </td>
+                  {displayEvents.map(event => {
+                    const pref = getRiderEventPreference(event.id, rider.id);
+                    const selection = resolveRiderEventSelection(event, rider.id, riderEventSelections);
+                    const issues = selection.status && selection.status !== RiderEventStatus.NON_RETENU
+                      ? analyzeRiderEventIssues(selection)
+                      : [];
+                    const color = pref === RiderEventPreference.VEUT_PARTICIPER
+                      ? 'bg-emerald-500/25 text-emerald-100 border-emerald-400/35'
+                      : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES
+                        ? 'bg-sky-500/25 text-sky-100 border-sky-400/35'
+                        : pref === RiderEventPreference.EN_ATTENTE
+                          ? 'bg-slate-500/30 text-slate-200 border-white/15'
+                          : pref === RiderEventPreference.ABSENT || pref === RiderEventPreference.NE_VEUT_PAS
+                            ? 'bg-rose-500/25 text-rose-100 border-rose-400/35'
+                            : 'bg-slate-800/80 text-slate-400 border-white/10';
+                    const label = pref === RiderEventPreference.VEUT_PARTICIPER ? 'Veut'
+                      : pref === RiderEventPreference.OBJECTIFS_SPECIFIQUES ? 'Objectifs'
+                      : pref === RiderEventPreference.ABSENT ? 'Absent'
+                      : pref === RiderEventPreference.NE_VEUT_PAS ? 'Refus'
+                      : pref === RiderEventPreference.EN_ATTENTE ? 'Attente'
+                      : '—';
+                    const isEngaged = selection.status && selection.status !== RiderEventStatus.NON_RETENU;
+                    return (
+                      <td key={event.id} className="p-0 align-middle min-w-[160px]">
+                        <div
+                          className={`rounded-2xl border px-3 py-3 space-y-2 shadow-sm transition-colors ${
+                            issues.length > 0
+                              ? 'border-amber-400/35 bg-amber-950/35'
+                              : 'border-white/10 bg-slate-800/55 hover:bg-slate-800/80'
+                          }`}
+                        >
+                          <div className={`inline-flex w-full items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${color}`}>
+                            {label}
                           </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          {isEngaged && renderAvailabilitySelect(event.id, rider.id, true)}
+                          {issues.length > 0 && (
+                            <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-amber-200">
+                              <span aria-hidden>⚠</span>
+                              <span>{issues.length}</span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      
+      </div>
     </div>
   );
 
@@ -1780,18 +1789,22 @@ export default function SeasonPlanningSection({
                       const isRemplacant = riderStatus === RiderEventStatus.REMPLACANT;
                       
                       return (
-                        <td key={event.id} className={`px-2 text-center text-sm border-l border-white/10 ${
+                        <td key={event.id} className={`px-2 text-center text-sm ${
                           compactTable ? 'py-2 min-w-[120px]' : 'py-3 min-w-[140px]'
-                        } ${
-                          !withinLimits ? 'bg-rose-500/15' : 'bg-white/[0.03]'
                         }`}>
-                          <div className={compactTable ? 'space-y-1.5' : 'space-y-2'}>
+                          <div
+                            className={`rounded-2xl border px-2.5 py-2.5 shadow-sm ${compactTable ? 'space-y-1.5' : 'space-y-2'} ${
+                              !withinLimits
+                                ? 'border-rose-400/30 bg-rose-950/40'
+                                : 'border-white/10 bg-slate-800/50 hover:bg-slate-800/75'
+                            }`}
+                          >
                             
                             {/* Interface simplifiée pour les sélections */}
                             <div className="space-y-2">
                               {/* Statut actuel */}
                               {!compactTable && riderStatus && (
-                                <div className={`text-xs px-2 py-1 rounded text-center font-medium ${
+                                <div className={`text-xs px-2.5 py-1 rounded-full text-center font-medium ${
                                   riderStatus === RiderEventStatus.TITULAIRE ? 'bg-emerald-500/25 text-emerald-200' :
                                   riderStatus === RiderEventStatus.PRE_SELECTION ? 'bg-blue-500/25 text-blue-200' :
                                   riderStatus === RiderEventStatus.REMPLACANT ? 'bg-amber-500/25 text-amber-200' :
@@ -1814,10 +1827,10 @@ export default function SeasonPlanningSection({
                                     removeRiderFromEvent(event.id, rider.id);
                                   }
                                 }}
-                                className={`text-xs px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full ${
+                                className={`text-xs px-2 py-1.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40 w-full ${
                                   maxRiders && selectedCount >= maxRiders && !isSelected
                                     ? 'border-rose-400/40 bg-rose-500/15 text-rose-100'
-                                    : 'border-white/15 bg-slate-900/80 text-slate-100'
+                                    : 'border-white/15 bg-slate-950/80 text-slate-100'
                                 }`}
                                 disabled={maxRiders && selectedCount >= maxRiders && !isSelected}
                               >
@@ -1829,7 +1842,7 @@ export default function SeasonPlanningSection({
                               
                               {/* Indicateur de limite */}
                               {!compactTable && maxRiders && (
-                                <div className="text-xs text-gray-500">
+                                <div className="text-xs text-slate-400">
                                   {selectedCount}/{maxRiders} coureurs
                                 </div>
                               )}
@@ -1843,7 +1856,7 @@ export default function SeasonPlanningSection({
                                     updateRiderPreference(event.id, rider.id, newPreference);
                                   }
                                 }}
-                                className="text-xs px-2 py-1.5 border border-white/15 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full bg-slate-900/80 text-slate-100"
+                                className="text-xs px-2 py-1.5 border border-white/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40 w-full bg-slate-950/80 text-slate-100"
                               >
                                 <option value="">Préférence</option>
                                 <option value={RiderEventPreference.VEUT_PARTICIPER}>👍 Veut participer</option>
@@ -1870,16 +1883,16 @@ export default function SeasonPlanningSection({
 
       {/* Message si aucun événement futur */}
       {displayEvents.length === 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <CalendarDaysIcon className="w-12 h-12 mx-auto text-yellow-400 mb-4" />
-          <h3 className="text-lg font-medium text-yellow-800 mb-2">Aucun événement futur trouvé</h3>
-          <p className="text-yellow-700 mb-4">
+        <div className="bg-amber-950/50 border border-amber-500/30 rounded-2xl p-6 text-center">
+          <CalendarDaysIcon className="w-12 h-12 mx-auto text-amber-300 mb-4" />
+          <h3 className="text-lg font-medium text-amber-100 mb-2">Aucun événement futur trouvé</h3>
+          <p className="text-amber-200/90 mb-4">
             Il n'y a actuellement aucun événement de course planifié pour les prochains mois.
           </p>
-          <div className="text-sm text-yellow-600">
+          <div className="text-sm text-amber-200/80">
             <p>Pour ajouter des événements :</p>
-            <p>1. Allez dans la section "Calendrier"</p>
-            <p>2. Cliquez sur "Ajouter Événement"</p>
+            <p>1. Allez dans la section &quot;Calendrier&quot;</p>
+            <p>2. Cliquez sur &quot;Ajouter Événement&quot;</p>
             <p>3. Créez vos événements avec des dates futures</p>
           </div>
         </div>
@@ -1896,8 +1909,8 @@ export default function SeasonPlanningSection({
   const content = (
     <>
       <div className="mb-4">{renderValidationAlerts()}</div>
-      <div className="mb-4">
-        <nav className="flex flex-wrap gap-2" aria-label="Sous-onglets planning">
+      <div className="mb-4 flex justify-center">
+        <nav className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-white/10 bg-slate-950/60 p-1.5 shadow-inner shadow-black/20" aria-label="Sous-onglets planning">
           {subViewTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeView === tab.id;
@@ -1906,13 +1919,13 @@ export default function SeasonPlanningSection({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveView(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-gray-200'
+                    ? 'bg-indigo-500 text-white shadow-md shadow-indigo-900/40'
+                    : 'bg-transparent text-slate-200 hover:bg-white/10 hover:text-white border border-transparent'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 shrink-0" />
                 <span>{tab.label}</span>
               </button>
             );

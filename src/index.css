@@ -30,6 +30,10 @@
     @apply w-full px-3 py-2 rounded-xl border border-white/20 bg-slate-950 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-transparent;
   }
 
+  .input-field-sm {
+    @apply w-full px-3 py-2 text-sm rounded-xl border border-white/20 bg-slate-950 text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400/40;
+  }
+
   /* Shell applicatif : une seule surface sidebar + contenu */
   .lc-app-shell {
     position: relative;
@@ -403,7 +407,11 @@
   .lc-app-shell .main-content .from-slate-50,
   .lc-app-shell .main-content .from-amber-50,
   .lc-app-shell .main-content .from-blue-50,
+  .lc-app-shell .main-content .from-green-50,
+  .lc-app-shell .main-content .from-emerald-50,
   .lc-app-shell .main-content .to-slate-50,
+  .lc-app-shell .main-content .to-emerald-50,
+  .lc-app-shell .main-content .to-green-50,
   .lc-app-shell .main-content .to-white {
     --tw-gradient-from: #0f172a !important;
     --tw-gradient-to: #1e293b !important;

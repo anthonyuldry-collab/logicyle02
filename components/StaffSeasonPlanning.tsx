@@ -668,10 +668,10 @@ export default function StaffSeasonPlanning({
             <h3 className="text-base font-semibold">{selfViewOnly ? 'Mon planning saison' : 'Grille de planning'}</h3>
             <p className="text-blue-100 text-xs mt-0.5">
               {canValidatePlanning
-                ? 'Candidatures staff en haut · validez Retenu / Refusé (votre nom est enregistré)'
+                ? 'Admin, DS ou Resp. Performance : cliquez une cellule (— → Oui → Non) ou Oui / Non · le menu ⋯ agit sur toute la colonne'
                 : selfViewOnly
                   ? 'Indiquez votre disponibilité et candidatez aux courses qui vous intéressent'
-                  : 'Cliquez Candidater ou Indispo sur votre ligne — la réponse du DS apparaît en dessous'}
+                  : 'Cliquez Candidater ou Indispo sur votre ligne — la réponse du DS / Resp. Perf. apparaît en dessous'}
             </p>
           </div>
           <div className="max-h-[70vh] overflow-y-auto">

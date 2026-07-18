@@ -1492,6 +1492,11 @@ export interface EventAccommodation {
   /** Coordonnées optionnelles (carte par lieux) */
   latitude?: number;
   longitude?: number;
+  /** Justificatifs de frais liés (IDs ExpenseReceipt) */
+  expenseReceiptIds?: string[];
+  /** Lien direct vers confirmation / facture hôtel (PDF, email, drive…) */
+  proofDocumentUrl?: string;
+  proofDocumentName?: string;
 }
 
 export interface EventRaceDocument {
@@ -1544,6 +1549,8 @@ export interface ExpenseReceipt {
   id: string;
   eventId?: string;
   transportLegId?: string;
+  /** Hébergement lié (justificatif hôtel) */
+  accommodationId?: string;
   submittedByUserId: string;
   submittedByName?: string;
   staffRole?: string;

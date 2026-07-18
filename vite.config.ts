@@ -1,8 +1,29 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+const REQUIRED_FIREBASE_ENV = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID',
+] as const;
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const missingFirebase = REQUIRED_FIREBASE_ENV.filter((key) => !env[key]?.trim());
+  if (missingFirebase.length > 0) {
+    throw new Error(
+      `[LogiCycle] Variables Firebase manquantes pour mode "${mode}".\n` +
+        `Ajoute-les dans .env (local) ou dans les variables d’environnement Netlify/CI :\n` +
+        `  ${missingFirebase.join(', ')}\n` +
+        `Puis relance \`npm run dev\` ou \`npm run build\`.`
+    );
+  }
+
+  return {
   resolve: {
     alias: {
       '@': '.',
@@ -60,6 +81,10 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
+      // En dev, un SW actif casse les imports dynamiques Vite (.tsx).
+      devOptions: {
+        enabled: false,
+      },
       injectManifest: {
         minify: false,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
@@ -104,4 +129,5 @@ export default defineConfig({
       },
     }),
   ],
+};
 });

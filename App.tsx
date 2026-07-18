@@ -1817,6 +1817,22 @@ const App: React.FC = () => {
         'performanceEntries',
         'performanceEntries'
       ),
+      saveEventTransportLeg: saveInTeam('eventTransportLegs', 'eventTransportLegs'),
+      saveEventAccommodation: saveInTeam('eventAccommodations', 'eventAccommodations'),
+      saveEventChecklistItem: saveInTeam('eventChecklistItems', 'eventChecklistItems'),
+      saveStaffEventSelection: saveInTeam('staffEventSelections', 'staffEventSelections'),
+      saveScoutingProfile: saveInTeam('scoutingProfiles', 'scoutingProfiles'),
+      saveEquipment: saveInTeam('equipment', 'equipment'),
+      saveExpenseReceipt: saveInTeam('expenseReceipts', 'expenseReceipts'),
+      saveWarehouse: saveInTeam('warehouses', 'warehouses'),
+      saveStockItem: saveInTeam('stockItems', 'stockItems'),
+      savePeerRating: saveInTeam('peerRatings', 'peerRatings'),
+      saveRiderSelfDebrief: saveInTeam('riderSelfDebriefs', 'riderSelfDebriefs'),
+      savePartnerNewsletter: saveInTeam('partnerNewsletters', 'partnerNewsletters'),
+      saveCategoryBudgets: async (budgets) => {
+        await firebaseService.saveTeamSettings(teamId!, { categoryBudgets: budgets });
+        setAppState((prev) => ({ ...prev, categoryBudgets: budgets }));
+      },
       applyTeamIdentity: async (patch) => {
         const unlockedSub = getUnlockedPresentationSubscription();
         await firebaseService.saveTeamSettings(teamId!, {
@@ -1828,6 +1844,12 @@ const App: React.FC = () => {
           isPresentationDemo: true,
           language: 'fr',
           subscription: unlockedSub,
+          operationalSettings: {
+            gender: 'women',
+            eventFocus: 'competition',
+            ficheProfile: 'competition',
+            acceptRiderApplications: true,
+          },
         });
         setAppState((prev) => ({
           ...prev,
@@ -1835,6 +1857,12 @@ const App: React.FC = () => {
           themePrimaryColor: patch.primaryColor,
           themeAccentColor: patch.accentColor,
           subscription: unlockedSub,
+          operationalSettings: {
+            gender: 'women',
+            eventFocus: 'competition',
+            ficheProfile: 'competition',
+            acceptRiderApplications: true,
+          },
           teams: (prev.teams || []).map((t) =>
             t.id === teamId
               ? {
@@ -1850,7 +1878,7 @@ const App: React.FC = () => {
           ),
         }));
       },
-    });
+    }, undefined, teamId);
   }, [currentUser, appState.teams]);
 
   const onDeleteBudgetItem = useCallback(async (item: EventBudgetItem) => {

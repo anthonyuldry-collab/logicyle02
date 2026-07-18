@@ -10,6 +10,7 @@ import {
   submitStaffCandidature,
   declineStaffCandidature,
   validateStaffCandidature,
+  cycleStaffAssignment,
   formatValidationLabel,
   getCandidatureLabel,
   isPendingCandidature,
@@ -55,9 +56,16 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
           ? 'bg-slate-100 text-slate-600 border-slate-200'
           : 'bg-white text-gray-400 border-gray-200';
 
+  const cycleTitle =
+    label === 'Retenu'
+      ? 'Cliquer : passer en Non'
+      : label === 'Refusé' || label === 'Indispo'
+        ? 'Cliquer : réinitialiser'
+        : 'Cliquer : retenir sur cet événement';
+
   return (
     <div className={compact ? 'space-y-1' : 'space-y-1.5'}>
-      {/* Candidature staff */}
+      {/* Candidature staff (sa propre ligne) */}
       {canCandidater ? (
         <div className="flex gap-0.5">
           <button
@@ -66,7 +74,10 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
               submitStaffCandidature(eventId, member.id, staffEventSelections, setStaffEventSelections)
             }
             className={`flex-1 rounded border font-medium transition-colors hover:bg-emerald-50 border-emerald-200 text-emerald-800 ${btn} ${
-              selection?.staffPreference === StaffEventPreference.VEUT_PARTICIPER ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'bg-white'
+              selection?.staffPreference === StaffEventPreference.VEUT_PARTICIPER &&
+              selection?.status === StaffEventStatus.EN_ATTENTE
+                ? 'bg-emerald-50 ring-1 ring-emerald-300'
+                : 'bg-white'
             }`}
             title="Je candidate pour cet événement"
           >
@@ -88,6 +99,24 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
             Indispo
           </button>
         </div>
+      ) : canValidate ? (
+        <button
+          type="button"
+          onClick={() =>
+            cycleStaffAssignment(
+              eventId,
+              member.id,
+              selection,
+              currentUser,
+              staffEventSelections,
+              setStaffEventSelections,
+            )
+          }
+          className={`w-full rounded border text-center font-semibold transition-colors hover:ring-2 hover:ring-blue-300 cursor-pointer ${btn} py-1 ${candidatureClass}`}
+          title={cycleTitle}
+        >
+          {label}
+        </button>
       ) : (
         <div
           className={`w-full rounded border text-center font-medium ${btn} py-1 ${candidatureClass}`}
@@ -97,8 +126,8 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
         </div>
       )}
 
-      {/* Réponse DS / manager */}
-      {canValidate && (pending || selection?.validatedByName || selection?.staffPreference === StaffEventPreference.VEUT_PARTICIPER) && (
+      {/* Réponse DS / manager — toujours disponible pour assigner */}
+      {canValidate && (
         <div className="flex gap-0.5">
           <button
             type="button"
@@ -115,8 +144,9 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
             className={`flex-1 rounded border font-semibold transition-colors hover:bg-green-50 border-green-300 text-green-800 ${btn} ${
               selection?.status === StaffEventStatus.SELECTIONNE ? 'bg-green-50 ring-1 ring-green-300' : 'bg-white'
             }`}
+            title="Retenir sur cet événement"
           >
-            Retenu
+            Oui
           </button>
           <button
             type="button"
@@ -131,10 +161,14 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
               )
             }
             className={`flex-1 rounded border font-semibold transition-colors hover:bg-slate-50 border-slate-300 text-slate-700 ${btn} ${
-              selection?.status === StaffEventStatus.NON_SELECTIONNE ? 'bg-slate-100 ring-1 ring-slate-300' : 'bg-white'
+              selection?.status === StaffEventStatus.NON_SELECTIONNE ||
+              selection?.status === StaffEventStatus.REFUSE
+                ? 'bg-slate-100 ring-1 ring-slate-300'
+                : 'bg-white'
             }`}
+            title="Ne pas retenir"
           >
-            Refusé
+            Non
           </button>
         </div>
       )}
@@ -152,10 +186,6 @@ const StaffPlanningCell: React.FC<StaffPlanningCellProps> = ({
         >
           {validationText}
         </p>
-      )}
-
-      {!canValidate && !isOwn && label === '—' && (
-        <p className={`text-gray-300 text-center ${compact ? 'text-[8px]' : 'text-[9px]'}`}>—</p>
       )}
     </div>
   );

@@ -155,22 +155,22 @@ export const inferLogisticsPhase = (
   return 'pendant';
 };
 
-/** Libellés UX des 3 phases du plan de transport. */
+/** Libellés UX des 3 phases du plan de transport (journée de course). */
 export const TRANSPORT_PHASE_UI = {
   avant: {
     short: 'Avant',
-    long: 'Avant — Emmener les coureurs',
-    hint: 'Trajets pour emmener les coureurs sur la course (base → départ, vols, etc.).',
+    long: 'Avant — Départ vers la course',
+    hint: 'Départ pour aller à la course (base / hôtel → lieu de départ).',
   },
   pendant: {
-    short: 'Jour J',
-    long: 'Jour J — En course',
+    short: 'Pendant',
+    long: 'Pendant — En course',
     hint: 'Véhicules pendant l’épreuve (suiveur, ravito, staff). Les coureurs sont sur le vélo.',
   },
   apres: {
     short: 'Après',
-    long: 'Après — Hôtel & retours',
-    hint: 'Transfert arrivée → hôtel, transferts entre étapes, puis retour final.',
+    long: 'Après — Retour maison',
+    hint: 'Retour à la maison après la course (arrivée → domicile / base).',
   },
 } as const;
 

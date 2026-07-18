@@ -5,82 +5,7 @@ import { getRiderCharacteristicSafe } from '../../utils/riderUtils';
 import ActionButton from '../ActionButton';
 import TrashIcon from '../icons/TrashIcon';
 import UserCircleIcon from '../icons/UserCircleIcon';
-
-const SpiderChart: React.FC<{ data: { axis: string; value: number }[]; size?: number; maxValue?: number }> = ({ data, size = 150, maxValue = 100 }) => {
-    const numAxes = data.length;
-    if (numAxes < 3) return <p className="text-xs text-center text-gray-400">Données insuffisantes pour le graphique radar.</p>;
-
-    const angleSlice = (Math.PI * 2) / numAxes;
-    const radius = size / 3;
-    const center = size / 2;
-
-    const points = data.map((d, i) => {
-        const value = Math.max(0, Math.min(d.value || 0, maxValue));
-        const x = center + radius * (value / maxValue) * Math.cos(angleSlice * i - Math.PI / 2);
-        const y = center + radius * (value / maxValue) * Math.sin(angleSlice * i - Math.PI / 2);
-        return `${x},${y}`;
-    }).join(' ');
-
-    const axisLines = data.map((d, i) => {
-        const angle = angleSlice * i - Math.PI / 2;
-        const cosAngle = Math.cos(angle);
-        const sinAngle = Math.sin(angle);
-        
-        const x2 = center + radius * cosAngle;
-        const y2 = center + radius * sinAngle;
-
-        const labelOffset = 10;
-        const lx = center + (radius + labelOffset) * cosAngle;
-        const ly = center + (radius + labelOffset) * sinAngle;
-        
-        const anchorTolerance = 3;
-        let textAnchor = "middle";
-        if (lx > center + anchorTolerance) {
-            textAnchor = "start";
-        } else if (lx < center - anchorTolerance) {
-            textAnchor = "end";
-        }
-
-        return { x1: center, y1: center, x2, y2, label: d.axis, lx, ly, textAnchor };
-    });
-    
-    const gridLevels = 5;
-    const concentricPolygons = Array.from({ length: gridLevels }).map((_, levelIndex) => {
-        const levelRadius = radius * ((levelIndex + 1) / gridLevels);
-        return data.map((d, i) => {
-            const x = center + levelRadius * Math.cos(angleSlice * i - Math.PI / 2);
-            const y = center + levelRadius * Math.sin(angleSlice * i - Math.PI / 2);
-            return `${x},${y}`;
-        }).join(' ');
-    });
-
-    return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto">
-            <g>
-                {concentricPolygons.map((polyPoints, i) => (
-                    <polygon key={`grid-${i}`} points={polyPoints} fill="none" stroke="rgba(107, 114, 128, 0.5)" strokeWidth="0.5" />
-                ))}
-                {axisLines.map((line, i) => (
-                    <line key={`axis-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="rgba(107, 114, 128, 0.7)" strokeWidth="0.5" />
-                ))}
-                <polygon points={points} fill="rgba(239, 169, 182, 0.5)" stroke="rgba(239, 169, 182, 1)" strokeWidth="1" /> {/* Accent color fill/stroke */}
-                {axisLines.map((line, i) => (
-                    <text
-                        key={`label-${i}`}
-                        x={line.lx}
-                        y={line.ly}
-                        fontSize="6"
-                        fill="rgb(203, 213, 225)"
-                        textAnchor={line.textAnchor as any}
-                        dominantBaseline="middle"
-                    >
-                        {line.label}
-                    </text>
-                ))}
-            </g>
-        </svg>
-    );
-};
+import SpiderChart from '../SpiderChart';
 
 const ReliabilityIndicator: React.FC<{ level: number }> = ({ level }) => {
     const descriptions = [
@@ -253,7 +178,12 @@ const ProfileInfoTab: React.FC<ProfileInfoTabProps> = ({
                 <div className="bg-slate-700 p-3 rounded-lg">
                     <h4 className="font-semibold text-slate-200 mb-2 text-center">Profil de Performance Automatisé</h4>
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-center">
-                        <SpiderChart data={spiderChartData} size={200} />
+                        <SpiderChart
+                          data={spiderChartData}
+                          size={220}
+                          fill="rgba(239, 169, 182, 0.5)"
+                          stroke="rgba(239, 169, 182, 1)"
+                        />
                         <div className="space-y-1">
                             {calculatedCharsData.map(char => (
                                 <div key={char.label} className="flex justify-between items-center text-xs">

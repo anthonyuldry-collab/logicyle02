@@ -6,16 +6,29 @@ import {
   DEMO_PRES_TEAM_NAME,
 } from '../constants/demoPresentationTeam';
 import {
+  BudgetItemCategory,
+  EquipmentItem,
+  EventAccommodation,
   EventBudgetItem,
+  EventChecklistItem,
+  EventTransportLeg,
+  ExpenseReceipt,
   IncomeItem,
+  PartnerNewsletter,
+  PeerRating,
   PerformanceEntry,
   RaceEvent,
   Rider,
   RiderEventSelection,
+  RiderSelfDebrief,
+  ScoutingProfile,
+  StaffEventSelection,
   StaffMember,
+  StockItem,
   Team,
   TeamLevel,
   Vehicle,
+  Warehouse,
 } from '../types';
 
 export interface DemoPresentationInstallHandlers {
@@ -27,6 +40,19 @@ export interface DemoPresentationInstallHandlers {
   saveBudgetItem: (item: EventBudgetItem) => Promise<void>;
   saveIncomeItem: (item: IncomeItem) => Promise<void>;
   savePerformanceEntry: (entry: PerformanceEntry) => Promise<void>;
+  saveEventTransportLeg: (leg: EventTransportLeg) => Promise<void>;
+  saveEventAccommodation: (acc: EventAccommodation) => Promise<void>;
+  saveEventChecklistItem: (item: EventChecklistItem) => Promise<void>;
+  saveStaffEventSelection: (sel: StaffEventSelection) => Promise<void>;
+  saveScoutingProfile: (profile: ScoutingProfile) => Promise<void>;
+  saveEquipment: (item: EquipmentItem) => Promise<void>;
+  saveExpenseReceipt: (receipt: ExpenseReceipt) => Promise<void>;
+  saveWarehouse: (warehouse: Warehouse) => Promise<void>;
+  saveStockItem: (item: StockItem) => Promise<void>;
+  savePeerRating: (rating: PeerRating) => Promise<void>;
+  saveRiderSelfDebrief: (debrief: RiderSelfDebrief) => Promise<void>;
+  savePartnerNewsletter: (newsletter: PartnerNewsletter) => Promise<void>;
+  saveCategoryBudgets: (budgets: Partial<Record<BudgetItemCategory, number>>) => Promise<void>;
   applyTeamIdentity: (patch: {
     name: string;
     level: TeamLevel;
@@ -55,9 +81,19 @@ async function saveAll<T extends { id: string }>(
 
 export async function installDemoPresentationTeam(
   handlers: DemoPresentationInstallHandlers,
-  season?: number
+  season?: number,
+  teamId?: string
 ): Promise<DemoPresentationInstallResult> {
-  const pack: DemoPresentationPack = buildDemoPresentationPack(season);
+  const pack: DemoPresentationPack = buildDemoPresentationPack(season, teamId);
+  const { extras } = pack;
+
+  // Inject real teamId into newsletters
+  if (teamId) {
+    extras.partnerNewsletters = extras.partnerNewsletters.map((n) => ({
+      ...n,
+      teamId,
+    }));
+  }
 
   await handlers.applyTeamIdentity({
     name: pack.meta.teamName,
@@ -75,6 +111,20 @@ export async function installDemoPresentationTeam(
   await saveAll(pack.eventBudgetItems, handlers.saveBudgetItem);
   await saveAll(pack.incomeItems, handlers.saveIncomeItem);
   await saveAll(pack.performanceEntries, handlers.savePerformanceEntry);
+
+  await saveAll(extras.eventTransportLegs, handlers.saveEventTransportLeg);
+  await saveAll(extras.eventAccommodations, handlers.saveEventAccommodation);
+  await saveAll(extras.eventChecklistItems, handlers.saveEventChecklistItem);
+  await saveAll(extras.staffEventSelections, handlers.saveStaffEventSelection);
+  await saveAll(extras.scoutingProfiles, handlers.saveScoutingProfile);
+  await saveAll(extras.equipment, handlers.saveEquipment);
+  await saveAll(extras.expenseReceipts, handlers.saveExpenseReceipt);
+  await saveAll(extras.warehouses, handlers.saveWarehouse);
+  await saveAll(extras.stockItems, handlers.saveStockItem);
+  await saveAll(extras.peerRatings, handlers.savePeerRating);
+  await saveAll(extras.riderSelfDebriefs, handlers.saveRiderSelfDebrief);
+  await saveAll(extras.partnerNewsletters, handlers.savePartnerNewsletter);
+  await handlers.saveCategoryBudgets(extras.categoryBudgets);
 
   return {
     teamName: DEMO_PRES_TEAM_NAME,

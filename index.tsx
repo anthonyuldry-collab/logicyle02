@@ -1,12 +1,30 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './src/index.css';
 
-registerSW({ immediate: true });
-
 const isDev = import.meta.env.DEV;
+
+// En production uniquement : le SW PWA en local casse les imports dynamiques Vite.
+if (import.meta.env.PROD) {
+  void import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({ immediate: true });
+  });
+} else if ('serviceWorker' in navigator) {
+  // Nettoie un SW résiduel (souvent après un build / preview sur la même URL).
+  void navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => {
+      void reg.unregister();
+    });
+  });
+  if ('caches' in window) {
+    void caches.keys().then((keys) => {
+      keys.forEach((key) => {
+        void caches.delete(key);
+      });
+    });
+  }
+}
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },

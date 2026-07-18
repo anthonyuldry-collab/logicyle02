@@ -24,6 +24,7 @@ import {
 import Modal from './Modal';
 import ActionButton from './ActionButton';
 import UserCircleIcon from './icons/UserCircleIcon';
+import SpiderChart from './SpiderChart';
 
 interface TalentProfilePreviewModalProps {
   user: User;
@@ -43,104 +44,6 @@ const getAge = (birthDate?: string): number | null => {
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
   return age;
-};
-
-const TalentRadarChart: React.FC<{ data: { axis: string; value: number }[]; size?: number }> = ({
-  data,
-  size = 220,
-}) => {
-  const numAxes = data.length;
-  if (numAxes < 3) {
-    return <p className="text-xs text-center text-gray-400">Données insuffisantes pour le graphique.</p>;
-  }
-
-  const maxValue = 100;
-  const angleSlice = (Math.PI * 2) / numAxes;
-  const radius = size / 3.2;
-  const center = size / 2;
-
-  const points = data
-    .map((d, i) => {
-      const value = Math.max(0, Math.min(d.value || 0, maxValue));
-      const x = center + radius * (value / maxValue) * Math.cos(angleSlice * i - Math.PI / 2);
-      const y = center + radius * (value / maxValue) * Math.sin(angleSlice * i - Math.PI / 2);
-      return `${x},${y}`;
-    })
-    .join(' ');
-
-  const axisLines = data.map((d, i) => {
-    const angle = angleSlice * i - Math.PI / 2;
-    const cosAngle = Math.cos(angle);
-    const sinAngle = Math.sin(angle);
-    const x2 = center + radius * cosAngle;
-    const y2 = center + radius * sinAngle;
-    const labelOffset = 14;
-    const lx = center + (radius + labelOffset) * cosAngle;
-    const ly = center + (radius + labelOffset) * sinAngle;
-    let textAnchor: 'start' | 'middle' | 'end' = 'middle';
-    if (lx > center + 4) textAnchor = 'start';
-    else if (lx < center - 4) textAnchor = 'end';
-    return { x1: center, y1: center, x2, y2, label: d.axis, lx, ly, textAnchor };
-  });
-
-  const gridLevels = 5;
-  const concentricPolygons = Array.from({ length: gridLevels }).map((_, levelIndex) => {
-    const levelRadius = radius * ((levelIndex + 1) / gridLevels);
-    return data
-      .map((_, i) => {
-        const x = center + levelRadius * Math.cos(angleSlice * i - Math.PI / 2);
-        const y = center + levelRadius * Math.sin(angleSlice * i - Math.PI / 2);
-        return `${x},${y}`;
-      })
-      .join(' ');
-  });
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto block">
-      <g>
-        {concentricPolygons.map((polyPoints, i) => (
-          <polygon
-            key={`grid-${i}`}
-            points={polyPoints}
-            fill="none"
-            stroke="rgb(229, 231, 235)"
-            strokeWidth="0.8"
-          />
-        ))}
-        {axisLines.map((line, i) => (
-          <line
-            key={`axis-${i}`}
-            x1={line.x1}
-            y1={line.y1}
-            x2={line.x2}
-            y2={line.y2}
-            stroke="rgb(209, 213, 219)"
-            strokeWidth="0.8"
-          />
-        ))}
-        <polygon
-          points={points}
-          fill="rgba(34, 197, 94, 0.25)"
-          stroke="rgb(22, 163, 74)"
-          strokeWidth="1.5"
-        />
-        {axisLines.map((line, i) => (
-          <text
-            key={`label-${i}`}
-            x={line.lx}
-            y={line.ly}
-            fontSize="9"
-            fill="rgb(75, 85, 99)"
-            fontWeight="500"
-            textAnchor={line.textAnchor}
-            dominantBaseline="middle"
-          >
-            {line.label}
-          </text>
-        ))}
-      </g>
-    </svg>
-  );
 };
 
 const LockedBlock: React.FC<{ message: string }> = ({ message }) => (
@@ -270,7 +173,14 @@ const TalentProfilePreviewModal: React.FC<TalentProfilePreviewModalProps> = ({
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3 text-center">Profil radar</h4>
                 {hasSpiderData ? (
-                  <TalentRadarChart data={spiderData} />
+                  <SpiderChart
+                    data={spiderData}
+                    size={240}
+                    fill="rgba(34, 197, 94, 0.25)"
+                    stroke="rgb(22, 163, 74)"
+                    labelColor="rgb(55, 65, 81)"
+                    gridStroke="rgb(209, 213, 219)"
+                  />
                 ) : (
                   <p className="text-xs text-center text-gray-400 py-8">Caractéristiques non renseignées</p>
                 )}
