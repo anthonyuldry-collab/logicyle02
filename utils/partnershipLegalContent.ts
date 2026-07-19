@@ -2,6 +2,8 @@ import { IncomeCategory } from '../types';
 import {
   CerfaReceiptData,
   PartnershipConventionData,
+  formatExclusivityClause,
+  formatImageRightsClause,
   getConventionType,
 } from './partnershipDocumentUtils';
 import { formatFinancialDate } from './financialUtils';
@@ -110,8 +112,24 @@ export function buildConventionArticles(
 }
 
 function buildSponsoringArticles(data: PartnershipConventionData, locale: string): LegalArticle[] {
-  const counterparts = data.partnership.counterparts ||
+  const terms = data.partnership.contractTerms;
+  const lateDays = terms?.latePaymentDays ?? 30;
+  const noticeDays = terms?.noticePeriodDays ?? 15;
+  const validationDays = terms?.validationBusinessDays ?? 10;
+  const confidentialityYears = terms?.confidentialityYears ?? 2;
+  const renewalDays = terms?.renewalNoticeDays ?? 30;
+  const governingLaw = terms?.governingLaw?.trim() || 'droit français';
+  const jurisdiction =
+    terms?.jurisdiction?.trim() ||
+    'tribunaux du ressort du siège social de l\'Équipe';
+
+  const counterparts =
+    data.partnership.counterparts ||
     '- Logo du Partenaire sur les maillots de l\'équipe (placement défini en annexe)\n- Visibilité sur le site internet et les réseaux sociaux de l\'Équipe\n- Invitation à un minimum d\'un événement officiel par trimestre\n- Mention « Partenaire officiel » sur les communiqués de presse';
+
+  const annexVisibility = terms?.annexVisibilityNotes?.trim();
+  const special = terms?.specialClauses?.trim();
+  const autoRenewal = Boolean(terms?.autoRenewal);
 
   return [
     {
@@ -129,7 +147,7 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
         `Le Partenaire s'engage à verser à l'Équipe une contribution financière d'un montant total de ${fmt(data.partnership.amount, locale)} TTC, payable selon les modalités suivantes :`,
         data.partnership.paymentTerms ||
           '— 50 % à la signature de la présente convention ;\n— 50 % au plus tard à mi-période contractuelle, sur présentation de la facture correspondante.',
-        'Le versement sera effectué par virement bancaire sur le compte de l\'Équipe, dont les coordonnées seront communiquées par l\'Équipe. Tout retard de paiement supérieur à trente (30) jours pourra entraîner la suspension des contreparties, sans préjudice des intérêts de retard au taux légal.',
+        `Le versement sera effectué par virement bancaire sur le compte de l'Équipe, dont les coordonnées seront communiquées par l'Équipe. Tout retard de paiement supérieur à ${lateDays} jour(s) pourra entraîner la suspension des contreparties, sans préjudice des intérêts de retard au taux légal.`,
       ],
     },
     {
@@ -138,7 +156,9 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
       paragraphs: [
         'En contrepartie de sa contribution, l\'Équipe s\'engage à fournir au Partenaire les prestations suivantes :',
         counterparts,
-        'Le détail des emplacements logo, formats graphiques et planning de publication figure en Annexe 1. Toute modification substantielle devra faire l\'objet d\'un avenant écrit signé par les Parties.',
+        annexVisibility
+          ? `Plan de visibilité (Annexe 1) : ${annexVisibility}`
+          : 'Le détail des emplacements logo, formats graphiques et planning de publication figure en Annexe 1. Toute modification substantielle devra faire l\'objet d\'un avenant écrit signé par les Parties.',
       ],
     },
     {
@@ -155,27 +175,20 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
     {
       number: 5,
       title: 'Propriété intellectuelle et droit à l\'image',
-      paragraphs: [
-        'Chaque Partie conserve l\'entière propriété de ses signes distinctifs (marques, logos, noms commerciaux). Les Parties s\'accordent mutuellement une licence non exclusive, gratuite et limitée à la durée de la convention, pour l\'utilisation de leurs logos respectifs dans le cadre strict du partenariat.',
-        'L\'Équipe autorise le Partenaire à utiliser des visuels officiels de l\'Équipe (photos d\'équipe, logo) pour sa communication interne et externe liée au partenariat. Toute utilisation à des fins publicitaires payantes nécessite l\'accord préalable écrit de l\'Équipe.',
-        'Le Partenaire s\'interdit toute utilisation de l\'image des coureurs ou du staff en dehors du cadre défini aux présentes, conformément aux dispositions du code civil relatives au droit à l\'image.',
-      ],
+      paragraphs: formatImageRightsClause(terms, data.partner.companyName, data.team.name),
     },
     {
       number: 6,
       title: 'Validation des supports de communication',
       paragraphs: [
-        'Les supports de communication intégrant le logo du Partenaire (maillots, véhicules, bannières, publications) seront soumis à validation préalable du Partenaire dans un délai de dix (10) jours ouvrés suivant leur transmission. L\'absence de réponse dans ce délai vaudra acceptation tacite.',
+        `Les supports de communication intégrant le logo du Partenaire (maillots, véhicules, bannières, publications) seront soumis à validation préalable du Partenaire dans un délai de ${validationDays} jour(s) ouvré(s) suivant leur transmission. L'absence de réponse dans ce délai vaudra acceptation tacite.`,
         'L\'Équipe s\'engage à respecter le guide de charte graphique fourni par le Partenaire. Le Partenaire ne pourra refuser une validation pour des motifs non liés à l\'image de marque ou à la conformité réglementaire.',
       ],
     },
     {
       number: 7,
       title: 'Exclusivité',
-      paragraphs: [
-        'Sauf stipulation contraire en Annexe, le présent partenariat ne confère pas au Partenaire d\'exclusivité sectorielle. L\'Équipe demeure libre de conclure d\'autres partenariats, sous réserve de ne pas porter atteinte aux engagements de visibilité du Partenaire.',
-        'Si une exclusivité sectorielle est convenue, ses termes (secteur, zone géographique, durée) seront précisés en Annexe 2.',
-      ],
+      paragraphs: formatExclusivityClause(terms, data.partner.companyName, data.team.name),
     },
     {
       number: 8,
@@ -184,14 +197,16 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
         data.partnership.startDate && data.partnership.endDate
           ? `La présente convention est conclue pour une durée déterminée du ${fmtDate(data.partnership.startDate, locale)} au ${fmtDate(data.partnership.endDate, locale)} inclus.`
           : 'La présente convention est conclue pour une durée d\'une (1) saison sportive, sauf résiliation anticipée dans les conditions de l\'article 9.',
-        'À l\'expiration de la durée initiale, la convention pourra être renouvelée par avenant signé par les deux Parties, au plus tard trente (30) jours avant l\'échéance.',
+        autoRenewal
+          ? `Sauf dénonciation par l'une des Parties par lettre recommandée avec accusé de réception au plus tard ${renewalDays} jour(s) avant l'échéance, la convention se renouvelle tacitement pour une durée identique, aux mêmes conditions.`
+          : `À l'expiration de la durée initiale, la convention pourra être renouvelée par avenant signé par les deux Parties, au plus tard ${renewalDays} jour(s) avant l'échéance.`,
       ],
     },
     {
       number: 9,
       title: 'Résiliation',
       paragraphs: [
-        'En cas de manquement grave de l\'une des Parties à ses obligations, l\'autre Partie pourra résilier la convention de plein droit quinze (15) jours après l\'envoi d\'une mise en demeure restée sans effet, par lettre recommandée avec accusé de réception.',
+        `En cas de manquement grave de l'une des Parties à ses obligations, l'autre Partie pourra résilier la convention de plein droit ${noticeDays} jour(s) après l'envoi d'une mise en demeure restée sans effet, par lettre recommandée avec accusé de réception.`,
         'Constitue notamment un manquement grave : le non-paiement de la contribution à l\'échéance convenue, la non-exécution répétée des contreparties, ou l\'atteinte grave à l\'image de l\'autre Partie.',
         'En cas de résiliation anticipée imputable au Partenaire, les sommes déjà versées restent acquises à l\'Équipe au prorata des contreparties exécutées. En cas de résiliation imputable à l\'Équipe, les sommes non justifiées par des prestations exécutées seront restituées au Partenaire.',
       ],
@@ -200,7 +215,7 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
       number: 10,
       title: 'Confidentialité',
       paragraphs: [
-        'Les Parties s\'engagent à garder confidentielles les informations échangées dans le cadre de la présente convention, notamment les conditions financières, pendant toute la durée de la convention et pendant une période de deux (2) ans après son expiration.',
+        `Les Parties s'engagent à garder confidentielles les informations échangées dans le cadre de la présente convention, notamment les conditions financières, pendant toute la durée de la convention et pendant une période de ${confidentialityYears} an(s) après son expiration.`,
         'Ne sont pas considérées comme confidentielles les informations déjà publiques ou dont la divulgation est imposée par la loi ou une autorité judiciaire.',
       ],
     },
@@ -232,8 +247,8 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
       number: 14,
       title: 'Droit applicable et litiges',
       paragraphs: [
-        'La présente convention est soumise au droit français.',
-        'Les Parties s\'engagent à rechercher une solution amiable en cas de différend. À défaut d\'accord dans un délai de trente (30) jours, le litige sera soumis à la compétence exclusive des tribunaux du ressort du siège social de l\'Équipe, sauf règles impératives contraires.',
+        `La présente convention est soumise au ${governingLaw}.`,
+        `Les Parties s'engagent à rechercher une solution amiable en cas de différend. À défaut d'accord dans un délai de trente (30) jours, le litige sera soumis à la compétence exclusive des ${jurisdiction}, sauf règles impératives contraires.`,
       ],
     },
     {
@@ -242,8 +257,15 @@ function buildSponsoringArticles(data: PartnershipConventionData, locale: string
       paragraphs: [
         'La nullité d\'une clause n\'affectera pas la validité des autres dispositions. Toute modification de la convention devra faire l\'objet d\'un avenant signé par les deux Parties.',
         'La présente convention, incluant le cas échéant ses annexes, constitue l\'intégralité de l\'accord entre les Parties et remplace tout accord antérieur portant sur le même objet.',
-        data.partnership.notes ? `Observations particulières : ${data.partnership.notes}` : 'Fait en deux exemplaires originaux, dont un remis à chaque Partie.',
-      ],
+        special
+          ? `Clauses particulières : ${special}`
+          : data.partnership.notes
+            ? `Observations particulières : ${data.partnership.notes}`
+            : 'Fait en deux exemplaires originaux, dont un remis à chaque Partie.',
+        special && data.partnership.notes
+          ? `Observations particulières : ${data.partnership.notes}`
+          : undefined,
+      ].filter((p): p is string => Boolean(p)),
     },
   ];
 }

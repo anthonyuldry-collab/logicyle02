@@ -533,7 +533,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                         return canShowHoldingView && !currentTeamId;
                     }
                     if (section.id === 'partnerPortal') {
-                        return !lockedSections.includes('partnerPortal');
+                        return (
+                          !lockedSections.includes('partnerPortal')
+                          || hasViewPermission('partnerPortal')
+                        );
                     }
                     if (section.id === 'userSettings') {
                         return true;
@@ -550,6 +553,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                         // Staff : pas de « Mon Dossier Admin » séparé (fusionné dans Mon Profil)
                         if (section.id === 'adminDossier') return false;
                         return effectivePermissions && effectivePermissions[section.id as AppSection] && Array.isArray(effectivePermissions[section.id as AppSection]) && effectivePermissions[section.id as AppSection].includes('view');
+                    }
+                    if (section.id === 'partnerPortal') {
+                        return (
+                          !lockedSections.includes('partnerPortal')
+                          || hasViewPermission('partnerPortal')
+                        );
                     }
                     if (lockedSections.includes(section.id as AppSection)) return false;
                     if (section.id === 'superAdmin') {

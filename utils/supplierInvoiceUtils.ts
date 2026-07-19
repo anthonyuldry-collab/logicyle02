@@ -1,5 +1,6 @@
 import { BudgetItemCategory, SupplierInvoice, SupplierInvoiceStatus } from '../types';
 import { resolveAccountingCode } from '../constants/accountingCodes';
+import { generateId } from './themeUtils';
 
 export function createSupplierInvoiceDraft(
   params: Partial<SupplierInvoice> & { supplierName: string; amountTTC: number }
@@ -12,7 +13,7 @@ export function createSupplierInvoiceDraft(
   );
 
   return {
-    id: params.id || crypto.randomUUID(),
+    id: params.id || generateId(),
     supplierName: params.supplierName,
     supplierSiret: params.supplierSiret,
     invoiceNumber: params.invoiceNumber || `FA-${Date.now().toString(36)}`,

@@ -1,6 +1,6 @@
-import { Quote, TeamInvoiceSettings, IncomeItem, IncomeCategory } from '../types';
+import { Quote, TeamInvoiceSettings, IncomeItem, IncomeCategory, InvoiceStatus } from '../types';
 import { computeInvoiceAmounts, enrichIncomeWithAccounting, formatInvoiceNumber } from './invoiceUtils';
-import { InvoiceStatus } from '../types';
+import { generateId } from './themeUtils';
 
 export function getNextQuoteSequence(settings: TeamInvoiceSettings, quotes: Quote[]): number {
   const fromSettings = settings.nextQuoteNumber ?? 1;
@@ -28,18 +28,19 @@ export function enrichQuote(quote: Quote, vatRate = 20): Quote {
 export function convertQuoteToInvoice(
   quote: Quote,
   settings: TeamInvoiceSettings,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  allocatedSequence?: number
 ): { quote: Quote; income: IncomeItem; settings: TeamInvoiceSettings } {
   if (quote.status === 'converted') {
     throw new Error('Quote already converted');
   }
   const year = new Date().getFullYear();
-  const nextNumber = settings.nextInvoiceNumber ?? 1;
-  const invoiceNumber = formatInvoiceNumber(settings, nextNumber, year);
+  const sequence = allocatedSequence ?? settings.nextInvoiceNumber ?? 1;
+  const invoiceNumber = formatInvoiceNumber(settings, sequence, year);
 
   const income = enrichIncomeWithAccounting(
     {
-      id: crypto.randomUUID(),
+      id: generateId(),
       description: quote.description,
       amount: quote.amount,
       date: new Date().toISOString().slice(0, 10),
@@ -54,6 +55,11 @@ export function convertQuoteToInvoice(
     quote.vatRate
   );
 
+  const nextSettings =
+    allocatedSequence != null
+      ? settings
+      : { ...settings, nextInvoiceNumber: sequence + 1 };
+
   return {
     quote: {
       ...quote,
@@ -61,6 +67,6 @@ export function convertQuoteToInvoice(
       convertedInvoiceId: income.id,
     },
     income,
-    settings: { ...settings, nextInvoiceNumber: nextNumber + 1 },
+    settings: nextSettings,
   };
 }

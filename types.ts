@@ -1920,6 +1920,8 @@ export interface IncomeItem {
     sponsorLegalForm?: string;
     partnershipCounterparts?: string;
     partnershipDeliverables?: PartnerCounterpartDeliverable[];
+    /** Clauses juridiques négociables de la convention. */
+    sponsorshipContractTerms?: SponsorshipContractTerms;
     donationForm?: DonationForm | string;
     conventionNumber?: string;
     conventionGeneratedAt?: string;
@@ -1934,6 +1936,10 @@ export interface IncomeItem {
     invoiceStatus?: InvoiceStatus | string;
     issuedAt?: string;
     paidAt?: string;
+    /** Échéance de paiement (YYYY-MM-DD) */
+    dueDate?: string;
+    /** Délai de paiement en jours (ex. 30) */
+    paymentTermsDays?: number;
     clientName?: string;
     clientAddress?: string;
     clientVatNumber?: string;
@@ -2847,9 +2853,23 @@ export type PartnerScope =
     | 'view_documents'
     | 'view_payment_status'
     | 'view_events'
-    | 'view_comms';
+    | 'view_comms'
+    | 'view_media'
+    | 'view_results';
 
 export type PartnerNewsletterStatus = 'draft' | 'published' | 'archived';
+
+export type PartnerMediaStatus = 'draft' | 'published' | 'archived';
+
+/** Rythme de publication de la gazette partenaire (logique rédactionnelle). */
+export type PartnerGazetteFrequency =
+    | 'weekly'
+    | 'biweekly'
+    | 'monthly'
+    | 'quarterly'
+    | 'biannual'
+    | 'seasonal'
+    | 'oneshot';
 
 export type PartnerNewsletterBlockType =
     | 'heading'
@@ -2860,7 +2880,8 @@ export type PartnerNewsletterBlockType =
     | 'cta'
     | 'quote'
     | 'interview'
-    | 'sponsorSpotlight';
+    | 'sponsorSpotlight'
+    | 'image';
 
 export interface PartnerNewsletterBlock {
     id: string;
@@ -2878,6 +2899,46 @@ export interface PartnerNewsletter {
     previewText?: string;
     blocks: PartnerNewsletterBlock[];
     status: PartnerNewsletterStatus;
+    /** Fréquence de la gazette (hebdo, mensuelle, etc.) */
+    frequency?: PartnerGazetteFrequency;
+    /** N° d’édition (ex. 12 pour la 12e gazette) */
+    editionNumber?: number;
+    /** Libellé libre d’édition (ex. « Édition Classic Bretagne ») */
+    editionLabel?: string;
+    createdAt: string;
+    updatedAt?: string;
+    publishedAt?: string;
+    createdByUserId?: string;
+}
+
+/** Photo publiée par la com vers l’espace partenaire. */
+export interface PartnerMediaItem {
+    id: string;
+    teamId: string;
+    eventId?: string;
+    /** Si défini, visible uniquement pour ce partenariat ; sinon tous les partenaires actifs */
+    incomeItemId?: string;
+    caption?: string;
+    photoUrl: string;
+    mimeType?: string;
+    status: PartnerMediaStatus;
+    createdAt: string;
+    updatedAt?: string;
+    publishedAt?: string;
+    createdByUserId?: string;
+}
+
+/** Snapshot résultats/classements publié aux partenaires (prérempli depuis PerformanceEntry). */
+export interface PartnerRaceReport {
+    id: string;
+    teamId: string;
+    eventId: string;
+    incomeItemId?: string;
+    status: PartnerMediaStatus;
+    resultsSummary: string;
+    raceOverallRanking?: string;
+    teamRiderRankings?: string;
+    sourcePerformanceEntryId?: string;
     createdAt: string;
     updatedAt?: string;
     publishedAt?: string;
@@ -2891,12 +2952,75 @@ export enum CounterpartDeliverableStatus {
     VALIDATED = 'validated',
 }
 
+/** Familles de contreparties pour conventions de sponsoring. */
+export type SponsorshipCounterpartCategory =
+    | 'kit'
+    | 'vehicle'
+    | 'digital'
+    | 'hospitality'
+    | 'media'
+    | 'event'
+    | 'reporting'
+    | 'other';
+
 export interface PartnerCounterpartDeliverable {
     id: string;
     label: string;
     dueDate?: string;
     status: CounterpartDeliverableStatus;
     notes?: string;
+    /** Catégorie contractuelle de la contrepartie. */
+    category?: SponsorshipCounterpartCategory;
+    /** Quantité (ex. 2 publications, 4 invitations). */
+    quantity?: number;
+    /** Unité (publications, invitations, courses…). */
+    unit?: string;
+    /** Fréquence (par mois, par saison, par course…). */
+    frequency?: string;
+    /** Emplacement / support (poitrine, manche, site, véhicule…). */
+    placement?: string;
+    /** Canal (Instagram, maillot, communiqué…). */
+    channel?: string;
+}
+
+/** Exclusivité commerciale du partenariat sponsoring. */
+export type SponsorshipExclusivityMode = 'none' | 'sector' | 'territorial' | 'full';
+
+/** Échéancier de paiement de la contribution. */
+export type SponsorshipPaymentSchedule = 'full_signature' | '5050' | '334' | 'custom';
+
+/** Périmètre du droit à l'image / usage des visuels. */
+export type SponsorshipImageRightsScope = 'internal' | 'external_free' | 'paid_ads_allowed';
+
+/**
+ * Clauses négociables d'une convention de sponsoring —
+ * destinées au responsable partenariats / relecture juridique.
+ */
+export interface SponsorshipContractTerms {
+    exclusivityMode?: SponsorshipExclusivityMode;
+    exclusivitySector?: string;
+    exclusivityTerritory?: string;
+    imageRightsScope?: SponsorshipImageRightsScope;
+    /** Autorisation d'utiliser l'image nominative des athlètes / staff. */
+    athleteImageAuthorized?: boolean;
+    paymentSchedule?: SponsorshipPaymentSchedule;
+    customPaymentTerms?: string;
+    /** Délai avant intérêts de retard / suspension (jours). */
+    latePaymentDays?: number;
+    /** Délai de mise en demeure avant résiliation (jours). */
+    noticePeriodDays?: number;
+    autoRenewal?: boolean;
+    renewalNoticeDays?: number;
+    governingLaw?: string;
+    jurisdiction?: string;
+    confidentialityYears?: number;
+    validationBusinessDays?: number;
+    /** Clauses particulières (avenants, conditions suspensives…). */
+    specialClauses?: string;
+    /** Précisions Annexe 2 — exclusivité. */
+    annexExclusivityNotes?: string;
+    /** Précisions Annexe 1 — plan de visibilité. */
+    annexVisibilityNotes?: string;
 }
 
 export interface Team {
@@ -3084,6 +3208,8 @@ export interface TeamState {
     stockMovements: StockMovement[];
     vehiclePositions: VehiclePosition[];
     partnerNewsletters: PartnerNewsletter[];
+    partnerMediaItems: PartnerMediaItem[];
+    partnerRaceReports: PartnerRaceReport[];
     clientRecords: ClientRecord[];
     supplierInvoices: SupplierInvoice[];
     sepaBatches: SepaBatch[];

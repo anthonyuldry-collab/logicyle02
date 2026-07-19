@@ -10,6 +10,9 @@ import {
   PermissionLevel,
   Vehicle,
   RiderSelfDebrief,
+  PartnerMediaItem,
+  PartnerRaceReport,
+  Mission,
 } from './types';
 import ActionButton from './components/ActionButton'; 
 import CalendarDaysIcon from './components/icons/CalendarDaysIcon'; 
@@ -75,6 +78,10 @@ interface EventDetailViewProps {
   onSavePerformanceEntry: (item: AppPerformanceEntry) => Promise<void>;
   onSaveRiderSelfDebrief?: (debrief: RiderSelfDebrief) => Promise<void>;
   onSaveRaceEvent?: (event: RaceEvent) => Promise<void>;
+  onSavePartnerMediaItem?: (item: PartnerMediaItem) => Promise<void>;
+  onDeletePartnerMediaItem?: (itemId: string) => Promise<void>;
+  onSavePartnerRaceReport?: (report: PartnerRaceReport) => Promise<void>;
+  setMissions?: React.Dispatch<React.SetStateAction<Mission[]>>;
   initialTab?: EventDetailTab;
 }
 
@@ -115,6 +122,10 @@ function EventDetailView({
   onSavePerformanceEntry,
   onSaveRiderSelfDebrief,
   onSaveRaceEvent,
+  onSavePartnerMediaItem,
+  onDeletePartnerMediaItem,
+  onSavePartnerRaceReport,
+  setMissions,
   initialTab,
 }: EventDetailViewProps) {
   const [activeTab, setActiveTab] = useState<EventDetailTab>(initialTab ?? 'logisticsSummary');
@@ -446,6 +457,11 @@ function EventDetailView({
               event={currentEvent}
               appState={appState}
               updateEvent={updateEventDetails}
+              currentUserId={currentUser?.id}
+              onSavePartnerMediaItem={onSavePartnerMediaItem}
+              onDeletePartnerMediaItem={onDeletePartnerMediaItem}
+              onSavePartnerRaceReport={onSavePartnerRaceReport}
+              onNavigatePartnerMedia={() => navigateTo('partnerPortal')}
             />
           )}
           {staffRoleKey === 'KINE' && (
@@ -466,7 +482,12 @@ function EventDetailView({
           )}
         </div>
         <div style={{ display: activeTab === 'participants' ? 'block' : 'none' }}>
-            <EventParticipantsTab {...eventDetailProps} appState={appState} readOnly={!canEditRoster} />
+            <EventParticipantsTab
+              {...eventDetailProps}
+              appState={appState}
+              setMissions={setMissions}
+              readOnly={!canEditRoster}
+            />
         </div>
         <div style={{ display: activeTab === 'opLogistics' ? 'block' : 'none' }}>
             <EventOperationalLogisticsTab {...eventDetailProps} readOnly={opLogisticsReadOnly} />

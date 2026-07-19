@@ -7,6 +7,32 @@ export function getBudgetItemCost(item: EventBudgetItem): number {
   return actual > 0 ? actual : estimated;
 }
 
+/** Index O(1) des événements par id — à construire une fois par agrégat. */
+export function buildRaceEventMap(raceEvents?: RaceEvent[]): Map<string, RaceEvent> {
+  const map = new Map<string, RaceEvent>();
+  if (!raceEvents) return map;
+  for (let i = 0; i < raceEvents.length; i++) {
+    map.set(raceEvents[i].id, raceEvents[i]);
+  }
+  return map;
+}
+
+/** Date comptable d'une dépense : justificatif → date événement → aujourd'hui. */
+export function getBudgetItemDate(
+  item: EventBudgetItem,
+  raceEvents?: RaceEvent[],
+  eventMap?: Map<string, RaceEvent>
+): string {
+  if (item.receiptDate && item.receiptDate.length >= 7) {
+    return item.receiptDate.slice(0, 10);
+  }
+  if (item.eventId) {
+    const event = eventMap?.get(item.eventId) ?? raceEvents?.find((e) => e.id === item.eventId);
+    if (event?.date) return event.date.slice(0, 10);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function calculateTotalIncome(incomeItems: IncomeItem[]): number {
   return incomeItems.reduce((sum, item) => {
     if (typeof item.amount === 'number' && !isNaN(item.amount)) {

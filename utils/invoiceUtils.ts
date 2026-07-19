@@ -1,10 +1,10 @@
 import { resolveIncomeAccountingCode } from '../constants/accountingCodes';
 import {
-  IncomeCategory,
   IncomeItem,
   InvoiceStatus,
   TeamInvoiceSettings,
 } from '../types';
+import { generateId } from './themeUtils';
 
 export function computeInvoiceAmounts(amountTTC: number, vatRate: number) {
   const rate = Math.max(0, vatRate) / 100;
@@ -14,6 +14,76 @@ export function computeInvoiceAmounts(amountTTC: number, vatRate: number) {
   const amountHT = Math.round((amountTTC / (1 + rate)) * 100) / 100;
   const vatAmount = Math.round((amountTTC - amountHT) * 100) / 100;
   return { amountHT, vatAmount, amountTTC };
+}
+
+/** Calcule une échéance à partir d'une date d'émission et d'un délai en jours. */
+export function computeDueDate(issueDate: string, paymentTermsDays = 30): string {
+  const base = issueDate?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const d = new Date(`${base}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return base;
+  d.setDate(d.getDate() + Math.max(0, paymentTermsDays));
+  return d.toISOString().slice(0, 10);
+}
+
+export function resolveInvoiceDueDate(item: IncomeItem, fallbackTermsDays = 30): string {
+  if (item.dueDate) return item.dueDate.slice(0, 10);
+  const issueBase = (item.issuedAt || item.date || '').slice(0, 10);
+  return computeDueDate(issueBase, item.paymentTermsDays ?? fallbackTermsDays);
+}
+
+export function isInvoiceOverdue(item: IncomeItem, today = new Date().toISOString().slice(0, 10)): boolean {
+  if (item.invoiceStatus !== InvoiceStatus.ISSUED) return false;
+  if (item.amount <= 0) return false;
+  const due = resolveInvoiceDueDate(item);
+  return due < today;
+}
+
+export function isInvoiceEditable(item: IncomeItem): boolean {
+  const status = item.invoiceStatus || InvoiceStatus.DRAFT;
+  return status === InvoiceStatus.DRAFT || status === InvoiceStatus.ISSUED;
+}
+
+export function isInvoiceLocked(item: IncomeItem): boolean {
+  return (
+    item.invoiceStatus === InvoiceStatus.PAID ||
+    item.invoiceStatus === InvoiceStatus.CANCELLED
+  );
+}
+
+/**
+ * Met à jour une facture en recalculant HT/TVA et en préservant le cycle de vie.
+ * Les factures payées / annulées ne sont pas modifiables.
+ */
+export function updateInvoiceFields(
+  item: IncomeItem,
+  updates: Partial<IncomeItem>,
+  language: 'fr' | 'en' = 'fr',
+  defaultVatRate?: number
+): IncomeItem {
+  if (isInvoiceLocked(item)) {
+    throw new Error('Cannot edit a paid or cancelled invoice');
+  }
+
+  const merged: IncomeItem = {
+    ...item,
+    ...updates,
+    id: item.id,
+    invoiceNumber: updates.invoiceNumber ?? item.invoiceNumber,
+    invoiceStatus: item.invoiceStatus,
+    issuedAt: item.issuedAt,
+    paidAt: item.paidAt,
+    quoteId: item.quoteId,
+    creditNoteForInvoiceId: item.creditNoteForInvoiceId,
+    invoicePdfUrl: item.invoicePdfUrl,
+    clientId: updates.clientId ?? item.clientId,
+  };
+
+  if (updates.paymentTermsDays != null && !updates.dueDate) {
+    const issueBase = (merged.issuedAt || merged.date || '').slice(0, 10);
+    merged.dueDate = computeDueDate(issueBase, updates.paymentTermsDays);
+  }
+
+  return enrichIncomeWithAccounting(merged, language, updates.vatRate ?? defaultVatRate ?? merged.vatRate);
 }
 
 export function enrichIncomeWithAccounting(
@@ -34,6 +104,8 @@ export function enrichIncomeWithAccounting(
     amountHT,
     clientName: item.clientName || item.sponsorshipContactName,
     invoiceStatus: item.invoiceStatus || InvoiceStatus.DRAFT,
+    dueDate: item.dueDate || undefined,
+    paymentTermsDays: item.paymentTermsDays,
   };
 }
 
@@ -49,29 +121,40 @@ export function formatInvoiceNumber(
 export function issueInvoice(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  allocatedSequence?: number
 ): { item: IncomeItem; settings: TeamInvoiceSettings } {
   const year = item.date ? new Date(item.date + 'T12:00:00').getFullYear() : new Date().getFullYear();
-  const nextNumber = settings.nextInvoiceNumber ?? 1;
-  const invoiceNumber = item.invoiceNumber || formatInvoiceNumber(settings, nextNumber, year);
+  const sequence =
+    allocatedSequence ?? settings.nextInvoiceNumber ?? 1;
+  const invoiceNumber = item.invoiceNumber || formatInvoiceNumber(settings, sequence, year);
+
+  const issuedAt = new Date().toISOString();
+  const terms = item.paymentTermsDays ?? 30;
+  const dueDate = item.dueDate || computeDueDate(item.date || issuedAt.slice(0, 10), terms);
 
   const enriched = enrichIncomeWithAccounting(
     {
       ...item,
       invoiceNumber,
       invoiceStatus: InvoiceStatus.ISSUED,
-      issuedAt: new Date().toISOString(),
+      issuedAt,
+      dueDate,
+      paymentTermsDays: terms,
     },
     language,
     settings.defaultVatRate
   );
 
+  // Si le numéro était déjà présent, ou pré-alloué via transaction, ne pas re-bump.
+  const nextSettings =
+    item.invoiceNumber || allocatedSequence != null
+      ? settings
+      : { ...settings, nextInvoiceNumber: sequence + 1 };
+
   return {
     item: enriched,
-    settings: {
-      ...settings,
-      nextInvoiceNumber: item.invoiceNumber ? nextNumber : nextNumber + 1,
-    },
+    settings: nextSettings,
   };
 }
 
@@ -96,7 +179,8 @@ export function cancelInvoice(item: IncomeItem): IncomeItem {
 export function createCreditNote(
   original: IncomeItem,
   settings: TeamInvoiceSettings,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  allocatedSequence?: number
 ): { item: IncomeItem; settings: TeamInvoiceSettings } {
   if (
     original.invoiceStatus !== InvoiceStatus.ISSUED &&
@@ -105,14 +189,14 @@ export function createCreditNote(
     throw new Error('Credit note requires an issued invoice');
   }
   const year = new Date().getFullYear();
-  const nextNumber = settings.nextInvoiceNumber ?? 1;
+  const sequence = allocatedSequence ?? settings.nextInvoiceNumber ?? 1;
   const prefix = (settings.invoicePrefix || 'FAC').toUpperCase();
-  const creditNumber = `${prefix}-AV-${year}-${String(nextNumber).padStart(4, '0')}`;
+  const creditNumber = `${prefix}-AV-${year}-${String(sequence).padStart(4, '0')}`;
 
   const creditItem: IncomeItem = enrichIncomeWithAccounting(
     {
       ...original,
-      id: crypto.randomUUID(),
+      id: generateId(),
       description: `Avoir — ${original.description}`,
       amount: -Math.abs(original.amount),
       invoiceNumber: creditNumber,
@@ -125,9 +209,14 @@ export function createCreditNote(
     settings.defaultVatRate
   );
 
+  const nextSettings =
+    allocatedSequence != null
+      ? settings
+      : { ...settings, nextInvoiceNumber: sequence + 1 };
+
   return {
     item: creditItem,
-    settings: { ...settings, nextInvoiceNumber: nextNumber + 1 },
+    settings: nextSettings,
   };
 }
 
@@ -151,7 +240,8 @@ export function buildInvoiceFromIncome(
     invoiceNumber: enriched.invoiceNumber || 'BROUILLON',
     status: enriched.invoiceStatus || InvoiceStatus.DRAFT,
     issueDate: enriched.issuedAt || enriched.date,
-    dueDate: enriched.date,
+    dueDate: resolveInvoiceDueDate(enriched),
+    paymentTermsDays: enriched.paymentTermsDays ?? 30,
     issuer: {
       name: settings.issuerName || teamName,
       address: settings.issuerAddress,

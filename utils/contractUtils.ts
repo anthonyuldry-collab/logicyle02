@@ -159,16 +159,30 @@ export function isVacataireStaff(member: StaffMember): boolean {
   return s.includes('vacataire');
 }
 
+export type StaffSelectionIndex = Map<string, StaffEventSelection>;
+
+export function buildStaffSelectionIndex(
+  staffEventSelections: StaffEventSelection[] = []
+): StaffSelectionIndex {
+  const index: StaffSelectionIndex = new Map();
+  for (let i = 0; i < staffEventSelections.length; i++) {
+    const s = staffEventSelections[i];
+    index.set(`${s.staffId}:${s.eventId}`, s);
+  }
+  return index;
+}
+
 export function isStaffAssignedToEvent(
   staffId: string,
   event: RaceEvent,
-  staffEventSelections: StaffEventSelection[] = []
+  staffEventSelections: StaffEventSelection[] = [],
+  selectionIndex?: StaffSelectionIndex
 ): boolean {
   if (event.selectedStaffIds?.includes(staffId)) return true;
 
-  const selection = staffEventSelections.find(
-    (s) => s.staffId === staffId && s.eventId === event.id
-  );
+  const selection =
+    selectionIndex?.get(`${staffId}:${event.id}`) ??
+    staffEventSelections.find((s) => s.staffId === staffId && s.eventId === event.id);
   if (!selection) return false;
 
   if (!selection.status) return true;
@@ -178,18 +192,20 @@ export function isStaffAssignedToEvent(
 export function calculateVacataireCostForMonth(
   member: StaffMember,
   monthDate: Date,
-  context: PayrollContext = {}
+  context: PayrollContext = {},
+  selectionIndex?: StaffSelectionIndex
 ): number {
   if (!member.dailyRate || member.dailyRate <= 0) return 0;
 
   const { raceEvents = [], staffEventSelections = [] } = context;
+  const index = selectionIndex ?? buildStaffSelectionIndex(staffEventSelections);
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
 
   let totalDays = 0;
 
   for (const event of raceEvents) {
-    if (!isStaffAssignedToEvent(member.id, event, staffEventSelections)) continue;
+    if (!isStaffAssignedToEvent(member.id, event, staffEventSelections, index)) continue;
 
     const eventStart = parseContractDate(event.date);
     const eventEnd = parseContractDate(event.endDate || event.date);
@@ -425,6 +441,7 @@ export function buildMonthlyPayrollForecast(
     (r) => (r.salary ?? 0) > 0 || r.contractEndDate || r.contractStartDate
   );
   const activeStaff = getActiveStaffForCurrentSeason(staff);
+  const selectionIndex = buildStaffSelectionIndex(context.staffEventSelections);
 
   const today = new Date();
   today.setDate(1);
@@ -461,7 +478,12 @@ export function buildMonthlyPayrollForecast(
         if (member.contractEndDate && !isActiveInMonth(undefined, member.contractEndDate, monthDate)) {
           continue;
         }
-        staffVacataireCost += calculateVacataireCostForMonth(member, monthDate, context);
+        staffVacataireCost += calculateVacataireCostForMonth(
+          member,
+          monthDate,
+          context,
+          selectionIndex
+        );
       }
     }
 
@@ -479,6 +501,47 @@ export function buildMonthlyPayrollForecast(
   }
 
   return forecast;
+}
+
+/**
+ * Résumé paie léger pour l'overview — sans forecast 12 mois (chemin critique UI).
+ */
+export function calculatePayrollSummaryLite(
+  riders: Rider[],
+  staff: StaffMember[],
+  context: PayrollContext = {}
+): PayrollSummary {
+  const contracts = buildTeamContractSummaries(riders, staff, context);
+  const riderContracts = contracts.filter((c) => c.type === 'rider');
+  const staffContracts = contracts.filter((c) => c.type === 'staff');
+  const isVacataireContract = (c: ContractSummary) =>
+    String(c.staffStatus ?? '').toLowerCase().includes('vacataire');
+  const staffSalariedContracts = staffContracts.filter(
+    (c) => !isVacataireContract(c) && c.monthlySalary > 0
+  );
+  const staffVacataireContracts = staffContracts.filter(
+    (c) => isVacataireContract(c) && (c.dailyRate ?? 0) > 0
+  );
+
+  const monthlyRiderMass = riderContracts.reduce((sum, c) => sum + c.monthlySalary, 0);
+  const monthlyStaffSalariedMass = staffSalariedContracts.reduce((sum, c) => sum + c.monthlySalary, 0);
+  const monthlyStaffVacataireMass = staffVacataireContracts.reduce((sum, c) => sum + c.monthlySalary, 0);
+  const monthlyStaffMass = monthlyStaffSalariedMass + monthlyStaffVacataireMass;
+  const signingBonusesTotal = riderContracts.reduce((sum, c) => sum + c.signingBonus, 0);
+
+  return {
+    monthlyRiderMass,
+    monthlyStaffSalariedMass,
+    monthlyStaffVacataireMass,
+    monthlyStaffMass,
+    monthlyTotal: monthlyRiderMass + monthlyStaffMass,
+    annualForecast: (monthlyRiderMass + monthlyStaffMass) * 12 + signingBonusesTotal,
+    signingBonusesTotal,
+    activeRiderCount: riderContracts.length,
+    activeStaffSalariedCount: staffSalariedContracts.length,
+    activeStaffVacataireCount: staffVacataireContracts.length,
+    expiringWithin90Days: contracts.filter((c) => c.isExpiringSoon).length,
+  };
 }
 
 export function formatContractDuration(months: number | null, locale = 'fr'): string {

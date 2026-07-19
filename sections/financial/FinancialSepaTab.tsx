@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFeedbackTimeout } from '../../hooks/useFeedbackTimeout';
 import {
   ExpenseReceipt,
   IncomeItem,
@@ -85,7 +86,7 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
   const [collectionSelectedIds, setCollectionSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllCollections, setSelectAllCollections] = useState(true);
   const [executionDate, setExecutionDate] = useState(new Date().toISOString().slice(0, 10));
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const { feedback, showFeedback } = useFeedbackTimeout(4000);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -147,11 +148,6 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
     settingsDraft.debtorIban && !validateIban(settingsDraft.debtorIban) ? t('sepaInvalidIban') : null;
   const bicError =
     settingsDraft.debtorBic && !validateBic(settingsDraft.debtorBic) ? t('sepaInvalidBic') : null;
-
-  const showFeedback = (message: string) => {
-    setFeedback(message);
-    window.setTimeout(() => setFeedback(null), 4000);
-  };
 
   const handleSaveSettings = async () => {
     if (!canEdit || !settingsValid || ibanError || bicError) return;

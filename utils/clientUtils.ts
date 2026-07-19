@@ -32,7 +32,7 @@ export function searchClients(clients: ClientRecord[], query: string): ClientRec
   if (!q) return clients;
   return clients.filter(
     (c) =>
-      c.companyName.toLowerCase().includes(q) ||
+      (c.companyName || '').toLowerCase().includes(q) ||
       (c.contactName || '').toLowerCase().includes(q) ||
       (c.email || '').toLowerCase().includes(q) ||
       (c.siret || '').includes(q)

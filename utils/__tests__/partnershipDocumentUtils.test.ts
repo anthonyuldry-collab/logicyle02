@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCerfaReceiptData,
   buildPartnershipConventionData,
+  formatExclusivityClause,
+  formatImageRightsClause,
   getCerfaFormId,
   getTaxReductionInfo,
   isCerfaEligible,
@@ -53,6 +55,51 @@ describe('partnershipDocumentUtils', () => {
     expect(data.conventionType).toBe('mecenat');
     expect(data.partner.companyName).toBe('Entreprise X SAS');
     expect(data.partnership.amount).toBe(10000);
+  });
+
+  it('applies structured sponsoring contract terms to convention data', () => {
+    const sponsoring = {
+      id: 's1',
+      description: 'Partenariat saison',
+      amount: 50000,
+      date: '2026-01-15',
+      category: IncomeCategory.SPONSORING,
+      sponsorCompanyName: 'NutriSport SA',
+      sponsorshipContractStart: '2026-01-01',
+      sponsorshipContractEnd: '2026-12-31',
+      sponsorshipContractTerms: {
+        exclusivityMode: 'sector' as const,
+        exclusivitySector: 'nutrition sportive',
+        exclusivityTerritory: 'France',
+        paymentSchedule: '334' as const,
+        imageRightsScope: 'paid_ads_allowed' as const,
+        athleteImageAuthorized: true,
+        latePaymentDays: 45,
+      },
+    };
+    const data = buildPartnershipConventionData(sponsoring, settings, 'Team');
+    expect(data.conventionType).toBe('partenariat');
+    expect(data.partnership.contractTerms?.exclusivityMode).toBe('sector');
+    expect(data.partnership.paymentTerms).toContain('33 %');
+    expect(data.partnership.paymentTerms).toContain('34 %');
+  });
+
+  it('formats exclusivity and image rights clauses', () => {
+    const excl = formatExclusivityClause(
+      { exclusivityMode: 'full', exclusivitySector: 'banque', exclusivityTerritory: 'UE' },
+      'Banque X',
+      'Team Y'
+    );
+    expect(excl[0]).toContain('exclusivité commerciale pleine');
+    expect(excl[0]).toContain('banque');
+
+    const image = formatImageRightsClause(
+      { imageRightsScope: 'internal', athleteImageAuthorized: false },
+      'Partenaire',
+      'Équipe'
+    );
+    expect(image.some((p) => p.includes('communication interne'))).toBe(true);
+    expect(image.some((p) => p.includes('image nominative'))).toBe(true);
   });
 
   it('builds CERFA data with tax reduction', () => {

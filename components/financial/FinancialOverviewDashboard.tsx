@@ -1,20 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   BankTransaction,
   EventBudgetItem,
   IncomeItem,
+  RaceEvent,
   SupplierInvoice,
 } from '../../types';
 import { useTranslations } from '../../hooks/useTranslations';
 import { formatFinancialAmount } from '../../utils/financialUtils';
 import {
   buildCumulativeBalance,
-  buildExpenseSlices,
   buildFinancialAlerts,
-  buildIncomeSlices,
   buildInvoicePipeline,
-  buildMonthlyCashflow,
-  computePeriodTotals,
+  buildPeriodOverviewAggregate,
   FinancialPeriod,
 } from '../../utils/financialChartUtils';
 import {
@@ -25,7 +23,7 @@ import {
   KpiSparkline,
   PipelineBar,
 } from './FinancialChartPrimitives';
-import { calculatePayrollSummary, PayrollContext } from '../../utils/contractUtils';
+import { calculatePayrollSummaryLite, PayrollContext } from '../../utils/contractUtils';
 import { Rider, StaffMember } from '../../types';
 
 interface FinancialOverviewDashboardProps {
@@ -42,6 +40,7 @@ interface FinancialOverviewDashboardProps {
   canEdit: boolean;
   onAddIncome?: () => void;
   onAddExpense?: () => void;
+  raceEvents?: RaceEvent[];
 }
 
 const LOCALE_MAP: Record<string, string> = { fr: 'fr-FR', en: 'en-GB' };
@@ -60,22 +59,17 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
   canEdit,
   onAddIncome,
   onAddExpense,
+  raceEvents = [],
 }) => {
   const { t, language } = useTranslations();
   const locale = LOCALE_MAP[language] || 'fr-FR';
 
-  const cashflow = useMemo(
-    () => buildMonthlyCashflow(incomeItems, budgetItems, period, locale),
-    [incomeItems, budgetItems, period, locale]
+  const overview = useMemo(
+    () => buildPeriodOverviewAggregate(incomeItems, budgetItems, period, locale, raceEvents),
+    [incomeItems, budgetItems, period, locale, raceEvents]
   );
 
-  const totals = useMemo(
-    () => computePeriodTotals(incomeItems, budgetItems, period),
-    [incomeItems, budgetItems, period]
-  );
-
-  const incomeSlices = useMemo(() => buildIncomeSlices(incomeItems), [incomeItems]);
-  const expenseSlices = useMemo(() => buildExpenseSlices(budgetItems), [budgetItems]);
+  const { cashflow, totals, incomeSlices, expenseSlices } = overview;
   const cumulative = useMemo(() => buildCumulativeBalance(cashflow), [cashflow]);
   const pipeline = useMemo(
     () => buildInvoicePipeline(incomeItems, language),
@@ -93,12 +87,18 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
   );
 
   const payrollSummary = useMemo(
-    () => calculatePayrollSummary(riders, staff, payrollContext),
+    () => calculatePayrollSummaryLite(riders, staff, payrollContext),
     [riders, staff, payrollContext]
   );
 
-  const incomeSpark = cashflow.map((p) => p.income);
-  const expenseSpark = cashflow.map((p) => p.expenses);
+  const formatAmount = useCallback(
+    (n: number) => formatFinancialAmount(n, locale),
+    [locale]
+  );
+
+  const incomeSpark = useMemo(() => cashflow.map((p) => p.income), [cashflow]);
+  const expenseSpark = useMemo(() => cashflow.map((p) => p.expenses), [cashflow]);
+  const monthlyBalances = useMemo(() => cashflow.map((p) => p.balance), [cashflow]);
 
   const periodOptions: { id: FinancialPeriod; label: string }[] = [
     { id: 'ytd', label: t('financialPeriodYtd') },
@@ -108,7 +108,6 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Barre période + actions rapides */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
           {periodOptions.map((opt) => (
@@ -150,7 +149,6 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
         )}
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiCard
           label={t('financialTotalIncome')}
@@ -173,7 +171,6 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
         />
       </div>
 
-      {/* Alertes */}
       {alerts.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {alerts.map((alert) => (
@@ -196,9 +193,16 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
         </div>
       )}
 
-      {/* Graphique principal trésorerie */}
       <ChartCard title={t('financialChartCashflow')} subtitle={t('financialChartCashflowDesc')}>
-        <CashflowBarChart points={cashflow} height={220} />
+        <CashflowBarChart
+          points={cashflow}
+          height={220}
+          formatAmount={formatAmount}
+          emptyLabel={t('financialChartEmpty')}
+          incomeLabel={t('financialTotalIncome')}
+          expenseLabel={t('financialTotalExpenses')}
+          balanceLabel={t('financialBalance')}
+        />
       </ChartCard>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -207,6 +211,8 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
             slices={incomeSlices}
             centerLabel={t('financialTotalIncome')}
             centerValue={formatFinancialAmount(totals.income, locale)}
+            formatAmount={formatAmount}
+            emptyLabel={t('financialChartEmpty')}
           />
         </ChartCard>
         <ChartCard title={t('financialChartExpenseBreakdown')}>
@@ -214,16 +220,23 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
             slices={expenseSlices}
             centerLabel={t('financialTotalExpenses')}
             centerValue={formatFinancialAmount(totals.expenses, locale)}
+            formatAmount={formatAmount}
+            emptyLabel={t('financialChartEmpty')}
           />
         </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard title={t('financialChartCumulative')} subtitle={t('financialChartCumulativeDesc')}>
-          <BalanceLineChart points={cumulative} />
+          <BalanceLineChart
+            points={cumulative}
+            formatAmount={formatAmount}
+            emptyLabel={t('financialChartEmpty')}
+            monthlyBalances={monthlyBalances}
+          />
         </ChartCard>
         <ChartCard title={t('financialChartInvoicePipeline')}>
-          <PipelineBar steps={pipeline} formatAmount={(n) => formatFinancialAmount(n, locale)} />
+          <PipelineBar steps={pipeline} formatAmount={formatAmount} />
         </ChartCard>
       </div>
 
@@ -251,7 +264,7 @@ const FinancialOverviewDashboard: React.FC<FinancialOverviewDashboardProps> = ({
   );
 };
 
-function KpiCard({
+const KpiCard = React.memo(function KpiCard({
   label,
   value,
   tone,
@@ -285,15 +298,23 @@ function KpiCard({
       </div>
     </div>
   );
-}
+});
 
-function MiniStat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+const MiniStat = React.memo(function MiniStat({
+  label,
+  value,
+  warn,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+}) {
   return (
     <div>
       <p className="text-[10px] uppercase text-indigo-600">{label}</p>
       <p className={`text-lg font-bold ${warn ? 'text-amber-700' : 'text-indigo-900'}`}>{value}</p>
     </div>
   );
-}
+});
 
-export default FinancialOverviewDashboard;
+export default React.memo(FinancialOverviewDashboard);

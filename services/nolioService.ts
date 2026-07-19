@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 import { app } from '../firebaseConfig';
 import { NolioConnectionInfo, NolioTrainingsResponse } from '../types/nolio';
+import { generateId } from '../utils/themeUtils';
 
 const NOLIO_AUTH_BASE = 'https://www.nolio.io/api/authorize/';
 const NOLIO_STATE_KEY = 'logicycle_nolio_oauth_state';
@@ -18,7 +19,7 @@ export function buildNolioAuthorizeUrl(redirectUri: string): string {
   const clientId = getClientId();
   if (!clientId) throw new Error('VITE_NOLIO_CLIENT_ID non configuré');
 
-  const state = crypto.randomUUID();
+  const state = generateId();
   sessionStorage.setItem(NOLIO_STATE_KEY, state);
 
   const params = new URLSearchParams({

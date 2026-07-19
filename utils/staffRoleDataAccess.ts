@@ -154,11 +154,12 @@ export const STAFF_ROLE_ACCESS: Record<StaffRoleKeyString, StaffRoleAccessProfil
     label: 'Communication',
     missionTabLabel: 'Mission média',
     missionTabDescription:
-      'Brief course, timings OP, partantes, modèles réseaux, fiche média et visibilité partenaires.',
+      'Brief course, photos partenaires, résultats auto, timings OP et modèles réseaux.',
     sectionDenials: [...BASE_OPERATIONAL_DENIALS, 'roster', 'equipment', 'vehicles', 'stocks'],
     sectionGrants: {
       events: ['view'],
       checklist: ['view'],
+      partnerPortal: ['view', 'edit'],
       myTrips: ['view', 'edit'],
       myCalendar: ['view', 'edit'],
       myDashboard: ['view'],

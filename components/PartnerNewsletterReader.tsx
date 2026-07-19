@@ -3,6 +3,7 @@ import { PartnerNewsletter, PartnerNewsletterBlock } from '../types';
 import { useTranslations } from '../hooks/useTranslations';
 import ActionButton from './ActionButton';
 import { downloadNewsletterHtml } from '../utils/partnerNewsletterUtils';
+import { getGazetteFrequencyLabel } from '../utils/partnerCommsUtils';
 
 interface PartnerNewsletterReaderProps {
   newsletter: PartnerNewsletter;
@@ -45,6 +46,16 @@ function BlockView({ block }: { block: PartnerNewsletterBlock }) {
           {block.content}
         </div>
       );
+    case 'image':
+      return block.content.trim() ? (
+        <figure className="my-5">
+          <img
+            src={block.content.trim()}
+            alt=""
+            className="w-full rounded-xl border border-slate-200 object-cover max-h-96"
+          />
+        </figure>
+      ) : null;
     case 'eventList':
     case 'results':
       return (
@@ -65,8 +76,9 @@ const PartnerNewsletterReader: React.FC<PartnerNewsletterReaderProps> = ({
   sponsorName,
   accentColor = '#4338ca',
 }) => {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
   const published = newsletter.publishedAt || newsletter.createdAt;
+  const freqLabel = getGazetteFrequencyLabel(newsletter.frequency, language);
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
@@ -78,7 +90,20 @@ const PartnerNewsletterReader: React.FC<PartnerNewsletterReaderProps> = ({
       >
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_50%,white,transparent_50%)]" />
         <div className="relative">
-          <p className="text-sm opacity-80">{teamName}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs opacity-90">
+            <span className="rounded-full bg-white/15 px-2.5 py-0.5 font-medium">
+              {t('partnerGazetteFrequencyBadge')} · {freqLabel}
+            </span>
+            {newsletter.editionNumber != null && (
+              <span className="rounded-full bg-white/15 px-2.5 py-0.5">
+                #{newsletter.editionNumber}
+              </span>
+            )}
+            {newsletter.editionLabel && (
+              <span className="opacity-80">{newsletter.editionLabel}</span>
+            )}
+          </div>
+          <p className="text-sm opacity-80 mt-3">{teamName}</p>
           <h1 className="text-2xl sm:text-3xl font-bold mt-2">{newsletter.title}</h1>
           {newsletter.previewText && (
             <p className="mt-3 text-sm opacity-90 max-w-xl">{newsletter.previewText}</p>

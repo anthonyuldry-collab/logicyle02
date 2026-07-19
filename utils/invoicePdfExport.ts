@@ -19,6 +19,7 @@ export function exportInvoicePdf(
     title: language === 'en' ? 'INVOICE' : 'FACTURE',
     number: language === 'en' ? 'No.' : 'N°',
     date: language === 'en' ? 'Date' : 'Date',
+    dueDate: language === 'en' ? 'Due date' : 'Échéance',
     issuer: language === 'en' ? 'Issuer' : 'Émetteur',
     client: language === 'en' ? 'Client' : 'Client',
     description: language === 'en' ? 'Description' : 'Description',
@@ -46,6 +47,8 @@ export function exportInvoicePdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(`${labels.date} : ${formatFinancialDate(String(invoice.issueDate).slice(0, 10), locale)}`, 140, y);
+  y += 5;
+  doc.text(`${labels.dueDate} : ${formatFinancialDate(String(invoice.dueDate).slice(0, 10), locale)}`, 140, y);
   y += 12;
 
   doc.setFont('helvetica', 'bold');

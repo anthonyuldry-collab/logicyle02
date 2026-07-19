@@ -1,13 +1,29 @@
 
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { RaceEvent, StaffMember, AppState, StaffRoleKey, StaffRole, RiderEventSelection, RiderEventStatus } from '../../types';
+import {
+  RaceEvent,
+  AppState,
+  StaffRoleKey,
+  StaffRole,
+  RiderEventSelection,
+  RiderEventStatus,
+  Mission,
+  MissionStatus,
+} from '../../types';
 import ActionButton from '../../components/ActionButton';
+import Modal from '../../components/Modal';
 import { STAFF_ROLES_CONFIG } from '../../constants';
 import { getStaffRoleDisplayLabel } from '../../utils/staffRoleUtils';
 import * as firebaseService from '../../services/firebaseService';
 import { exportUciStartListPdf } from '../../utils/uciFormExport';
 import { useTranslations } from '../../hooks/useTranslations';
+import { useFeedbackTimeout } from '../../hooks/useFeedbackTimeout';
+import {
+  createMissionFromEvent,
+  getOpenMissionsForEvent,
+  VACATAIRE_MISSION_ROLES,
+} from '../../utils/missionFromEventUtils';
 
 const EVENT_ROLE_KEYS: StaffRoleKey[] = [
   'managerId', 'directeurSportifId', 'assistantId', 'mecanoId', 'kineId', 'medecinId',
@@ -69,6 +85,7 @@ interface EventParticipantsTabProps {
   appState: AppState;
   riderEventSelections?: RiderEventSelection[];
   setRiderEventSelections?: React.Dispatch<React.SetStateAction<RiderEventSelection[]>>;
+  setMissions?: React.Dispatch<React.SetStateAction<Mission[]>>;
   readOnly?: boolean;
 }
 
@@ -78,9 +95,11 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
   appState,
   riderEventSelections = [],
   setRiderEventSelections,
+  setMissions,
   readOnly = false,
 }) => {
   const { t } = useTranslations();
+  const { feedback, showFeedback } = useFeedbackTimeout();
   const activeTeam = appState.teams?.find((tm) => tm.id === appState.activeTeamId);
   const [selectedRiderIds, setSelectedRiderIds] = useState<string[]>(event.selectedRiderIds || []);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>(event.selectedStaffIds || []);
@@ -91,8 +110,44 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
   const [filterStaffText, setFilterStaffText] = useState('');
   const [filterStaffRoleKey, setFilterStaffRoleKey] = useState<StaffRoleKey | ''>('');
   const [filterVehicleText, setFilterVehicleText] = useState('');
+  const [isVacataireModalOpen, setIsVacataireModalOpen] = useState(false);
+  const [vacataireRole, setVacataireRole] = useState<StaffRole>(StaffRole.MECANO);
+  const [vacataireDailyRate, setVacataireDailyRate] = useState('');
+  const [vacataireNotes, setVacataireNotes] = useState('');
 
   const allRoleOptions = useMemo(() => STAFF_ROLES_CONFIG.flatMap(g => g.roles), []);
+
+  const openVacataireMissions = useMemo(
+    () => getOpenMissionsForEvent(appState.missions, event.id),
+    [appState.missions, event.id]
+  );
+
+  const handlePublishVacataireMission = () => {
+    const teamId = appState.activeTeamId;
+    if (!setMissions || !teamId) {
+      showFeedback('Impossible de publier l’offre (équipe ou persistance indisponible).');
+      return;
+    }
+    const rate = vacataireDailyRate.trim() ? Number(vacataireDailyRate) : undefined;
+    if (vacataireDailyRate.trim() && (!Number.isFinite(rate) || (rate ?? 0) <= 0)) {
+      showFeedback('Indiquez un tarif journalier valide, ou laissez vide.');
+      return;
+    }
+    const mission = createMissionFromEvent({
+      event,
+      teamId,
+      role: vacataireRole,
+      dailyRate: rate,
+      description: vacataireNotes.trim() || undefined,
+    });
+    setMissions((prev) => [...(prev || []), mission]);
+    setIsVacataireModalOpen(false);
+    setVacataireDailyRate('');
+    setVacataireNotes('');
+    showFeedback(
+      `Offre publiée : ${getStaffRoleDisplayLabel(vacataireRole)}. Visible dans Staff → Recrutement ; après acceptation → planning + budget vacataire.`
+    );
+  };
 
   useEffect(() => {
     setSelectedRiderIds(event.selectedRiderIds || []);
@@ -481,7 +536,16 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
     <div className="space-y-6">
        <div className="flex justify-between items-center flex-wrap gap-2">
         <h3 className="text-xl font-semibold text-gray-700">Participants à l'Événement</h3>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {!readOnly && setMissions && appState.activeTeamId && (
+            <ActionButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsVacataireModalOpen(true)}
+            >
+              Ouvrir au vacataire
+            </ActionButton>
+          )}
           {!readOnly && activeTeam && selectedRiderIds.length > 0 && (
             <ActionButton
               variant="secondary"
@@ -509,6 +573,30 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
         </div>
       </div>
 
+      {feedback && (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          {feedback}
+        </p>
+      )}
+
+      {openVacataireMissions.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="font-medium mb-1">
+            Offres vacataires ouvertes ({openVacataireMissions.length})
+          </p>
+          <ul className="list-disc list-inside space-y-0.5 text-amber-800">
+            {openVacataireMissions.map((m) => (
+              <li key={m.id}>
+                {getStaffRoleDisplayLabel(m.role)}
+                {m.compensation ? ` · ${m.compensation}` : ''}
+                {' · '}
+                {m.status}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {renderParticipantList('Coureurs Sélectionnés', ridersWithNames, selectedRiderIds, handleSelectionChange, 'riders', {
           filterText: filterRiderText,
@@ -532,6 +620,81 @@ const EventParticipantsTab: React.FC<EventParticipantsTabProps> = ({
           <ActionButton type="button" onClick={handleSave}>Sauvegarder Participants</ActionButton>
         </div>
       )}
+
+      <Modal
+        isOpen={isVacataireModalOpen}
+        onClose={() => setIsVacataireModalOpen(false)}
+        title="Ouvrir au vacataire"
+      >
+        <div className="space-y-4 text-slate-200">
+          <p className="text-sm text-slate-300">
+            Publie une offre d&apos;emploi liée à <strong className="text-white">{event.name}</strong>.
+            Une fois la candidature acceptée, le vacataire apparaît dans le planning et le coût
+            (budget / facturation vacataire) est généré automatiquement.
+          </p>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Poste recherché
+            </label>
+            <select
+              value={vacataireRole}
+              onChange={(e) => setVacataireRole(e.target.value as StaffRole)}
+              className="w-full rounded-md border border-slate-600 bg-slate-800 text-white text-sm px-3 py-2"
+            >
+              {VACATAIRE_MISSION_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {getStaffRoleDisplayLabel(role)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Tarif journalier (€) — optionnel
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={vacataireDailyRate}
+              onChange={(e) => setVacataireDailyRate(e.target.value)}
+              placeholder="ex. 150"
+              className="w-full rounded-md border border-slate-600 bg-slate-800 text-white text-sm px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Précisions pour l&apos;offre — optionnel
+            </label>
+            <textarea
+              value={vacataireNotes}
+              onChange={(e) => setVacataireNotes(e.target.value)}
+              rows={3}
+              placeholder="Horaires, matériel requis, hébergement…"
+              className="w-full rounded-md border border-slate-600 bg-slate-800 text-white text-sm px-3 py-2"
+            />
+          </div>
+          <p className="text-xs text-slate-400">
+            Dates : {event.date}
+            {event.endDate && event.endDate !== event.date ? ` → ${event.endDate}` : ''}
+            {event.location ? ` · ${event.location}` : ''}
+            {' · '}Statut offre : {MissionStatus.OPEN}
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <ActionButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsVacataireModalOpen(false)}
+            >
+              Annuler
+            </ActionButton>
+            <ActionButton type="button" size="sm" onClick={handlePublishVacataireMission}>
+              Publier l&apos;offre
+            </ActionButton>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

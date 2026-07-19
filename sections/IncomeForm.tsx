@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { IncomeItem, IncomeCategory } from '../types';
+import { IncomeItem, IncomeCategory, PartnerCounterpartDeliverable } from '../types';
 import { useTranslations } from '../hooks/useTranslations';
 import { isSponsorshipIncome } from '../utils/financialUtils';
 import { resolveIncomeAccountingCode } from '../constants/accountingCodes';
 import { suggestPartnershipCounterparts } from '../utils/partnershipDocumentUtils';
+import { generateId } from '../utils/themeUtils';
+import PartnershipCounterpartsEditor from '../components/financial/PartnershipCounterpartsEditor';
 
 interface IncomeFormProps {
   item?: IncomeItem | null;
@@ -34,6 +36,7 @@ const IncomeForm: React.FC<IncomeFormProps> = ({ item, defaultCategory, onSave, 
     sponsorRepresentative: item?.sponsorRepresentative || '',
     sponsorLegalForm: item?.sponsorLegalForm || '',
     partnershipCounterparts: item?.partnershipCounterparts || '',
+    partnershipDeliverables: item?.partnershipDeliverables || [],
     donationForm: item?.donationForm || 'numéraire',
   });
 
@@ -47,7 +50,9 @@ const IncomeForm: React.FC<IncomeFormProps> = ({ item, defaultCategory, onSave, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const incomeItem: IncomeItem = {
-      id: item?.id || crypto.randomUUID(),
+      // Préserver les champs facturation / partenariats déjà présents
+      ...item,
+      id: item?.id || generateId(),
       ...formData,
       sponsorshipContactName: formData.sponsorshipContactName || undefined,
       sponsorshipContactEmail: formData.sponsorshipContactEmail || undefined,
@@ -66,7 +71,27 @@ const IncomeForm: React.FC<IncomeFormProps> = ({ item, defaultCategory, onSave, 
       sponsorRepresentative: formData.sponsorRepresentative || undefined,
       sponsorLegalForm: formData.sponsorLegalForm || undefined,
       partnershipCounterparts: formData.partnershipCounterparts || undefined,
+      partnershipDeliverables: formData.partnershipDeliverables?.length
+        ? formData.partnershipDeliverables
+        : undefined,
       donationForm: formData.donationForm || undefined,
+      // Champs cycle de vie facture — jamais écrasés par le formulaire revenus
+      invoiceNumber: item?.invoiceNumber,
+      invoiceStatus: item?.invoiceStatus,
+      issuedAt: item?.issuedAt,
+      paidAt: item?.paidAt,
+      dueDate: item?.dueDate,
+      paymentTermsDays: item?.paymentTermsDays,
+      clientId: item?.clientId,
+      quoteId: item?.quoteId,
+      creditNoteForInvoiceId: item?.creditNoteForInvoiceId,
+      invoicePdfUrl: item?.invoicePdfUrl,
+      amountHT: item?.amountHT,
+      conventionNumber: item?.conventionNumber,
+      conventionGeneratedAt: item?.conventionGeneratedAt,
+      cerfaReceiptNumber: item?.cerfaReceiptNumber,
+      cerfaGeneratedAt: item?.cerfaGeneratedAt,
+      sponsorshipContractTerms: item?.sponsorshipContractTerms,
     };
     onSave(incomeItem);
   };
@@ -180,6 +205,24 @@ const IncomeForm: React.FC<IncomeFormProps> = ({ item, defaultCategory, onSave, 
             className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="income-vat-rate" className="block text-sm font-medium text-gray-700">
+          {t('invoiceVatRate')}
+        </label>
+        <input
+          id="income-vat-rate"
+          type="number"
+          min={0}
+          max={100}
+          step="0.1"
+          value={formData.vatRate ?? 0}
+          onChange={(e) =>
+            setFormData((prev) => ({ ...prev, vatRate: parseFloat(e.target.value) || 0 }))
+          }
+          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:max-w-xs"
+        />
       </div>
 
       <div>
@@ -333,16 +376,21 @@ const IncomeForm: React.FC<IncomeFormProps> = ({ item, defaultCategory, onSave, 
             </div>
           )}
           <div>
-            <label htmlFor="partnership-counterparts" className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-slate-200 mb-2">
               {t('partnershipCounterparts')}
             </label>
-            <textarea
-              id="partnership-counterparts"
-              value={formData.partnershipCounterparts || ''}
-              onChange={(e) => setFormData((prev) => ({ ...prev, partnershipCounterparts: e.target.value }))}
-              rows={4}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              placeholder={t('partnershipCounterpartsPlaceholder')}
+            <PartnershipCounterpartsEditor
+              items={(formData.partnershipDeliverables as PartnerCounterpartDeliverable[]) || []}
+              category={formData.category}
+              canEdit
+              variant="dark"
+              onChange={(items, contractText) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  partnershipDeliverables: items,
+                  partnershipCounterparts: contractText || prev.partnershipCounterparts,
+                }))
+              }
             />
           </div>
         </div>

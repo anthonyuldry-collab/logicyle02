@@ -406,7 +406,8 @@ export const TEAM_STATE_COLLECTIONS = [
     'clientRecords', 'supplierInvoices', 'sepaBatches', 'bankTransactions', 'quotes',
     'peerRatings', 'riderSelfDebriefs', 'teamEventReviews', 'debriefings', 'missions', 'recruitmentOffers',
     'recruitmentCampaigns', 'meetingReports',
-    'performanceArchives', 'organizerContacts', 'partnerNewsletters'
+    'performanceArchives', 'organizerContacts', 'partnerNewsletters',
+    'partnerMediaItems', 'partnerRaceReports',
 ];
 
 export const emptyRaceInformation: RaceInformation = {
@@ -492,6 +493,8 @@ export const getInitialTeamState = (): TeamState => ({
     stockMovements: [],
     vehiclePositions: [],
     partnerNewsletters: [],
+    partnerMediaItems: [],
+    partnerRaceReports: [],
     convocationResponses: [],
     clientRecords: [],
     supplierInvoices: [],

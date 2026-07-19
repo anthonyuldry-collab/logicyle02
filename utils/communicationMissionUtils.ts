@@ -117,6 +117,10 @@ export function buildResultsPlaceholderCopy(params: {
   ].join('\n');
 }
 
+/** @deprecated Prefer buildResultsSocialCopy from partnerRaceReportUtils */
+export { buildResultsSocialCopy } from './partnerRaceReportUtils';
+
+
 const SPONSOR_CATEGORIES = new Set<IncomeCategory>([
   IncomeCategory.SPONSORING,
   IncomeCategory.MECENAT,

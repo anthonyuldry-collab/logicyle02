@@ -3,6 +3,7 @@ import { EventBudgetItem, BudgetItemCategory, RaceEvent } from '../types';
 import { useTranslations } from '../hooks/useTranslations';
 import { formatFinancialDate } from '../utils/financialUtils';
 import { enrichBudgetWithAccounting } from '../utils/accountingEntryUtils';
+import { generateId } from '../utils/themeUtils';
 
 interface BudgetFormProps {
   item?: EventBudgetItem | null;
@@ -28,13 +29,19 @@ const BudgetForm: React.FC<BudgetFormProps> = ({ item, raceEvents, onSave, onCan
     sourceVehicleId: item?.sourceVehicleId || undefined,
     sourceStaffId: item?.sourceStaffId || undefined,
     proofDocumentId: item?.proofDocumentId || undefined,
+    receiptDate: item?.receiptDate || new Date().toISOString().slice(0, 10),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedEvent = raceEvents?.find((ev) => ev.id === formData.eventId);
+    const receiptDate =
+      formData.receiptDate ||
+      selectedEvent?.date?.slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
     const budgetItem: EventBudgetItem = enrichBudgetWithAccounting(
       {
-        id: item?.id || crypto.randomUUID(),
+        id: item?.id || generateId(),
         eventId: formData.eventId || undefined,
         category: formData.category,
         description: formData.description,
@@ -45,6 +52,7 @@ const BudgetForm: React.FC<BudgetFormProps> = ({ item, raceEvents, onSave, onCan
         sourceVehicleId: formData.sourceVehicleId,
         sourceStaffId: formData.sourceStaffId,
         proofDocumentId: formData.proofDocumentId,
+        receiptDate,
         accountingCode: item?.accountingCode,
         accountingLabel: item?.accountingLabel,
       },
@@ -62,7 +70,18 @@ const BudgetForm: React.FC<BudgetFormProps> = ({ item, raceEvents, onSave, onCan
         <select
           id="budget-event"
           value={formData.eventId || ''}
-          onChange={(e) => setFormData((prev) => ({ ...prev, eventId: e.target.value }))}
+          onChange={(e) => {
+            const eventId = e.target.value;
+            const selectedEvent = raceEvents?.find((ev) => ev.id === eventId);
+            setFormData((prev) => ({
+              ...prev,
+              eventId,
+              receiptDate:
+                prev.receiptDate ||
+                selectedEvent?.date?.slice(0, 10) ||
+                prev.receiptDate,
+            }));
+          }}
           className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="">{t('formEventGeneral')}</option>
@@ -72,6 +91,19 @@ const BudgetForm: React.FC<BudgetFormProps> = ({ item, raceEvents, onSave, onCan
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label htmlFor="budget-receipt-date" className="block text-sm font-medium text-gray-700">
+          {t('formDate')}
+        </label>
+        <input
+          id="budget-receipt-date"
+          type="date"
+          value={formData.receiptDate || ''}
+          onChange={(e) => setFormData((prev) => ({ ...prev, receiptDate: e.target.value }))}
+          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+        />
       </div>
 
       <div>

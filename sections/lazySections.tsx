@@ -78,3 +78,4 @@ export const LazyPricingSection = lazyWithReload(() => import('./PricingSection'
 export const LazyExpenseReceiptsSection = lazyWithReload(() => import('./ExpenseReceiptsSection'));
 export const LazyOrganizationDashboardSection = lazyWithReload(() => import('./OrganizationDashboardSection'));
 export const LazyPartnerPortalSection = lazyWithReload(() => import('./PartnerPortalSection'));
+export const LazyPartnerMediaHubSection = lazyWithReload(() => import('./PartnerMediaHubSection'));

@@ -277,6 +277,11 @@ function renderBlockHtml(block: PartnerNewsletterBlock): string {
       return `<div class="highlight" style="border-left-color:#0ea5e9"><pre>${escapeHtml(block.content)}</pre></div>`;
     case 'sponsorSpotlight':
       return `<div class="highlight" style="background:#fef3c7;border-left-color:#f59e0b"><pre>${escapeHtml(block.content)}</pre></div>`;
+    case 'image': {
+      const src = block.content.trim();
+      if (!src) return '';
+      return `<figure style="margin:16px 0"><img src="${escapeHtml(src)}" alt="" style="max-width:100%;border-radius:12px;display:block"/></figure>`;
+    }
     case 'eventList':
     case 'results':
       return `<pre>${escapeHtml(block.content)}</pre>`;

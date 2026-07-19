@@ -12,6 +12,7 @@ import {
   UserRole,
 } from '../types';
 import { getStaffMemberForUser } from './staffMemberUtils';
+import { generateId } from './themeUtils';
 
 const RECEIPT_SCAN_ROLES = new Set<string>([
   StaffRole.DS,
@@ -68,7 +69,7 @@ export function buildExpenseReceiptDraft(params: {
     : `${params.user.firstName} ${params.user.lastName}`.trim();
 
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     eventId: params.eventId,
     transportLegId: params.transportLegId,
     submittedByUserId: params.user.id,
@@ -94,7 +95,7 @@ export function buildExpenseReceiptDraft(params: {
 export function buildBudgetItemFromReceipt(receipt: ExpenseReceipt): EventBudgetItem {
   const label = receipt.merchant || receipt.description || 'Justificatif de frais';
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     eventId: receipt.eventId || '',
     category: receipt.budgetCategory,
     description: `${label} — ${receipt.submittedByName || 'Staff'}`,

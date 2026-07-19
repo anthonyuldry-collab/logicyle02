@@ -77,6 +77,8 @@ export function buildSalaryPaymentOrders(
   paidSourceIds?: Set<string>
 ): SepaPaymentOrder[] {
   const contracts = buildTeamContractSummaries(riders, staff, context);
+  const riderById = new Map(riders.map((r) => [r.id, r]));
+  const staffById = new Map(staff.map((s) => [s.id, s]));
   const orders: SepaPaymentOrder[] = [];
 
   for (const contract of contracts) {
@@ -84,9 +86,7 @@ export function buildSalaryPaymentOrders(
     if (paidSourceIds?.has(contract.id)) continue;
 
     const person =
-      contract.type === 'rider'
-        ? riders.find((r) => r.id === contract.id)
-        : staff.find((s) => s.id === contract.id);
+      contract.type === 'rider' ? riderById.get(contract.id) : staffById.get(contract.id);
     if (!person) continue;
 
     const iban = person.bankDetails?.iban?.trim() || '';

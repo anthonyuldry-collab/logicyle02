@@ -149,12 +149,18 @@
   .lc-app-shell .main-content .bg-blue-50\/50,
   .lc-app-shell .main-content .bg-indigo-50,
   .lc-app-shell .main-content .bg-indigo-50\/40,
+  .lc-app-shell .main-content .bg-indigo-50\/60,
   .lc-app-shell .main-content .bg-sky-50,
   .lc-app-shell .main-content .bg-sky-50\/40,
   .lc-app-shell .main-content .bg-sky-50\/80,
   .lc-modal .bg-blue-50,
   .lc-modal .bg-indigo-50 {
     background-color: #1e293b !important;
+  }
+
+  .lc-app-shell .main-content .bg-emerald-50\/70,
+  .lc-app-shell .main-content .bg-emerald-50\/60 {
+    background-color: #052e1c !important;
   }
 
   .lc-app-shell .main-content .bg-violet-50,
@@ -234,6 +240,7 @@
   .lc-app-shell .main-content .text-blue-900,
   .lc-app-shell .main-content .text-blue-800,
   .lc-app-shell .main-content .text-blue-700,
+  .lc-app-shell .main-content .text-indigo-950,
   .lc-app-shell .main-content .text-indigo-900,
   .lc-app-shell .main-content .text-indigo-800,
   .lc-app-shell .main-content .text-indigo-700,
@@ -244,6 +251,8 @@
   .lc-modal .text-blue-900,
   .lc-modal .text-blue-800,
   .lc-modal .text-blue-700,
+  .lc-modal .text-indigo-950,
+  .lc-modal .text-indigo-900,
   .lc-modal .text-indigo-700,
   .lc-modal .text-pink-700,
   .lc-modal .text-pink-800 {
@@ -254,7 +263,9 @@
   .lc-app-shell .main-content .text-green-800,
   .lc-app-shell .main-content .text-green-700,
   .lc-app-shell .main-content .text-green-600,
+  .lc-app-shell .main-content .text-emerald-950,
   .lc-app-shell .main-content .text-emerald-900,
+  .lc-app-shell .main-content .text-emerald-900\/80,
   .lc-app-shell .main-content .text-emerald-800,
   .lc-app-shell .main-content .text-emerald-700,
   .lc-app-shell .main-content .text-emerald-600 {
@@ -409,9 +420,13 @@
   .lc-app-shell .main-content .from-blue-50,
   .lc-app-shell .main-content .from-green-50,
   .lc-app-shell .main-content .from-emerald-50,
+  .lc-app-shell .main-content .from-violet-50,
+  .lc-app-shell .main-content .from-indigo-50,
   .lc-app-shell .main-content .to-slate-50,
   .lc-app-shell .main-content .to-emerald-50,
   .lc-app-shell .main-content .to-green-50,
+  .lc-app-shell .main-content .to-indigo-50,
+  .lc-app-shell .main-content .to-violet-50,
   .lc-app-shell .main-content .to-white {
     --tw-gradient-from: #0f172a !important;
     --tw-gradient-to: #1e293b !important;

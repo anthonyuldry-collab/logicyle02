@@ -39,8 +39,13 @@ export function lightenDarkenColor(col: string, amt: number): string {
 }
 
 export function generateId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
+  try {
+    const c = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    if (c && typeof c.randomUUID === 'function') {
+      return c.randomUUID();
+    }
+  } catch {
+    // contextes non sécurisés / navigateurs anciens
   }
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 }

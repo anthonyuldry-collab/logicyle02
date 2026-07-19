@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   IncomeItem,
   EventBudgetItem,
@@ -28,6 +28,7 @@ import {
   PartnershipMatchStatus,
   Quote,
 } from '../types';
+import { useFeedbackTimeout } from '../hooks/useFeedbackTimeout';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -212,16 +213,12 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
   const [expenseEventFilter, setExpenseEventFilter] = useState<string>('all');
   const [defaultIncomeCategory, setDefaultIncomeCategory] = useState<IncomeCategory | undefined>(undefined);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const { feedback: feedbackMessage, showFeedback } = useFeedbackTimeout(4000);
   const [overviewPeriod, setOverviewPeriod] = useState<FinancialPeriod>('ytd');
   const [activeGroup, setActiveGroup] = useState<string>('pilotage');
 
-  const showFeedback = useCallback((message: string) => {
-    setFeedbackMessage(message);
-    window.setTimeout(() => setFeedbackMessage(null), 4000);
-  }, []);
-
   const filteredIncomeItems = useMemo(() => {
+    if (activeTab !== 'income') return [];
     return incomeItems
       .filter((item) => {
         if (incomeCategoryFilter !== 'all' && item.category !== incomeCategoryFilter) return false;
@@ -234,9 +231,10 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
         );
       })
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [incomeItems, incomeCategoryFilter, incomeSearch]);
+  }, [activeTab, incomeItems, incomeCategoryFilter, incomeSearch]);
 
   const filteredBudgetItems = useMemo(() => {
+    if (activeTab !== 'expenses') return [];
     return budgetItems
       .filter((item) => {
         if (expenseCategoryFilter !== 'all' && item.category !== expenseCategoryFilter) return false;
@@ -255,12 +253,12 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
         );
       })
       .sort((a, b) => a.description.localeCompare(b.description, locale));
-  }, [budgetItems, expenseCategoryFilter, expenseEventFilter, expenseSearch, raceEvents, locale]);
+  }, [activeTab, budgetItems, expenseCategoryFilter, expenseEventFilter, expenseSearch, raceEvents, locale]);
 
-  const contractItems = useMemo(
-    () => incomeItems.filter(hasContractDates).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
-    [incomeItems]
-  );
+  const contractItems = useMemo(() => {
+    if (activeTab !== 'contracts') return [];
+    return incomeItems.filter(hasContractDates).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [activeTab, incomeItems]);
 
   const expenseCategories = useMemo(
     () => Array.from(new Set(budgetItems.map((item) => item.category).filter(Boolean))).sort(),
@@ -451,6 +449,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             canEdit={canEdit}
             onAddIncome={canEdit ? () => openIncomeModal() : undefined}
             onAddExpense={canEdit ? () => { setEditingBudgetItem(null); setIsBudgetModalOpen(true); } : undefined}
+            raceEvents={raceEvents}
           />
         )}
 
@@ -637,10 +636,12 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
           <FinancialInvoicingTab
             incomeItems={incomeItems}
             teamName={teamName}
+            teamId={teamId}
             invoiceSettings={invoiceSettings}
             canEdit={canEdit}
             onSaveIncomeItem={onSaveIncomeItem}
             onSaveInvoiceSettings={onSaveInvoiceSettings}
+            clients={clientRecords}
           />
         )}
         {activeTab === 'quotes' && onSaveQuote && onDeleteQuote && onConvertQuote && (
@@ -649,6 +650,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             clients={clientRecords}
             invoiceSettings={invoiceSettings}
             teamName={teamName}
+            teamId={teamId}
             canEdit={canEdit}
             onSaveQuote={onSaveQuote}
             onDeleteQuote={onDeleteQuote}

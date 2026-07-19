@@ -72,9 +72,11 @@ import {
   EventBudgetItem,
   TeamRecruitmentOffer,
   TeamRecruitmentOfferStatus,
+  TeamInvoiceSettings,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState, LEGAL_VERSIONS } from '../constants';
+import { resolveDocumentSequence } from '../utils/invoiceSequenceUtils';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   mergeConfiguredPermissions,
@@ -1201,6 +1203,37 @@ export const deleteData = async (teamId: string, collectionName: string, docId: 
 export const saveTeamSettings = async (teamId: string, settings: Record<string, unknown>) => {
     const teamDocRef = doc(db, 'teams', teamId);
     await setDoc(teamDocRef, cleanDataForFirebase(settings), { merge: true });
+};
+
+export type InvoiceSequenceField = 'nextInvoiceNumber' | 'nextQuoteNumber';
+
+/**
+ * Alloue atomiquement un numéro de facture ou de devis via transaction Firestore.
+ * Les trous de séquence sont acceptés si l'écriture métier échoue ensuite ;
+ * les doublons sont interdits.
+ */
+export const allocateDocumentSequence = async (
+    teamId: string,
+    field: InvoiceSequenceField,
+): Promise<{ sequence: number; invoiceSettings: TeamInvoiceSettings }> => {
+    const teamDocRef = doc(db, 'teams', teamId);
+    return runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(teamDocRef);
+        const data = snap.exists() ? snap.data() : undefined;
+        const currentSettings = (data?.invoiceSettings || {}) as TeamInvoiceSettings;
+        const sequence = resolveDocumentSequence(currentSettings[field]);
+        const invoiceSettings: TeamInvoiceSettings = {
+            ...currentSettings,
+            issuerName: currentSettings.issuerName || '',
+            [field]: sequence + 1,
+        };
+        transaction.set(
+            teamDocRef,
+            cleanDataForFirebase({ invoiceSettings }),
+            { merge: true },
+        );
+        return { sequence, invoiceSettings };
+    });
 };
 
 // Fonctions pour la gestion des paramètres utilisateur

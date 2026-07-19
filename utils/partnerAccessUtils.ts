@@ -20,7 +20,26 @@ export const ALL_PARTNER_SCOPES: PartnerScope[] = [
   'view_payment_status',
   'view_events',
   'view_comms',
+  'view_media',
+  'view_results',
 ];
+
+/**
+ * Scopes utiles au service com (rédaction / couverture) —
+ * sans budget, contrats, paiement ni contreparties juridiques.
+ */
+export const COMMS_PARTNER_SCOPES: PartnerScope[] = [
+  'view_events',
+  'view_comms',
+  'view_media',
+  'view_results',
+];
+
+/** Compat : anciens accès sans view_media / view_results héritent via view_comms / view_events. */
+const SCOPE_FALLBACKS: Partial<Record<PartnerScope, PartnerScope>> = {
+  view_media: 'view_comms',
+  view_results: 'view_events',
+};
 
 export function buildPartnerDashboard(params: {
   access: PartnerAccess;
@@ -93,7 +112,10 @@ export function buildPartnerDashboard(params: {
 }
 
 export function canPartnerView(scope: PartnerScope, access: PartnerAccess): boolean {
-  return access.isActive && access.scopes.includes(scope);
+  if (!access.isActive) return false;
+  if (access.scopes.includes(scope)) return true;
+  const fallback = SCOPE_FALLBACKS[scope];
+  return Boolean(fallback && access.scopes.includes(fallback));
 }
 
 export function buildPartnerAccessFromIncome(
@@ -134,6 +156,7 @@ export function buildManagerPreviewAccess(
   income: IncomeItem,
   userId: string,
   teamId: string,
+  scopes: PartnerScope[] = ALL_PARTNER_SCOPES,
 ): PartnerAccess {
   return {
     id: `preview-${income.id}-${userId}`,
@@ -141,10 +164,19 @@ export function buildManagerPreviewAccess(
     teamId,
     incomeItemId: income.id,
     sponsorCompanyName: income.sponsorCompanyName || income.clientName || income.description,
-    scopes: [...ALL_PARTNER_SCOPES],
+    scopes: [...scopes],
     grantedAt: new Date().toISOString(),
     isActive: true,
   };
+}
+
+/** Aperçu portail restreint pour la com (médias / résultats / gazette / calendrier). */
+export function buildCommsPreviewAccess(
+  income: IncomeItem,
+  userId: string,
+  teamId: string,
+): PartnerAccess {
+  return buildManagerPreviewAccess(income, userId, teamId, COMMS_PARTNER_SCOPES);
 }
 
 export function canPreviewPartnerPortal(
@@ -208,6 +240,8 @@ export function resolvePartnerPortalSession(params: {
   permissionRole?: string;
   previewIncomeItemId?: string | null;
   previewAsUser?: User | null;
+  /** full = manager ; comms = aperçu rédactionnel sans données sensibles */
+  previewMode?: 'full' | 'comms';
 }): {
   access: PartnerAccess | null;
   incomeItem: IncomeItem | null;
@@ -223,6 +257,7 @@ export function resolvePartnerPortalSession(params: {
     permissionRole,
     previewIncomeItemId,
     previewAsUser,
+    previewMode = 'full',
   } = params;
 
   const fromFirestore = partnerAccesses.find(
@@ -254,8 +289,9 @@ export function resolvePartnerPortalSession(params: {
 
   const isPartnerRolePreview = userRole === UserRole.PARTNER && !!previewIncomeItemId;
   const isManagerPreview = canPreviewPartnerPortal(userRole, permissionRole, previewAsUser);
+  const isCommsPreview = previewMode === 'comms' && !!previewIncomeItemId && !!teamId;
 
-  if ((isPartnerRolePreview || isManagerPreview) && teamId) {
+  if ((isPartnerRolePreview || isManagerPreview || isCommsPreview) && teamId) {
     const previewIncome =
       (previewIncomeItemId
         ? incomeItems.find((i) => i.id === previewIncomeItemId)
@@ -265,8 +301,16 @@ export function resolvePartnerPortalSession(params: {
       || null;
 
     if (previewIncome) {
+      const useCommsScopes =
+        previewMode === 'comms'
+        || (isCommsPreview && !isManagerPreview);
       return {
-        access: buildManagerPreviewAccess(previewIncome, userId, teamId),
+        access: buildManagerPreviewAccess(
+          previewIncome,
+          userId,
+          teamId,
+          useCommsScopes ? COMMS_PARTNER_SCOPES : ALL_PARTNER_SCOPES,
+        ),
         incomeItem: previewIncome,
         isPreview: true,
       };
@@ -337,6 +381,10 @@ export function getPartnerScopeLabel(scope: PartnerScope, language: 'fr' | 'en' 
     view_payment_status: { fr: 'Statut paiement', en: 'Payment status' },
     view_events: { fr: 'Événements', en: 'Events' },
     view_comms: { fr: 'Newsletters & com', en: 'Newsletters & comms' },
+    view_media: { fr: 'Photos & médias', en: 'Photos & media' },
+    view_results: { fr: 'Résultats & classements', en: 'Results & rankings' },
   };
-  return labels[scope][language];
+  const entry = labels[scope];
+  if (!entry) return String(scope);
+  return entry[language] || entry.fr;
 }

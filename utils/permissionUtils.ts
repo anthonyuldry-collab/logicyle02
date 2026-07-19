@@ -174,6 +174,7 @@ export const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
     performance: ['view', 'edit'],
     checklist: ['view', 'edit'],
     'season-planning': ['view', 'edit'],
+    partnerPortal: ['view', 'edit'],
     userSettings: ['view', 'edit'],
   },
 };

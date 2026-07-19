@@ -34,7 +34,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       break;
     case 'secondary':
       variantStyleClasses =
-        'bg-white/10 hover:bg-white/15 disabled:hover:bg-white/10 text-slate-100 border border-white/15 focus:ring-indigo-400/40 shadow-none';
+        'bg-slate-700 hover:bg-slate-600 disabled:hover:bg-slate-700 text-white border border-slate-500 focus:ring-indigo-400/40 shadow-none';
       break;
     case 'danger':
       variantStyleClasses = "bg-red-500 hover:bg-red-600 disabled:hover:bg-slate-700 text-white focus:ring-red-400";

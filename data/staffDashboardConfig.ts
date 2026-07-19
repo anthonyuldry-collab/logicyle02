@@ -187,6 +187,7 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
     ],
     quickActions: [
       { section: 'events', label: 'Calendrier', description: 'Courses à couvrir' },
+      { section: 'partnerPortal', label: 'Espace partenaire', description: 'Photos, résultats, newsletters' },
       { section: 'checklist', label: 'Checklists', description: 'Tâches média par rôle' },
       { section: 'myCalendar', label: 'Mon calendrier', description: 'Dispos & convocations' },
       ...BASE_LOGISTICS,

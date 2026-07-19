@@ -1,4 +1,12 @@
-import { IncomeCategory, IncomeItem, TeamInvoiceSettings } from '../types';
+import {
+  IncomeCategory,
+  IncomeItem,
+  SponsorshipContractTerms,
+  SponsorshipExclusivityMode,
+  SponsorshipImageRightsScope,
+  TeamInvoiceSettings,
+} from '../types';
+import { formatDeliverablesAsContractText } from './counterpartDeliverableUtils';
 
 export type CerfaFormId = '11580-03' | '16216-01';
 
@@ -33,6 +41,7 @@ export interface PartnershipConventionData {
     counterparts?: string;
     paymentTerms?: string;
     notes?: string;
+    contractTerms?: SponsorshipContractTerms;
   };
 }
 
@@ -149,6 +158,142 @@ export function formatDocumentNumber(
   return `${prefix.toUpperCase()}-${year}-${String(sequence).padStart(4, '0')}`;
 }
 
+export function getDefaultSponsorshipContractTerms(): SponsorshipContractTerms {
+  return {
+    exclusivityMode: 'none',
+    imageRightsScope: 'external_free',
+    athleteImageAuthorized: false,
+    paymentSchedule: '5050',
+    latePaymentDays: 30,
+    noticePeriodDays: 15,
+    autoRenewal: false,
+    renewalNoticeDays: 30,
+    governingLaw: 'droit français',
+    jurisdiction: 'tribunaux du ressort du siège social de l\'Équipe',
+    confidentialityYears: 2,
+    validationBusinessDays: 10,
+  };
+}
+
+export function formatSponsorshipPaymentTerms(
+  terms: SponsorshipContractTerms | undefined,
+  iban?: string
+): string {
+  const schedule = terms?.paymentSchedule || '5050';
+  let body: string;
+  switch (schedule) {
+    case 'full_signature':
+      body =
+        '— 100 % à la signature de la présente convention, sur présentation de la facture correspondante.';
+      break;
+    case '334':
+      body =
+        '— 33 % à la signature de la présente convention ;\n— 33 % à mi-période contractuelle ;\n— 34 % au plus tard trente (30) jours avant le terme, sur présentation des factures correspondantes.';
+      break;
+    case 'custom':
+      body =
+        terms?.customPaymentTerms?.trim() ||
+        '— Modalités de paiement définies d\'un commun accord entre les Parties (voir observations particulières).';
+      break;
+    case '5050':
+    default:
+      body =
+        '— 50 % à la signature de la présente convention ;\n— 50 % au plus tard à mi-période contractuelle, sur présentation de la facture correspondante.';
+  }
+  if (iban?.trim()) {
+    body += `\nLe règlement s'effectue par virement bancaire sur le compte IBAN : ${iban.trim()}.`;
+  }
+  return body;
+}
+
+export function formatExclusivityClause(
+  terms: SponsorshipContractTerms | undefined,
+  partnerName: string,
+  teamName: string
+): string[] {
+  const mode: SponsorshipExclusivityMode = terms?.exclusivityMode || 'none';
+  const sector = terms?.exclusivitySector?.trim();
+  const territory = terms?.exclusivityTerritory?.trim();
+  const annex = terms?.annexExclusivityNotes?.trim();
+
+  if (mode === 'none') {
+    return [
+      `Sauf stipulation contraire en Annexe, le présent partenariat ne confère pas à ${partnerName} d'exclusivité sectorielle. ${teamName} demeure libre de conclure d'autres partenariats, sous réserve de ne pas porter atteinte aux engagements de visibilité du Partenaire.`,
+      annex
+        ? `Précisions annexes : ${annex}`
+        : 'Si une exclusivité sectorielle est ultérieurement convenue, ses termes (secteur, zone géographique, durée) feront l\'objet d\'un avenant écrit.',
+    ];
+  }
+
+  if (mode === 'sector') {
+    return [
+      `${teamName} s'engage, pendant la durée de la convention, à ne pas conclure de partenariat concurrent dans le secteur suivant : ${sector || 'secteur à préciser en Annexe 2'}, avec un concurrent direct de ${partnerName}.`,
+      territory
+        ? `Cette exclusivité s'applique sur le territoire : ${territory}.`
+        : 'Cette exclusivité s\'applique sur le territoire français, sauf précision contraire en Annexe 2.',
+      annex ? `Modalités complémentaires : ${annex}` : 'Le détail des marques / catégories concurrentes figure en Annexe 2.',
+    ];
+  }
+
+  if (mode === 'territorial') {
+    return [
+      `${teamName} confère à ${partnerName} une exclusivité territoriale pour la promotion de ses produits/services sur : ${territory || 'territoire à préciser en Annexe 2'}.`,
+      sector
+        ? `Cette exclusivité est limitée au secteur : ${sector}.`
+        : 'L\'Équipe demeure libre de conclure des partenariats hors de ce territoire.',
+      annex ? `Modalités complémentaires : ${annex}` : 'Les Parties précisent en Annexe 2 les exceptions éventuelles (événements internationaux, partenaires institutionnels).',
+    ];
+  }
+
+  // full
+  return [
+    `${teamName} confère à ${partnerName} une exclusivité commerciale pleine pour la catégorie d'activité convenue${sector ? ` (${sector})` : ''}, pendant toute la durée de la convention${territory ? `, sur le territoire : ${territory}` : ''}.`,
+    'L\'Équipe s\'interdit de conclure, sans accord préalable écrit du Partenaire, tout autre partenariat susceptible de concurrencer directement l\'image ou les produits du Partenaire.',
+    annex
+      ? `Exceptions et précisions : ${annex}`
+      : 'Les exceptions éventuelles (partenaires institutionnels, équipementiers techniques) sont listées en Annexe 2.',
+  ];
+}
+
+export function formatImageRightsClause(
+  terms: SponsorshipContractTerms | undefined,
+  partnerName: string,
+  teamName: string
+): string[] {
+  const scope: SponsorshipImageRightsScope = terms?.imageRightsScope || 'external_free';
+  const athleteOk = Boolean(terms?.athleteImageAuthorized);
+
+  const base = [
+    'Chaque Partie conserve l\'entière propriété de ses signes distinctifs (marques, logos, noms commerciaux). Les Parties s\'accordent mutuellement une licence non exclusive, gratuite et limitée à la durée de la convention, pour l\'utilisation de leurs logos respectifs dans le cadre strict du partenariat.',
+  ];
+
+  if (scope === 'internal') {
+    base.push(
+      `${teamName} autorise ${partnerName} à utiliser des visuels officiels de l'Équipe (photos d'équipe, logo) exclusivement pour sa communication interne (intranet, rapports RSE, supports salariaux). Toute diffusion externe nécessite l'accord préalable écrit de l'Équipe.`
+    );
+  } else if (scope === 'paid_ads_allowed') {
+    base.push(
+      `${teamName} autorise ${partnerName} à utiliser des visuels officiels de l'Équipe (photos d'équipe, logo) pour sa communication interne et externe, y compris les campagnes publicitaires payantes liées au partenariat, sous réserve du respect de la charte graphique et d'une information préalable de l'Équipe.`
+    );
+  } else {
+    base.push(
+      `${teamName} autorise ${partnerName} à utiliser des visuels officiels de l'Équipe (photos d'équipe, logo) pour sa communication interne et externe liée au partenariat. Toute utilisation à des fins publicitaires payantes nécessite l'accord préalable écrit de l'Équipe.`
+    );
+  }
+
+  if (athleteOk) {
+    base.push(
+      `Sous réserve du consentement individuel des personnes concernées et des règles fédérales applicables, ${partnerName} est autorisé à utiliser l'image nominative des athlètes et du staff dans le cadre strict du partenariat, pour la durée de la convention.`
+    );
+  } else {
+    base.push(
+      `${partnerName} s'interdit toute utilisation de l'image nominative des coureurs ou du staff en dehors du cadre défini aux présentes, conformément aux dispositions du code civil relatives au droit à l'image.`
+    );
+  }
+
+  return base;
+}
+
 export function buildPartnershipConventionData(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
@@ -156,6 +301,15 @@ export function buildPartnershipConventionData(
 ): PartnershipConventionData {
   const partnerName =
     item.sponsorCompanyName || item.clientName || item.sponsorshipContactName || 'Partenaire';
+  const contractTerms = {
+    ...getDefaultSponsorshipContractTerms(),
+    ...item.sponsorshipContractTerms,
+  };
+  const paymentTerms =
+    item.sponsorshipContractTerms?.customPaymentTerms?.trim() &&
+    item.sponsorshipContractTerms?.paymentSchedule === 'custom'
+      ? formatSponsorshipPaymentTerms(contractTerms, settings.issuerIban)
+      : formatSponsorshipPaymentTerms(contractTerms, settings.issuerIban);
 
   return {
     conventionNumber: item.conventionNumber || 'BROUILLON',
@@ -185,11 +339,12 @@ export function buildPartnershipConventionData(
       amount: item.amount,
       startDate: item.sponsorshipContractStart,
       endDate: item.sponsorshipContractEnd,
-      counterparts: item.partnershipCounterparts,
-      paymentTerms: settings.issuerIban
-        ? `Virement bancaire sur le compte IBAN : ${settings.issuerIban}`
-        : undefined,
+      counterparts:
+        formatDeliverablesAsContractText(item.partnershipDeliverables) ||
+        item.partnershipCounterparts,
+      paymentTerms,
       notes: item.notes,
+      contractTerms,
     },
   };
 }

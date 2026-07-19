@@ -14,6 +14,7 @@ import {
   ChecklistRole,
   EquipmentItem,
   IncomeItem,
+  CounterpartDeliverableStatus,
   PerformanceEntry,
   EventTransportLeg,
   EventAccommodation,
@@ -54,6 +55,8 @@ import {
   PartnershipMatchRequest,
   PartnershipMatchStatus,
   PartnerNewsletter,
+  PartnerMediaItem,
+  PartnerRaceReport,
   Quote,
   TeamProduct,
   Mission,
@@ -113,6 +116,7 @@ import { getStaffMemberForUser } from "./utils/staffMemberUtils";
 
 import MobileShell from "./components/mobile/MobileShell";
 import { useUserNotifications } from "./hooks/useUserNotifications";
+import { usePersistedCollectionHandlers } from "./hooks/usePersistedCollectionHandlers";
 import { SectionErrorBoundary } from "./components/SectionErrorBoundary";
 import SectionWrapper from "./components/SectionWrapper";
 import { isSponsorshipIncome } from "./utils/financialUtils";
@@ -167,6 +171,7 @@ import {
   LazyPricingSection,
   LazyOrganizationDashboardSection,
   LazyPartnerPortalSection,
+  LazyPartnerMediaHubSection,
 } from "./sections/lazySections";
 import { getContrastYIQ, generateId, lightenDarkenColor } from "./utils/themeUtils";
 import { isIndependentUser, userToRiderProfile, userToStaffProfile, resolveRiderForUser, riderProfileToUserUpdates, resolveStaffForUser, staffProfileToUserUpdates } from "./utils/independentUtils";
@@ -177,6 +182,7 @@ import { enrichIncomeWithAccounting } from "./utils/invoiceUtils";
 import { enrichBudgetWithAccounting } from "./utils/accountingEntryUtils";
 import { persistActiveTeamId, restoreActiveTeamId, resolveOrganizationForUser, canViewOrgDashboard } from "./utils/organizationUtils";
 import { resolvePartnerPortalSession, resolvePartnerTeamId, getPartnerUserTeamPatch, isPartnerUser, isSectionAllowedForPartner, canPreviewPartnerPortal } from "./utils/partnerAccessUtils";
+import { canEditPartnerComms, updateIncomeDeliverableStatus } from "./utils/partnerCommsUtils";
 import { prepareDemoPartnerInstall } from "./utils/demoPartnerUtils";
 import {
   installDemoPresentationTeam,
@@ -364,6 +370,17 @@ const App: React.FC = () => {
     openScanner?: boolean;
   }>({});
   const [partnerPortalPreviewIncomeId, setPartnerPortalPreviewIncomeId] = useState<string | null>(null);
+  const [partnerPortalPreviewModeState, setPartnerPortalPreviewModeState] = useState<'full' | 'comms' | null>(null);
+
+  const handlePersistError = useCallback((error: unknown, collectionName: string) => {
+    console.error(`Erreur lors de la persistance de ${collectionName}:`, error);
+    alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
+  }, []);
+
+  const {
+    createPersistedBatchSetHandler,
+    createLocalOnlyBatchSetHandler,
+  } = usePersistedCollectionHandlers(setAppState, handlePersistError);
 
   const t = (key: TranslationKey): string => {
     const entry = translations[key];
@@ -1501,6 +1518,19 @@ const App: React.FC = () => {
     }
   }, [appState.activeTeamId, appState.language, appState.invoiceSettings?.defaultVatRate]);
 
+  const onUpdateMediaDeliverableStatus = useCallback(
+    async (
+      incomeItemId: string,
+      deliverableId: string,
+      status: CounterpartDeliverableStatus,
+    ) => {
+      const item = (appState.incomeItems || []).find((i) => i.id === incomeItemId);
+      if (!item) return;
+      await onSaveIncomeItem(updateIncomeDeliverableStatus(item, deliverableId, status));
+    },
+    [appState.incomeItems, onSaveIncomeItem],
+  );
+
   const onDeleteIncomeItem = useCallback(async (item: IncomeItem) => {
     if (!appState.activeTeamId || !item.id) return;
     try {
@@ -1538,6 +1568,80 @@ const App: React.FC = () => {
       });
     } catch (error) {
       console.error('Erreur sauvegarde newsletter partenaire:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onSavePartnerMediaItem = useCallback(async (item: PartnerMediaItem) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        'partnerMediaItems',
+        item,
+      );
+      const finalItem = { ...item, id: item.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.partnerMediaItems || [];
+        const exists = collection.some((m) => m.id === finalItem.id);
+        const next = exists
+          ? collection.map((m) => (m.id === finalItem.id ? finalItem : m))
+          : [...collection, finalItem];
+        return { ...prev, partnerMediaItems: next };
+      });
+    } catch (error) {
+      console.error('Erreur sauvegarde média partenaire:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onDeletePartnerMediaItem = useCallback(async (itemId: string) => {
+    if (!appState.activeTeamId) return;
+    try {
+      await firebaseService.deleteData(appState.activeTeamId, 'partnerMediaItems', itemId);
+      setAppState((prev: AppState) => ({
+        ...prev,
+        partnerMediaItems: (prev.partnerMediaItems || []).filter((m) => m.id !== itemId),
+      }));
+    } catch (error) {
+      console.error('Erreur suppression média partenaire:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onSavePartnerRaceReport = useCallback(async (report: PartnerRaceReport) => {
+    if (!appState.activeTeamId) return;
+    try {
+      const savedId = await firebaseService.saveData(
+        appState.activeTeamId,
+        'partnerRaceReports',
+        report,
+      );
+      const finalReport = { ...report, id: report.id || savedId };
+      setAppState((prev: AppState) => {
+        const collection = prev.partnerRaceReports || [];
+        const exists = collection.some((r) => r.id === finalReport.id);
+        const next = exists
+          ? collection.map((r) => (r.id === finalReport.id ? finalReport : r))
+          : [...collection, finalReport];
+        return { ...prev, partnerRaceReports: next };
+      });
+    } catch (error) {
+      console.error('Erreur sauvegarde rapport résultats partenaire:', error);
+      throw error;
+    }
+  }, [appState.activeTeamId]);
+
+  const onDeletePartnerRaceReport = useCallback(async (reportId: string) => {
+    if (!appState.activeTeamId) return;
+    try {
+      await firebaseService.deleteData(appState.activeTeamId, 'partnerRaceReports', reportId);
+      setAppState((prev: AppState) => ({
+        ...prev,
+        partnerRaceReports: (prev.partnerRaceReports || []).filter((r) => r.id !== reportId),
+      }));
+    } catch (error) {
+      console.error('Erreur suppression rapport résultats partenaire:', error);
       throw error;
     }
   }, [appState.activeTeamId]);
@@ -2337,77 +2441,6 @@ const App: React.FC = () => {
     }
   }, [appState.activeTeamId]);
 
-  // Fonction utilitaire pour remplacer createBatchSetHandler
-  const createBatchSetHandler = <T,>(
-    collectionName: keyof TeamState
-  ): React.Dispatch<React.SetStateAction<T[]>> =>
-    (updater: React.SetStateAction<T[]>) => {
-      setAppState((prev: AppState) => {
-        const currentItems = (prev[collectionName] as T[]) || [];
-        const newItems =
-          typeof updater === "function"
-            ? (updater as (prevState: T[]) => T[])(currentItems)
-            : updater;
-
-        return { ...prev, [collectionName]: newItems };
-      });
-    };
-
-  const persistCollectionDiff = async <T extends { id?: string }>(
-    teamId: string,
-    collectionName: string,
-    oldItems: T[],
-    newItems: T[],
-  ) => {
-    try {
-      const oldMap = new Map(
-        oldItems.filter((item) => item.id).map((item) => [item.id!, item]),
-      );
-      const newMap = new Map(
-        newItems.filter((item) => item.id).map((item) => [item.id!, item]),
-      );
-
-      for (const item of newItems) {
-        const oldItem = item.id ? oldMap.get(item.id) : undefined;
-        if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
-          await firebaseService.saveData(teamId, collectionName, item);
-        }
-      }
-      for (const [id] of oldMap) {
-        if (!newMap.has(id)) {
-          await firebaseService.deleteData(teamId, collectionName, id);
-        }
-      }
-    } catch (error) {
-      console.error(`Erreur lors de la persistance de ${collectionName}:`, error);
-      alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
-    }
-  };
-
-  const createPersistedBatchSetHandler = <T extends { id?: string }>(
-    collectionName: keyof TeamState,
-  ): React.Dispatch<React.SetStateAction<T[]>> =>
-    (updater: React.SetStateAction<T[]>) => {
-      setAppState((prev: AppState) => {
-        const currentItems = (prev[collectionName] as T[]) || [];
-        const newItems =
-          typeof updater === "function"
-            ? (updater as (prevState: T[]) => T[])(currentItems)
-            : updater;
-
-        if (prev.activeTeamId) {
-          void persistCollectionDiff(
-            prev.activeTeamId,
-            collectionName as string,
-            currentItems,
-            newItems,
-          );
-        }
-
-        return { ...prev, [collectionName]: newItems };
-      });
-    };
-
   const handleUpdateRiderPreference = useCallback(async (
     eventId: string,
     riderId: string,
@@ -2846,13 +2879,28 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOpenPartnerPortal = useCallback((incomeItemId?: string) => {
+  const handleOpenPartnerPortal = useCallback((
+    incomeItemId?: string,
+    mode: 'full' | 'comms' = 'full',
+  ) => {
     if (incomeItemId) {
       setPartnerPortalPreviewIncomeId(incomeItemId);
+      setPartnerPortalPreviewModeState(mode);
+    } else {
+      setPartnerPortalPreviewIncomeId(null);
+      setPartnerPortalPreviewModeState(null);
     }
     setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
     setCurrentSection('partnerPortal');
   }, []);
+
+  const handleOpenPartnerCommsPreview = useCallback((incomeItemId?: string) => {
+    const fallbackId =
+      incomeItemId
+      || (appState.incomeItems || []).find((i) => Boolean(i.sponsorCompanyName))?.id;
+    if (!fallbackId) return;
+    handleOpenPartnerPortal(fallbackId, 'comms');
+  }, [appState.incomeItems, handleOpenPartnerPortal]);
 
   const handleOpenConvocationNotification = useCallback(
     (eventId: string) => {
@@ -3137,6 +3185,20 @@ const App: React.FC = () => {
             ? buildDemoPresentationPack().incomeItems
             : liveIncomeItems;
 
+      const canPreviewPartner = canPreviewPartnerPortal(
+        uiUser.userRole,
+        uiUser.permissionRole,
+        currentUser,
+      );
+      const canManagePartnerComms = canEditPartnerComms(effectivePermissions);
+      const canViewPartnerPortalSection = Boolean(
+        effectivePermissions?.partnerPortal?.includes('view'),
+      );
+      // Depuis le hub com / gazette : toujours vue restreinte, même pour un manager.
+      const portalPreviewMode: 'full' | 'comms' | undefined = partnerPreviewIncomeId
+        ? (partnerPortalPreviewModeState || (canPreviewPartner ? 'full' : 'comms'))
+        : undefined;
+
       const partnerPortalSession = resolvePartnerPortalSession({
         partnerAccesses: appState.partnerAccesses || [],
         userId: currentUser.id,
@@ -3147,23 +3209,26 @@ const App: React.FC = () => {
         permissionRole: uiUser.permissionRole,
         previewIncomeItemId: partnerPreviewIncomeId,
         previewAsUser: currentUser,
+        previewMode: portalPreviewMode,
       });
-
-      const canPreviewPartner = canPreviewPartnerPortal(
-        uiUser.userRole,
-        uiUser.permissionRole,
-        currentUser,
-      );
       const partnerPortalUnlocked =
         userIsSuperAdmin ||
         isDemoTeamContext ||
         !!partnerPortalSession.access ||
-        (canPreviewPartner && !!appState.activeTeamId);
+        (canPreviewPartner && !!appState.activeTeamId) ||
+        canManagePartnerComms ||
+        canViewPartnerPortalSection;
 
       if (partnerPortalUnlocked) {
         effectivePermissions = {
           ...effectivePermissions,
-          partnerPortal: effectivePermissions.partnerPortal || ['view'],
+          partnerPortal: effectivePermissions.partnerPortal?.includes('edit')
+            ? effectivePermissions.partnerPortal
+            : canManagePartnerComms
+              ? ['view', 'edit']
+              : effectivePermissions.partnerPortal?.includes('view')
+                ? effectivePermissions.partnerPortal
+                : ['view'],
         };
       }
 
@@ -3338,40 +3403,44 @@ const App: React.FC = () => {
                   }}
                   currentUser={uiUser}
                   effectivePermissions={effectivePermissions}
-                  setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
+                  setRaceEvents={createLocalOnlyBatchSetHandler<RaceEvent>("raceEvents")}
                   onSaveRaceEvent={onSaveRaceEvent}
-                  setEventTransportLegs={createBatchSetHandler<EventTransportLeg>(
+                  setEventTransportLegs={createLocalOnlyBatchSetHandler<EventTransportLeg>(
                     "eventTransportLegs"
                   )}
-                  setVehicles={createBatchSetHandler<Vehicle>("vehicles")}
-                  setEventAccommodations={createBatchSetHandler<EventAccommodation>(
+                  setVehicles={createLocalOnlyBatchSetHandler<Vehicle>("vehicles")}
+                  setEventAccommodations={createLocalOnlyBatchSetHandler<EventAccommodation>(
                     "eventAccommodations"
                   )}
-                  setEventDocuments={createBatchSetHandler<EventRaceDocument>(
+                  setEventDocuments={createLocalOnlyBatchSetHandler<EventRaceDocument>(
                     "eventDocuments"
                   )}
-                  setEventRadioEquipments={createBatchSetHandler<EventRadioEquipment>(
+                  setEventRadioEquipments={createLocalOnlyBatchSetHandler<EventRadioEquipment>(
                     "eventRadioEquipments"
                   )}
-                  setEventRadioAssignments={createBatchSetHandler<EventRadioAssignment>(
+                  setEventRadioAssignments={createLocalOnlyBatchSetHandler<EventRadioAssignment>(
                     "eventRadioAssignments"
                   )}
-                  setEventBudgetItems={createBatchSetHandler<EventBudgetItem>(
+                  setEventBudgetItems={createLocalOnlyBatchSetHandler<EventBudgetItem>(
                     "eventBudgetItems"
                   )}
-                  setEventChecklistItems={createBatchSetHandler<EventChecklistItem>(
+                  setEventChecklistItems={createLocalOnlyBatchSetHandler<EventChecklistItem>(
                     "eventChecklistItems"
                   )}
-                  setPerformanceEntries={createBatchSetHandler<PerformanceEntry>(
+                  setPerformanceEntries={createLocalOnlyBatchSetHandler<PerformanceEntry>(
                     "performanceEntries"
                   )}
                   setPeerRatings={createPersistedBatchSetHandler<PeerRating>(
                     "peerRatings"
                   )}
                   riderEventSelections={appState.riderEventSelections}
-                  setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                  setRiderEventSelections={createLocalOnlyBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                   onSavePerformanceEntry={onSavePerformanceEntry}
                   onSaveRiderSelfDebrief={onSaveRiderSelfDebrief}
+                  onSavePartnerMediaItem={onSavePartnerMediaItem}
+                  onDeletePartnerMediaItem={onDeletePartnerMediaItem}
+                  onSavePartnerRaceReport={onSavePartnerRaceReport}
+                  setMissions={createPersistedBatchSetHandler<Mission>("missions")}
                   initialTab={
                     sectionTabHint && EVENT_DETAIL_TAB_HINTS.has(sectionTabHint)
                       ? (sectionTabHint as EventDetailTab)
@@ -3471,6 +3540,52 @@ const App: React.FC = () => {
                       })()}
                       {currentSection === "partnerPortal" && uiUser && (() => {
                         const { access, incomeItem, isPreview } = partnerPortalSession;
+                        const showPartnerReadView =
+                          isPartnerUser(uiUser)
+                          || Boolean(partnerPortalPreviewIncomeId)
+                          || (superAdminPreview.mode === 'partenaire' && Boolean(access));
+                        const showCommsBackOffice =
+                          !showPartnerReadView
+                          && Boolean(appState.activeTeamId)
+                          && (
+                            canManagePartnerComms
+                            || canPreviewPartner
+                            || Boolean(effectivePermissions?.partnerPortal?.includes('edit'))
+                          );
+
+                        if (showCommsBackOffice && appState.activeTeamId) {
+                          return (
+                            <LazyPartnerMediaHubSection
+                              teamId={appState.activeTeamId}
+                              teamName={
+                                appState.teams.find((tm) => tm.id === appState.activeTeamId)?.name
+                                || 'Équipe'
+                              }
+                              currentUser={uiUser}
+                              canEdit={Boolean(
+                                effectivePermissions?.partnerPortal?.includes('edit'),
+                              )}
+                              canPreviewPortal={canPreviewPartner || canManagePartnerComms}
+                              raceEvents={appState.raceEvents || []}
+                              riders={appState.riders || []}
+                              incomeItems={appState.incomeItems || []}
+                              partnerMediaItems={appState.partnerMediaItems || []}
+                              partnerRaceReports={appState.partnerRaceReports || []}
+                              partnerNewsletters={appState.partnerNewsletters || []}
+                              onSavePartnerMediaItem={onSavePartnerMediaItem}
+                              onDeletePartnerMediaItem={onDeletePartnerMediaItem}
+                              onSavePartnerRaceReport={onSavePartnerRaceReport}
+                              onDeletePartnerRaceReport={onDeletePartnerRaceReport}
+                              onSavePartnerNewsletter={onSavePartnerNewsletter}
+                              onUpdateMediaDeliverableStatus={onUpdateMediaDeliverableStatus}
+                              onNavigateToEvent={(eventId) =>
+                                navigateTo('eventDetail', eventId, 'staffMission')
+                              }
+                              onOpenPartnerPortalPreview={handleOpenPartnerCommsPreview}
+                            />
+                          );
+                        }
+
                         if (!access || !incomeItem) {
                           return (
                             <SectionWrapper title={t('partnerPortalTitle')}>
@@ -3479,36 +3594,59 @@ const App: React.FC = () => {
                                   ? 'Sélectionnez une équipe (ex. Horizon Atlantique) pour prévisualiser l’espace partenaire.'
                                   : t('partnerPortalNoSponsor')}
                               </p>
-                              {appState.activeTeamId && (
+                              {(canPreviewPartner || canManagePartnerComms) && appState.activeTeamId && (
                                 <button
                                   type="button"
                                   className="mt-3 text-sm text-sky-300 hover:underline"
-                                  onClick={() => navigateTo('financial', 'sponsors')}
+                                  onClick={() =>
+                                    canPreviewPartner
+                                      ? navigateTo('financial', 'sponsors')
+                                      : handleOpenPartnerCommsPreview()
+                                  }
                                 >
-                                  Ouvrir Finances → Sponsors
+                                  {canPreviewPartner
+                                    ? 'Ouvrir Finances → Sponsors'
+                                    : t('partnerGazettePreviewPortal')}
                                 </button>
                               )}
                             </SectionWrapper>
                           );
                         }
+
                         return (
-                          <LazyPartnerPortalSection
-                            access={access}
-                            incomeItem={incomeItem}
-                            teamName={appState.teams.find((tm) => tm.id === access.teamId)?.name || 'Équipe'}
-                            raceEvents={appState.raceEvents}
-                            invoiceSettings={appState.invoiceSettings}
-                            partnerNewsletters={appState.partnerNewsletters || []}
-                            themePrimaryColor={appState.themePrimaryColor}
-                            isPreview={isPreview}
-                          />
+                          <div className="space-y-3">
+                            {(isPreview || partnerPortalPreviewIncomeId) && canManagePartnerComms && (
+                              <div className="max-w-5xl mx-auto">
+                                <button
+                                  type="button"
+                                  className="text-sm font-medium text-sky-300 hover:underline"
+                                  onClick={() => handleOpenPartnerPortal()}
+                                >
+                                  ← Retour aux contenus partenaires
+                                </button>
+                              </div>
+                            )}
+                            <LazyPartnerPortalSection
+                              access={access}
+                              incomeItem={incomeItem}
+                              teamName={appState.teams.find((tm) => tm.id === access.teamId)?.name || 'Équipe'}
+                              raceEvents={appState.raceEvents || []}
+                              invoiceSettings={canPreviewPartner ? appState.invoiceSettings : undefined}
+                              partnerNewsletters={appState.partnerNewsletters || []}
+                              partnerMediaItems={appState.partnerMediaItems || []}
+                              partnerRaceReports={appState.partnerRaceReports || []}
+                              themePrimaryColor={appState.themePrimaryColor}
+                              isPreview={isPreview}
+                              isCommsPreview={isPreview && portalPreviewMode === 'comms'}
+                            />
+                          </div>
                         );
                       })()}
                   {currentSection === "events" && (
                     <LazyEventsSection
                       raceEvents={appState.raceEvents}
                       setRaceEvents={onSaveRaceEvent}
-                      setEventDocuments={createBatchSetHandler<EventRaceDocument>(
+                      setEventDocuments={createLocalOnlyBatchSetHandler<EventRaceDocument>(
                         "eventDocuments"
                       )}
                       navigateToEventDetail={(eventId) =>
@@ -3536,9 +3674,9 @@ const App: React.FC = () => {
                       onSaveRider={onSaveRider}
                       onDeleteRider={onDeleteRider}
                       raceEvents={appState.raceEvents}
-                      setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
+                      setRaceEvents={createLocalOnlyBatchSetHandler<RaceEvent>("raceEvents")}
                       riderEventSelections={appState.riderEventSelections}
-                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      setRiderEventSelections={createLocalOnlyBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       performanceEntries={appState.performanceEntries}
                       scoutingProfiles={appState.scoutingProfiles}
                       teamProducts={appState.teamProducts}
@@ -3553,9 +3691,9 @@ const App: React.FC = () => {
                       onSaveRider={onSaveRider}
                       onDeleteRider={onDeleteRider}
                       raceEvents={appState.raceEvents}
-                      setRaceEvents={createBatchSetHandler<RaceEvent>("raceEvents")}
+                      setRaceEvents={createLocalOnlyBatchSetHandler<RaceEvent>("raceEvents")}
                       riderEventSelections={appState.riderEventSelections}
-                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      setRiderEventSelections={createLocalOnlyBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       performanceEntries={appState.performanceEntries}
                       scoutingProfiles={appState.scoutingProfiles}
                       teamProducts={appState.teamProducts}
@@ -3581,7 +3719,7 @@ const App: React.FC = () => {
                       raceEvents={appState.raceEvents}
                       eventStaffAvailabilities={appState.eventStaffAvailabilities}
                       eventBudgetItems={appState.eventBudgetItems}
-                      setEventBudgetItems={createBatchSetHandler<EventBudgetItem>("eventBudgetItems")}
+                      setEventBudgetItems={createLocalOnlyBatchSetHandler<EventBudgetItem>("eventBudgetItems")}
                       currentUser={uiUser}
                       team={appState.teams.find(t => t.id === appState.activeTeamId)}
                       performanceEntries={appState.performanceEntries}
@@ -3643,7 +3781,7 @@ const App: React.FC = () => {
                       equipmentStockItems={appState.equipmentStockItems}
                       setEquipmentStockItems={createPersistedBatchSetHandler<EquipmentStockItem>("equipmentStockItems")}
                       riders={appState.riders}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
                       onSaveRider={onSaveRider}
                       currentUser={uiUser}
                     />
@@ -3651,7 +3789,7 @@ const App: React.FC = () => {
                   {currentSection === "accommodationHistory" && (
                     <LazyAccommodationHistorySection
                       appState={appState}
-                      setEventAccommodations={createBatchSetHandler<EventAccommodation>(
+                      setEventAccommodations={createLocalOnlyBatchSetHandler<EventAccommodation>(
                         "eventAccommodations"
                       )}
                       currentUser={uiUser}
@@ -4597,8 +4735,8 @@ const App: React.FC = () => {
                       riders={appState.riders}
                       staff={appState.staff}
                       currentUser={uiUser}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
-                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
+                      setStaff={createLocalOnlyBatchSetHandler<StaffMember>("staff")}
                       teams={appState.teams}
                       currentTeamId={appState.activeTeamId}
                       teamMemberships={appState.teamMemberships || []}
@@ -4732,14 +4870,14 @@ const App: React.FC = () => {
                           ? userToRiderProfile(uiUser)
                           : undefined)
                       }
-                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
                       onSaveRider={saveRiderForUiUser}
                       teamProducts={
                         viewAppState.teamProducts?.length
                           ? viewAppState.teamProducts
                           : appState.teamProducts
                       }
-                      setTeamProducts={createBatchSetHandler<TeamProduct>("teamProducts")}
+                      setTeamProducts={createLocalOnlyBatchSetHandler<TeamProduct>("teamProducts")}
                     />
                   )}
                   {currentSection === "riderEquipment" && (
@@ -4751,7 +4889,7 @@ const App: React.FC = () => {
                           : appState.equipment
                       }
                       currentUser={uiUser}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
                       onSaveRider={saveRiderForUiUser}
                     />
                   )}
@@ -4760,10 +4898,10 @@ const App: React.FC = () => {
                       riders={ridersForUi}
                       staff={staffForUi}
                       currentUser={uiUser}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
                       onSaveRider={saveRiderForUiUser}
                       onSaveStaff={saveStaffForUiUser}
-                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      setStaff={createLocalOnlyBatchSetHandler<StaffMember>("staff")}
                       onUpdateUser={(updatedUser) => setCurrentUser(updatedUser)}
                       currentTeam={
                         userIsIndependent
@@ -4772,7 +4910,7 @@ const App: React.FC = () => {
                       }
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
-                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      setRiderEventSelections={createLocalOnlyBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       appState={appState}
                     />
                   )}
@@ -4811,7 +4949,7 @@ const App: React.FC = () => {
                       currentUser={uiUser}
                       raceEvents={appState.raceEvents}
                       riderEventSelections={appState.riderEventSelections}
-                      setRiderEventSelections={createBatchSetHandler<RiderEventSelection>("riderEventSelections")}
+                      setRiderEventSelections={createLocalOnlyBatchSetHandler<RiderEventSelection>("riderEventSelections")}
                       effectivePermissions={effectivePermissions}
                       navigateTo={navigateTo}
                       convocationNotifications={userNotifications}
@@ -4840,8 +4978,8 @@ const App: React.FC = () => {
                       riders={ridersForUi}
                       staff={staffForUi}
                       currentUser={uiUser}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
-                      setStaff={createBatchSetHandler<StaffMember>("staff")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
+                      setStaff={createLocalOnlyBatchSetHandler<StaffMember>("staff")}
                       teams={appState.teams}
                       currentTeamId={null}
                       teamMemberships={appState.teamMemberships || []}
@@ -4964,12 +5102,12 @@ const App: React.FC = () => {
                       onOpenEvent={(eventId) => navigateTo('eventDetail', eventId)}
                       onOpenEventDocuments={(eventId) => navigateTo('eventDetail', eventId)}
                       onUpdateEventDocument={(doc) => {
-                        createBatchSetHandler<EventRaceDocument>('eventDocuments')(
+                        createLocalOnlyBatchSetHandler<EventRaceDocument>('eventDocuments')(
                           prev => prev.map(d => (d.id === doc.id ? doc : d)),
                         );
                       }}
                       onEnsureUciDocuments={(docs) => {
-                        createBatchSetHandler<EventRaceDocument>('eventDocuments')(
+                        createLocalOnlyBatchSetHandler<EventRaceDocument>('eventDocuments')(
                           prev => [...prev, ...docs],
                         );
                       }}
@@ -5091,7 +5229,7 @@ const App: React.FC = () => {
                   {currentSection === "performanceProject" && (
                     <LazyPerformanceProjectSection
                       rider={resolvedUiRider}
-                      setRiders={createBatchSetHandler<Rider>("riders")}
+                      setRiders={createLocalOnlyBatchSetHandler<Rider>("riders")}
                       onSaveRider={saveRiderForUiUser}
                     />
                   )}

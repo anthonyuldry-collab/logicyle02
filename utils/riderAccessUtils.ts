@@ -17,6 +17,8 @@ import {
   staffRoleNeedsDataScoping,
   canViewOrganizerApplicationDossier,
 } from './staffRoleDataAccess';
+import { sanitizeSponsorsForComms } from './partnerCommsUtils';
+import type { IncomeItem } from '../types';
 
 /** Sections réservées au staff / encadrement — jamais accessibles aux coureurs */
 export const COUREUR_FORBIDDEN_SECTIONS: AppSection[] = [
@@ -138,10 +140,16 @@ export function scopeAppStateForStaffRole(state: AppState, staffMember: StaffMem
     staff: filterStaffForLogisticsView(state.staff),
     scoutingProfiles: [],
     performanceArchives: [],
-    performanceEntries: [],
+    // La com a besoin des résumés de résultats pour préremplir les publications partenaires.
+    performanceEntries: roleKey === 'COMMUNICATION' ? state.performanceEntries : [],
     organizerContacts: canViewOrganizerApplicationDossier(user, staffMember)
       ? state.organizerContacts
       : [],
+    // COMMUNICATION : noms sponsors uniquement (pas montants / contrats / contreparties).
+    incomeItems:
+      roleKey === 'COMMUNICATION'
+        ? (sanitizeSponsorsForComms(state.incomeItems) as IncomeItem[])
+        : state.incomeItems,
   };
   return scoped;
 }
