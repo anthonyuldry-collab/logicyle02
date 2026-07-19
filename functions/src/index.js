@@ -14,7 +14,7 @@ setGlobalOptions({
 admin.initializeApp();
 
 /** Secrets Gen2 montés en process.env (firebase functions:secrets:set …). */
-const SECRET_STRIPE = ['STRIPE_SECRET_KEY']; // ajouter STRIPE_WEBHOOK_SECRET quand whsec est prêt
+const SECRET_STRIPE = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'];
 const SECRET_STRIPE_BILLING = ['STRIPE_SECRET_KEY'];
 const SECRET_NOLIO = ['NOLIO_CLIENT_ID', 'NOLIO_CLIENT_SECRET'];
 const SECRET_GEMINI = ['GEMINI_API_KEY'];
