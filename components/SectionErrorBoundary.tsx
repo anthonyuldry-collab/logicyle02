@@ -1,4 +1,5 @@
 import React from 'react';
+import { isChunkLoadError } from '../utils/lazyWithReload';
 
 interface SectionErrorBoundaryProps {
   children: React.ReactNode;
@@ -35,6 +36,11 @@ export class SectionErrorBoundary extends React.Component<
   }
 
   handleRetry = () => {
+    // Chunk obsolète après un deploy : un simple reset d’état ne suffit pas.
+    if (isChunkLoadError(this.state.error)) {
+      window.location.reload();
+      return;
+    }
     this.setState({ hasError: false, error: null });
     this.props.onRetry?.();
   };
@@ -42,18 +48,23 @@ export class SectionErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError && this.state.error) {
       const { sectionName = 'Cette section' } = this.props;
+      const chunkError = isChunkLoadError(this.state.error);
       return (
         <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
           <h3 className="text-lg font-semibold text-red-800 mb-2">
             Erreur dans {sectionName}
           </h3>
-          <p className="text-sm text-red-700 mb-4">{this.state.error.message}</p>
+          <p className="text-sm text-red-700 mb-4">
+            {chunkError
+              ? 'Une nouvelle version de l’application est disponible. Rechargez la page pour continuer.'
+              : this.state.error.message}
+          </p>
           <button
             type="button"
             onClick={this.handleRetry}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
           >
-            Réessayer
+            {chunkError ? 'Recharger' : 'Réessayer'}
           </button>
         </div>
       );

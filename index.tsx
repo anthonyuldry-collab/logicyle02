@@ -11,7 +11,21 @@ const isDev = import.meta.env.DEV;
 // En production uniquement : le SW PWA en local casse les imports dynamiques Vite.
 if (import.meta.env.PROD) {
   void import('virtual:pwa-register').then(({ registerSW }) => {
-    registerSW({ immediate: true });
+    registerSW({
+      immediate: true,
+      onRegisteredSW(_swUrl, registration) {
+        // Détecte plus vite un nouveau deploy pour éviter les chunks obsolètes.
+        if (!registration) return;
+        const check = () => {
+          void registration.update();
+        };
+        setInterval(check, 60 * 60 * 1000);
+        // Au retour sur l’onglet (cas fréquent après un deploy).
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') check();
+        });
+      },
+    });
   });
 } else if ('serviceWorker' in navigator) {
   // Nettoie un SW résiduel (souvent après un build / preview sur la même URL).
