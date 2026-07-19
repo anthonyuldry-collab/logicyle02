@@ -361,37 +361,67 @@ exports.gdprPurgeTeam = onCall({ memory: '1GiB', timeoutSeconds: 540 }, async (r
 
 // --- Stripe Billing ---
 let stripe = null;
-try {
-  const Stripe = require('stripe');
-  if (process.env.STRIPE_SECRET_KEY) {
+function getStripe() {
+  if (stripe) return stripe;
+  try {
+    const Stripe = require('stripe');
+    if (!process.env.STRIPE_SECRET_KEY) return null;
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    return stripe;
+  } catch (err) {
+    console.error(JSON.stringify({ severity: 'ERROR', message: 'stripe_init_failed', error: String(err && err.message || err) }));
+    return null;
   }
-} catch {
-  // stripe package optional until configured
 }
 
-const STRIPE_PRICE_MAP = {
-  club: { month: process.env.STRIPE_PRICE_CLUB_MONTH, year: process.env.STRIPE_PRICE_CLUB_YEAR },
-  competition: { month: process.env.STRIPE_PRICE_COMPETITION_MONTH, year: process.env.STRIPE_PRICE_COMPETITION_YEAR },
-  continental: { month: process.env.STRIPE_PRICE_CONTINENTAL_MONTH, year: process.env.STRIPE_PRICE_CONTINENTAL_YEAR },
-  pro: { month: process.env.STRIPE_PRICE_PRO_MONTH, year: process.env.STRIPE_PRICE_PRO_YEAR },
-  independent_rider: {
-    month: process.env.STRIPE_PRICE_INDEPENDENT_RIDER_MONTH,
-    year: process.env.STRIPE_PRICE_INDEPENDENT_RIDER_YEAR,
-  },
-  independent_staff: {
-    month: process.env.STRIPE_PRICE_INDEPENDENT_STAFF_MONTH,
-    year: process.env.STRIPE_PRICE_INDEPENDENT_STAFF_YEAR,
-  },
-};
+function getStripePriceId(planId, interval) {
+  const key = String(planId || '').toLowerCase();
+  const map = {
+    club: { month: process.env.STRIPE_PRICE_CLUB_MONTH, year: process.env.STRIPE_PRICE_CLUB_YEAR },
+    competition: { month: process.env.STRIPE_PRICE_COMPETITION_MONTH, year: process.env.STRIPE_PRICE_COMPETITION_YEAR },
+    continental: { month: process.env.STRIPE_PRICE_CONTINENTAL_MONTH, year: process.env.STRIPE_PRICE_CONTINENTAL_YEAR },
+    pro: { month: process.env.STRIPE_PRICE_PRO_MONTH, year: process.env.STRIPE_PRICE_PRO_YEAR },
+    independent_rider: {
+      month: process.env.STRIPE_PRICE_INDEPENDENT_RIDER_MONTH,
+      year: process.env.STRIPE_PRICE_INDEPENDENT_RIDER_YEAR,
+    },
+    independent_staff: {
+      month: process.env.STRIPE_PRICE_INDEPENDENT_STAFF_MONTH,
+      year: process.env.STRIPE_PRICE_INDEPENDENT_STAFF_YEAR,
+    },
+  };
+  return map[key]?.[interval] || null;
+}
 
 async function assertTeamManager(uid, teamId) {
   const userDoc = await db.collection('users').doc(uid).get();
   const userData = userDoc.data() || {};
-  const isManager =
+  const isManagerOnUser =
     userData.teamId === teamId &&
     (userData.userRole === 'Manager' || userData.permissionRole === 'Administrateur');
-  if (!isManager) {
+
+  const membershipSnap = await db.collection('teamMemberships')
+    .where('teamId', '==', teamId)
+    .where('userId', '==', uid)
+    .limit(1)
+    .get();
+
+  let isManagerOnMembership = false;
+  if (!membershipSnap.empty) {
+    const m = membershipSnap.docs[0].data() || {};
+    const status = String(m.status || '').toLowerCase();
+    const active = !status || status === 'active' || status === 'approved' || status === 'accepted';
+    isManagerOnMembership = active && (
+      m.userRole === 'Manager' ||
+      m.permissionRole === 'Administrateur'
+    );
+  }
+
+  if (!isManagerOnUser && !isManagerOnMembership) {
+    // Super admin / créateur d'équipe
+    if (userData.email && String(userData.email).toLowerCase() === 'anthony.uldry@hotmail.fr') {
+      return;
+    }
     throw new HttpsError('permission-denied', 'Seul un manager peut gérer l\'abonnement.');
   }
 }
@@ -477,7 +507,8 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
-  if (!stripe) {
+  const stripeClient = getStripe();
+  if (!stripeClient) {
     throw new HttpsError('failed-precondition', 'Stripe non configuré. Contactez le support.');
   }
 
@@ -496,7 +527,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     await assertTeamManager(request.auth.uid, teamId);
   }
 
-  const priceId = STRIPE_PRICE_MAP[planId]?.[interval];
+  const priceId = getStripePriceId(planId, interval);
   if (!priceId) {
     throw new HttpsError('invalid-argument', `Price ID manquant pour ${planId}/${interval}`);
   }
@@ -524,7 +555,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     customerId = userData.subscription?.stripeCustomerId;
 
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customer = await stripeClient.customers.create({
         metadata: { userId: request.auth.uid, scope: 'user', firebaseUid: request.auth.uid },
         name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'LogiCycle Indépendant',
         email: userData.email || undefined,
@@ -542,7 +573,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     customerId = teamData.subscription?.stripeCustomerId;
 
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customer = await stripeClient.customers.create({
         metadata: { teamId, firebaseUid: request.auth.uid },
         name: teamData.name || 'LogiCycle Team',
       });
@@ -568,7 +599,20 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     sessionParams.metadata.referrerUserId = referrerUserId;
   }
 
-  const session = await stripe.checkout.sessions.create(sessionParams);
+  let session;
+  try {
+    session = await stripeClient.checkout.sessions.create(sessionParams);
+  } catch (err) {
+    console.error(JSON.stringify({
+      severity: 'ERROR',
+      message: 'stripe_checkout_create_failed',
+      planId,
+      interval,
+      priceId,
+      error: String(err && err.message || err),
+    }));
+    throw new HttpsError('internal', `Stripe: ${err && err.message ? err.message : 'échec création session'}`);
+  }
 
   return { url: session.url };
 });
@@ -577,7 +621,8 @@ exports.createStripePortal = onCall({ secrets: SECRET_STRIPE, memory: '256MiB' }
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
-  if (!stripe) {
+  const stripeClient = getStripe();
+  if (!stripeClient) {
     throw new HttpsError('failed-precondition', 'Stripe non configuré.');
   }
 
@@ -603,7 +648,7 @@ exports.createStripePortal = onCall({ secrets: SECRET_STRIPE, memory: '256MiB' }
   }
 
   const origin = resolveAppOrigin(request);
-  const portal = await stripe.billingPortal.sessions.create({
+  const portal = await stripeClient.billingPortal.sessions.create({
     customer: customerId,
     return_url: `${origin}/`,
   });
@@ -612,7 +657,8 @@ exports.createStripePortal = onCall({ secrets: SECRET_STRIPE, memory: '256MiB' }
 });
 
 exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory: '256MiB' }, async (req, res) => {
-  if (!stripe) {
+  const stripeClient = getStripe();
+  if (!stripeClient) {
     res.status(503).send('Stripe non configuré');
     return;
   }
@@ -627,7 +673,7 @@ exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory:
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
+    event = stripeClient.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
   } catch (err) {
     console.error('Stripe webhook signature error:', err.message);
     res.status(400).send(`Webhook Error: ${err.message}`);

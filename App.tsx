@@ -3065,9 +3065,13 @@ const App: React.FC = () => {
           }
           if (!appState.activeTeamId) return;
           await requestPlanUpgrade(appState.activeTeamId, planId, "year", code);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          alert(message.includes('Stripe') ? message : 'Impossible de lancer le paiement. Réessayez ou contactez le support.');
+        } catch (err: any) {
+          const message =
+            err?.message ||
+            err?.customData?.message ||
+            (err instanceof Error ? err.message : String(err));
+          console.error('Checkout error:', err);
+          alert(message || 'Impossible de lancer le paiement. Réessayez ou contactez le support.');
         }
       };
 
