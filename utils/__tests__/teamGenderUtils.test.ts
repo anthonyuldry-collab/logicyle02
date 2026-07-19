@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TeamLevel } from '../../types';
 import { getTeamGender, teamMatchesGenderFilter } from '../teamGenderUtils';
+import type { Team } from '../../types';
 
 describe('teamGenderUtils', () => {
   it('lit le sexe depuis operationalSettings', () => {
@@ -18,7 +18,7 @@ describe('teamGenderUtils', () => {
     };
     const menTeam = { gender: 'men' as const };
     const mixedTeam = { operationalSettings: { gender: 'mixed' as const } };
-    const unknownTeam = { level: TeamLevel.PRO };
+    const unknownTeam = {} as Pick<Team, 'gender' | 'operationalSettings'>;
 
     expect(teamMatchesGenderFilter(womenTeam, 'women')).toBe(true);
     expect(teamMatchesGenderFilter(womenTeam, 'men')).toBe(false);

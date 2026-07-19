@@ -168,7 +168,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
             setThemePrimaryColor={teamSettingsProps.setThemePrimaryColor || (() => {})}
             themeAccentColor={teamSettingsProps.themeAccentColor}
             setThemeAccentColor={teamSettingsProps.setThemeAccentColor || (() => {})}
-            teamLevel={teamSettingsProps.teamLevel}
+            teamLevel={teamLevel}
             setTeamLevel={teamSettingsProps.setTeamLevel || (() => {})}
             operationalSettings={teamSettingsProps.operationalSettings}
             setOperationalSettings={teamSettingsProps.setOperationalSettings || (() => {})}
@@ -198,7 +198,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
         {activeTab === 'abonnement' && showBillingTab && (
           <PricingSection
             currentPlanId={currentPlanId ?? subscriptionAccess?.planId}
-            teamLevel={teamLevel ?? teamSettingsProps.teamLevel}
+            teamLevel={teamLevel}
             onSelectPlan={onSelectPlan || teamSettingsProps.onUpgradePlan}
             isIndependent={isIndependent}
             userRole={userRole ?? currentUser.userRole}

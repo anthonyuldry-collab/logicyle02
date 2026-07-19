@@ -2879,6 +2879,7 @@ export interface PartnerNewsletter {
     blocks: PartnerNewsletterBlock[];
     status: PartnerNewsletterStatus;
     createdAt: string;
+    updatedAt?: string;
     publishedAt?: string;
     createdByUserId?: string;
 }

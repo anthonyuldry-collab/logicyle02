@@ -3,7 +3,7 @@ import {
   canViewOrganizerApplicationDossier,
   ORGANIZER_DOSSIER_STAFF_ROLES,
 } from '../staffRoleDataAccess';
-import { StaffRole, TeamRole, UserRole, type StaffMember, type User } from '../../types';
+import { StaffRole, StaffStatus, TeamRole, UserRole, type StaffMember, type User } from '../../types';
 
 const baseUser: User = {
   id: 'u1',
@@ -20,6 +20,8 @@ const assistantMember: StaffMember = {
   lastName: 'Assistant',
   email: 'staff@test.com',
   role: StaffRole.ASSISTANT,
+  status: StaffStatus.SALARIE,
+  skills: [],
 };
 
 const dsMember: StaffMember = {

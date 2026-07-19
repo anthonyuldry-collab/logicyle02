@@ -90,6 +90,7 @@ describe('resolvePartnerPortalSession', () => {
       firstName: 'S',
       lastName: 'P',
       userRole: UserRole.PARTNER,
+      permissionRole: TeamRole.VIEWER,
     };
     expect(getPartnerUserTeamPatch(partner, 'team-1')).toEqual({ teamId: 'team-1' });
     expect(getPartnerUserTeamPatch({ ...partner, teamId: 'team-1' }, 'team-1')).toBeNull();

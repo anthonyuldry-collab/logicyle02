@@ -17,13 +17,13 @@ const holdingUser: User = {
   permissionRole: TeamRole.ADMIN,
 };
 
-const riders: Rider[] = [
+const riders = [
   { id: 'r1', firstName: 'Alice', lastName: 'Martin', categories: [], disciplines: [] },
-];
+] as Rider[];
 
-const staff: StaffMember[] = [
-  { id: 's1', firstName: 'Bob', lastName: 'Dupont', role: 'Assistant' },
-];
+const staff = [
+  { id: 's1', firstName: 'Bob', lastName: 'Dupont', role: 'Assistant', email: 'bob@test.com', status: 'Salarié(e)', skills: [] },
+] as StaffMember[];
 
 const sponsorshipIncome: IncomeItem = {
   id: 'inc-sponsor',

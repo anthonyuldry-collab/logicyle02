@@ -10,14 +10,14 @@ import {
 } from '../riderDebriefUtils';
 import type { PeerRating, RaceEvent, RiderSelfDebrief } from '../../types';
 
-const event: RaceEvent = {
+const event = {
   id: 'evt-1',
   name: 'Tour test',
   date: '2026-07-01',
   endDate: '2026-07-01',
   location: 'Paris',
   selectedRiderIds: ['rider-a', 'rider-b'],
-};
+} as RaceEvent;
 
 describe('riderDebriefUtils', () => {
   it('ouvre la fenêtre de débriefing pendant 14 jours après la course', () => {

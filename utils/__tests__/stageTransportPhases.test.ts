@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TransportDirection, type StageDayLogistics } from '../../types';
+import { TransportDirection, TransportMode, type EventTransportLeg, type StageDayLogistics } from '../../types';
 import {
   buildApresStageTransportDefaults,
   isAllerSurCourseLeg,
@@ -60,45 +60,51 @@ describe('buildApresStageTransportDefaults', () => {
 
 describe('isPendantCourseLeg (Jour J)', () => {
   it('classe un trajet Jour J staff-only dans Jour J, pas Avant', () => {
-    const leg = {
+    const leg: EventTransportLeg = {
       id: 'jj1',
+      eventId: 'evt-1',
+      mode: TransportMode.VOITURE_EQUIPE,
       direction: TransportDirection.JOUR_J,
       stageDate: '2026-08-15',
       departureDate: '2026-08-15',
       arrivalDate: '2026-08-15',
       departureLocation: 'Parking départ',
       arrivalLocation: 'Parking départ',
-      occupants: [{ type: 'staff' as const, id: 's1', name: 'DS' }],
+      occupants: [{ type: 'staff', id: 's1' }],
     };
     expect(isAllerSurCourseLeg(leg, '2026-08-15', stage())).toBe(false);
     expect(isPendantCourseLeg(leg, '2026-08-15', '2026-08-10', stage())).toBe(true);
   });
 
   it('classe hôtel → départ staff-only le jour même dans Jour J', () => {
-    const leg = {
+    const leg: EventTransportLeg = {
       id: 'jj2',
+      eventId: 'evt-1',
+      mode: TransportMode.VOITURE_EQUIPE,
       direction: TransportDirection.JOUR_J,
       stageDate: '2026-08-15',
       departureDate: '2026-08-15',
       arrivalDate: '2026-08-15',
       departureLocation: 'Hôtel Oceania',
       arrivalLocation: 'Quimper départ',
-      occupants: [{ type: 'staff' as const, id: 's1', name: 'Mécano' }],
+      occupants: [{ type: 'staff', id: 's1' }],
     };
     expect(isAllerSurCourseLeg(leg, '2026-08-15', stage())).toBe(false);
     expect(isPendantCourseLeg(leg, '2026-08-15', '2026-08-10', stage())).toBe(true);
   });
 
   it('classe un trajet Jour J avec coureurs dans Avant', () => {
-    const leg = {
+    const leg: EventTransportLeg = {
       id: 'av1',
+      eventId: 'evt-1',
+      mode: TransportMode.VOITURE_EQUIPE,
       direction: TransportDirection.JOUR_J,
       stageDate: '2026-08-15',
       departureDate: '2026-08-15',
       arrivalDate: '2026-08-15',
       departureLocation: 'Hôtel',
       arrivalLocation: 'Quimper départ',
-      occupants: [{ type: 'rider' as const, id: 'r1', name: 'Coureuse' }],
+      occupants: [{ type: 'rider', id: 'r1' }],
     };
     expect(isAllerSurCourseLeg(leg, '2026-08-15', stage())).toBe(true);
     expect(isPendantCourseLeg(leg, '2026-08-15', '2026-08-10', stage())).toBe(false);
