@@ -75,6 +75,10 @@ prompt_secret() {
     echo "OK Firebase secret $name (depuis env $env_fallback)"
     return
   fi
+  if [[ "${SKIP_PROMPTS:-}" == "1" ]]; then
+    echo "SKIP $name (SKIP_PROMPTS=1)"
+    return
+  fi
   echo -n "Valeur pour $name (Entrée pour ignorer) : "
   read -r -s typed
   echo
@@ -104,3 +108,4 @@ echo "Terminé. Secrets GitHub :"
 gh secret list --repo "$REPO"
 echo
 echo "Déploie ensuite : firebase deploy --only functions --project $PROJECT"
+echo "Smoke : ./scripts/smoke-production.sh"
