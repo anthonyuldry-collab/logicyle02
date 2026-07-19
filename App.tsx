@@ -1239,12 +1239,25 @@ const App: React.FC = () => {
   const onSaveEquipment = useCallback(async (item: EquipmentItem) => {
     if (!appState.activeTeamId) return;
     try {
+      let toSave = { ...item };
+      const itemId =
+        toSave.id ||
+        `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
+      toSave.id = itemId;
+
+      if (typeof toSave.photoUrl === 'string' && toSave.photoUrl.startsWith('data:')) {
+        const mimeMatch = toSave.photoUrl.match(/^data:([^;]+);/);
+        const mimeType = mimeMatch?.[1] || 'image/jpeg';
+        const path = `teams/${appState.activeTeamId}/equipment/${itemId}/photo`;
+        toSave.photoUrl = await firebaseService.uploadFile(toSave.photoUrl, path, mimeType);
+      }
+
       const savedId = await firebaseService.saveData(
         appState.activeTeamId,
         "equipment",
-        item
+        toSave
       );
-      const finalItem = { ...item, id: item.id || savedId };
+      const finalItem = { ...toSave, id: toSave.id || savedId };
 
       setAppState((prev: AppState) => {
         const collection = prev.equipment || [];
@@ -1263,6 +1276,9 @@ const App: React.FC = () => {
   const onDeleteEquipment = useCallback(async (item: EquipmentItem) => {
     if (!appState.activeTeamId || !item.id) return;
     try {
+      const { deleteStorageFileFromUrl, deleteStorageFolder } = await import('./services/storageService');
+      await deleteStorageFileFromUrl(item.photoUrl);
+      await deleteStorageFolder(`teams/${appState.activeTeamId}/equipment/${item.id}`);
       await firebaseService.deleteData(
         appState.activeTeamId,
         "equipment",
@@ -3866,6 +3882,7 @@ const App: React.FC = () => {
                       staff={staffForUi}
                       teamId={uiUser.id}
                       teamName="Espace vacataire"
+                      storageScope="user"
                       effectivePermissions={effectivePermissions}
                       onSaveReceipt={onSaveIndependentExpenseReceipt}
                       defaultEventId={receiptScanDefaults.eventId}

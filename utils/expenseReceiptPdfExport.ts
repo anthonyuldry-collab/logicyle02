@@ -7,6 +7,9 @@ const PAGE_W = 210;
 const PAGE_H = 297;
 
 async function loadImageAsDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
+  if (!url || (!url.startsWith('http') && !url.startsWith('data:image/'))) {
+    return null;
+  }
   try {
     const response = await fetch(url);
     const blob = await response.blob();

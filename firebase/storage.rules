@@ -32,7 +32,8 @@ service firebase.storage {
       allow write, delete: if isTeamManager(teamId)
         || (isTeamMember(teamId) && allPaths.matches('riders/' + request.auth.uid + '/.*'))
         || (isTeamMember(teamId) && allPaths.matches('staff/' + request.auth.uid + '/.*'))
-        || (isTeamMember(teamId) && allPaths.matches('expenseReceipts/' + request.auth.uid + '/.*'));
+        || (isTeamMember(teamId) && allPaths.matches('expenseReceipts/' + request.auth.uid + '/.*'))
+        || (isTeamManager(teamId) && allPaths.matches('equipment/.*'));
     }
 
     match /users/{userId}/{allPaths=**} {

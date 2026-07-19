@@ -21,6 +21,7 @@ interface ExpenseReceiptsSectionProps {
   staff: StaffMember[];
   teamId: string;
   teamName: string;
+  storageScope?: 'team' | 'user';
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   onSaveReceipt: (receipt: ExpenseReceipt) => Promise<void>;
   onSaveBudgetItem?: (item: EventBudgetItem) => Promise<void>;

@@ -19,6 +19,7 @@ import { useTranslations } from '../hooks/useTranslations';
 import { findEquipmentStockByBarcode, isValidBarcode, normalizeBarcode } from '../utils/stockBarcodeUtils';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import RiderBikeFitWorkspace from '../components/bike/RiderBikeFitWorkspace';
+import { isDisplayableImageUrl } from '../utils/mediaUrlUtils';
 
 interface EquipmentSectionProps {
   equipment: EquipmentItem[];
@@ -394,12 +395,22 @@ const EquipmentSection: React.FC<EquipmentSectionProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredEquipment.map(item => (
                 <div key={item.id} className="bg-slate-800 rounded-lg shadow-lg overflow-hidden flex flex-col">
-                <div className="relative h-40 bg-slate-700 flex items-center justify-center">
-                    {item.photoUrl ? (
-                    <img src={item.photoUrl} alt={item.name} className="w-full h-full object-contain" />
-                    ) : (
-                    <WrenchScrewdriverIcon className="w-20 h-20 text-slate-500" />
-                    )}
+                <div className="relative h-40 bg-slate-700 flex items-center justify-center overflow-hidden">
+                    {isDisplayableImageUrl(item.photoUrl) ? (
+                    <img
+                      src={item.photoUrl}
+                      alt={item.name}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling;
+                        if (fallback instanceof HTMLElement) fallback.classList.remove('hidden');
+                      }}
+                    />
+                    ) : null}
+                    <WrenchScrewdriverIcon
+                      className={`w-20 h-20 text-slate-500 ${isDisplayableImageUrl(item.photoUrl) ? 'hidden' : ''}`}
+                    />
                 </div>
                 <div className="p-3 flex-grow flex flex-col justify-between">
                     <div>

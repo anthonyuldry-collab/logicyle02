@@ -24,7 +24,8 @@ import {
 import { exportExpenseReceiptsPdf } from '../utils/expenseReceiptPdfExport';
 import { uploadExpenseReceiptImage } from '../services/receiptStorageService';
 import { formatFinancialAmount, formatFinancialDate } from '../utils/financialUtils';
-
+import MediaThumb from './MediaThumb';
+import { isDisplayableImageUrl } from '../utils/mediaUrlUtils';
 interface ExpenseReceiptsPanelProps {
   receipts: ExpenseReceipt[];
   raceEvents: RaceEvent[];
@@ -33,6 +34,8 @@ interface ExpenseReceiptsPanelProps {
   staff: StaffMember[];
   teamId: string;
   teamName: string;
+  /** 'user' = espace indépendant (path Storage users/...), 'team' = équipe */
+  storageScope?: 'team' | 'user';
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   onSaveReceipt: (receipt: ExpenseReceipt) => Promise<void>;
   onSaveBudgetItem?: (item: EventBudgetItem) => Promise<void>;
@@ -53,6 +56,7 @@ const ExpenseReceiptsPanel: React.FC<ExpenseReceiptsPanelProps> = ({
   staff,
   teamId,
   teamName,
+  storageScope = 'team',
   effectivePermissions,
   onSaveReceipt,
   onSaveBudgetItem,
@@ -122,7 +126,8 @@ const ExpenseReceiptsPanel: React.FC<ExpenseReceiptsPanelProps> = ({
           currentUser.id,
           draft.id,
           scan.imageDataUrl,
-          scan.mimeType
+          scan.mimeType,
+          { scope: storageScope }
         );
         await onSaveReceipt({ ...draft, imageUrl });
         setShowScanner(false);
@@ -130,7 +135,7 @@ const ExpenseReceiptsPanel: React.FC<ExpenseReceiptsPanelProps> = ({
         setIsSaving(false);
       }
     },
-    [teamId, currentUser, staff, onSaveReceipt, lang]
+    [teamId, currentUser, staff, onSaveReceipt, lang, storageScope]
   );
 
   const handleValidate = async (receipt: ExpenseReceipt) => {
@@ -243,18 +248,13 @@ const ExpenseReceiptsPanel: React.FC<ExpenseReceiptsPanelProps> = ({
         <ul className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
           {filtered.map((receipt) => (
             <li key={receipt.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-              <a
-                href={receipt.imageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0"
-              >
-                <img
-                  src={receipt.imageUrl}
-                  alt=""
-                  className="h-20 w-20 rounded-md border object-cover"
-                />
-              </a>
+              <MediaThumb
+                src={receipt.imageUrl}
+                href={isDisplayableImageUrl(receipt.imageUrl) ? receipt.imageUrl : undefined}
+                alt={receipt.merchant || receipt.description || 'Justificatif'}
+                className="h-20 w-20 rounded-md border object-cover bg-gray-50"
+                fallbackClassName="h-20 w-20 rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400"
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-gray-900">

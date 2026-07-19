@@ -41,7 +41,13 @@ export async function deleteStorageFolder(folderPath: string): Promise<void> {
 
 /** Supprime un fichier à partir de son URL Firebase Storage. */
 export async function deleteStorageFileFromUrl(fileUrl: string | undefined): Promise<void> {
-  if (!fileUrl || !fileUrl.includes('firebasestorage.googleapis.com')) return;
+  if (
+    !fileUrl ||
+    (!fileUrl.includes('firebasestorage.googleapis.com') &&
+      !fileUrl.includes('firebasestorage.app'))
+  ) {
+    return;
+  }
   const path = storagePathFromUrl(fileUrl);
   if (!path) return;
   await deleteStorageRef(ref(storage, path));
