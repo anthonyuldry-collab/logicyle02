@@ -41,17 +41,19 @@ fi
 
 idx=$(curl -sS "$SITE/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 || true)
 if [[ -n "$idx" ]]; then
-  bundle=$(curl -sS "$SITE/$idx" || true)
-  if echo "$bundle" | grep -q 'createStripeCheckout'; then
+  tmp=$(mktemp)
+  curl -sS "$SITE/$idx" -o "$tmp" || true
+  if grep -a -q 'createStripeCheckout' "$tmp"; then
     check "Bundle Stripe checkout" 1 "$idx"
   else
     check "Bundle Stripe checkout" 0 "createStripeCheckout introuvable"
   fi
-  if echo "$bundle" | grep -qE 'chunk-reload|recoverFromStaleDeploy|version.json'; then
+  if grep -a -qE 'chunk-reload|version\.json|logicycle:build-id' "$tmp"; then
     check "Guard chunks obsolètes" 1
   else
     check "Guard chunks obsolètes" 0
   fi
+  rm -f "$tmp"
 else
   check "Index JS" 0 "non trouvé"
 fi
