@@ -16,7 +16,9 @@ function readFirebaseConfig() {
   const missing = requiredEnvKeys.filter((key) => !import.meta.env[key]);
   if (missing.length > 0) {
     throw new Error(
-      `Configuration Firebase manquante. Définissez dans .env : ${missing.join(", ")}`
+      `Configuration Firebase manquante (${missing.join(", ")}). ` +
+        `Vite injecte ces variables au build : vérifie ton fichier .env, ` +
+        `relance \`npm run dev\` (ou \`npm run build\`), et sur Netlify ajoute les mêmes clés dans Site settings → Environment variables.`
     );
   }
 

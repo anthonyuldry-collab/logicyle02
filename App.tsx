@@ -346,6 +346,7 @@ const App: React.FC = () => {
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
   const pendingSignupDataRef = useRef<SignupData | null>(null); // Référence pour éviter les problèmes de closure
   const isMountedRef = useRef(true);
+  const authEpochRef = useRef(0);
 
   const [language, setLanguageState] = useState<"fr" | "en">(() => {
     try {
@@ -645,13 +646,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
-      if (!isMountedRef.current) return;
+      const epoch = ++authEpochRef.current;
+      const isStale = () => !isMountedRef.current || epoch !== authEpochRef.current;
+      if (isStale()) return;
       try {
         if (firebaseUser) {
           setIsLoading(true);
           let userProfile = await firebaseService.getUserProfile(
             firebaseUser.uid
           );
+          if (isStale()) return;
 
           // If profile doesn't exist (e.g., first login after signup), create it. This makes the app more robust.
           if (!userProfile) {
@@ -742,9 +746,10 @@ const App: React.FC = () => {
             }
 
             if (!userProfile) return;
+            if (isStale()) return;
             setCurrentUser(userProfile);
             await loadDataForUser(userProfile); // This will set loading to false
-            if (!isMountedRef.current) return;
+            if (isStale()) return;
             // Redirection automatique vers le tableau de bord administrateur pour les admins
             if (userProfile.permissionRole === TeamRole.ADMIN || userProfile.userRole === UserRole.MANAGER) {
               setCurrentSection("myDashboard"); // myDashboard affichera automatiquement LazyAdminDashboardSection
@@ -754,7 +759,7 @@ const App: React.FC = () => {
             await signOut(auth); // Log out to prevent inconsistent state
           }
         } else {
-          if (!isMountedRef.current) return;
+          if (isStale()) return;
           setCurrentUser(null);
           setAppState({
             ...getInitialGlobalState(),
@@ -1523,9 +1528,11 @@ const App: React.FC = () => {
 
   const onSavePartnerAccess = useCallback(async (access: PartnerAccess) => {
     try {
+      // Id déterministe pour les règles Firestore (hasActivePartnerAccess).
+      const deterministicId = `${access.userId}_${access.teamId}`;
       const payload = {
         ...access,
-        id: access.id?.startsWith('preview-') ? undefined : access.id,
+        id: deterministicId,
       };
       const savedId = await firebaseService.saveGlobalData('partnerAccesses', payload);
       const finalAccess = { ...access, id: savedId };

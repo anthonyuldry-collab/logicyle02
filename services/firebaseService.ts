@@ -1,4 +1,4 @@
-import { db, storage, auth } from '../firebaseConfig';
+import { db, storage, auth, app } from '../firebaseConfig';
 import { 
   collection,
   doc,
@@ -16,6 +16,7 @@ import {
   onSnapshot,
   orderBy,
   limit,
+  deleteField,
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
@@ -453,65 +454,39 @@ export const userHasActiveMembership = async (userId: string): Promise<boolean> 
     return !activeMemberships.empty;
 };
 
-export const createTeamForUser = async (userId: string, teamData: { name: string; level: TeamLevel; country: string; planId?: import('../types').SubscriptionPlanId; }, userRole: UserRole) => {
+export const createTeamForUser = async (
+    userId: string,
+    teamData: { name: string; level: TeamLevel; country: string; planId?: import('../types').SubscriptionPlanId; },
+    _userRole: UserRole,
+) => {
     try {
-        const subscription = buildInitialSubscription(teamData.level, teamData.planId);
-        const teamsColRef = collection(db, 'teams');
-        const newTeamRef = await addDoc(teamsColRef, {
+        // Création privilégiée côté serveur (membership ACTIVE + élévation Manager).
+        const { getFunctions, httpsCallable } = await import('firebase/functions');
+        const functions = getFunctions(app);
+        const fn = httpsCallable<
+            { name: string; level: string; country: string; planId?: string },
+            { teamId: string }
+        >(functions, 'createTeamForUser');
+        const result = await fn({
             name: teamData.name,
             level: teamData.level,
             country: teamData.country,
-            subscription,
-            operationalSettings: getRecommendedOperationalSettings(teamData.level),
-            createdAt: new Date().toISOString(),
+            planId: teamData.planId,
         });
-        
-        // 2. Utiliser une transaction pour garantir l'atomicité des opérations critiques
-        await runTransaction(db, async (transaction) => {
-            // Lire le document utilisateur pour préserver les données existantes
-            const userDocRef = doc(db, 'users', userId);
-            const userDoc = await transaction.get(userDocRef);
-            const currentUserData = userDoc.exists() ? userDoc.data() : {};
-            
-            // 3. Créer le membership actif pour le créateur
-            const membershipsColRef = collection(db, 'teamMemberships');
-            const membershipRef = doc(membershipsColRef);
-            transaction.set(membershipRef, {
-                userId: userId,
-                teamId: newTeamRef.id,
-                status: TeamMembershipStatus.ACTIVE,
-                userRole: UserRole.MANAGER,
-                startDate: new Date().toISOString().split('T')[0],
-            });
-
-            // 4. Mettre à jour le profil utilisateur avec les permissions admin et le teamId
-            transaction.set(
-                userDocRef,
-                { 
-                    ...currentUserData,
-                    permissionRole: TeamRole.ADMIN, 
-                    userRole: UserRole.MANAGER,
-                    teamId: newTeamRef.id
-                },
-                { merge: true }
-            );
-        });
-
-        // 3. Initialiser les sous-collections de l'équipe avec un batch (après la transaction)
-        const batch = writeBatch(db);
-        for (const collName of TEAM_STATE_COLLECTIONS) {
-            const subCollRef = doc(db, 'teams', newTeamRef.id, collName, '_init_');
-            batch.set(subCollRef, { createdAt: new Date().toISOString() });
+        const teamId = result.data?.teamId;
+        if (!teamId) {
+            throw new Error('Réponse createTeamForUser invalide (teamId manquant).');
         }
-        await batch.commit();
-
-        // Attendre un court délai pour s'assurer que Firestore a propagé les changements
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        return { teamId: newTeamRef.id };
+        // Délai court pour la propagation Firestore
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return { teamId };
     } catch (error) {
         console.error('❌ Erreur lors de la création de l\'équipe:', error);
-        throw new Error(`Échec de la création de l'équipe: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+        const message =
+            error && typeof error === 'object' && 'message' in error
+                ? String((error as { message: string }).message)
+                : 'Erreur inconnue';
+        throw new Error(`Échec de la création de l'équipe: ${message}`);
     }
 };
 
@@ -596,7 +571,37 @@ export async function recordManualVehiclePosition(
 }
 
 export async function saveGpsWebhookKey(teamId: string, key: string): Promise<void> {
-    await setDoc(doc(db, 'teams', teamId), { gpsWebhookKey: key }, { merge: true });
+    // Secret hors du doc équipe public — managers uniquement (rules privateConfig).
+    const gpsRef = doc(db, 'teams', teamId, 'privateConfig', 'gps');
+    await setDoc(
+        gpsRef,
+        { webhookKey: key, updatedAt: new Date().toISOString() },
+        { merge: true },
+    );
+    // Nettoyer l’ancienne clé sur le doc équipe si présente.
+    await updateDoc(doc(db, 'teams', teamId), { gpsWebhookKey: deleteField() }).catch(async () => {
+        await setDoc(doc(db, 'teams', teamId), { gpsWebhookKey: deleteField() }, { merge: true });
+    });
+}
+
+export async function loadGpsWebhookKey(teamId: string): Promise<string | undefined> {
+    try {
+        const gpsSnap = await getDoc(doc(db, 'teams', teamId, 'privateConfig', 'gps'));
+        if (gpsSnap.exists()) {
+            const key = gpsSnap.data()?.webhookKey;
+            if (typeof key === 'string' && key.length >= 8) return key;
+        }
+        // Migration lecture: ancienne clé sur le doc équipe
+        const teamSnap = await getDoc(doc(db, 'teams', teamId));
+        const legacy = teamSnap.data()?.gpsWebhookKey;
+        if (typeof legacy === 'string' && legacy.length >= 8) {
+            await saveGpsWebhookKey(teamId, legacy);
+            return legacy;
+        }
+    } catch (error) {
+        console.warn('Lecture clé GPS webhook refusée ou indisponible:', error);
+    }
+    return undefined;
 }
 
 export interface DriverGpsContext {
@@ -1020,9 +1025,17 @@ export const getTeamData = async (
                 categoryBudgets: teamData.categoryBudgets,
                 sepaSettings: teamData.sepaSettings,
                 invoiceSettings: teamData.invoiceSettings,
-                gpsWebhookKey: teamData.gpsWebhookKey,
+                // gpsWebhookKey chargé séparément (privateConfig) — pas depuis le doc public
             });
         }
+    }
+
+    // Clé GPS : uniquement si le viewer est manager (sinon rules refusent privateConfig)
+    if (viewer && (viewer.userRole === UserRole.MANAGER || viewer.permissionRole === TeamRole.ADMIN)) {
+        teamState.gpsWebhookKey = await loadGpsWebhookKey(teamId);
+    } else if (!viewer) {
+        // Appels internes sans viewer : tenter lecture (échouera silencieusement si non manager)
+        teamState.gpsWebhookKey = await loadGpsWebhookKey(teamId);
     }
 
     // Charger les modèles de checklist depuis la sous-collection et grouper par rôle
@@ -1038,14 +1051,22 @@ export const getTeamData = async (
     }
     teamState.checklistTemplates = checklistByRole;
 
-    for (const coll of TEAM_STATE_COLLECTIONS) {
-        const collRef = collection(teamDocRef, coll);
-        const snapshot = await getDocs(collRef);
-        (teamState as any)[coll] = snapshot.docs
-            .filter(d => d.id !== '_init_')
-            .map(d => ({ id: d.id, ...d.data() }));
+    // Chargement parallèle (évite ~40 getDocs séquentiels au login équipe).
+    const collectionSnapshots = await Promise.all(
+        TEAM_STATE_COLLECTIONS.map(async (coll) => {
+            const snapshot = await getDocs(collection(teamDocRef, coll));
+            return {
+                coll,
+                docs: snapshot.docs
+                    .filter((d) => d.id !== '_init_')
+                    .map((d) => ({ id: d.id, ...d.data() })),
+            };
+        }),
+    );
+    for (const { coll, docs } of collectionSnapshots) {
+        (teamState as any)[coll] = docs;
     }
-    
+
     // S'assurer que toutes les collections sont des tableaux (même si vides)
     for (const coll of TEAM_STATE_COLLECTIONS) {
         if (!(teamState as any)[coll]) {

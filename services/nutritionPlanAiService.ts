@@ -20,7 +20,11 @@ function parseAiJson(text: string): Partial<GeneratedNutritionPlan> | null {
 }
 
 async function callGemini(prompt: string): Promise<string> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  // Clé client uniquement en DEV local — en prod, basculer sur une Cloud Function (GEMINI_API_KEY).
+  const apiKey =
+    import.meta.env.DEV
+      ? (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)
+      : undefined;
   if (!apiKey?.trim()) {
     throw new Error('NO_API_KEY');
   }
@@ -117,7 +121,7 @@ export async function generateNutritionPlan(
   const expert = generateNutritionPlanExpert(context, request);
   const validIds = new Set(context.products.map(p => p.id));
 
-  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+  if (!import.meta.env.DEV || !import.meta.env.VITE_GEMINI_API_KEY) {
     return expert;
   }
 
@@ -134,5 +138,5 @@ export async function generateNutritionPlan(
 }
 
 export function isNutritionAiConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_GEMINI_API_KEY?.trim());
+  return Boolean(import.meta.env.DEV && import.meta.env.VITE_GEMINI_API_KEY?.trim());
 }

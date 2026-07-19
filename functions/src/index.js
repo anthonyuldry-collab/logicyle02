@@ -147,6 +147,100 @@ async function purgeTeamData(teamId, performedBy) {
   });
 }
 
+
+/** Création d'équipe atomique (Admin SDK) — membership ACTIVE + élévation Manager. */
+exports.createTeamForUser = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Authentification requise.');
+  }
+
+  const uid = request.auth.uid;
+  const { name, level, country, planId } = request.data || {};
+  if (!name || typeof name !== 'string' || name.trim().length < 2) {
+    throw new HttpsError('invalid-argument', 'Nom d\'équipe requis.');
+  }
+  if (!level || typeof level !== 'string') {
+    throw new HttpsError('invalid-argument', 'Niveau d\'équipe requis.');
+  }
+  if (!country || typeof country !== 'string') {
+    throw new HttpsError('invalid-argument', 'Pays requis.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Profil utilisateur introuvable.');
+  }
+  const userData = userSnap.data() || {};
+  if (userData.teamId) {
+    throw new HttpsError('already-exists', 'Vous appartenez déjà à une équipe.');
+  }
+
+  if (userData.userRole !== 'Manager') {
+    throw new HttpsError(
+      'permission-denied',
+      'Inscrivez-vous avec le parcours Manager pour créer une équipe.'
+    );
+  }
+
+  const now = new Date();
+  const trialEnds = new Date(now);
+  trialEnds.setDate(trialEnds.getDate() + 14);
+  const highTier = ['continental', 'pro', 'federation', 'CONTINENTAL', 'PRO', 'FEDERATION'];
+  const isHigh = planId && highTier.map(String).includes(String(planId));
+  const pilotEnds = new Date(now);
+  pilotEnds.setDate(pilotEnds.getDate() + 90);
+
+  const subscription = isHigh
+    ? { planId: planId || 'pro', status: 'pilot', pilotEndsAt: pilotEnds.toISOString() }
+    : { planId: planId || 'club', status: 'trialing', trialEndsAt: trialEnds.toISOString() };
+
+  const teamRef = db.collection('teams').doc();
+  const membershipRef = db.collection('teamMemberships').doc();
+
+  const batch = db.batch();
+  batch.set(teamRef, {
+    name: name.trim(),
+    level,
+    country: country.trim(),
+    subscription,
+    operationalSettings: {
+      acceptRiderApplications: false,
+      acceptStaffApplications: false,
+    },
+    createdAt: now.toISOString(),
+    createdByUserId: uid,
+  });
+  batch.set(membershipRef, {
+    userId: uid,
+    teamId: teamRef.id,
+    status: 'Actif',
+    userRole: 'Manager',
+    source: 'team_create',
+    startDate: now.toISOString().split('T')[0],
+  });
+  batch.set(
+    userRef,
+    {
+      teamId: teamRef.id,
+      userRole: 'Manager',
+      permissionRole: 'Administrateur',
+      isIndependentProfile: false,
+      updatedAt: now.toISOString(),
+    },
+    { merge: true }
+  );
+
+  // Init légère des sous-collections critiques
+  const initCols = ['riders', 'staff', 'vehicles', 'raceEvents', 'incomeItems'];
+  for (const coll of initCols) {
+    batch.set(teamRef.collection(coll).doc('_init_'), { createdAt: now.toISOString() });
+  }
+
+  await batch.commit();
+  return { teamId: teamRef.id };
+});
+
 exports.gdprPurgeUser = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
@@ -290,6 +384,20 @@ async function creditReferrer(referrerUserId) {
   });
 }
 
+
+/** Origines autorisées pour redirects Stripe (évite open redirect via Origin spoofé). */
+function resolveAppOrigin(request) {
+  const raw = (request.rawRequest && request.rawRequest.headers && request.rawRequest.headers.origin) || '';
+  const defaults = ['https://logicyle.app', 'https://www.logicyle.app', 'http://localhost:5173', 'http://localhost:3000'];
+  const fromEnv = (process.env.ALLOWED_APP_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allowed = fromEnv.length ? fromEnv : defaults;
+  if (raw && allowed.includes(raw)) return raw;
+  return allowed[0] || 'https://logicyle.app';
+}
+
 exports.createStripeCheckout = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
@@ -332,7 +440,7 @@ exports.createStripeCheckout = onCall(async (request) => {
   }
 
   let customerId;
-  const origin = request.rawRequest?.headers?.origin || 'https://logicyle.app';
+  const origin = resolveAppOrigin(request);
 
   if (isUserScope) {
     const userRef = db.collection('users').doc(request.auth.uid);
@@ -419,7 +527,7 @@ exports.createStripePortal = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Aucun client Stripe associé.');
   }
 
-  const origin = request.rawRequest?.headers?.origin || 'https://logicyle.app';
+  const origin = resolveAppOrigin(request);
   const portal = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: `${origin}/`,
@@ -729,12 +837,25 @@ exports.ingestVehicleGps = onRequest(async (req, res) => {
     res.status(404).send('Team not found');
     return;
   }
-  const settings = teamSnap.data().gpsWebhookKey;
+  const privateGpsSnap = await teamRef.collection('privateConfig').doc('gps').get();
+  let settings = privateGpsSnap.exists ? privateGpsSnap.data()?.webhookKey : null;
+  if ((!settings || typeof settings !== 'string') && teamSnap.data().gpsWebhookKey) {
+    settings = teamSnap.data().gpsWebhookKey;
+    if (typeof settings === 'string' && settings.length >= 8) {
+      await teamRef.collection('privateConfig').doc('gps').set({
+        webhookKey: settings,
+        migratedAt: new Date().toISOString(),
+      }, { merge: true });
+      await teamRef.set({ gpsWebhookKey: admin.firestore.FieldValue.delete() }, { merge: true });
+    }
+  }
   if (!settings || typeof settings !== 'string' || settings.length < 8) {
     res.status(403).send('GPS webhook key not configured');
     return;
   }
-  if (settings !== apiKey) {
+  const a = Buffer.from(String(settings));
+  const b = Buffer.from(String(apiKey));
+  if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
     res.status(403).send('Invalid key');
     return;
   }
@@ -748,14 +869,13 @@ exports.ingestVehicleGps = onRequest(async (req, res) => {
     return;
   }
 
-  const vehiclesSnap = await teamRef.collection('vehicles').get();
   let vehicleId = deviceId;
-  for (const doc of vehiclesSnap.docs) {
-    const v = doc.data();
-    if (v.gpsDeviceId === deviceId || doc.id === deviceId) {
-      vehicleId = doc.id;
-      break;
-    }
+  const byDevice = await teamRef.collection('vehicles').where('gpsDeviceId', '==', deviceId).limit(1).get();
+  if (!byDevice.empty) {
+    vehicleId = byDevice.docs[0].id;
+  } else {
+    const byId = await teamRef.collection('vehicles').doc(deviceId).get();
+    if (byId.exists) vehicleId = byId.id;
   }
 
   const recordedAt = payload.recordedAt || payload.fixTime || new Date().toISOString();
@@ -988,6 +1108,17 @@ exports.onUserNotificationCreated = onDocumentCreated(
 exports.extractCvProfile = onCall({ timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
+  }
+
+  const callerSnap = await db.collection('users').doc(request.auth.uid).get();
+  const caller = callerSnap.data() || {};
+  const canExtract =
+    caller.userRole === 'Manager' ||
+    caller.userRole === 'Staff' ||
+    caller.permissionRole === 'Administrateur' ||
+    caller.permissionRole === 'Editeur';
+  if (!canExtract) {
+    throw new HttpsError('permission-denied', 'Réservé aux managers / staff.');
   }
 
   const apiKey = process.env.GEMINI_API_KEY;

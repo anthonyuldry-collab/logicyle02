@@ -68,9 +68,11 @@ service cloud.firestore {
     }
 
     function managerUserUpdateAllowed() {
+      // Manager peut lier un membre / rôles / permissions custom ; pas l’abo ni l’email.
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'subscription',
-        'email'
+        'email',
+        'isSuperAdmin'
       ]);
     }
 
@@ -88,7 +90,7 @@ service cloud.firestore {
         ]);
     }
 
-    /** Profil indépendant déjà actif : maj profil / abo, pas les privilèges. */
+    /** Profil indépendant déjà actif : maj profil, pas les privilèges ni l’abonnement (Stripe/webhook uniquement). */
     function independentSelfUpdateAllowed() {
       return resource.data.isIndependentProfile == true
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -96,6 +98,7 @@ service cloud.firestore {
           'userRole',
           'permissionRole',
           'email',
+          'subscription',
           'customPermissions',
           'isActive',
           'isIndependentProfile',
@@ -103,11 +106,23 @@ service cloud.firestore {
         ]);
     }
 
-    /** Partenaire : bascule teamId de contexte uniquement. */
+    /** Accès partenaire actif pour teamId cible (doc id déterministe userId_teamId). */
+    function hasActivePartnerAccess(teamId) {
+      return exists(/databases/$(database)/documents/partnerAccesses/$(request.auth.uid + '_' + teamId))
+        && get(/databases/$(database)/documents/partnerAccesses/$(request.auth.uid + '_' + teamId)).data.isActive == true
+        && get(/databases/$(database)/documents/partnerAccesses/$(request.auth.uid + '_' + teamId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/partnerAccesses/$(request.auth.uid + '_' + teamId)).data.teamId == teamId;
+    }
+
+    /** Partenaire : bascule teamId uniquement vers une équipe autorisée (ou null pour sortir). */
     function partnerTeamIdSwitchAllowed() {
       return resource.data.userRole == 'Partenaire'
         && request.resource.data.userRole == 'Partenaire'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId', 'updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId', 'updatedAt'])
+        && (
+          request.resource.data.teamId == null
+          || hasActivePartnerAccess(request.resource.data.teamId)
+        );
     }
 
     match /users/{userId} {
@@ -118,8 +133,23 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.isSearchable == true)
         || isSuperAdmin();
 
+      // NOTE: userRole Manager autorisé à l'inscription (intention), mais permissionRole
+      // élevé (Administrateur) et teamId sont attribués uniquement via Cloud Function.
       allow create: if isSelf(userId)
-        && request.resource.data.email == authEmail();
+        && request.resource.data.email == authEmail()
+        && request.resource.data.userRole in ['Coureur', 'Staff', 'Partenaire', 'Invité', 'Manager']
+        && (
+          !('permissionRole' in request.resource.data)
+          || request.resource.data.permissionRole in ['Membre', 'Athlète', 'Editeur']
+        )
+        && (
+          !('teamId' in request.resource.data)
+          || request.resource.data.teamId == null
+        )
+        && (
+          !('subscription' in request.resource.data)
+          || request.resource.data.userRole in ['Coureur', 'Staff', 'Partenaire', 'Invité']
+        );
 
       allow update: if isSuperAdmin()
         || (isSelf(userId) && userSensitiveKeysUnchanged())
@@ -189,29 +219,51 @@ service cloud.firestore {
 
     /** Annuaire équipes pour rejoindre / candidater (sans être membre). */
     function isOpenForApplications() {
-      return !('operationalSettings' in resource.data)
-        || !('acceptRiderApplications' in resource.data.operationalSettings)
-        || resource.data.operationalSettings.acceptRiderApplications == true;
+      // Opt-in explicite (défaut fermé) — évite la fuite d’annuaire pour tout user connecté.
+      return ('operationalSettings' in resource.data)
+        && ('acceptRiderApplications' in resource.data.operationalSettings)
+        && resource.data.operationalSettings.acceptRiderApplications == true;
+    }
+
+    /** Interdit d’écrire gpsWebhookKey sur le doc équipe ; suppression autorisée (migration). */
+    function teamGpsSecretOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['gpsWebhookKey'])
+        || !('gpsWebhookKey' in request.resource.data);
     }
 
     match /teams/{teamId} {
       allow read: if canReadTeam(teamId)
         || (isSignedIn() && isOpenForApplications());
-      allow create: if isSignedIn();
-      allow update: if (isTeamManager(teamId) || isSuperAdmin()) && subscriptionUnchanged();
+      // Création d’équipe : Cloud Function createTeamForUser (Admin SDK) uniquement.
+      allow create: if false;
+      allow update: if (isTeamManager(teamId) || isSuperAdmin())
+        && subscriptionUnchanged()
+        && teamGpsSecretOk();
       allow delete: if isTeamManager(teamId) || isSuperAdmin();
 
+      // Secret GPS / config privée — managers uniquement.
+      match /privateConfig/{docId} {
+        allow read, write: if isTeamManager(teamId) || isSuperAdmin();
+      }
+
       match /{subcollection}/{docId} {
-        allow read: if (
+        // Managers : lecture complète. Membres/coureurs : blacklist financière/RH + scope riders.
+        allow read: if isTeamManager(teamId)
+          || (
             isTeamMember(teamId)
             && canCoureurReadCollection(subcollection)
             && canReadTeamSubdoc(teamId, subcollection, docId)
           )
           || (isPartnerMember(teamId) && partnerAllowedSubcollection(subcollection))
           || isSuperAdmin();
+        // isSelf limité aux collections profil (évite écriture arbitraire sur docId == uid).
         allow write: if isTeamManager(teamId)
           || isSuperAdmin()
-          || (isTeamMember(teamId) && isSelf(docId))
+          || (
+            isTeamMember(teamId)
+            && isSelf(docId)
+            && subcollection in ['riders', 'staff', 'riderSelfDebriefs', 'peerRatings', 'convocationResponses']
+          )
           || (subcollection == 'expenseReceipts'
               && isTeamMember(teamId)
               && request.resource.data.submittedByUserId == request.auth.uid);
@@ -328,10 +380,17 @@ service cloud.firestore {
       );
       allow create: if isSignedIn()
         && isTeamManager(request.resource.data.requesterTeamId);
+      // Athlète : uniquement statut / réponse / scopes accordés.
       allow update: if isSignedIn() && (
-        isTeamManager(resource.data.requesterTeamId) ||
-        resource.data.athleteId == request.auth.uid ||
-        isSuperAdmin()
+        isTeamManager(resource.data.requesterTeamId)
+        || isSuperAdmin()
+        || (
+          resource.data.athleteId == request.auth.uid
+          && request.resource.data.athleteId == resource.data.athleteId
+          && request.resource.data.requesterTeamId == resource.data.requesterTeamId
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'responseDate', 'grantedScopes', 'updatedAt'])
+        )
       );
       allow delete: if isTeamManager(resource.data.requesterTeamId) || isSuperAdmin();
     }
@@ -340,7 +399,10 @@ service cloud.firestore {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn()
         && request.resource.data.sentByUserId == request.auth.uid
-        && isTeamMember(request.resource.data.teamId);
+        && isTeamMember(request.resource.data.teamId)
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.userId))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.teamId
+            == request.resource.data.teamId;
       allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow delete: if isTeamManager(resource.data.teamId) || isSuperAdmin();
     }
