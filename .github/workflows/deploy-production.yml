@@ -60,11 +60,25 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Check Netlify secrets
+        id: check
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Secrets Netlify absents — skip (lie le repo dans Netlify UI ou ajoute NETLIFY_AUTH_TOKEN + NETLIFY_SITE_ID)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
+        if: steps.check.outputs.skip == 'false'
         with:
           name: production-dist
           path: dist
       - name: Deploy to Netlify (production)
+        if: steps.check.outputs.skip == 'false'
         uses: nwtgck/actions-netlify@v3.0
         with:
           publish-dir: "./dist"
@@ -85,20 +99,34 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Check Firebase service account
+        id: check
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Secret FIREBASE_SERVICE_ACCOUNT absent — skip deploy Firebase."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip == 'false'
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: functions/package-lock.json
       - name: Install functions dependencies
+        if: steps.check.outputs.skip == 'false'
         working-directory: functions
-        run: |
-          if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+        run: npm ci
       - name: Authenticate to Google Cloud
+        if: steps.check.outputs.skip == 'false'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Deploy Firestore rules, Storage rules, Functions
+        if: steps.check.outputs.skip == 'false'
         run: |
           npx firebase-tools@13 deploy \
             --project logicycle01 \
