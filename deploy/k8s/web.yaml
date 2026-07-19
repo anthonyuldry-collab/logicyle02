@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logicyle
+  labels:
+    app.kubernetes.io/name: logicyle
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logicyle-web
+  namespace: logicyle
+  labels:
+    app: logicyle-web
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: logicyle-web
+  template:
+    metadata:
+      labels:
+        app: logicyle-web
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: ghcr.io/OWNER/logicyle-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logicyle-web
+  namespace: logicyle
+spec:
+  selector:
+    app: logicyle-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: logicyle-web
+  namespace: logicyle
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: logicyle-web
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: logicyle-web
+  namespace: logicyle
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: logicyle-web
+---
+# Ingress optionnel — décommenter / adapter au contrôleur (nginx / traefik / GKE)
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: logicyle-web
+#   namespace: logicyle
+#   annotations:
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts: [logicyle.app, www.logicyle.app]
+#       secretName: logicyle-tls
+#   rules:
+#     - host: logicyle.app
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: logicyle-web
+#                 port:
+#                   number: 80

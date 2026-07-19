@@ -1,7 +1,39 @@
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { setGlobalOptions } = require('firebase-functions/v2');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 
+/** Région EU unique — latence + RGPD (données UE). */
+setGlobalOptions({
+  region: 'europe-west1',
+  maxInstances: 40,
+  concurrency: 80,
+  timeoutSeconds: 60,
+});
+
 admin.initializeApp();
+
+/** Secrets Gen2 montés en process.env (firebase functions:secrets:set …). */
+/** Secrets uniquement (pas les Price IDs — config via variables d'env Cloud Run). */
+const SECRET_STRIPE = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'];
+const SECRET_STRIPE_BILLING = ['STRIPE_SECRET_KEY'];
+const SECRET_NOLIO = ['NOLIO_CLIENT_ID', 'NOLIO_CLIENT_SECRET'];
+const SECRET_GEMINI = ['GEMINI_API_KEY'];
+
+function logStructured(level, message, fields = {}) {
+  const entry = {
+    severity: level,
+    message,
+    service: 'logicyle-functions',
+    ...fields,
+    timestamp: new Date().toISOString(),
+  };
+  const line = JSON.stringify(entry);
+  if (level === 'ERROR' || level === 'CRITICAL') console.error(line);
+  else if (level === 'WARNING') console.warn(line);
+  else console.log(line);
+}
+
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
@@ -149,7 +181,7 @@ async function purgeTeamData(teamId, performedBy) {
 
 
 /** Création d'équipe atomique (Admin SDK) — membership ACTIVE + élévation Manager. */
-exports.createTeamForUser = onCall(async (request) => {
+exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -241,7 +273,7 @@ exports.createTeamForUser = onCall(async (request) => {
   return { teamId: teamRef.id };
 });
 
-exports.gdprPurgeUser = onCall(async (request) => {
+exports.gdprPurgeUser = onCall({ memory: '512MiB', timeoutSeconds: 300 }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -257,7 +289,7 @@ exports.gdprPurgeUser = onCall(async (request) => {
   return { success: true };
 });
 
-exports.gdprPurgeTeam = onCall(async (request) => {
+exports.gdprPurgeTeam = onCall({ memory: '1GiB', timeoutSeconds: 540 }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -398,7 +430,7 @@ function resolveAppOrigin(request) {
   return allowed[0] || 'https://logicyle.app';
 }
 
-exports.createStripeCheckout = onCall(async (request) => {
+exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: '256MiB' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -498,7 +530,7 @@ exports.createStripeCheckout = onCall(async (request) => {
   return { url: session.url };
 });
 
-exports.createStripePortal = onCall(async (request) => {
+exports.createStripePortal = onCall({ secrets: SECRET_STRIPE, memory: '256MiB' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -536,7 +568,7 @@ exports.createStripePortal = onCall(async (request) => {
   return { url: portal.url };
 });
 
-exports.stripeWebhook = onRequest({ cors: false }, async (req, res) => {
+exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory: '256MiB' }, async (req, res) => {
   if (!stripe) {
     res.status(503).send('Stripe non configuré');
     return;
@@ -717,7 +749,7 @@ async function getValidNolioAccessToken(uid) {
   return tokens.access_token;
 }
 
-exports.nolioExchangeCode = onCall(async (request) => {
+exports.nolioExchangeCode = onCall({ secrets: SECRET_NOLIO }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentification requise');
 
   const { code, redirectUri } = request.data || {};
@@ -767,7 +799,7 @@ exports.nolioGetConnectionStatus = onCall(async (request) => {
   };
 });
 
-exports.nolioGetTrainings = onCall(async (request) => {
+exports.nolioGetTrainings = onCall({ secrets: SECRET_NOLIO }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentification requise');
 
   const { from, to } = request.data || {};
@@ -817,9 +849,8 @@ exports.nolioDisconnect = onCall(async (request) => {
 });
 
 /** Webhook GPS télématique (Traccar, Geotab, etc.) */
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 
-exports.ingestVehicleGps = onRequest(async (req, res) => {
+exports.ingestVehicleGps = onRequest({ memory: '256MiB', timeoutSeconds: 30 }, async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).send('Method not allowed');
     return;
@@ -905,7 +936,7 @@ exports.ingestVehicleGps = onRequest(async (req, res) => {
 });
 
 /** Position GPS chauffeur (app native Capacitor / PWA) — écriture serveur sécurisée */
-exports.recordDriverGpsPosition = onCall({ region: 'europe-west1' }, async (request) => {
+exports.recordDriverGpsPosition = onCall({ memory: '256MiB' }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -1077,7 +1108,10 @@ exports.recordDriverGpsPosition = onCall({ region: 'europe-west1' }, async (requ
 });
 
 exports.onUserNotificationCreated = onDocumentCreated(
-  'userNotifications/{notificationId}',
+  {
+    document: 'userNotifications/{notificationId}',
+    memory: '256MiB',
+  },
   async (event) => {
     const data = event.data?.data();
     if (!data?.userId) return;
@@ -1099,13 +1133,13 @@ exports.onUserNotificationCreated = onDocumentCreated(
     try {
       await admin.messaging().sendEachForMulticast(message);
     } catch (err) {
-      console.error('FCM send error:', err);
+      logStructured('ERROR', 'fcm_send_failed', { error: String(err && err.message || err) });
     }
   }
 );
 
 /** Extraction CV → profil pro. Clé Gemini côté serveur uniquement (GEMINI_API_KEY). */
-exports.extractCvProfile = onCall({ timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
+exports.extractCvProfile = onCall({ secrets: SECRET_GEMINI, timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -1241,3 +1275,25 @@ Règles:
 
   return { profile };
 });
+
+/** Health check pour load balancers / uptime monitors (pas d\'auth). */
+exports.healthz = onRequest({ invoker: 'public', memory: '128MiB', timeoutSeconds: 10 }, async (_req, res) => {
+  try {
+    // Ping Firestore léger — confirme que le runtime + Admin SDK sont OK.
+    await db.collection('_health').doc('ping').set(
+      { checkedAt: new Date().toISOString() },
+      { merge: true }
+    );
+    logStructured('INFO', 'healthz_ok', { status: 'ok' });
+    res.status(200).json({
+      status: 'ok',
+      service: 'logicyle-functions',
+      region: 'europe-west1',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logStructured('ERROR', 'healthz_failed', { error: String(err && err.message || err) });
+    res.status(503).json({ status: 'degraded', error: 'firestore_unreachable' });
+  }
+});
+

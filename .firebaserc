@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "logicycle01",
+    "production": "logicycle01",
+    "staging": "logicycle01"
+  },
+  "targets": {},
+  "etags": {}
+}

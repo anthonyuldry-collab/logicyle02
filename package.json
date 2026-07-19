@@ -1,7 +1,7 @@
 {
   "name": "logicyle-beta-test",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": ">=20.0.0",
@@ -11,7 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:check": "tsc --noEmit",
-    "build:ci": "npm run test && vite build",
+    "build:ci": "npm test && npm run build:check && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,7 +19,12 @@
     "cap:build": "npm run build && npx cap sync",
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android",
-    "deploy": "npm run build && echo 'Build terminé ! Vous pouvez maintenant déployer le dossier dist sur Netlify'"
+    "deploy": "npm run build && echo 'Build terminé ! Vous pouvez maintenant déployer le dossier dist sur Netlify'",
+    "deploy:firebase": "firebase deploy --only firestore:rules,firestore:indexes,storage,functions",
+    "deploy:web": "npm run build && echo \"Artefact dist/ prêt — Netlify CI ou docker compose up --build\"",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up --build -d",
+    "ops:health": "curl -sf \"https://europe-west1-logicycle01.cloudfunctions.net/healthz\" && echo"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",
@@ -31,6 +36,7 @@
     "@capacitor/push-notifications": "^6.0.3",
     "@capacitor/splash-screen": "^6.0.3",
     "@heroicons/react": "^2.0.18",
+    "@sentry/react": "^8.55.2",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "clsx": "^2.0.0",

@@ -1,4 +1,5 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 import { app } from '../firebaseConfig';
 import {
   purgeUserPersonalData as clientPurgeUser,
@@ -7,7 +8,7 @@ import {
 
 async function callCloudFunction<T>(name: string, data: Record<string, unknown>): Promise<T | null> {
   try {
-    const functions = getFunctions(app);
+    const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
     const callable = httpsCallable<Record<string, unknown>, T>(functions, name);
     const result = await callable(data);
     return result.data;

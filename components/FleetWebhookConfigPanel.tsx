@@ -12,7 +12,7 @@ interface FleetWebhookConfigPanelProps {
 const WEBHOOK_BASE =
   typeof import.meta !== 'undefined' && import.meta.env?.VITE_GPS_WEBHOOK_URL
     ? String(import.meta.env.VITE_GPS_WEBHOOK_URL)
-    : 'https://europe-west1-logicycle.cloudfunctions.net/ingestVehicleGps';
+    : `https://europe-west1-${import.meta.env.VITE_FIREBASE_PROJECT_ID || 'logicycle01'}.cloudfunctions.net/ingestVehicleGps`;
 
 function generateWebhookKey(): string {
   return `gps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;

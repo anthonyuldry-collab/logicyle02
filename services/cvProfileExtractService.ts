@@ -1,4 +1,5 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 import { app } from '../firebaseConfig';
 import {
   CvExtractedProfile,
@@ -112,7 +113,7 @@ async function callExtractViaCloudFunction(params: {
   fileName?: string;
 }): Promise<unknown | null> {
   try {
-    const functions = getFunctions(app);
+    const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
     const callable = httpsCallable<
       { mimeType: string; base64: string; fileName?: string },
       { profile: unknown }

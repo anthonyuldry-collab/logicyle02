@@ -1,4 +1,5 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 import { app } from '../firebaseConfig';
 import { NolioConnectionInfo, NolioTrainingsResponse } from '../types/nolio';
 
@@ -36,7 +37,7 @@ export function consumeNolioOAuthState(returnedState: string | null): boolean {
 }
 
 async function callNolio<T>(name: string, data: Record<string, unknown>): Promise<T> {
-  const functions = getFunctions(app);
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<Record<string, unknown>, T>(functions, name);
   const result = await fn(data);
   return result.data;

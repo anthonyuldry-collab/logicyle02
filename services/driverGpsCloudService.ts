@@ -2,6 +2,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, app } from '../firebaseConfig';
 import { getFirebaseCallableUrl } from '../utils/gpsTrackingUtils';
+import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 
 export interface DriverGpsVehicleAssignment {
   vehicleId: string;
@@ -23,7 +24,7 @@ export interface RecordDriverGpsPayload {
   transportLegId?: string;
 }
 
-const FUNCTIONS_REGION = 'europe-west1';
+const FUNCTIONS_REGION = FIREBASE_FUNCTIONS_REGION;
 
 async function postCallableNative(payload: RecordDriverGpsPayload): Promise<void> {
   const user = auth.currentUser;

@@ -1,4 +1,6 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../firebaseConfig';
+import { FIREBASE_FUNCTIONS_REGION } from '../constants/firebaseRegions';
 import { SubscriptionPlanId, TeamSubscription, UserRole } from '../types';
 import {
   PILOT_DAYS,
@@ -56,7 +58,7 @@ export async function createIndependentCheckoutSession(
   interval: 'month' | 'year',
   referralCode?: string | null
 ): Promise<{ url: string }> {
-  const functions = getFunctions();
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<
     { planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string; scope: 'user' },
     { url: string }
@@ -75,7 +77,7 @@ export async function createIndependentCheckoutSession(
 }
 
 export async function createIndependentBillingPortalSession(): Promise<{ url: string }> {
-  const functions = getFunctions();
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<{ scope: 'user' }, { url: string }>(functions, 'createStripePortal');
   const result = await fn({ scope: 'user' });
   return result.data;
@@ -96,7 +98,7 @@ export async function createCheckoutSession(
   interval: 'month' | 'year',
   referralCode?: string | null
 ): Promise<{ url: string }> {
-  const functions = getFunctions();
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<
     { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string },
     { url: string }
@@ -114,7 +116,7 @@ export async function createCheckoutSession(
 }
 
 export async function createBillingPortalSession(teamId: string): Promise<{ url: string }> {
-  const functions = getFunctions();
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<{ teamId: string }, { url: string }>(functions, 'createStripePortal');
   const result = await fn({ teamId });
   return result.data;

@@ -462,7 +462,8 @@ export const createTeamForUser = async (
     try {
         // Création privilégiée côté serveur (membership ACTIVE + élévation Manager).
         const { getFunctions, httpsCallable } = await import('firebase/functions');
-        const functions = getFunctions(app);
+        const { FIREBASE_FUNCTIONS_REGION } = await import('../constants/firebaseRegions');
+        const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
         const fn = httpsCallable<
             { name: string; level: string; country: string; planId?: string },
             { teamId: string }

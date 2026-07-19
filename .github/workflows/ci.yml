@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Test & typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Clés Firebase factices pour le build Vite (validation de présence uniquement)
+      VITE_FIREBASE_API_KEY: ci-dummy-key
+      VITE_FIREBASE_AUTH_DOMAIN: logicycle01.firebaseapp.com
+      VITE_FIREBASE_PROJECT_ID: logicycle01
+      VITE_FIREBASE_STORAGE_BUCKET: logicycle01.appspot.com
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+      VITE_FIREBASE_APP_ID: "1:000000000000:web:ci"
+      VITE_FIREBASE_MEASUREMENT_ID: G-CIDUMMY
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run build:check
+
+      - name: Production build
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          retention-days: 7
+
+  functions-syntax:
+    name: Cloud Functions syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install functions deps
+        working-directory: functions
+        run: npm install --omit=dev
+      - name: Syntax check
+        run: node --check functions/src/index.js

@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './src/index.css';
+import { captureException, initMonitoring } from './services/monitoring';
+
+void initMonitoring();
 
 const isDev = import.meta.env.DEV;
 
@@ -39,6 +42,7 @@ class AppErrorBoundary extends React.Component<
   }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('App Error Boundary:', error, info.componentStack);
+    captureException(error, { tags: { source: 'error_boundary' }, extra: { componentStack: info.componentStack } });
   }
   render() {
     if (this.state.hasError && this.state.error) {

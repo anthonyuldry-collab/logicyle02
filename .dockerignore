@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+!.env.example
+*.md
+business-plan
+ios
+android
+coverage
+.DS_Store
+firebase-debug.log
+*.local
+docs
+deploy/k8s

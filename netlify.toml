@@ -1,10 +1,18 @@
 [build]
   publish = "dist"
-  command = "chmod +x build.sh && ./build.sh"
+  command = "npm ci && npm run build"
+  # Builds déterministes : package-lock.json conservé (plus de build.sh destructif).
 
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS = "--legacy-peer-deps --no-optional"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Preview / branch deploys : même commande
+[context.deploy-preview]
+  command = "npm ci && npm run build"
+
+[context.branch-deploy]
+  command = "npm ci && npm run build"
 
 [[redirects]]
   from = "/*"
@@ -18,8 +26,20 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(self), camera=(self), microphone=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
 
 [[headers]]
   for = "/assets/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable" 
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

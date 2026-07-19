@@ -20,3 +20,9 @@ declare module '*.ts' {
   const content: any;
   export default content;
 }
+
+interface ImportMetaEnv {
+  readonly VITE_SENTRY_DSN?: string
+  readonly VITE_GPS_WEBHOOK_URL?: string
+  readonly VITE_APP_VERSION?: string
+}
