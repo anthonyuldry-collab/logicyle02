@@ -3,10 +3,15 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './src/index.css';
 import { captureException, initMonitoring } from './services/monitoring';
+import { installChunkLoadRecovery } from './utils/chunkLoadGuard';
 import { isChunkLoadError } from './utils/lazyWithReload';
-import { recoverFromStaleDeploy } from './utils/recoverFromStaleDeploy';
+import {
+  clearChunkRecoveryLock,
+  recoverFromStaleDeploy,
+} from './utils/recoverFromStaleDeploy';
 
 void initMonitoring();
+installChunkLoadRecovery();
 
 const isDev = import.meta.env.DEV;
 
@@ -88,7 +93,7 @@ class AppErrorBoundary extends React.Component<
             type="button"
             onClick={() => {
               if (isChunkLoadError(this.state.error)) {
-                sessionStorage.removeItem('logicycle:chunk-reload');
+                clearChunkRecoveryLock();
                 void recoverFromStaleDeploy();
                 return;
               }

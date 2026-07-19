@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { TeamProduct } from '../../types';
 import ActionButton from '../ActionButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -7,9 +7,9 @@ import {
   fetchProductByBarcode,
   syncCarbsFromSugars,
 } from '../../utils/nutritionProductUtils';
+import { lazyWithReload } from '../../utils/lazyWithReload';
 
-const BarcodeScannerModal = lazy(() => import('../BarcodeScannerModal'));
-
+const BarcodeScannerModal = lazyWithReload(() => import('../BarcodeScannerModal'));
 const PRODUCT_TYPE_CONFIG = {
   gel: {
     sectionTitle: '🧪 Ratios & nutrition (par gel)',

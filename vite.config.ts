@@ -1,4 +1,6 @@
-import { defineConfig, loadEnv } from 'vite';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -10,6 +12,18 @@ const REQUIRED_FIREBASE_ENV = [
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
   'VITE_FIREBASE_APP_ID',
 ] as const;
+
+/** Écrit version.json pour détecter un nouveau deploy côté client. */
+function appBuildIdPlugin(buildId: string): Plugin {
+  return {
+    name: 'logicycle-app-build-id',
+    apply: 'build',
+    closeBundle() {
+      const out = resolve(__dirname, 'dist/version.json');
+      writeFileSync(out, JSON.stringify({ buildId, builtAt: new Date().toISOString() }), 'utf8');
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -23,7 +37,13 @@ export default defineConfig(({ mode }) => {
     );
   }
 
+  const appBuildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
   return {
+  define: {
+    __APP_BUILD_ID__: JSON.stringify(appBuildId),
+  },
+
   resolve: {
     alias: {
       '@': '.',
@@ -76,6 +96,7 @@ export default defineConfig(({ mode }) => {
 
   plugins: [
     react(),
+    appBuildIdPlugin(appBuildId),
     VitePWA({
       registerType: 'autoUpdate',
       strategies: 'injectManifest',
@@ -87,12 +108,15 @@ export default defineConfig(({ mode }) => {
       },
       injectManifest: {
         minify: false,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: [
-          '**/BarcodeScannerModal-*.js',
-          '**/html2canvas*.js',
-          '**/jspdf*.js',
+        // Ne PAS précacher les chunks hashés (/assets/*) — cause des lazy-load cassés après deploy.
+        // Shell PWA (icônes) uniquement — pas d’index.html ni de chunks (évite shell obsolète).
+        globPatterns: [
+          'asset-missing.txt',
+          'icons/**/*.{png,svg,ico}',
+          'manifest.webmanifest',
         ],
+        // Jamais de chunks hashés, ni version.json / index (doivent venir du réseau).
+        globIgnores: ['**/assets/**', '**/version.json', '**/index.html'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
       includeAssets: ['icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],

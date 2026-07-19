@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
+declare const __APP_BUILD_ID__: string;
+
 // Déclarations pour les modules externes
 declare module 'frappe-charts' {
   export class Chart {
