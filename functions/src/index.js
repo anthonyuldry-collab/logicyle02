@@ -14,7 +14,6 @@ setGlobalOptions({
 admin.initializeApp();
 
 /** Secrets Gen2 montés en process.env (firebase functions:secrets:set …). */
-/** Secrets uniquement (pas les Price IDs — config via variables d'env Cloud Run). */
 const SECRET_STRIPE = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'];
 const SECRET_STRIPE_BILLING = ['STRIPE_SECRET_KEY'];
 const SECRET_NOLIO = ['NOLIO_CLIENT_ID', 'NOLIO_CLIENT_SECRET'];
@@ -50,6 +49,50 @@ const TEAM_STATE_COLLECTIONS = [
 ];
 
 const BATCH_SIZE = 400;
+
+/** Rate-limit mémoire (par instance) — appliqué APRÈS auth clé (anti-DoS flotte). */
+const gpsRateBuckets = new Map();
+const gpsAuthFailBuckets = new Map();
+const GPS_RATE_WINDOW_MS = 60_000;
+const GPS_RATE_MAX = 120;
+const GPS_AUTH_FAIL_MAX = 30;
+
+function pruneRateMap(map, now) {
+  if (map.size <= 500) return;
+  for (const [id, b] of map) {
+    if (now - b.windowStart > GPS_RATE_WINDOW_MS) map.delete(id);
+  }
+}
+
+function assertRateBucket(map, key, max) {
+  const now = Date.now();
+  pruneRateMap(map, now);
+  let bucket = map.get(key);
+  if (!bucket || now - bucket.windowStart > GPS_RATE_WINDOW_MS) {
+    bucket = { windowStart: now, count: 0 };
+    map.set(key, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > max) {
+    const err = new Error('rate_limited');
+    err.status = 429;
+    throw err;
+  }
+}
+
+function assertGpsRateLimit(teamId) {
+  assertRateBucket(gpsRateBuckets, `ok:${teamId}`, GPS_RATE_MAX);
+}
+
+function assertGpsAuthFailLimit(teamId, clientIp) {
+  assertRateBucket(gpsAuthFailBuckets, `fail:${teamId}:${clientIp || 'unknown'}`, GPS_AUTH_FAIL_MAX);
+}
+
+function sendGpsRateLimited(res, teamId) {
+  logStructured('WARNING', 'gps_rate_limited', { teamId });
+  res.set('Retry-After', '60');
+  res.status(429).send('Too many requests');
+}
 
 async function deleteCollection(collRef) {
   const snapshot = await collRef.get();
@@ -855,12 +898,19 @@ exports.ingestVehicleGps = onRequest({ memory: '256MiB', timeoutSeconds: 30 }, a
     res.status(405).send('Method not allowed');
     return;
   }
-  const teamId = req.query.teamId;
-  const apiKey = req.query.key;
+  const teamId = String(req.query.teamId || (req.body && req.body.teamId) || '');
+  // Préférer le header (évite la clé dans les logs d’URL / proxies).
+  const apiKey = String(
+    req.get('x-api-key') || req.get('x-logicyle-gps-key') || req.query.key || ''
+  );
   if (!teamId || !apiKey) {
     res.status(400).send('Missing teamId or key');
     return;
   }
+
+  const clientIp = String(
+    (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || ''
+  );
 
   const teamRef = db.collection('teams').doc(teamId);
   const teamSnap = await teamRef.get();
@@ -887,8 +937,28 @@ exports.ingestVehicleGps = onRequest({ memory: '256MiB', timeoutSeconds: 30 }, a
   const a = Buffer.from(String(settings));
   const b = Buffer.from(String(apiKey));
   if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
+    try {
+      assertGpsAuthFailLimit(teamId, clientIp);
+    } catch (rateErr) {
+      if (rateErr && rateErr.status === 429) {
+        sendGpsRateLimited(res, teamId);
+        return;
+      }
+      throw rateErr;
+    }
     res.status(403).send('Invalid key');
     return;
+  }
+
+  // Rate-limit volume légitime uniquement après auth (évite DoS par teamId public).
+  try {
+    assertGpsRateLimit(teamId);
+  } catch (rateErr) {
+    if (rateErr && rateErr.status === 429) {
+      sendGpsRateLimited(res, teamId);
+      return;
+    }
+    throw rateErr;
   }
 
   const payload = req.body || {};
@@ -909,9 +979,9 @@ exports.ingestVehicleGps = onRequest({ memory: '256MiB', timeoutSeconds: 30 }, a
     if (byId.exists) vehicleId = byId.id;
   }
 
-  const recordedAt = payload.recordedAt || payload.fixTime || new Date().toISOString();
+  const recordedAt = payload.recordedAt || payload.timestamp || payload.fixTime || new Date().toISOString();
   const position = {
-    id: `pos-${Date.now()}`,
+    id: `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     vehicleId,
     latitude: lat,
     longitude: lng,
@@ -921,16 +991,18 @@ exports.ingestVehicleGps = onRequest({ memory: '256MiB', timeoutSeconds: 30 }, a
     source: payload.source || 'traccar',
   };
 
-  await teamRef.collection('vehiclePositions').doc(position.id).set(position);
   const vehicleRef = teamRef.collection('vehicles').doc(vehicleId);
-  if ((await vehicleRef.get()).exists) {
-    await vehicleRef.set({
+  const vehicleExists = (await vehicleRef.get()).exists;
+  const writes = [teamRef.collection('vehiclePositions').doc(position.id).set(position)];
+  if (vehicleExists) {
+    writes.push(vehicleRef.set({
       lastLatitude: lat,
       lastLongitude: lng,
       lastPositionAt: position.recordedAt,
       lastSpeedKmh: position.speedKmh,
-    }, { merge: true });
+    }, { merge: true }));
   }
+  await Promise.all(writes);
 
   res.json({ ok: true, vehicleId });
 });
@@ -1276,22 +1348,40 @@ Règles:
   return { profile };
 });
 
-/** Health check pour load balancers / uptime monitors (pas d\'auth). */
-exports.healthz = onRequest({ invoker: 'public', memory: '128MiB', timeoutSeconds: 10 }, async (_req, res) => {
+/** Cache healthz deep — évite un write Firestore à chaque probe LB. */
+let healthzDeepCache = { at: 0, ok: false };
+
+/** Health check pour load balancers / uptime monitors (pas d'auth).
+ *  GET /healthz        → liveness process (gratuit)
+ *  GET /healthz?deep=1 → readiness Firestore (cache 15s)
+ */
+exports.healthz = onRequest({ invoker: 'public', memory: '128MiB', timeoutSeconds: 10 }, async (req, res) => {
+  const deep = String(req.query.deep || '') === '1';
+  const payload = {
+    status: 'ok',
+    service: 'logicyle-functions',
+    region: 'europe-west1',
+    timestamp: new Date().toISOString(),
+  };
+
+  if (!deep) {
+    res.status(200).json(payload);
+    return;
+  }
+
+  const now = Date.now();
+  if (healthzDeepCache.ok && now - healthzDeepCache.at < 15_000) {
+    res.status(200).json({ ...payload, deep: 'cached' });
+    return;
+  }
+
   try {
-    // Ping Firestore léger — confirme que le runtime + Admin SDK sont OK.
-    await db.collection('_health').doc('ping').set(
-      { checkedAt: new Date().toISOString() },
-      { merge: true }
-    );
-    logStructured('INFO', 'healthz_ok', { status: 'ok' });
-    res.status(200).json({
-      status: 'ok',
-      service: 'logicyle-functions',
-      region: 'europe-west1',
-      timestamp: new Date().toISOString(),
-    });
+    await db.collection('_health').doc('ping').get();
+    healthzDeepCache = { at: now, ok: true };
+    logStructured('INFO', 'healthz_deep_ok', { status: 'ok' });
+    res.status(200).json({ ...payload, deep: 'live' });
   } catch (err) {
+    healthzDeepCache = { at: now, ok: false };
     logStructured('ERROR', 'healthz_failed', { error: String(err && err.message || err) });
     res.status(503).json({ status: 'degraded', error: 'firestore_unreachable' });
   }
