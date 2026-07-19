@@ -14,7 +14,7 @@ setGlobalOptions({
 admin.initializeApp();
 
 /** Secrets Gen2 montés en process.env (firebase functions:secrets:set …). */
-const SECRET_STRIPE = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'];
+const SECRET_STRIPE = ['STRIPE_SECRET_KEY']; // ajouter STRIPE_WEBHOOK_SECRET quand whsec est prêt
 const SECRET_STRIPE_BILLING = ['STRIPE_SECRET_KEY'];
 const SECRET_NOLIO = ['NOLIO_CLIENT_ID', 'NOLIO_CLIENT_SECRET'];
 const SECRET_GEMINI = ['GEMINI_API_KEY'];
@@ -463,7 +463,7 @@ async function creditReferrer(referrerUserId) {
 /** Origines autorisées pour redirects Stripe (évite open redirect via Origin spoofé). */
 function resolveAppOrigin(request) {
   const raw = (request.rawRequest && request.rawRequest.headers && request.rawRequest.headers.origin) || '';
-  const defaults = ['https://logicyle.app', 'https://www.logicyle.app', 'http://localhost:5173', 'http://localhost:3000'];
+  const defaults = ['https://logicycle2.netlify.app', 'https://logicyle.app', 'https://www.logicyle.app', 'http://localhost:5173', 'http://localhost:3000'];
   const fromEnv = (process.env.ALLOWED_APP_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
