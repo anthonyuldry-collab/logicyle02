@@ -1,5 +1,6 @@
 import React from 'react';
 import { isChunkLoadError } from '../utils/lazyWithReload';
+import { recoverFromStaleDeploy } from '../utils/recoverFromStaleDeploy';
 
 interface SectionErrorBoundaryProps {
   children: React.ReactNode;
@@ -36,9 +37,10 @@ export class SectionErrorBoundary extends React.Component<
   }
 
   handleRetry = () => {
-    // Chunk obsolète après un deploy : un simple reset d’état ne suffit pas.
+    // Chunk obsolète après un deploy : il faut purger SW + caches, pas seulement recharger.
     if (isChunkLoadError(this.state.error)) {
-      window.location.reload();
+      sessionStorage.removeItem('logicycle:chunk-reload');
+      void recoverFromStaleDeploy();
       return;
     }
     this.setState({ hasError: false, error: null });

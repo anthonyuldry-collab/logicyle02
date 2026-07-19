@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './src/index.css';
 import { captureException, initMonitoring } from './services/monitoring';
+import { isChunkLoadError } from './utils/lazyWithReload';
+import { recoverFromStaleDeploy } from './utils/recoverFromStaleDeploy';
 
 void initMonitoring();
 
@@ -19,7 +21,7 @@ if (import.meta.env.PROD) {
         const check = () => {
           void registration.update();
         };
-        setInterval(check, 60 * 60 * 1000);
+        setInterval(check, 60 * 1000);
         // Au retour sur l’onglet (cas fréquent après un deploy).
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') check();
@@ -84,7 +86,14 @@ class AppErrorBoundary extends React.Component<
           </p>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              if (isChunkLoadError(this.state.error)) {
+                sessionStorage.removeItem('logicycle:chunk-reload');
+                void recoverFromStaleDeploy();
+                return;
+              }
+              window.location.reload();
+            }}
             style={{
               marginTop: 16,
               padding: '8px 16px',

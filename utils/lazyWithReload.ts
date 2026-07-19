@@ -1,4 +1,5 @@
 import { ComponentType, lazy, LazyExoticComponent } from 'react';
+import { recoverFromStaleDeploy } from './recoverFromStaleDeploy';
 
 const RELOAD_KEY = 'logicycle:chunk-reload';
 
@@ -10,12 +11,13 @@ export function isChunkLoadError(error: unknown): boolean {
     message.includes('Failed to fetch dynamically imported module') ||
     message.includes('Importing a module script failed') ||
     message.includes('error loading dynamically imported module') ||
+    message.includes('Unable to preload CSS') ||
     (error as Error).name === 'ChunkLoadError'
   );
 }
 
 /**
- * Comme React.lazy, mais force un rechargement unique de la page
+ * Comme React.lazy, mais purge le SW / les caches puis recharge
  * si le chunk n’existe plus (souvent juste après un deploy Netlify).
  */
 export function lazyWithReload<T extends ComponentType<any>>(
@@ -31,7 +33,7 @@ export function lazyWithReload<T extends ComponentType<any>>(
         const alreadyReloaded = sessionStorage.getItem(RELOAD_KEY) === '1';
         if (!alreadyReloaded) {
           sessionStorage.setItem(RELOAD_KEY, '1');
-          window.location.reload();
+          void recoverFromStaleDeploy();
           // Empêche React de rendre l’erreur pendant le reload.
           return new Promise(() => {});
         }
