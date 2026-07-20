@@ -41,8 +41,18 @@ export function buildInitialSubscription(
   };
 }
 
-export function buildInitialIndependentSubscription(userRole: UserRole | string): TeamSubscription {
-  const planId = getIndependentPlanIdForRole(userRole);
+export function buildInitialIndependentSubscription(
+  userRole: UserRole | string,
+  selectedPlanId?: SubscriptionPlanId
+): TeamSubscription {
+  const expected = getIndependentPlanIdForRole(userRole);
+  const planId =
+    selectedPlanId === SubscriptionPlanId.INDEPENDENT_RIDER ||
+    selectedPlanId === SubscriptionPlanId.INDEPENDENT_STAFF
+      ? selectedPlanId === expected
+        ? selectedPlanId
+        : expected
+      : expected;
   const now = new Date();
   const trialEnds = new Date(now);
   trialEnds.setDate(trialEnds.getDate() + TRIAL_DAYS);
@@ -56,11 +66,18 @@ export function buildInitialIndependentSubscription(userRole: UserRole | string)
 export async function createIndependentCheckoutSession(
   planId: SubscriptionPlanId,
   interval: 'month' | 'year',
-  referralCode?: string | null
+  referralCode?: string | null,
+  trialPeriodDays?: number | null
 ): Promise<{ url: string }> {
   const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<
-    { planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string; scope: 'user' },
+    {
+      planId: SubscriptionPlanId;
+      interval: 'month' | 'year';
+      referralCode?: string;
+      scope: 'user';
+      trialPeriodDays?: number;
+    },
     { url: string }
   >(functions, 'createStripeCheckout');
   const payload: {
@@ -68,9 +85,13 @@ export async function createIndependentCheckoutSession(
     interval: 'month' | 'year';
     referralCode?: string;
     scope: 'user';
+    trialPeriodDays?: number;
   } = { planId, interval, scope: 'user' };
   if (referralCode?.trim()) {
     payload.referralCode = referralCode.trim();
+  }
+  if (trialPeriodDays != null && trialPeriodDays > 0) {
+    payload.trialPeriodDays = trialPeriodDays;
   }
   const result = await fn(payload);
   return result.data;
@@ -86,9 +107,15 @@ export async function createIndependentBillingPortalSession(): Promise<{ url: st
 export async function requestIndependentPlanUpgrade(
   planId: SubscriptionPlanId,
   interval: 'month' | 'year' = 'year',
-  referralCode?: string | null
+  referralCode?: string | null,
+  trialPeriodDays?: number | null
 ): Promise<void> {
-  const { url } = await createIndependentCheckoutSession(planId, interval, referralCode);
+  const { url } = await createIndependentCheckoutSession(
+    planId,
+    interval,
+    referralCode,
+    trialPeriodDays
+  );
   window.location.href = url;
 }
 
@@ -96,20 +123,36 @@ export async function createCheckoutSession(
   teamId: string,
   planId: SubscriptionPlanId,
   interval: 'month' | 'year',
-  referralCode?: string | null
+  referralCode?: string | null,
+  trialPeriodDays?: number | null
 ): Promise<{ url: string }> {
   const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<
-    { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string },
+    {
+      teamId: string;
+      planId: SubscriptionPlanId;
+      interval: 'month' | 'year';
+      referralCode?: string;
+      trialPeriodDays?: number;
+    },
     { url: string }
   >(functions, 'createStripeCheckout');
-  const payload: { teamId: string; planId: SubscriptionPlanId; interval: 'month' | 'year'; referralCode?: string } = {
+  const payload: {
+    teamId: string;
+    planId: SubscriptionPlanId;
+    interval: 'month' | 'year';
+    referralCode?: string;
+    trialPeriodDays?: number;
+  } = {
     teamId,
     planId,
     interval,
   };
   if (referralCode?.trim()) {
     payload.referralCode = referralCode.trim();
+  }
+  if (trialPeriodDays != null && trialPeriodDays > 0) {
+    payload.trialPeriodDays = trialPeriodDays;
   }
   const result = await fn(payload);
   return result.data;
@@ -126,8 +169,27 @@ export async function requestPlanUpgrade(
   teamId: string,
   planId: SubscriptionPlanId,
   interval: 'month' | 'year' = 'year',
-  referralCode?: string | null
+  referralCode?: string | null,
+  trialPeriodDays?: number | null
 ): Promise<void> {
-  const { url } = await createCheckoutSession(teamId, planId, interval, referralCode);
+  const { url } = await createCheckoutSession(
+    teamId,
+    planId,
+    interval,
+    referralCode,
+    trialPeriodDays
+  );
   window.location.href = url;
+}
+
+/** Jours d’essai Stripe selon la formule (aligné essai / pilote app). */
+export function getSignupTrialDaysForPlan(planId: SubscriptionPlanId): number {
+  if (
+    planId === SubscriptionPlanId.CONTINENTAL ||
+    planId === SubscriptionPlanId.PRO ||
+    planId === SubscriptionPlanId.FEDERATION
+  ) {
+    return PILOT_DAYS;
+  }
+  return TRIAL_DAYS;
 }

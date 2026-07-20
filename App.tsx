@@ -64,6 +64,7 @@ import {
   TeamOperationalSettings,
   TeamRecruitmentTarget,
   SubscriptionPlanId,
+  SignupMode,
   TeamMembershipStatus,
   TeamMembership,
   TeamRole,
@@ -92,12 +93,19 @@ import {
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
+  type User as FirebaseAuthUser,
 } from "firebase/auth";
 import { auth, db } from "./firebaseConfig";
-import { doc, setDoc, updateDoc, deleteDoc, addDoc, collection } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, addDoc, collection, deleteField } from "firebase/firestore";
 import * as firebaseService from "./services/firebaseService";
+import {
+  clearPendingSignup,
+  persistPendingSignup,
+  readPendingSignup,
+} from "./utils/pendingSignupStorage";
 import { addRiderToSeasonArchive } from "./utils/performanceArchiveUtils";
 import { getCurrentSeasonYear } from "./utils/seasonUtils";
 import {
@@ -126,6 +134,7 @@ import LoginView from "./sections/LoginView";
 import NoTeamView from "./sections/NoTeamView";
 import PartnerLobbyView from "./sections/PartnerLobbyView";
 import PendingApprovalView from "./sections/PendingApprovalView";
+import EmailVerificationView from "./sections/EmailVerificationView";
 import SignupView, { SignupData } from "./sections/SignupView";
 import {
   SectionSuspense,
@@ -238,6 +247,7 @@ import {
   createBillingPortalSession,
   requestIndependentPlanUpgrade,
   createIndependentBillingPortalSession,
+  getSignupTrialDaysForPlan,
 } from "./services/billingService";
 import { captureReferralFromUrl, getPendingReferralCode } from "./services/referralService";
 import { processPendingInvitesOnLogin } from "./services/inviteService";
@@ -346,11 +356,20 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
-    "login" | "signup" | "app" | "pending" | "no_team" | "partner_lobby" | "load_error" | "pricing"
+    | "login"
+    | "signup"
+    | "app"
+    | "pending"
+    | "no_team"
+    | "partner_lobby"
+    | "load_error"
+    | "pricing"
+    | "verify_email"
   >("login");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null); // Nouvel état pour stocker les données d'inscription
-  const pendingSignupDataRef = useRef<SignupData | null>(null); // Référence pour éviter les problèmes de closure
+  const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null);
+  const pendingSignupDataRef = useRef<SignupData | null>(null);
+  const [authFirebaseUser, setAuthFirebaseUser] = useState<FirebaseAuthUser | null>(null);
   const isMountedRef = useRef(true);
   const authEpochRef = useRef(0);
 
@@ -531,7 +550,7 @@ const App: React.FC = () => {
       let teamData: Partial<TeamState> = getInitialTeamState();
       let finalActiveTeamId: string | null = null;
 
-      // Vérifier d'abord le membership actif
+      // Accès équipe uniquement via membership ACTIVE (demande athlète = PENDING → pas d'accès)
       if (activeMembership) {
         finalActiveTeamId = activeMembership.teamId;
         const storedTeamId = restoreActiveTeamId();
@@ -543,9 +562,12 @@ const App: React.FC = () => {
         ) {
           finalActiveTeamId = storedTeamId;
         }
-      } 
-      // Si pas de membership mais l'utilisateur a un teamId (cas après création d'équipe)
-      else if (user.teamId) {
+      }
+      // Fallback teamId sans membership : réservé Manager (post-création d'équipe) — jamais athlète/staff PENDING
+      else if (
+        user.teamId &&
+        user.userRole === UserRole.MANAGER
+      ) {
         finalActiveTeamId = user.teamId;
       }
       // Compte partenaire invité : charger l'équipe liée au partenariat
@@ -611,7 +633,11 @@ const App: React.FC = () => {
         teamData = { ...getInitialTeamState(), missions: globalMissions };
         if (!isMountedRef.current) return;
         setView("app");
-        setCurrentSection("myDashboard");
+        const independentAccess = getIndependentSubscriptionAccess(user);
+        // Sans abonnement / essai actif → page tarifs (pas d'accès métier)
+        setCurrentSection(
+          independentAccess?.isActive ? "myDashboard" : "pricing"
+        );
       } else if (user.userRole === UserRole.PARTNER) {
         setView("partner_lobby");
       } else {
@@ -677,39 +703,123 @@ const App: React.FC = () => {
           // If profile doesn't exist (e.g., first login after signup), create it. This makes the app more robust.
           if (!userProfile) {
             try {
-              // Utiliser les données d'inscription stockées si disponibles (via ref pour éviter les problèmes de closure)
-              const signupData = pendingSignupDataRef.current;
+              const signupData =
+                pendingSignupDataRef.current ||
+                (() => {
+                  const stored = readPendingSignup();
+                  return stored
+                    ? ({ ...stored, password: "" } as SignupData)
+                    : null;
+                })();
+
               if (signupData) {
                 await firebaseService.createUserProfile(
                   firebaseUser.uid,
-                  signupData
+                  { ...signupData, acceptLegalConsent: signupData.acceptLegalConsent ?? true }
                 );
-                // Nettoyer les données temporaires après utilisation
                 setPendingSignupData(null);
                 pendingSignupDataRef.current = null;
-              } else {
-                // Fallback pour les utilisateurs existants sans données d'inscription
+                clearPendingSignup();
+
+                userProfile = await firebaseService.getUserProfile(
+                  firebaseUser.uid
+                );
+
+                // Enchaîner le checkout Stripe (carte + intervalle choisi à l'inscription)
+                const planId = signupData.planId;
+                const interval =
+                  signupData.billingInterval === 'month' || signupData.billingInterval === 'year'
+                    ? signupData.billingInterval
+                    : 'year';
+                if (planId && userProfile) {
+                  try {
+                    const trialDays = getSignupTrialDaysForPlan(planId);
+                    const isIndependent =
+                      signupData.signupMode === SignupMode.INDEPENDENT &&
+                      userProfile.userRole !== UserRole.MANAGER;
+
+                    if (userProfile.userRole === UserRole.MANAGER && signupData.teamName?.trim()) {
+                      const created = await firebaseService.createTeamForUser(
+                        firebaseUser.uid,
+                        {
+                          name: signupData.teamName.trim(),
+                          level: TeamLevel.HORS_DN,
+                          country: 'FR',
+                          planId,
+                        },
+                        UserRole.MANAGER,
+                      );
+                      try {
+                        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+                          pendingPlanId: deleteField(),
+                          pendingBillingInterval: deleteField(),
+                        });
+                      } catch {
+                        /* ignore */
+                      }
+                      await requestPlanUpgrade(
+                        created.teamId,
+                        planId,
+                        interval,
+                        getPendingReferralCode(),
+                        trialDays,
+                      );
+                      return;
+                    }
+
+                    if (isIndependent) {
+                      try {
+                        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+                          pendingBillingInterval: deleteField(),
+                        });
+                      } catch {
+                        /* ignore */
+                      }
+                      await requestIndependentPlanUpgrade(
+                        planId,
+                        interval,
+                        getPendingReferralCode(),
+                        trialDays,
+                      );
+                      return;
+                    }
+                  } catch (checkoutErr) {
+                    console.error('Checkout post-inscription:', checkoutErr);
+                    // Compte créé : l'utilisateur pourra payer plus tard via Abonnement
+                  }
+                }
+              } else if (firebaseUser.emailVerified) {
+                // Invite magic-link / legacy verified account — profil minimal sans données inventées
                 const { email } = firebaseUser;
                 const emailPrefix = email?.split("@")[0] || "utilisateur";
-                const firstName = emailPrefix;
-                const lastName = "";
-                const newProfileData: SignupData = {
+                await firebaseService.createUserProfile(firebaseUser.uid, {
                   email: email || "",
-                  firstName,
-                  lastName,
+                  firstName: emailPrefix,
+                  lastName: "",
                   password: "",
-                  userRole: UserRole.COUREUR, // Rôle par défaut pour les utilisateurs existants
-                  birthDate: "1990-01-01", // Date par défaut pour les utilisateurs existants
-                  sex: undefined, // Genre non défini par défaut
-                };
-                await firebaseService.createUserProfile(
-                  firebaseUser.uid,
-                  newProfileData
+                  userRole: UserRole.COUREUR,
+                  birthDate: "",
+                });
+                userProfile = await firebaseService.getUserProfile(
+                  firebaseUser.uid
+                );
+              } else {
+                clearPendingSignup();
+                try {
+                  await signOut(auth);
+                } catch {
+                  /* ignore */
+                }
+                alert(t("signupProfileIncomplete"));
+                setView("signup");
+                setIsLoading(false);
+                return;
+              }
+              if (!userProfile) {
+                userProfile = await firebaseService.getUserProfile(
+                  firebaseUser.uid
                 );
               }
-              userProfile = await firebaseService.getUserProfile(
-                firebaseUser.uid
-              ); // Re-fetch the newly created profile
             } catch (profileError: any) {
               console.error("Erreur lors de la création du profil utilisateur:", profileError);
               
@@ -764,7 +874,15 @@ const App: React.FC = () => {
 
             if (!userProfile) return;
             if (isStale()) return;
+            setAuthFirebaseUser(firebaseUser);
             setCurrentUser(userProfile);
+
+            if (!firebaseUser.emailVerified) {
+              setView("verify_email");
+              setIsLoading(false);
+              return;
+            }
+
             await loadDataForUser(userProfile); // This will set loading to false
             if (isStale()) return;
             // Redirection automatique vers le tableau de bord administrateur pour les admins
@@ -777,6 +895,7 @@ const App: React.FC = () => {
           }
         } else {
           if (isStale()) return;
+          setAuthFirebaseUser(null);
           setCurrentUser(null);
           setAppState({
             ...getInitialGlobalState(),
@@ -2543,32 +2662,35 @@ const App: React.FC = () => {
     data: SignupData
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      // Stocker les données d'inscription temporairement (état et ref)
       setPendingSignupData(data);
       pendingSignupDataRef.current = data;
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
-      // The onAuthStateChanged listener will now handle creating the user profile.
-      // This prevents race conditions and centralizes profile creation logic.
+      persistPendingSignup({ ...data, acceptLegalConsent: true });
+      const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      try {
+        await sendEmailVerification(cred.user);
+      } catch (verifyErr) {
+        console.warn("Envoi email de vérification:", verifyErr);
+      }
       return { success: true, message: "" };
     } catch (error: any) {
-      // En cas d'erreur, nettoyer les données temporaires
       setPendingSignupData(null);
       pendingSignupDataRef.current = null;
+      clearPendingSignup();
       if (error.code === "auth/email-already-in-use") {
         return {
           success: false,
-          message: "Cette adresse email est déjà utilisée par un autre compte.",
+          message: t("signupEmailAlreadyUsed"),
         };
       }
       if (error.code === "auth/weak-password") {
         return { success: false, message: t("signupPasswordTooShort") };
       }
       if (error.code === "auth/invalid-email") {
-        return { success: false, message: "L'adresse email n'est pas valide." };
+        return { success: false, message: t("signupInvalidEmail") };
       }
       return {
         success: false,
-        message: `Erreur d'inscription: ${error.message}`,
+        message: t("signupGenericError"),
       };
     }
   };
@@ -2663,8 +2785,16 @@ const App: React.FC = () => {
       return;
     }
 
-    if (joinRole === UserRole.COUREUR) {
+    // Sécuriser : self-join uniquement Coureur / Staff → demande PENDING
+    const safeJoinRole =
+      joinRole === UserRole.STAFF ? UserRole.STAFF : UserRole.COUREUR;
+
+    if (safeJoinRole === UserRole.COUREUR) {
       const team = appState.teams?.find((t) => t.id === teamId);
+      if (team?.operationalSettings?.acceptRiderApplications === false) {
+        alert(`${team.name} n'accepte pas les candidatures pour le moment.`);
+        return;
+      }
       const riderSegment = resolveRiderMarketSegmentFromUser(currentUser);
       if (!canRiderApplyToTeam(riderSegment, team, team?.operationalSettings)) {
         alert(getMarketMismatchMessage(riderSegment, team));
@@ -2676,11 +2806,12 @@ const App: React.FC = () => {
       await firebaseService.requestToJoinTeam(
         currentUser.id,
         teamId,
-        joinRole,
+        safeJoinRole,
         {
           firstName: currentUser.firstName,
           lastName: currentUser.lastName,
           email: currentUser.email,
+          staffRole: currentUser.staffRole,
         }
       );
       setView("pending");
@@ -2733,6 +2864,16 @@ const App: React.FC = () => {
         teamData,
         UserRole.MANAGER // Forcer le rôle Manager
       );
+
+      // Nettoyer le plan d'inscription une fois l'équipe créée
+      try {
+        await updateDoc(doc(db, "users", currentUser.id), {
+          pendingPlanId: deleteField(),
+          pendingBillingInterval: deleteField(),
+        });
+      } catch {
+        /* ignore */
+      }
       
       // Attendre un peu plus pour s'assurer que toutes les données sont propagées
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2766,6 +2907,8 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    setAuthFirebaseUser(null);
+    clearPendingSignup();
     signOut(auth);
   };
 
@@ -2862,6 +3005,20 @@ const App: React.FC = () => {
           if (section === "eventDetail" && eventId) {
             setAppState((prev: AppState) => ({ ...prev, activeEventId: null }));
           }
+          return;
+        }
+      }
+    }
+    if (
+      currentUser &&
+      isIndependentUser(displayUser ?? currentUser) &&
+      !isSuperAdminUser(currentUser)
+    ) {
+      const alwaysAllowed: AppSection[] = ['userSettings', 'pricing', 'settings'];
+      if (!alwaysAllowed.includes(section)) {
+        const access = getIndependentSubscriptionAccess(displayUser ?? currentUser);
+        if (!access?.isActive) {
+          setCurrentSection("pricing");
           return;
         }
       }
@@ -3018,6 +3175,25 @@ const App: React.FC = () => {
         />
       );
     }
+    if (view === "verify_email" && authFirebaseUser) {
+      return (
+        <EmailVerificationView
+          firebaseUser={authFirebaseUser}
+          onLogout={handleLogout}
+          onVerified={async () => {
+            await authFirebaseUser.reload();
+            if (!authFirebaseUser.emailVerified) return;
+            const profile =
+              currentUser ||
+              (await firebaseService.getUserProfile(authFirebaseUser.uid));
+            if (profile) {
+              setCurrentUser(profile);
+              await loadDataForUser(profile);
+            }
+          }}
+        />
+      );
+    }
     if (view === "pending") {
       return (
         <PendingApprovalView
@@ -3112,9 +3288,18 @@ const App: React.FC = () => {
         ...(userIsIndependent
           ? (subscriptionAccess?.isActive
               ? []
-              : uiUser.userRole === UserRole.STAFF
-                ? (['missionSearch'] as AppSection[])
-                : (['teamSearch'] as AppSection[]))
+              : ([
+                  'teamSearch',
+                  'missionSearch',
+                  'scouting',
+                  'myPerformance',
+                  'performance',
+                  'independentSpace',
+                  'myTrips',
+                  'myCareer',
+                  'staff',
+                  'roster',
+                ] as AppSection[]))
           : userIsSuperAdmin || isDemoTeamContext
             ? []
             : getLockedSections(effectiveTeamSubscription, fallbackPlan)),
@@ -4127,7 +4312,8 @@ const App: React.FC = () => {
                           alert("Utilisateur introuvable pour cette candidature.");
                           return;
                         }
-                        const approvedRole = (membership.userRole || UserRole.COUREUR) as UserRole;
+                        const approvedRole =
+                          membership.userRole === UserRole.STAFF ? UserRole.STAFF : UserRole.COUREUR;
                         const { riderCreated } = await firebaseService.approveTeamMembership(
                           {
                             membershipId: membership.id,
@@ -4137,6 +4323,7 @@ const App: React.FC = () => {
                             email,
                             firstName: membership.firstName || existingUser?.firstName,
                             lastName: membership.lastName || existingUser?.lastName,
+                            staffRole: membership.staffRole || existingUser?.staffRole,
                           },
                           currentUser!.id,
                           existingUser,
@@ -4238,7 +4425,8 @@ const App: React.FC = () => {
                             return;
                           }
 
-                          const approvedRole = (membership.userRole || membership.requestedUserRole || UserRole.COUREUR) as UserRole;
+                          const approvedRole =
+                            membership.userRole === UserRole.STAFF ? UserRole.STAFF : UserRole.COUREUR;
 
                           const { riderCreated, staffCreated } = await firebaseService.approveTeamMembership(
                             {
@@ -4249,6 +4437,7 @@ const App: React.FC = () => {
                               email,
                               firstName: membership.firstName || existingUser?.firstName,
                               lastName: membership.lastName || existingUser?.lastName,
+                              staffRole: membership.staffRole || existingUser?.staffRole,
                             },
                             currentUser.id,
                             existingUser
@@ -4258,7 +4447,20 @@ const App: React.FC = () => {
                           setAppState((prev: AppState) => {
                             const updatedUsers = prev.users.map((u) =>
                               u.id === userId
-                                ? { ...u, teamId: membership.teamId, userRole: approvedRole, permissionRole: TeamRole.MEMBER }
+                                ? {
+                                    ...u,
+                                    teamId: membership.teamId,
+                                    userRole: approvedRole,
+                                    permissionRole: TeamRole.MEMBER,
+                                    ...(approvedRole === UserRole.STAFF
+                                      ? {
+                                          staffRole:
+                                            membership.staffRole ||
+                                            existingUser?.staffRole ||
+                                            u.staffRole,
+                                        }
+                                      : {}),
+                                  }
                                 : u
                             );
 
@@ -4283,6 +4485,7 @@ const App: React.FC = () => {
                                 firstName: membership.firstName || existingUser?.firstName || '',
                                 lastName: membership.lastName || existingUser?.lastName || '',
                                 email,
+                                staffRole: membership.staffRole || existingUser?.staffRole,
                               })];
                             }
 
@@ -4368,7 +4571,7 @@ const App: React.FC = () => {
                           alert(errorMessage);
                         }
                       }}
-                      onInvite={async (email, teamId, userRole = UserRole.COUREUR) => {
+                      onInvite={async (email, teamId, userRole = UserRole.COUREUR, staffRole) => {
                         try {
                           if (!currentUser || !effectivePermissions) {
                             alert('Erreur: Permissions non définies. Veuillez vous reconnecter.');
@@ -4385,6 +4588,11 @@ const App: React.FC = () => {
                             return;
                           }
 
+                          if (userRole === UserRole.STAFF && !staffRole) {
+                            alert('Veuillez préciser la fonction du staff invité.');
+                            return;
+                          }
+
                           const team = appState.teams.find((t) => t.id === teamId);
                           const existingUser = appState.users.find(
                             (u) => u.email.toLowerCase() === email.trim().toLowerCase()
@@ -4398,6 +4606,7 @@ const App: React.FC = () => {
                             userRole,
                             invitedBy: currentUser.id,
                             existingUserId: existingUser?.id,
+                            staffRole,
                           });
 
                           setAppState((prev: AppState) => ({
@@ -4416,6 +4625,7 @@ const App: React.FC = () => {
                                 invitedBy: currentUser.id,
                                 invitedAt: new Date().toISOString(),
                                 source: 'email_invite',
+                                ...(staffRole ? { staffRole } : {}),
                               },
                             ],
                           }));

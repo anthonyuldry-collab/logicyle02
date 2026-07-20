@@ -180,6 +180,7 @@
 
 ## Fichiers associés
 
+- `juridique/00-README-creation-SAS.md` — dossier création SASU LogiCycle (statuts, guide, pacte)
 - `comparaison-ippogee.md` — comparatif factuel vente
 - `worldtour-strategie-en.md` — wedge · coexistence Ippogee
 - `strategie-commerciale.md` — règles commerciales

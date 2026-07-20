@@ -43,6 +43,7 @@ import {
   TeamLevel,
   StaffMember,
   StaffStatus,
+  StaffRole,
   Sex,
   SignupInfo,
   ChecklistRole,
@@ -92,8 +93,7 @@ import { getStaffMemberForUser } from '../utils/staffMemberUtils';
 import { getDefaultPlanForTeamLevel } from '../constants/subscriptionPlans';
 import { buildInitialIndependentSubscription, buildInitialSubscription } from './billingService';
 import { buildDefaultRider, buildDefaultStaffMember } from '../utils/defaultTeamMemberProfiles';
-import { purgeUserPersonalDataSecure, deleteTeamAndAllDataSecure } from './gdprCloudService';
-import { GdprConsent } from '../types';
+import { resolveStaffRole, resolveStaffRoleOrDefault } from '../utils/staffRoleUtils';
 import {
   canRiderApplyToTeam,
   canTeamScoutRider,
@@ -101,7 +101,8 @@ import {
   getTeamMarketContext,
   resolveRiderMarketSegmentFromUser,
 } from '../utils/riderTeamMarketSegment';
-
+import { purgeUserPersonalDataSecure, deleteTeamAndAllDataSecure } from './gdprCloudService';
+import { GdprConsent } from '../types';
 // Accès marketplace missions : tout compte staff (équipe ou vacataire).
 const hasAccessToMissions = (user: User, staff: StaffMember[]): boolean => {
     if (user.userRole === UserRole.STAFF) return true;
@@ -174,6 +175,8 @@ export const getUserProfile = async (userId: string): Promise<User | null> => {
 export const createUserProfile = async (uid: string, signupData: SignupData) => {
     try {
         const { email, firstName, lastName, userRole, birthDate, sex } = signupData;
+        const teamName = signupData.teamName?.trim() || '';
+        const sponsorName = signupData.sponsorName?.trim() || '';
 
         // Validation des données requises
         if (!email || !firstName || !lastName) {
@@ -188,15 +191,15 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             throw new Error("Le rôle utilisateur est requis.");
         }
 
-        // Validation de la date de naissance (peut être optionnelle pour les utilisateurs existants)
-        if (!birthDate && signupData.password) {
-            // Si c'est une nouvelle inscription (avec mot de passe), birthDate est requis
+        // Validation de la date de naissance (inscription complète)
+        const isFullSignup = Boolean(signupData.acceptLegalConsent || signupData.password);
+        if (!birthDate && isFullSignup) {
             throw new Error("La date de naissance est requise pour l'inscription.");
         }
 
         // Normalisation du sex avec gestion améliorée
         let normalizedSex: Sex | undefined = undefined;
-        if (sex !== undefined && sex !== null) {
+        if (sex !== undefined && sex !== null && String(sex).trim() !== '') {
             const sexStr = String(sex);
             const maleValues = new Set<string>(['male', Sex.MALE, Sex.MALE_SHORT]);
             const femaleValues = new Set<string>(['female', Sex.FEMALE, Sex.FEMALE_SHORT, Sex.FEMALE_EN]);
@@ -204,6 +207,27 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
                 normalizedSex = Sex.MALE;
             } else if (femaleValues.has(sexStr)) {
                 normalizedSex = Sex.FEMALE;
+            }
+        }
+
+        // Nouvelle inscription : sexe Homme/Femme obligatoire
+        if (isFullSignup && normalizedSex === undefined) {
+            throw new Error("Le sexe (Homme ou Femme) est requis pour l'inscription.");
+        }
+
+        if (isFullSignup && userRole === UserRole.MANAGER && !teamName) {
+            throw new Error("Le nom de l'équipe est requis pour créer un compte Manager.");
+        }
+
+        if (isFullSignup && userRole === UserRole.PARTNER && !sponsorName) {
+            throw new Error("Le nom du sponsor / entreprise est requis pour créer un compte Partenaire.");
+        }
+
+        let normalizedStaffRole: StaffRole | undefined;
+        if (userRole === UserRole.STAFF) {
+            normalizedStaffRole = resolveStaffRole(signupData.staffRole);
+            if (isFullSignup && !normalizedStaffRole) {
+                throw new Error("La fonction staff (DS, mécano, kiné…) est requise pour l'inscription.");
             }
         }
 
@@ -225,12 +249,23 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
                 privacyPolicyVersion: LEGAL_VERSIONS.PRIVACY_POLICY_VERSION,
                 ndaAcceptedAt: now,
                 ndaVersion: LEGAL_VERSIONS.NDA_VERSION,
+                ...(signupData.parentalConsentAccepted
+                    ? { parentalConsentAcceptedAt: now }
+                    : {}),
             };
         }
 
         const isIndependentSignup =
             signupData.signupMode === SignupMode.INDEPENDENT &&
             userRole !== UserRole.MANAGER;
+
+        if (isFullSignup && isIndependentSignup && !signupData.planId) {
+            throw new Error("Une formule d'abonnement est requise pour le profil indépendant.");
+        }
+
+        if (isFullSignup && userRole === UserRole.MANAGER && !signupData.planId) {
+            throw new Error("Une formule d'abonnement est requise pour créer une équipe.");
+        }
 
         const newUser: Omit<User, 'id'> = {
             email,
@@ -242,12 +277,31 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             openToExternalMissions: false,
             signupInfo: Object.keys(signupInfo).length > 0 ? signupInfo : undefined,
             gdprConsent,
+            ...(userRole === UserRole.MANAGER && teamName ? { teamName } : {}),
+            ...(userRole === UserRole.MANAGER && signupData.planId
+                ? {
+                      pendingPlanId: signupData.planId,
+                      ...(signupData.billingInterval === 'month' || signupData.billingInterval === 'year'
+                          ? { pendingBillingInterval: signupData.billingInterval }
+                          : { pendingBillingInterval: 'year' as const }),
+                  }
+                : {}),
+            ...(isIndependentSignup &&
+            (signupData.billingInterval === 'month' || signupData.billingInterval === 'year')
+                ? { pendingBillingInterval: signupData.billingInterval }
+                : {}),
+            ...(userRole === UserRole.STAFF && normalizedStaffRole
+                ? { staffRole: normalizedStaffRole }
+                : {}),
             ...(isIndependentSignup
                 ? {
                       signupMode: SignupMode.INDEPENDENT,
                       isIndependentProfile: true,
                       independentActivatedAt: now,
-                      subscription: buildInitialIndependentSubscription(userRole),
+                      subscription: buildInitialIndependentSubscription(
+                          userRole,
+                          signupData.planId,
+                      ),
                   }
                 : {}),
             createdAt: now,
@@ -263,6 +317,26 @@ export const createUserProfile = async (uid: string, signupData: SignupData) => 
             await setDoc(userDocRef, cleanedNewUser, { merge: true });
         } else {
             await setDoc(userDocRef, cleanedNewUser);
+        }
+
+        // Partenaire : créer le profil marketplace avec le nom sponsor dès l'inscription
+        if (userRole === UserRole.PARTNER && sponsorName) {
+            const contactName = `${firstName} ${lastName}`.trim();
+            const partnerProfile: PartnerMarketplaceProfile = {
+                id: `pmp-${uid}`,
+                userId: uid,
+                companyName: sponsorName,
+                contactName: contactName || sponsorName,
+                contactEmail: email,
+                isVisible: false,
+                createdAt: now,
+                updatedAt: now,
+            };
+            await setDoc(
+                doc(db, 'partnerMarketplaceProfiles', partnerProfile.id),
+                cleanDataForFirebase(partnerProfile),
+                { merge: true },
+            );
         }
 
     } catch (error: any) {
@@ -289,9 +363,33 @@ export const requestToJoinTeam = async (
     userId: string,
     teamId: string,
     userRole: UserRole,
-    userInfo?: { firstName?: string; lastName?: string; email?: string }
+    userInfo?: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      staffRole?: string;
+    }
 ) => {
     try {
+        // Self-join : uniquement Coureur ou Staff (jamais Manager / Partenaire)
+        const safeRole =
+            userRole === UserRole.STAFF ? UserRole.STAFF : UserRole.COUREUR;
+        if (userRole !== UserRole.COUREUR && userRole !== UserRole.STAFF) {
+            throw new Error("Seuls les athlètes et le staff peuvent demander à rejoindre une équipe.");
+        }
+
+        let resolvedStaffRole: ReturnType<typeof resolveStaffRole> | undefined;
+        if (safeRole === UserRole.STAFF) {
+            const userDocForRole = await getDoc(doc(db, 'users', userId));
+            const profileStaffRole = userDocForRole.exists()
+                ? (userDocForRole.data() as User).staffRole
+                : undefined;
+            resolvedStaffRole = resolveStaffRole(userInfo?.staffRole || profileStaffRole);
+            if (!resolvedStaffRole) {
+                throw new Error("Votre fonction staff est requise pour rejoindre une équipe. Complétez votre profil.");
+            }
+        }
+
         // Vérifier si l'utilisateur a déjà un membership pour cette équipe
         const membershipsColRef = collection(db, 'teamMemberships');
         const existingMemberships = await getDocs(
@@ -324,8 +422,12 @@ export const requestToJoinTeam = async (
         }
         
         const teamData = teamDoc.data() as Team;
-        
-        if (userRole === UserRole.COUREUR) {
+
+        // Athlète : candidatures ouvertes + segment marché compatible
+        if (safeRole === UserRole.COUREUR) {
+            if (teamData.operationalSettings?.acceptRiderApplications === false) {
+                throw new Error("Cette équipe n'accepte pas les candidatures pour le moment.");
+            }
             const userDocRef = doc(db, 'users', userId);
             const userDoc = await getDoc(userDocRef);
             if (!userDoc.exists()) {
@@ -338,18 +440,19 @@ export const requestToJoinTeam = async (
             }
         }
         
-        // Créer la demande de membership
+        // Créer la demande PENDING — aucun accès équipe tant qu'un manager n'approuve pas
         await addDoc(membershipsColRef, {
             userId,
             teamId,
             status: TeamMembershipStatus.PENDING,
-            userRole,
+            userRole: safeRole,
             firstName: userInfo?.firstName ?? '',
             lastName: userInfo?.lastName ?? '',
             email: userInfo?.email ?? '',
             teamName: teamData.name,
             source: 'self_join',
             requestedAt: new Date().toISOString(),
+            ...(resolvedStaffRole ? { staffRole: resolvedStaffRole } : {}),
         });
     } catch (error: unknown) {
         console.error("Erreur lors de la demande pour rejoindre l'équipe:", error);
@@ -365,6 +468,7 @@ export interface ApproveMembershipInput {
     email: string;
     firstName?: string;
     lastName?: string;
+    staffRole?: string;
 }
 
 export const approveTeamMembership = async (
@@ -372,14 +476,40 @@ export const approveTeamMembership = async (
     approvedBy: string,
     existingUser?: User | null
 ): Promise<{ riderCreated: boolean; staffCreated: boolean }> => {
-    const { membershipId, userId, teamId, userRole, email, firstName, lastName } = input;
+    const { membershipId, userId, teamId, email, firstName, lastName } = input;
+    // Jamais d'élévation Manager via une demande d'adhésion
+    const userRole =
+        input.userRole === UserRole.STAFF ? UserRole.STAFF : UserRole.COUREUR;
     const now = new Date().toISOString();
 
     const membershipRef = doc(db, 'teamMemberships', membershipId);
+    const membershipSnap = await getDoc(membershipRef);
+    if (!membershipSnap.exists()) {
+        throw new Error("Demande d'adhésion introuvable.");
+    }
+    const membershipData = membershipSnap.data();
+    if (membershipData.status === TeamMembershipStatus.ACTIVE) {
+        throw new Error("Cette demande a déjà été approuvée.");
+    }
+    if (membershipData.teamId !== teamId || (membershipData.userId && membershipData.userId !== userId)) {
+        throw new Error("Données d'adhésion incohérentes.");
+    }
+
+    const resolvedStaffRole =
+        userRole === UserRole.STAFF
+            ? resolveStaffRoleOrDefault(
+                  input.staffRole ??
+                    membershipData.staffRole ??
+                    existingUser?.staffRole,
+              )
+            : undefined;
+
     await updateDoc(membershipRef, {
         status: TeamMembershipStatus.ACTIVE,
+        userRole,
         approvedAt: now,
         approvedBy,
+        ...(resolvedStaffRole ? { staffRole: resolvedStaffRole } : {}),
     });
 
     const userDocRef = doc(db, 'users', userId);
@@ -396,11 +526,8 @@ export const approveTeamMembership = async (
             lastName: lastName || currentUserData?.lastName || '',
             userRole,
             permissionRole:
-              userRole === UserRole.COUREUR
-                ? TeamRole.VIEWER
-                : userRole === UserRole.MANAGER
-                  ? TeamRole.ADMIN
-                  : TeamRole.MEMBER,
+              userRole === UserRole.COUREUR ? TeamRole.VIEWER : TeamRole.MEMBER,
+            ...(resolvedStaffRole ? { staffRole: resolvedStaffRole } : {}),
             updatedAt: now,
         }),
         { merge: true }
@@ -430,14 +557,24 @@ export const approveTeamMembership = async (
         const staffRef = doc(db, 'teams', teamId, 'staff', userId);
         const staffSnap = await getDoc(staffRef);
         if (!staffSnap.exists()) {
-            const staffMember = buildDefaultStaffMember({
-                id: userId,
-                firstName: firstName || currentUserData?.firstName || '',
-                lastName: lastName || currentUserData?.lastName || '',
-                email: email || currentUserData?.email || '',
-            });
+            const staffMember = buildDefaultStaffMember(
+                {
+                    id: userId,
+                    firstName: firstName || currentUserData?.firstName || '',
+                    lastName: lastName || currentUserData?.lastName || '',
+                    email: email || currentUserData?.email || '',
+                    staffRole: resolvedStaffRole,
+                },
+                resolvedStaffRole,
+            );
             await setDoc(staffRef, cleanDataForFirebase(staffMember));
             staffCreated = true;
+        } else if (resolvedStaffRole) {
+            // Mettre à jour le rôle si la fiche existe déjà avec Autre / vide
+            const existing = staffSnap.data() as StaffMember;
+            if (!existing.role || existing.role === StaffRole.AUTRE) {
+                await updateDoc(staffRef, { role: resolvedStaffRole });
+            }
         }
     }
 

@@ -15,6 +15,13 @@ import {
   resolveRiderMarketSegmentFromUser,
   RIDER_SEGMENT_LABELS,
 } from '../utils/riderTeamMarketSegment';
+import {
+  STAFF_ROLE_KEYS,
+  getStaffRoleDisplayLabel,
+  getStaffRoleKey,
+  resolveStaffRole,
+} from '../utils/staffRoleUtils';
+import { updateUserProfile } from '../services/firebaseService';
 
 interface NoTeamViewProps {
   currentUser: User;
@@ -54,14 +61,21 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
-  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamName, setNewTeamName] = useState(() => currentUser.teamName?.trim() || '');
   const [newTeamLevel, setNewTeamLevel] = useState<TeamLevel>(TeamLevel.HORS_DN);
   const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>(
-    getDefaultPlanForTeamLevel(TeamLevel.HORS_DN)
+    () =>
+      (currentUser.pendingPlanId &&
+      Object.values(SubscriptionPlanId).includes(currentUser.pendingPlanId)
+        ? currentUser.pendingPlanId
+        : getDefaultPlanForTeamLevel(TeamLevel.HORS_DN))
   );
   const [newTeamCountry, setNewTeamCountry] = useState('FR');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [staffRoleDraft, setStaffRoleDraft] = useState(
+    () => getStaffRoleKey(currentUser.staffRole) || '',
+  );
 
   const { t, language } = useTranslations();
 
@@ -71,11 +85,18 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
   );
 
   const visiblePlans = useMemo(
-    () => SUBSCRIPTION_PLANS.filter((p) => !p.contactSales || newTeamLevel === TeamLevel.FEDERATION),
-    [newTeamLevel]
+    () => SUBSCRIPTION_PLANS.filter((p) => !p.contactSales),
+    []
   );
 
+  const isFirstLevelEffect = React.useRef(true);
+
   useEffect(() => {
+    // Conserver le plan signup au premier mount ; recalculer seulement si le niveau change
+    if (isFirstLevelEffect.current) {
+      isFirstLevelEffect.current = false;
+      return;
+    }
     const defaultPlan = getDefaultPlanForTeamLevel(newTeamLevel);
     setSelectedPlanId(recommendedPlans.includes(defaultPlan) ? defaultPlan : recommendedPlans[0] ?? defaultPlan);
   }, [newTeamLevel, recommendedPlans]);
@@ -125,6 +146,21 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
       setError(t('signupSelectTeamError'));
       return;
     }
+    if (isStaff) {
+      const resolved = resolveStaffRole(staffRoleDraft || currentUser.staffRole);
+      if (!resolved) {
+        setError(t('signupStaffRoleRequired'));
+        return;
+      }
+      if (!currentUser.staffRole || resolveStaffRole(currentUser.staffRole) !== resolved) {
+        try {
+          await updateUserProfile(currentUser.id, { staffRole: resolved });
+        } catch {
+          setError(t('signupStaffRoleRequired'));
+          return;
+        }
+      }
+    }
     const selectedTeam = teams.find((team) => team.id === selectedTeamId);
     if (isAthlete && riderSegment && selectedTeam) {
       if (!canRiderApplyToTeam(riderSegment, selectedTeam, selectedTeam.operationalSettings)) {
@@ -147,6 +183,11 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
     e.preventDefault();
     if (!newTeamName.trim()) {
       setError(t('signupTeamNameError'));
+      return;
+    }
+    const selectedPlan = SUBSCRIPTION_PLANS.find((p) => p.id === selectedPlanId);
+    if (selectedPlan?.contactSales || selectedPlanId === SubscriptionPlanId.FEDERATION) {
+      setError(t('noTeamFederationContact'));
       return;
     }
     setError('');
@@ -302,6 +343,9 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
                 })}
               </div>
               <p className="text-xs text-slate-400 mt-2">{t('billingTrialNote')}</p>
+              {newTeamLevel === TeamLevel.FEDERATION && (
+                <p className="text-xs text-amber-300 mt-2">{t('noTeamFederationContact')}</p>
+              )}
             </div>
 
             <ActionButton type="submit" className="w-full" disabled={isSubmitting}>
@@ -319,6 +363,29 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
               <div className="rounded-lg border border-slate-600 bg-slate-700/40 p-3 text-sm text-slate-300">
                 Votre profil marché : <strong className="text-slate-100">{RIDER_SEGMENT_LABELS[riderSegment]}</strong>.
                 Seules les équipes compatibles avec votre niveau sont sélectionnables.
+              </div>
+            )}
+
+            {isStaff && (
+              <div>
+                <label htmlFor="staff-role-lobby" className="text-sm font-medium text-slate-300">
+                  {t('signupStaffRoleLabel')} *
+                </label>
+                <select
+                  id="staff-role-lobby"
+                  value={staffRoleDraft}
+                  onChange={(e) => setStaffRoleDraft(e.target.value)}
+                  required
+                  className="input-field-sm w-full mt-1"
+                >
+                  <option value="">{t('signupStaffRolePlaceholder')}</option>
+                  {STAFF_ROLE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {getStaffRoleDisplayLabel(key)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-400">{t('signupStaffRoleHint')}</p>
               </div>
             )}
 

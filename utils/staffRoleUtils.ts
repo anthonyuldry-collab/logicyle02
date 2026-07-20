@@ -160,3 +160,39 @@ function keyOfStaffRole(r: StaffRole): StaffRoleKeyString {
   };
   return map[r];
 }
+
+const KEY_TO_STAFF_ROLE: Record<StaffRoleKeyString, StaffRole> = {
+  MANAGER: StaffRole.MANAGER,
+  DS: StaffRole.DS,
+  ASSISTANT: StaffRole.ASSISTANT,
+  MECANO: StaffRole.MECANO,
+  COMMUNICATION: StaffRole.COMMUNICATION,
+  MEDECIN: StaffRole.MEDECIN,
+  KINE: StaffRole.KINE,
+  RESP_PERF: StaffRole.RESP_PERF,
+  ENTRAINEUR: StaffRole.ENTRAINEUR,
+  DATA_ANALYST: StaffRole.DATA_ANALYST,
+  PREPA_PHYSIQUE: StaffRole.PREPA_PHYSIQUE,
+  AUTRE: StaffRole.AUTRE,
+};
+
+/**
+ * Normalise n’importe quelle valeur (clé enum, libellé FR, variante) vers un StaffRole.
+ * Retourne undefined si vide / non reconnu (pour validation inscription).
+ */
+export function resolveStaffRole(
+  role: StaffRole | string | null | undefined,
+): StaffRole | undefined {
+  if (role == null || String(role).trim() === '') return undefined;
+  const s = String(role).trim();
+  if ((Object.values(StaffRole) as string[]).includes(s)) return s as StaffRole;
+  const key = getStaffRoleKey(s);
+  return key ? KEY_TO_STAFF_ROLE[key] : undefined;
+}
+
+/** Comme resolveStaffRole, avec repli sur Autre. */
+export function resolveStaffRoleOrDefault(
+  role: StaffRole | string | null | undefined,
+): StaffRole {
+  return resolveStaffRole(role) ?? StaffRole.AUTRE;
+}

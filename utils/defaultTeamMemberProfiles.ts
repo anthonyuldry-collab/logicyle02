@@ -14,6 +14,7 @@ import {
   StaffRole,
   StaffStatus,
 } from '../types';
+import { resolveStaffRoleOrDefault } from './staffRoleUtils';
 
 const emptyPerformanceFactor = (): PerformanceFactorDetail => ({
   forces: '',
@@ -77,14 +78,18 @@ export function buildDefaultRider(
 }
 
 export function buildDefaultStaffMember(
-  user: Pick<User, 'id' | 'firstName' | 'lastName' | 'email'>
+  user: Pick<User, 'id' | 'firstName' | 'lastName' | 'email'> & {
+    staffRole?: StaffRole | string;
+  },
+  staffRole?: StaffRole | string,
 ): StaffMember {
+  const role = resolveStaffRoleOrDefault(staffRole ?? user.staffRole);
   return {
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    role: StaffRole.AUTRE,
+    role,
     status: StaffStatus.VACATAIRE,
     openToExternalMissions: false,
     skills: [],

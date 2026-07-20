@@ -320,12 +320,16 @@ service cloud.firestore {
         isSuperAdmin()
       );
 
-      // Self-join PENDING, ou invitation manager (email_invite).
+      // Self-join PENDING (athlète/staff seulement), ou invitation manager (email_invite).
+      // Jamais Manager/Partenaire en self_join — évite une élévation à l'approbation.
       allow create: if isSignedIn() && (
         (
           request.resource.data.userId == request.auth.uid
           && request.resource.data.status == 'En Attente'
           && request.resource.data.source == 'self_join'
+          && request.resource.data.userRole in ['Coureur', 'Staff']
+          && request.resource.data.teamId is string
+          && request.resource.data.teamId.size() > 0
         )
         || (
           isTeamManager(request.resource.data.teamId)

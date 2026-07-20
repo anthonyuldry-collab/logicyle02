@@ -2,6 +2,7 @@
 import React, { useState, ChangeEvent, FormEvent } from 'react';
 import { AppState, TeamMembership, TeamMembershipStatus, TeamRole, User, UserRole, PermissionLevel, AppSection, Team, PermissionRole } from '../types';
 import { getRoleLabel, suggestPermissionRoleForUser } from '../utils/permissionUtils';
+import { STAFF_ROLE_KEYS, getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import CheckCircleIcon from '../components/icons/CheckCircleIcon';
@@ -18,7 +19,7 @@ export interface UserManagementSectionProps {
     currentTeamId: string;
     onApprove: (membership: TeamMembership) => Promise<void>;
     onDeny: (membership: TeamMembership) => Promise<void>;
-    onInvite: (email: string, teamId: string, userRole?: UserRole) => Promise<void>;
+    onInvite: (email: string, teamId: string, userRole?: UserRole, staffRole?: string) => Promise<void>;
     onRemove: (userId: string, teamId: string) => Promise<void>;
     onUpdateRole: (userId: string, teamId: string, newUserRole: UserRole) => Promise<void>;
     onUpdatePermissionRole: (userId: string, newPermissionRole: string) => Promise<void>;
@@ -65,6 +66,7 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
     }
     const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.COUREUR);
+  const [inviteStaffRole, setInviteStaffRole] = useState('');
     const [editingPermissionsForUser, setEditingPermissionsForUser] = useState<User | null>(null);
     const [transferModalOpen, setTransferModalOpen] = useState(false);
     const [userToTransfer, setUserToTransfer] = useState<User | null>(null);
@@ -79,14 +81,23 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
     const handleInviteSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (inviteEmail) {
-            try {
-                await onInvite(inviteEmail, currentTeamId, inviteRole);
-                setInviteEmail('');
-            } catch (error) {
-                console.warn('⚠️ Erreur lors de l\'invitation:', error);
-                alert('⚠️ Erreur lors de l\'envoi de l\'invitation');
-            }
+        if (!inviteEmail) return;
+        if (inviteRole === UserRole.STAFF && !inviteStaffRole) {
+            alert('Veuillez préciser la fonction du staff (DS, mécano, kiné…).');
+            return;
+        }
+        try {
+            await onInvite(
+                inviteEmail,
+                currentTeamId,
+                inviteRole,
+                inviteRole === UserRole.STAFF ? inviteStaffRole : undefined,
+            );
+            setInviteEmail('');
+            setInviteStaffRole('');
+        } catch (error) {
+            console.warn('⚠️ Erreur lors de l\'invitation:', error);
+            alert('⚠️ Erreur lors de l\'envoi de l\'invitation');
         }
     };
 
@@ -221,7 +232,8 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
             <div className="space-y-8">
                 <div className="p-4 bg-white rounded-lg shadow-md border">
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">Inviter un nouveau membre</h3>
-                    <form onSubmit={handleInviteSubmit} className="flex flex-col sm:flex-row gap-2">
+                    <form onSubmit={handleInviteSubmit} className="flex flex-col gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
                         <input
                             type="email"
                             value={inviteEmail}
@@ -232,16 +244,36 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                         />
                         <select
                             value={inviteRole}
-                            onChange={(e: ChangeEvent<HTMLSelectElement>) => setInviteRole(e.target.value as UserRole)}
+                            onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                                const role = e.target.value as UserRole;
+                                setInviteRole(role);
+                                if (role !== UserRole.STAFF) setInviteStaffRole('');
+                            }}
                             className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white"
                         >
-                            <option value={UserRole.COUREUR}>🚴 Coureur</option>
-                            <option value={UserRole.STAFF}>👥 Staff</option>
-                            <option value={UserRole.MANAGER}>👑 Manager</option>
+                            <option value={UserRole.COUREUR}>Coureur</option>
+                            <option value={UserRole.STAFF}>Staff</option>
+                            <option value={UserRole.MANAGER}>Manager</option>
                         </select>
                         <ActionButton type="submit" icon={<PlusCircleIcon className="w-5 h-5"/>}>
                             Envoyer une invitation
                         </ActionButton>
+                        </div>
+                        {inviteRole === UserRole.STAFF && (
+                          <select
+                            value={inviteStaffRole}
+                            onChange={(e: ChangeEvent<HTMLSelectElement>) => setInviteStaffRole(e.target.value)}
+                            required
+                            className="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white"
+                          >
+                            <option value="">— Fonction staff —</option>
+                            {STAFF_ROLE_KEYS.map((key) => (
+                              <option key={key} value={key}>
+                                {getStaffRoleDisplayLabel(key)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                     </form>
                 </div>
                 {/* Section des demandes en attente */}
@@ -284,6 +316,11 @@ const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                                                 <td className="px-4 py-2 text-gray-600">{team.name}</td>
                                                 <td className="px-4 py-2 text-gray-600">
                                                   {membership.userRole || membership.requestedUserRole}
+                                                  {membership.staffRole && (
+                                                    <span className="block text-xs text-slate-500">
+                                                      {getStaffRoleDisplayLabel(membership.staffRole)}
+                                                    </span>
+                                                  )}
                                                   {isEmailInvite && (
                                                     <span className="ml-1 text-xs text-blue-600">(invitation)</span>
                                                   )}

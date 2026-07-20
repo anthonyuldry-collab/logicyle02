@@ -38,6 +38,7 @@ export async function sendTeamInvitation(params: {
   userRole: UserRole;
   invitedBy: string;
   existingUserId?: string;
+  staffRole?: string;
 }): Promise<InviteResult> {
   const normalizedEmail = normalizeEmail(params.email);
 
@@ -60,6 +61,10 @@ export async function sendTeamInvitation(params: {
     throw new Error('Une invitation est déjà en attente pour cet email sur cette équipe.');
   }
 
+  if (params.userRole === UserRole.STAFF && !params.staffRole) {
+    throw new Error('Veuillez préciser la fonction du staff invité (DS, mécano, kiné…).');
+  }
+
   const membershipRef = await addDoc(collection(db, 'teamMemberships'), {
     email: normalizedEmail,
     teamId: params.teamId,
@@ -71,6 +76,9 @@ export async function sendTeamInvitation(params: {
     invitedBy: params.invitedBy,
     invitedAt: new Date().toISOString(),
     source: 'email_invite',
+    ...(params.userRole === UserRole.STAFF && params.staffRole
+      ? { staffRole: params.staffRole }
+      : {}),
   });
 
   let emailSent = false;

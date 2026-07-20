@@ -512,7 +512,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     throw new HttpsError('failed-precondition', 'Stripe non configuré. Contactez le support.');
   }
 
-  const { teamId, planId, interval = 'year', referralCode, scope } = request.data || {};
+  const { teamId, planId, interval = 'year', referralCode, scope, trialPeriodDays } = request.data || {};
   if (!planId) {
     throw new HttpsError('invalid-argument', 'planId requis.');
   }
@@ -592,6 +592,13 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
       ? { userId: request.auth.uid, planId, scope: 'user' }
       : { teamId, planId },
   };
+
+  const trialDays = Number(trialPeriodDays);
+  if (Number.isFinite(trialDays) && trialDays > 0) {
+    sessionParams.subscription_data = {
+      trial_period_days: Math.min(Math.floor(trialDays), 90),
+    };
+  }
 
   if (referrerUserId && interval === 'year' && process.env.STRIPE_COUPON_REFERRAL_REFEREE) {
     sessionParams.discounts = [{ coupon: process.env.STRIPE_COUPON_REFERRAL_REFEREE }];

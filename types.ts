@@ -2610,6 +2610,8 @@ export interface GdprConsent {
   privacyPolicyVersion: string;
   ndaAcceptedAt?: string;
   ndaVersion?: string;
+  /** Autorisation parentale (compte mineur) */
+  parentalConsentAcceptedAt?: string;
 }
 
 export enum SignupMode {
@@ -2724,6 +2726,10 @@ export interface User {
     pushNotificationsEnabled?: boolean;
     /** Abonnement profil indépendant (coureur/staff sans équipe) */
     subscription?: TeamSubscription;
+    /** Formule équipe choisie à l’inscription Manager — utilisée à la création d’équipe */
+    pendingPlanId?: SubscriptionPlanId;
+    /** Intervalle choisi à l’inscription (mensuel / annuel) — pour enchaîner le checkout */
+    pendingBillingInterval?: 'month' | 'year';
 }
 
 export enum UserNotificationType {
@@ -3064,6 +3070,8 @@ export interface TeamMembership {
     source?: 'self_join' | 'email_invite' | string;
     invitedBy?: string;
     invitedAt?: string;
+    /** Fonction staff demandée (DS, mécano, kiné…) — distincte de userRole */
+    staffRole?: StaffRole | string;
 }
 
 export interface Mission {

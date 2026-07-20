@@ -90,7 +90,6 @@ export const ALWAYS_ACCESSIBLE_SECTIONS: AppSection[] = [
   'userSettings',
   'settings',
   'pricing',
-  'myDashboard',
   'adminDashboard',
   'organizationDashboard',
   'superAdmin',
@@ -150,13 +149,10 @@ export function normalizeIndependentSubscription(
   if (subscription?.planId && subscription?.status) {
     return subscription;
   }
-  const now = new Date();
-  const trialEnds = new Date(now);
-  trialEnds.setDate(trialEnds.getDate() + 14);
+  // Pas d'essai inventé : sans formule choisie / activée, l'accès reste inactif
   return {
     planId: fallbackPlan,
-    status: 'trialing',
-    trialEndsAt: trialEnds.toISOString(),
+    status: 'canceled',
   };
 }
 

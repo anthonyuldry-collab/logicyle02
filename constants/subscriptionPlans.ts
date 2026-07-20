@@ -280,6 +280,45 @@ export function isPlanAtLeast(current: SubscriptionPlanId, required: Subscriptio
   return PLAN_RANK[current] >= PLAN_RANK[required];
 }
 
+/** Lignes marketing (« Tout X + », essai / RGPD) — hors matrice de comparaison. */
+function isComparisonNoiseFeature(feature: { fr: string; en: string }): boolean {
+  const fr = feature.fr.trim();
+  const en = feature.en.trim();
+  if (/^tout\s+/i.test(fr) || /^everything\s+in\s+/i.test(en)) return true;
+  if (/essai|trial|rgpd|gdpr/i.test(fr) || /trial|gdpr/i.test(en)) return true;
+  return false;
+}
+
+export type PlanFeatureTier = {
+  introducedBy: SubscriptionPlanId;
+  features: { fr: string; en: string }[];
+};
+
+/**
+ * Groupes de fonctionnalités pour un tableau comparatif cumulatif :
+ * chaque feature n’apparaît qu’une fois, au palier qui l’introduit ;
+ * les plans de rang ≥ l’incluent.
+ */
+export function buildCumulativeFeatureTiers(plans: PlanDefinition[]): PlanFeatureTier[] {
+  const sorted = [...plans].sort((a, b) => PLAN_RANK[a.id] - PLAN_RANK[b.id]);
+  const seen = new Set<string>();
+  const tiers: PlanFeatureTier[] = [];
+
+  for (const plan of sorted) {
+    const features = plan.features.filter((f) => {
+      if (isComparisonNoiseFeature(f)) return false;
+      if (seen.has(f.fr)) return false;
+      seen.add(f.fr);
+      return true;
+    });
+    if (features.length > 0) {
+      tiers.push({ introducedBy: plan.id, features });
+    }
+  }
+
+  return tiers;
+}
+
 export function formatPriceEur(amount: number | null, language: 'fr' | 'en'): string {
   if (amount === null) return language === 'fr' ? 'Sur devis' : 'Contact us';
   return new Intl.NumberFormat(language === 'fr' ? 'fr-FR' : 'en-GB', {
