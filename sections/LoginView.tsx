@@ -60,10 +60,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
   };
 
   const inputClass =
-    'w-full rounded-xl border border-white/15 bg-white/5 px-3.5 py-3 text-sm text-white placeholder:text-slate-300 outline-none focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/30 transition';
+    'w-full rounded-xl border border-white/15 bg-white/5 px-3.5 py-3 text-sm text-white placeholder:text-slate-400 outline-none focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/30 transition';
 
   return (
-    <div className="lc-login relative min-h-screen overflow-hidden text-white">
+    <div className="lc-login relative h-screen overflow-hidden text-white">
       <style>{`
         @keyframes lc-login-sweep {
           0% { transform: translateX(-50%) skewX(-16deg); opacity: 0; }
@@ -78,12 +78,23 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        @keyframes lc-login-float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
+        @keyframes lc-login-spin-rev {
+          from { transform: rotate(360deg); }
+          to { transform: rotate(0deg); }
+        }
+        @keyframes lc-login-mark-in {
+          from { opacity: 0; transform: translate(-10%, 14%) scale(0.94); }
+          to { opacity: 1; transform: translate(0, 0) scale(1); }
+        }
+        @keyframes lc-login-right-in {
+          from { opacity: 0; transform: translate(8%, 6%); }
+          to { opacity: 1; transform: translate(0, 0); }
+        }
+        @keyframes lc-login-glow {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 0.55; }
         }
         .lc-login-rise { animation: lc-login-rise 0.65s ease-out both; }
-        .lc-login-rise-delay { animation: lc-login-rise 0.7s ease-out 0.12s both; }
         .lc-login-sweep {
           position: absolute;
           inset: -30% auto;
@@ -92,20 +103,128 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
           animation: lc-login-sweep 5.5s ease-in-out infinite;
           pointer-events: none;
         }
-        .lc-login-wheel {
-          animation: lc-login-spin 48s linear infinite;
+        /* Filigrane bas-gauche — logo entier fixe (flèche figée) */
+        .lc-login-mark-wrap {
+          position: absolute;
+          z-index: 0;
+          left: -16%;
+          bottom: -30vh;
+          height: 132vh;
+          width: auto;
+          aspect-ratio: 1;
+          pointer-events: none;
+          opacity: 0;
+          animation: lc-login-mark-in 1.05s cubic-bezier(0.22, 1, 0.36, 1) 0.12s forwards;
         }
-        .lc-login-float {
-          animation: lc-login-float 5s ease-in-out infinite;
+        .lc-login-mark-logo {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          opacity: 0.2;
+          user-select: none;
+          -webkit-user-drag: none;
+        }
+        /* Anneau orbital : mouvement propre, sans déformer le PNG */
+        .lc-login-gear-crown {
+          position: absolute;
+          inset: 6%;
+          width: 88%;
+          height: 88%;
+          margin: auto;
+          opacity: 0.45;
+          transform-origin: 50% 50%;
+          animation: lc-login-spin 48s linear infinite;
+          will-change: transform;
+        }
+        .lc-login-mark-glow {
+          position: absolute;
+          inset: 18%;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(99,102,241,0.28) 0%, transparent 70%);
+          filter: blur(28px);
+          animation: lc-login-glow 5s ease-in-out infinite;
+        }
+        /* Équilibre droite */
+        .lc-login-right {
+          position: absolute;
+          z-index: 0;
+          right: -8%;
+          top: 12%;
+          width: min(52vw, 520px);
+          height: min(52vw, 520px);
+          pointer-events: none;
+          opacity: 0;
+          animation: lc-login-right-in 1.1s ease-out 0.35s forwards;
+        }
+        .lc-login-right-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 1.5px solid rgba(129, 140, 248, 0.22);
+        }
+        .lc-login-right-ring--spin {
+          animation: lc-login-spin-rev 70s linear infinite;
+        }
+        .lc-login-right-ring--2 {
+          inset: 12%;
+          border-color: rgba(99, 102, 241, 0.16);
+          border-style: dashed;
+          animation: lc-login-spin 90s linear infinite;
+        }
+        .lc-login-right-ring--3 {
+          inset: 26%;
+          border-color: rgba(56, 189, 248, 0.12);
+        }
+        .lc-login-right-spoke {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 1px;
+          height: 50%;
+          background: linear-gradient(to top, transparent, rgba(129,140,248,0.28));
+          transform-origin: bottom center;
+        }
+        @media (min-width: 1024px) {
+          .lc-login-mark-wrap {
+            left: -10%;
+            bottom: -34vh;
+            height: 138vh;
+          }
+          .lc-login-mark-logo { opacity: 0.22; }
+          .lc-login-gear-crown { opacity: 0.5; }
+          .lc-login-right {
+            right: -4%;
+            top: 8%;
+            width: min(48vw, 560px);
+            height: min(48vw, 560px);
+          }
+        }
+        @media (max-width: 640px) {
+          .lc-login-mark-wrap {
+            left: -34%;
+            bottom: -22vh;
+            height: 110vh;
+          }
+          .lc-login-mark-logo { opacity: 0.14; }
+          .lc-login-gear-crown { opacity: 0.3; }
+          .lc-login-right {
+            right: -28%;
+            top: auto;
+            bottom: -8%;
+            width: 70vw;
+            height: 70vw;
+          }
         }
       `}</style>
 
-      {/* Fond plein écran */}
+      {/* Fond bleu */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 70% 55% at 75% 20%, rgba(79,70,229,0.4), transparent 55%), radial-gradient(ellipse 50% 40% at 15% 85%, rgba(14,165,233,0.18), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)',
+            'radial-gradient(ellipse 55% 50% at 18% 70%, rgba(79,70,229,0.28), transparent 55%), radial-gradient(ellipse 50% 45% at 82% 35%, rgba(79,70,229,0.32), transparent 55%), radial-gradient(ellipse 40% 35% at 70% 80%, rgba(14,165,233,0.12), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)',
         }}
       />
       <div
@@ -117,37 +236,76 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
       />
       <div className="lc-login-sweep" />
 
-      {/* Graphique roue / vitesse */}
-      <svg
-        className="lc-login-wheel absolute -right-24 top-1/2 -translate-y-1/2 w-[min(70vw,420px)] h-[min(70vw,420px)] opacity-[0.16] pointer-events-none"
-        viewBox="0 0 200 200"
-        aria-hidden
-      >
-        <circle cx="100" cy="100" r="78" fill="none" stroke="#818cf8" strokeWidth="2.5" />
-        <circle cx="100" cy="100" r="52" fill="none" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="100" cy="100" r="14" fill="#818cf8" />
-        {Array.from({ length: 12 }).map((_, i) => {
-          const deg = (i * 30 * Math.PI) / 180;
-          return (
-            <line
-              key={i}
-              x1="100"
-              y1="100"
-              x2={100 + 78 * Math.cos(deg)}
-              y2={100 + 78 * Math.sin(deg)}
-              stroke="#818cf8"
-              strokeWidth="1.5"
-              opacity={0.7}
-            />
-          );
-        })}
-      </svg>
+      {/* Logo fixe (flèche figée) + orbite qui tourne autour */}
+      <div className="lc-login-mark-wrap" aria-hidden>
+        <div className="lc-login-mark-glow" />
+        <svg className="lc-login-gear-crown" viewBox="0 0 200 200" fill="none">
+          <circle
+            cx="100"
+            cy="100"
+            r="92"
+            stroke="rgba(129,140,248,0.55)"
+            strokeWidth="1.4"
+            strokeDasharray="7 11"
+          />
+          <circle
+            cx="100"
+            cy="100"
+            r="84"
+            stroke="rgba(99,102,241,0.28)"
+            strokeWidth="1"
+          />
+          {Array.from({ length: 12 }).map((_, i) => {
+            const a = (i * 30 * Math.PI) / 180;
+            const x1 = 100 + 88 * Math.cos(a);
+            const y1 = 100 + 88 * Math.sin(a);
+            const x2 = 100 + 96 * Math.cos(a);
+            const y2 = 100 + 96 * Math.sin(a);
+            return (
+              <line
+                key={i}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="rgba(165,180,252,0.7)"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </svg>
+        <img
+          src="/icons/logicycle-logo.png"
+          alt=""
+          className="lc-login-mark-logo"
+        />
+      </div>
 
-      {/* Picto LC flottant */}
-      <div className="lc-login-float absolute left-[8%] top-[18%] hidden lg:block pointer-events-none opacity-90">
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 shadow-2xl">
-          <img src="/icons/icon.svg" alt="" className="w-14 h-14 rounded-xl" />
+      {/* Contrepoids graphique à droite */}
+      <div className="lc-login-right" aria-hidden>
+        <div
+          className="absolute inset-[-10%] rounded-full"
+          style={{
+            background:
+              'radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(14,165,233,0.06) 40%, transparent 70%)',
+          }}
+        />
+        <div className="lc-login-right-ring lc-login-right-ring--spin">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <span
+              key={i}
+              className="lc-login-right-spoke"
+              style={{ transform: `rotate(${i * 45}deg)` }}
+            />
+          ))}
         </div>
+        <div className="lc-login-right-ring lc-login-right-ring--2" />
+        <div className="lc-login-right-ring lc-login-right-ring--3" />
+        <div
+          className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{ background: 'rgba(129,140,248,0.45)', boxShadow: '0 0 24px rgba(99,102,241,0.5)' }}
+        />
       </div>
 
       {/* Langue */}
@@ -166,34 +324,31 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
         </select>
       </div>
 
-      <div className="relative z-10 min-h-screen flex flex-col lg:flex-row items-stretch">
-        {/* Colonne marque (hero) — après le formulaire sur mobile */}
-        <div className="lc-login-rise order-2 lg:order-1 flex-1 flex flex-col justify-center items-center text-center px-6 sm:px-10 lg:px-16 py-12 lg:py-16">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-300/90">
-            {t('loginEyebrow')}
-          </p>
+      {/* Contenu centré — viewport fixe, pas de scroll */}
+      <div className="relative z-10 h-full flex flex-col items-center justify-center px-4 sm:px-6 py-8 overflow-hidden">
+        <div className="lc-login-rise flex flex-col items-center text-center w-full max-w-md">
           <h1
-            className="mt-4 text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-none text-white"
-            style={{ letterSpacing: '-0.04em' }}
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-none text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.55)]"
+            style={{ letterSpacing: '-0.045em' }}
           >
             LOGICYCLE
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-slate-300 max-w-md leading-relaxed">
+          <p className="mt-3 sm:mt-4 text-sm sm:text-base text-slate-300 max-w-sm leading-relaxed">
             {t('loginSlogan')}
           </p>
-        </div>
 
-        {/* Panneau connexion (interaction) — avant le hero sur mobile */}
-        <div className="lc-login-rise-delay order-1 lg:order-2 flex-1 flex items-center justify-center px-4 sm:px-8 pt-16 pb-12 lg:pt-0 lg:pb-0 lg:pr-12">
-          <div className="w-full max-w-md rounded-3xl border border-white/12 bg-slate-900/55 backdrop-blur-xl shadow-2xl shadow-black/40 p-7 sm:p-8">
-            <div className="mb-6">
+          <div className="mt-6 sm:mt-8 w-full rounded-3xl border border-white/12 bg-slate-900/65 backdrop-blur-xl shadow-2xl shadow-black/40 p-6 sm:p-8 text-left">
+            <div className="mb-5 sm:mb-6">
               <h2 className="text-xl font-bold text-white">{t('loginWelcome')}</h2>
               <p className="mt-1 text-sm text-slate-300">{t('loginSubtitle')}</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleLoginSubmit}>
               <div>
-                <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+                <label
+                  htmlFor="email"
+                  className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5"
+                >
                   {t('loginEmailLabel')}
                 </label>
                 <input

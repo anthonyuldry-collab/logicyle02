@@ -35,12 +35,13 @@ export const translations = {
   
   // Login & Signup
   loginWelcome: { fr: "Bienvenue sur LogiCycle", en: "Welcome to LogiCycle" },
-  loginEyebrow: { fr: 'Tableau de bord', en: 'Dashboard' },
+  loginEyebrow: { fr: 'Plateforme équipe', en: 'Team platform' },
   pricingEyebrow: { fr: 'Tarifs', en: 'Pricing' },
   loginSlogan: {
     fr: 'La performance commence bien avant la ligne de départ.',
     en: 'Performance begins long before the start line.',
   },
+  signupEyebrow: { fr: 'Créer un compte', en: 'Create an account' },
   loginSubtitle: {
     fr: 'Connectez-vous à votre espace équipe',
     en: 'Sign in to your team workspace',

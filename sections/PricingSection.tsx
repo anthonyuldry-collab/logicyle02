@@ -394,9 +394,16 @@ const PricingSection: React.FC<PricingSectionProps> = ({
       <div className="space-y-10">
         <div className="text-center max-w-3xl mx-auto lc-pricing-rise">
           {isPublic && (
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-300/90 mb-3">
-              {t('pricingEyebrow')}
-            </p>
+            <div className="mb-6 flex flex-col items-center gap-4">
+              <img
+                src="/icons/logicycle-logo.png"
+                alt="LogiCycle"
+                className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_28px_rgba(0,212,255,0.3)]"
+              />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-300/80">
+                {t('pricingEyebrow')}
+              </p>
+            </div>
           )}
           <h2
             className={`font-black tracking-tight ${
