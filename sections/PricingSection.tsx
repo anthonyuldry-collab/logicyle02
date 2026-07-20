@@ -21,10 +21,16 @@ import { SubscriptionPlanId, TeamLevel, UserRole } from '../types';
 import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
 import ActionButton from '../components/ActionButton';
 
+export type BillingInterval = 'month' | 'year';
+
 interface PricingSectionProps {
   currentPlanId?: SubscriptionPlanId;
   teamLevel?: TeamLevel;
-  onSelectPlan?: (planId: SubscriptionPlanId, referralCode?: string) => void;
+  onSelectPlan?: (
+    planId: SubscriptionPlanId,
+    referralCode?: string,
+    interval?: BillingInterval
+  ) => void;
   isPublic?: boolean;
   isIndependent?: boolean;
   userRole?: UserRole | string;
@@ -35,6 +41,10 @@ interface PricingSectionProps {
 }
 
 type BillingPeriod = 'monthly' | 'annual';
+
+function periodToInterval(period: BillingPeriod): BillingInterval {
+  return period === 'monthly' ? 'month' : 'year';
+}
 
 const PricingSection: React.FC<PricingSectionProps> = ({
   currentPlanId,
@@ -215,11 +225,18 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                 </p>
               ) : (
                 <p className={`text-sm mt-1 ${isPublic ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')}{' '}
-                  <span className="text-emerald-400 font-medium">({t('pricingTwoMonthsFree')})</span>
+                  {t('pricingBilledMonthly')}
+                  {plan.annualPriceEur != null && savings > 0 && (
+                    <>
+                      {' · '}
+                      <span className="text-emerald-500 font-medium">
+                        {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')} ({t('pricingTwoMonthsFree')})
+                      </span>
+                    </>
+                  )}
                 </p>
               )}
-              {referralAnnual !== null && referralValid && (
+              {referralAnnual !== null && referralValid && showAnnual && (
                 <p className="text-sm text-indigo-300 font-medium mt-1.5">
                   {formatPriceEur(referralAnnual, language)}/{t('pricingYear')}{' '}
                   {t('referralWithCodeSuffix').replace('{percent}', String(REFERRAL_DISCOUNT_PERCENT))}
@@ -276,13 +293,18 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                     ? getIndependentPlanIdForRole(userRole)
                     : plan.id,
                   referralValid ? referralInput.trim() : undefined,
+                  periodToInterval(billingPeriod),
                 )
               }
               variant={plan.highlighted ? 'primary' : 'secondary'}
               className="w-full"
               disabled={isCurrent}
             >
-              {isCurrent ? t('billingCurrentPlan') : t('pricingSelectPlan')}
+              {isCurrent
+                ? t('billingCurrentPlan')
+                : billingPeriod === 'monthly'
+                  ? t('pricingSelectPlanMonthly')
+                  : t('pricingSelectPlanAnnual')}
             </ActionButton>
           ) : isPublic ? (
             <p className="text-center text-sm text-slate-400">{t('pricingSignupToStart')}</p>

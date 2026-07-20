@@ -3120,15 +3120,19 @@ const App: React.FC = () => {
             : getLockedSections(effectiveTeamSubscription, fallbackPlan)),
       ];
 
-      const handleUpgradePlan = async (planId: SubscriptionPlanId, referralCode?: string) => {
+      const handleUpgradePlan = async (
+        planId: SubscriptionPlanId,
+        referralCode?: string,
+        interval: 'month' | 'year' = 'year'
+      ) => {
         try {
           const code = referralCode ?? getPendingReferralCode();
           if (userIsIndependent) {
-            await requestIndependentPlanUpgrade(planId, "year", code);
+            await requestIndependentPlanUpgrade(planId, interval, code);
             return;
           }
           if (!appState.activeTeamId) return;
-          await requestPlanUpgrade(appState.activeTeamId, planId, "year", code);
+          await requestPlanUpgrade(appState.activeTeamId, planId, interval, code);
         } catch (err: any) {
           const message =
             err?.message ||

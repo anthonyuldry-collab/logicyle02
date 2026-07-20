@@ -19,7 +19,11 @@ type UserSettingsSectionProps = {
   initialTab?: UnifiedSettingsTab;
   currentPlanId?: SubscriptionPlanId;
   teamLevel?: TeamLevel;
-  onSelectPlan?: (planId: SubscriptionPlanId, referralCode?: string) => void | Promise<void>;
+  onSelectPlan?: (
+    planId: SubscriptionPlanId,
+    referralCode?: string,
+    interval?: 'month' | 'year'
+  ) => void | Promise<void>;
   isIndependent?: boolean;
   userRole?: UserRole | string;
   canManageTeamBilling?: boolean;
