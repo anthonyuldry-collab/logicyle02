@@ -27,4 +27,6 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_GPS_WEBHOOK_URL?: string
   readonly VITE_APP_VERSION?: string
+  /** true = skip Stripe checkout after signup (local testing only) */
+  readonly VITE_SKIP_SIGNUP_PAYMENT?: string
 }

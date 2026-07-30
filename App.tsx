@@ -69,6 +69,8 @@ import {
   TeamMembership,
   TeamRole,
   TeamState,
+  GlobalState,
+  TeamRecruitmentOffer,
   User,
   UserRole,
   Vehicle,
@@ -538,24 +540,53 @@ const App: React.FC = () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const globalData = await firebaseService.getGlobalData();
+      // Toujours repartir d’un profil frais (teamId / rôles après createTeamForUser)
+      let activeUser = user;
+      try {
+        const fresh = await firebaseService.getUserProfile(user.id);
+        if (fresh) activeUser = fresh;
+      } catch (profileErr) {
+        console.warn('Relecture profil ignorée:', profileErr);
+      }
+
+      let globalData: Partial<GlobalState> = {};
+      try {
+        globalData = await firebaseService.getGlobalData(activeUser);
+      } catch (globalErr) {
+        console.error('getGlobalData a échoué, fallback vide:', globalErr);
+        globalData = {
+          users: [activeUser],
+          teams: [],
+          teamMemberships: [],
+          permissions: getInitialGlobalState().permissions,
+          permissionRoles: getInitialGlobalState().permissionRoles,
+          scoutingRequests: [],
+        };
+      }
       if (!isMountedRef.current) return;
+
       const userMemberships = (globalData.teamMemberships || []).filter(
-        (m) => m.userId === user.id
+        (m) => m.userId === activeUser.id
       );
+      // Ne pas activer une équipe via une invitation email seule (sans userId lié) :
+      // sinon getTeamData échoue (rules : user.teamId doit matcher).
       const activeMembership = userMemberships.find(
-        (m) => m.status === TeamMembershipStatus.ACTIVE
+        (m) => m.status === TeamMembershipStatus.ACTIVE && Boolean(m.teamId)
       );
 
       let teamData: Partial<TeamState> = getInitialTeamState();
       let finalActiveTeamId: string | null = null;
 
-      // Accès équipe uniquement via membership ACTIVE (demande athlète = PENDING → pas d'accès)
-      if (activeMembership) {
+      // Accès équipe uniquement si le profil a le même teamId (rules Firestore)
+      if (
+        activeMembership?.teamId &&
+        activeUser.teamId === activeMembership.teamId
+      ) {
         finalActiveTeamId = activeMembership.teamId;
         const storedTeamId = restoreActiveTeamId();
         if (
           storedTeamId &&
+          storedTeamId === activeUser.teamId &&
           userMemberships.some(
             (m) => m.teamId === storedTeamId && m.status === TeamMembershipStatus.ACTIVE
           )
@@ -565,39 +596,38 @@ const App: React.FC = () => {
       }
       // Fallback teamId sans membership : réservé Manager (post-création d'équipe) — jamais athlète/staff PENDING
       else if (
-        user.teamId &&
-        user.userRole === UserRole.MANAGER
+        activeUser.teamId &&
+        activeUser.userRole === UserRole.MANAGER
       ) {
-        finalActiveTeamId = user.teamId;
+        finalActiveTeamId = activeUser.teamId;
       }
       // Compte partenaire invité : charger l'équipe liée au partenariat
-      else if (user.userRole === UserRole.PARTNER) {
+      else if (activeUser.userRole === UserRole.PARTNER) {
         const partnerTeamId = resolvePartnerTeamId({
           partnerAccesses: globalData.partnerAccesses || [],
-          userId: user.id,
-          userEmail: user.email,
+          userId: activeUser.id,
+          userEmail: activeUser.email,
         });
         if (partnerTeamId) {
           finalActiveTeamId = partnerTeamId;
         }
       }
 
-      if (isSuperAdminUser(user)) {
+      if (isSuperAdminUser(activeUser)) {
         // Cockpit plateforme : pas d’équipe rattachée (ni teamId profil, ni 1ʳᵉ équipe globale).
         finalActiveTeamId = null;
       }
 
-      let activeUser = user;
       if (
         finalActiveTeamId
-        && user.userRole === UserRole.PARTNER
-        && user.teamId !== finalActiveTeamId
+        && activeUser.userRole === UserRole.PARTNER
+        && activeUser.teamId !== finalActiveTeamId
       ) {
-        const teamPatch = getPartnerUserTeamPatch(user, finalActiveTeamId);
+        const teamPatch = getPartnerUserTeamPatch(activeUser, finalActiveTeamId);
         if (teamPatch) {
           try {
-            await firebaseService.updateUserProfile(user.id, teamPatch);
-            activeUser = { ...user, ...teamPatch };
+            await firebaseService.updateUserProfile(activeUser.id, teamPatch);
+            activeUser = { ...activeUser, ...teamPatch };
           } catch (syncError) {
             console.warn('Synchronisation teamId partenaire:', syncError);
           }
@@ -605,21 +635,25 @@ const App: React.FC = () => {
       }
 
       if (finalActiveTeamId) {
-        teamData = await firebaseService.getTeamData(finalActiveTeamId, activeUser);
+        try {
+          teamData = await firebaseService.getTeamData(finalActiveTeamId, activeUser);
+        } catch (teamErr) {
+          console.error('getTeamData a échoué, équipe vide:', teamErr);
+          teamData = getInitialTeamState();
+        }
         if (!isMountedRef.current) return;
         setView("app");
-        if (user.userRole === UserRole.PARTNER) {
+        if (activeUser.userRole === UserRole.PARTNER) {
           setCurrentSection("partnerPortal");
         }
-      } else if (isSuperAdminUser(user)) {
+      } else if (isSuperAdminUser(activeUser)) {
         if (!isMountedRef.current) return;
         setView("app");
         setCurrentSection("organizationDashboard");
-        if (user.teamId) {
+        if (activeUser.teamId) {
           try {
-            await firebaseService.updateUserProfile(user.id, { teamId: null });
-            activeUser = { ...user, teamId: null };
-            setCurrentUser(activeUser);
+            await firebaseService.updateUserProfile(activeUser.id, { teamId: null });
+            activeUser = { ...activeUser, teamId: null };
           } catch (clearTeamError) {
             console.warn('Nettoyage teamId Super Admin:', clearTeamError);
           }
@@ -628,27 +662,30 @@ const App: React.FC = () => {
         userMemberships.some((m) => m.status === TeamMembershipStatus.PENDING)
       ) {
         setView("pending");
-      } else if (isIndependentUser(user)) {
+      } else if (isIndependentUser(activeUser)) {
         const globalMissions = await firebaseService.getOpenMissionsGlobal();
         teamData = { ...getInitialTeamState(), missions: globalMissions };
         if (!isMountedRef.current) return;
         setView("app");
-        const independentAccess = getIndependentSubscriptionAccess(user);
+        const independentAccess = getIndependentSubscriptionAccess(activeUser);
         // Sans abonnement / essai actif → page tarifs (pas d'accès métier)
         setCurrentSection(
           independentAccess?.isActive ? "myDashboard" : "pricing"
         );
-      } else if (user.userRole === UserRole.PARTNER) {
+      } else if (activeUser.userRole === UserRole.PARTNER) {
         setView("partner_lobby");
       } else {
         setView("no_team");
       }
 
-      if (activeUser.id === user.id && activeUser.teamId !== user.teamId) {
-        setCurrentUser(activeUser);
-      }
+      setCurrentUser(activeUser);
 
-      const openRecruitmentOffers = await firebaseService.getOpenRecruitmentOffersGlobal();
+      let openRecruitmentOffers: TeamRecruitmentOffer[] = [];
+      try {
+        openRecruitmentOffers = await firebaseService.getOpenRecruitmentOffersGlobal();
+      } catch {
+        openRecruitmentOffers = [];
+      }
 
       setAppState({
         ...getInitialGlobalState(),
@@ -670,10 +707,30 @@ const App: React.FC = () => {
       setLanguageState(teamData.language || "fr");
     } catch (error: unknown) {
       console.error("Erreur lors du chargement des données utilisateur:", error);
-      const message = error instanceof Error ? error.message : "Erreur de chargement. Vérifiez votre connexion et réessayez.";
+      // Ne jamais bloquer sur load_error : dégradation contrôlée (permissions Firestore, etc.)
       if (isMountedRef.current) {
-        setLoadError(message);
-        setView("load_error");
+        setCurrentUser(user);
+        setAppState({
+          ...getInitialGlobalState(),
+          ...getInitialTeamState(),
+          users: [user],
+          activeEventId: null,
+          activeTeamId: user.teamId ?? null,
+        });
+        if (user.teamId && user.userRole === UserRole.MANAGER) {
+          setView("app");
+          setCurrentSection("myDashboard");
+        } else if (isIndependentUser(user)) {
+          setView("app");
+          setCurrentSection(
+            getIndependentSubscriptionAccess(user)?.isActive ? "myDashboard" : "pricing"
+          );
+        } else if (user.userRole === UserRole.PARTNER) {
+          setView("partner_lobby");
+        } else {
+          setView("no_team");
+        }
+        setLoadError(null);
       }
     } finally {
       if (isMountedRef.current) setIsLoading(false);
@@ -726,6 +783,9 @@ const App: React.FC = () => {
                 );
 
                 // Enchaîner le checkout Stripe (carte + intervalle choisi à l'inscription)
+                // VITE_SKIP_SIGNUP_PAYMENT=true → compte + essai sans redirect Stripe (tests locaux)
+                const skipSignupPayment =
+                  import.meta.env.VITE_SKIP_SIGNUP_PAYMENT === 'true';
                 const planId = signupData.planId;
                 const interval =
                   signupData.billingInterval === 'month' || signupData.billingInterval === 'year'
@@ -757,14 +817,21 @@ const App: React.FC = () => {
                       } catch {
                         /* ignore */
                       }
-                      await requestPlanUpgrade(
-                        created.teamId,
-                        planId,
-                        interval,
-                        getPendingReferralCode(),
-                        trialDays,
-                      );
-                      return;
+                      // Recharger le profil (teamId + Administrateur écrits par la Cloud Function)
+                      const refreshed = await firebaseService.getUserProfile(firebaseUser.uid);
+                      if (refreshed) {
+                        userProfile = refreshed;
+                      }
+                      if (!skipSignupPayment) {
+                        await requestPlanUpgrade(
+                          created.teamId,
+                          planId,
+                          interval,
+                          getPendingReferralCode(),
+                          trialDays,
+                        );
+                        return;
+                      }
                     }
 
                     if (isIndependent) {
@@ -775,13 +842,15 @@ const App: React.FC = () => {
                       } catch {
                         /* ignore */
                       }
-                      await requestIndependentPlanUpgrade(
-                        planId,
-                        interval,
-                        getPendingReferralCode(),
-                        trialDays,
-                      );
-                      return;
+                      if (!skipSignupPayment) {
+                        await requestIndependentPlanUpgrade(
+                          planId,
+                          interval,
+                          getPendingReferralCode(),
+                          trialDays,
+                        );
+                        return;
+                      }
                     }
                   } catch (checkoutErr) {
                     console.error('Checkout post-inscription:', checkoutErr);
@@ -2009,7 +2078,7 @@ const App: React.FC = () => {
       });
     }
 
-    const globalData = await firebaseService.getGlobalData();
+    const globalData = await firebaseService.getGlobalData(currentUser);
     const teamData = await firebaseService.getTeamData(teamId, currentUser);
     persistActiveTeamId(teamId);
 
@@ -2617,7 +2686,7 @@ const App: React.FC = () => {
 
   const handleLogin = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       return { success: true, message: "" };
     } catch (error: any) {
       // Gestion spécifique des erreurs Firebase Auth
@@ -2629,6 +2698,13 @@ const App: React.FC = () => {
           };
         case "auth/wrong-password":
           return { success: false, message: "Mot de passe incorrect." };
+        case "auth/invalid-credential":
+        case "auth/invalid-login-credentials":
+          return {
+            success: false,
+            message:
+              "Email ou mot de passe incorrect. Utilisez « Mot de passe oublié » ou réinscrivez-vous.",
+          };
         case "auth/invalid-email":
           return {
             success: false,
@@ -2652,7 +2728,7 @@ const App: React.FC = () => {
           console.error("Erreur Firebase Auth:", error);
           return {
             success: false,
-            message: "Erreur de connexion. Veuillez réessayer.",
+            message: "Email ou mot de passe incorrect. Veuillez réessayer.",
           };
       }
     }
@@ -2662,10 +2738,12 @@ const App: React.FC = () => {
     data: SignupData
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      setPendingSignupData(data);
-      pendingSignupDataRef.current = data;
-      persistPendingSignup({ ...data, acceptLegalConsent: true });
-      const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const email = data.email.trim().toLowerCase();
+      const signupPayload = { ...data, email };
+      setPendingSignupData(signupPayload);
+      pendingSignupDataRef.current = signupPayload;
+      persistPendingSignup({ ...signupPayload, acceptLegalConsent: true });
+      const cred = await createUserWithEmailAndPassword(auth, email, data.password);
       try {
         await sendEmailVerification(cred.user);
       } catch (verifyErr) {
@@ -2677,9 +2755,10 @@ const App: React.FC = () => {
       pendingSignupDataRef.current = null;
       clearPendingSignup();
       if (error.code === "auth/email-already-in-use") {
+        const usedEmail = data.email.trim().toLowerCase();
         return {
           success: false,
-          message: t("signupEmailAlreadyUsed"),
+          message: `${t("signupEmailAlreadyUsed")} (${usedEmail})`,
         };
       }
       if (error.code === "auth/weak-password") {
@@ -2838,7 +2917,7 @@ const App: React.FC = () => {
       lastName: currentUser.lastName,
       email: currentUser.email,
     });
-    const globalData = await firebaseService.getGlobalData();
+    const globalData = await firebaseService.getGlobalData(currentUser);
     setAppState((prev) => ({
       ...prev,
       teamMemberships: globalData.teamMemberships ?? prev.teamMemberships,

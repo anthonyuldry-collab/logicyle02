@@ -9,7 +9,8 @@ import CustomProductForm from '../nutrition/CustomProductForm';
 import NutritionPlanAiAssistant from '../nutrition/NutritionPlanAiAssistant';
 import { PREDEFINED_ALLERGEN_INFO } from '../../constants';
 import { createEmptyCustomProduct, formatProductNutritionSummary, formatGlucoseFructoseRatio } from '../../utils/nutritionProductUtils';
-import { GeneratedNutritionPlan, formatTimelineForDisplay } from '../../utils/nutritionPlanBuilder';
+import { GeneratedNutritionPlan, formatHourlyPlanForDisplay, formatTimelineForDisplay } from '../../utils/nutritionPlanBuilder';
+import { ULDRY_EXAMPLE_PRODUCTS } from '../../constants/uldryExampleProducts';
 
 interface NutritionTabProps {
     formData: Rider | Omit<Rider, 'id'>;
@@ -185,13 +186,34 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
     const handleApplyAiPlan = (plan: GeneratedNutritionPlan) => {
         setFormData(prev => {
             if (!prev) return prev;
+            const usedIds = new Set([
+                ...plan.selectedGels.map(s => s.productId),
+                ...plan.selectedBars.map(s => s.productId),
+                ...plan.selectedDrinks.map(s => s.productId),
+            ]);
+            const existingCustom = prev.performanceNutrition?.customProducts ?? [];
+            const exampleToAdd = plan.usedExampleCatalog
+                ? ULDRY_EXAMPLE_PRODUCTS.filter(
+                    p => usedIds.has(p.id)
+                      && !existingCustom.some(c => c.id === p.id)
+                      && !(teamProducts || []).some(t => t.id === p.id)
+                  )
+                : [];
             return {
                 ...prev,
                 performanceNutrition: {
                     ...(prev.performanceNutrition || {}),
                     carbsPerHourTarget: plan.carbsPerHourTarget,
                     hydrationNotes: plan.hydrationNotes,
-                    notes: `${plan.strategyNotes}\n\n--- Timeline ---\n${formatTimelineForDisplay(plan.timeline)}`,
+                    notes: [
+                        plan.strategyNotes,
+                        '',
+                        '--- Plan horaire ---',
+                        formatHourlyPlanForDisplay(plan.hourlyPlan),
+                        '',
+                        '--- Timeline ---',
+                        formatTimelineForDisplay(plan.timeline),
+                    ].join('\n'),
                     caloricGoal: plan.carbsPerHourTarget * 4,
                     hydrationGoal: plan.hydrationNotes,
                     selectedGels: plan.selectedGels,
@@ -200,6 +222,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                     gels: plan.selectedGels,
                     bars: plan.selectedBars,
                     drinks: plan.selectedDrinks,
+                    customProducts: [...existingCustom, ...exampleToAdd],
                 },
             };
         });

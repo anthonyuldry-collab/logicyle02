@@ -152,6 +152,38 @@ function drawSectionTitle(doc: jsPDF, y: number, title: string): number {
   return y + 7;
 }
 
+/** Dessine un texte dans une largeur max (réduit la police puis wrap sur 2 lignes). */
+function drawCellText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  baseFontSize = 7
+): number {
+  const value = text || '';
+  if (!value) return 0;
+
+  let fontSize = baseFontSize;
+  doc.setFontSize(fontSize);
+  while (fontSize > 5 && doc.getTextWidth(value) > maxWidth) {
+    fontSize -= 0.5;
+    doc.setFontSize(fontSize);
+  }
+
+  if (doc.getTextWidth(value) <= maxWidth) {
+    doc.text(value, x, y);
+    doc.setFontSize(baseFontSize);
+    return 0;
+  }
+
+  const lines = doc.splitTextToSize(value, maxWidth) as string[];
+  const shown = lines.slice(0, 2);
+  doc.text(shown, x, y);
+  doc.setFontSize(baseFontSize);
+  return Math.max(0, (shown.length - 1) * 3.2);
+}
+
 function drawRiderTable(
   doc: jsPDF,
   startY: number,
@@ -159,16 +191,23 @@ function drawRiderTable(
   maxRows: number,
   withBirthDate = true
 ): number {
+  // Largeurs recalculées pour laisser ~48 mm à l'email (souvent tronqué sinon).
   const colX = {
     num: MARGIN,
-    last: MARGIN + 8,
-    first: MARGIN + 38,
-    birth: MARGIN + 68,
-    nat: MARGIN + 95,
-    uci: MARGIN + 108,
-    phone: MARGIN + 138,
-    email: MARGIN + 158,
+    last: MARGIN + 7,
+    first: MARGIN + 33,
+    birth: MARGIN + 56,
+    nat: MARGIN + 76,
+    uci: MARGIN + 85,
+    phone: MARGIN + 107,
+    email: MARGIN + 133,
   };
+  const rightEdge = PAGE_W - MARGIN;
+  const emailW = rightEdge - colX.email;
+  const phoneW = colX.email - colX.phone - 1;
+  const lastW = colX.first - colX.last - 1;
+  const firstW = colX.birth - colX.first - 1;
+  const uciW = colX.phone - colX.uci - 1;
 
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
@@ -181,21 +220,22 @@ function drawRiderTable(
   doc.text('Tél.', colX.phone, startY);
   doc.text('Email', colX.email, startY);
   doc.setLineWidth(0.15);
-  doc.line(MARGIN, startY + 1, PAGE_W - MARGIN, startY + 1);
+  doc.line(MARGIN, startY + 1, rightEdge, startY + 1);
 
   let y = startY + 5;
   doc.setFont('helvetica', 'normal');
   for (let i = 0; i < maxRows; i++) {
     const row = rows[i];
+    doc.setFontSize(7);
     doc.text(String(i + 1), colX.num, y);
-    doc.text((row?.lastName || '').slice(0, 18), colX.last, y);
-    doc.text((row?.firstName || '').slice(0, 14), colX.first, y);
+    drawCellText(doc, row?.lastName || '', colX.last, y, lastW);
+    drawCellText(doc, row?.firstName || '', colX.first, y, firstW);
     if (withBirthDate) doc.text((row?.birthDate || '').slice(0, 10), colX.birth, y);
     doc.text((row?.nationality || '').slice(0, 3), colX.nat, y);
-    doc.text((row?.uciId || '').slice(0, 11), colX.uci, y);
-    doc.text((row?.phone || '').slice(0, 12), colX.phone, y);
-    doc.text((row?.email || '').slice(0, 18), colX.email, y);
-    y += 5;
+    drawCellText(doc, row?.uciId || '', colX.uci, y, uciW);
+    drawCellText(doc, row?.phone || '', colX.phone, y, phoneW);
+    const extra = drawCellText(doc, row?.email || '', colX.email, y, emailW, 6.5);
+    y += 5 + extra;
   }
   return y + 2;
 }
@@ -203,14 +243,21 @@ function drawRiderTable(
 function drawStaffTable(doc: jsPDF, startY: number, rows: PersonRow[], maxRows: number): number {
   const colX = {
     num: MARGIN,
-    last: MARGIN + 8,
-    first: MARGIN + 38,
-    nat: MARGIN + 68,
-    uci: MARGIN + 80,
-    role: MARGIN + 108,
-    phone: MARGIN + 138,
-    email: MARGIN + 158,
+    last: MARGIN + 7,
+    first: MARGIN + 33,
+    nat: MARGIN + 56,
+    uci: MARGIN + 65,
+    role: MARGIN + 87,
+    phone: MARGIN + 112,
+    email: MARGIN + 138,
   };
+  const rightEdge = PAGE_W - MARGIN;
+  const emailW = rightEdge - colX.email;
+  const phoneW = colX.email - colX.phone - 1;
+  const lastW = colX.first - colX.last - 1;
+  const firstW = colX.nat - colX.first - 1;
+  const uciW = colX.role - colX.uci - 1;
+  const roleW = colX.phone - colX.role - 1;
 
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
@@ -222,21 +269,22 @@ function drawStaffTable(doc: jsPDF, startY: number, rows: PersonRow[], maxRows: 
   doc.text('Rôle', colX.role, startY);
   doc.text('Tél.', colX.phone, startY);
   doc.text('Email', colX.email, startY);
-  doc.line(MARGIN, startY + 1, PAGE_W - MARGIN, startY + 1);
+  doc.line(MARGIN, startY + 1, rightEdge, startY + 1);
 
   let y = startY + 5;
   doc.setFont('helvetica', 'normal');
   for (let i = 0; i < maxRows; i++) {
     const row = rows[i];
+    doc.setFontSize(7);
     doc.text(String(i + 1), colX.num, y);
-    doc.text((row?.lastName || '').slice(0, 18), colX.last, y);
-    doc.text((row?.firstName || '').slice(0, 14), colX.first, y);
+    drawCellText(doc, row?.lastName || '', colX.last, y, lastW);
+    drawCellText(doc, row?.firstName || '', colX.first, y, firstW);
     doc.text((row?.nationality || '').slice(0, 3), colX.nat, y);
-    doc.text((row?.uciId || '').slice(0, 11), colX.uci, y);
-    doc.text((row?.role || '').slice(0, 14), colX.role, y);
-    doc.text((row?.phone || '').slice(0, 12), colX.phone, y);
-    doc.text((row?.email || '').slice(0, 18), colX.email, y);
-    y += 5;
+    drawCellText(doc, row?.uciId || '', colX.uci, y, uciW);
+    drawCellText(doc, row?.role || '', colX.role, y, roleW);
+    drawCellText(doc, row?.phone || '', colX.phone, y, phoneW);
+    const extra = drawCellText(doc, row?.email || '', colX.email, y, emailW, 6.5);
+    y += 5 + extra;
   }
   return y + 2;
 }

@@ -43,17 +43,34 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
     e.preventDefault();
     setResetError('');
     setIsResetting(true);
+    const targetEmail = forgotPasswordEmail.trim().toLowerCase();
     try {
-      await sendPasswordResetEmail(auth, forgotPasswordEmail);
+      await sendPasswordResetEmail(auth, targetEmail);
+      // Avec la protection anti-énumération Firebase, cet appel peut « réussir »
+      // même sans compte — l’email n’est alors pas envoyé.
       setResetMessage(
-        `${t('loginResetSuccess')} ${forgotPasswordEmail}, ${t('loginResetSuccess2')}`,
+        `${t('loginResetSuccess')} ${targetEmail}, ${t('loginResetSuccess2')} ` +
+          'Si rien n’arrive sous 2 min (spams inclus), le compte n’existe probablement plus : réinscrivez-vous.',
       );
       setTimeout(() => {
         setIsForgotPasswordModalOpen(false);
         setResetMessage('');
-      }, 4000);
-    } catch {
-      setResetError(t('loginResetError'));
+      }, 8000);
+    } catch (err: unknown) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code: unknown }).code)
+          : '';
+      if (code === 'auth/invalid-email') {
+        setResetError(t('signupInvalidEmail') || 'Adresse email invalide.');
+      } else if (code === 'auth/user-not-found') {
+        setResetError('Aucun compte avec cet email. Réinscrivez-vous.');
+      } else if (code === 'auth/too-many-requests') {
+        setResetError('Trop de demandes. Réessayez dans quelques minutes.');
+      } else {
+        console.error('sendPasswordResetEmail:', err);
+        setResetError(t('loginResetError'));
+      }
     } finally {
       setIsResetting(false);
     }
@@ -376,7 +393,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
                     onClick={() => {
                       setResetMessage('');
                       setResetError('');
-                      setForgotPasswordEmail('');
+                      setForgotPasswordEmail(email.trim());
                       setIsForgotPasswordModalOpen(true);
                     }}
                     className="text-xs font-medium text-indigo-300 hover:text-indigo-200 focus:outline-none focus:underline"

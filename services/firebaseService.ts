@@ -801,40 +801,289 @@ export async function recordDriverVehiclePosition(
     }
 }
 
-// --- GLOBAL DATA ---
-export const getGlobalData = async (): Promise<Partial<GlobalState>> => {
-    try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const teamsSnap = await getDocs(collection(db, 'teams'));
-        const membershipsSnap = await getDocs(collection(db, 'teamMemberships'));
-        const permissionsSnap = await getDocs(collection(db, 'permissions'));
-        const permissionRolesSnap = await getDocs(collection(db, 'permissionRoles'));
-        const scoutingRequestsSnap = await getDocs(collection(db, 'scoutingRequests'));
-    
-    const permissionsDoc = permissionsSnap.empty ? undefined : permissionsSnap.docs[0];
-    const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
-    const permissionRoles = permissionRolesSnap.size > 0
-        ? permissionRolesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
-        : fallbackPermissionRoles;
+function sanitizeTeamForDirectory(raw: Team & {
+    sepaSettings?: unknown;
+    gpsWebhookKey?: unknown;
+    invoiceSettings?: unknown;
+}): Team {
+    const { sepaSettings: _s, gpsWebhookKey: _g, invoiceSettings: _i, ...safe } = raw;
+    return safe as Team;
+}
 
+async function loadPermissionsBundle(): Promise<{
+    permissions: AppPermissions;
+    permissionRoles: PermissionRole[];
+}> {
+    try {
+        const [permissionsSnap, permissionRolesSnap] = await Promise.all([
+            getDocs(collection(db, 'permissions')),
+            getDocs(collection(db, 'permissionRoles')),
+        ]);
+        const permissionsDoc = permissionsSnap.empty ? undefined : permissionsSnap.docs[0];
+        const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
+        const permissionRoles =
+            permissionRolesSnap.size > 0
+                ? permissionRolesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PermissionRole))
+                : fallbackPermissionRoles;
         return {
-            users: usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User)),
-            teams: teamsSnap.docs.map(d => {
-                const raw = { id: d.id, ...d.data() } as Team & {
-                    sepaSettings?: unknown;
-                    gpsWebhookKey?: unknown;
-                    invoiceSettings?: unknown;
-                };
-                // Annuaire global : ne pas exposer secrets financiers / GPS
-                const { sepaSettings: _s, gpsWebhookKey: _g, invoiceSettings: _i, ...safe } = raw;
-                return safe as Team;
-            }),
-            teamMemberships: membershipsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamMembership)),
             permissions: mergeConfiguredPermissions(
-                permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {}
+                permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {},
             ),
             permissionRoles,
-            scoutingRequests: scoutingRequestsSnap.docs.map(d => ({ id: d.id, ...d.data() } as ScoutingRequest)),
+        };
+    } catch (error) {
+        console.warn('Chargement permissions ignoré:', error);
+        return {
+            permissions: mergeConfiguredPermissions({}),
+            permissionRoles: getInitialGlobalState().permissionRoles,
+        };
+    }
+}
+
+/** Charge les données globales en respectant les règles Firestore (pas de listes collection entières). */
+async function getScopedGlobalData(viewer: User): Promise<Partial<GlobalState>> {
+    const uid = viewer.id;
+    const email = (viewer.email || '').trim().toLowerCase();
+
+    const membershipById = new Map<string, TeamMembership>();
+    const mergeMemberships = (docs: Array<{ id: string; data: () => Record<string, unknown> }>) => {
+        for (const d of docs) {
+            membershipById.set(d.id, { id: d.id, ...d.data() } as TeamMembership);
+        }
+    };
+
+    try {
+        const byUser = await getDocs(
+            query(collection(db, 'teamMemberships'), where('userId', '==', uid)),
+        );
+        mergeMemberships(byUser.docs);
+    } catch (error) {
+        console.warn('Chargement memberships (userId) ignoré:', error);
+    }
+
+    if (email) {
+        try {
+            const byEmail = await getDocs(
+                query(collection(db, 'teamMemberships'), where('email', '==', email)),
+            );
+            mergeMemberships(byEmail.docs);
+        } catch (error) {
+            console.warn('Chargement memberships (email) ignoré:', error);
+        }
+    }
+
+    const teamIds = new Set<string>();
+    for (const m of membershipById.values()) {
+        if (m.teamId) teamIds.add(m.teamId);
+    }
+    if (viewer.teamId) teamIds.add(viewer.teamId);
+
+    // Memberships de l'équipe (candidatures / roster) — managers uniquement côté rules
+    for (const teamId of [...teamIds]) {
+        try {
+            const byTeam = await getDocs(
+                query(collection(db, 'teamMemberships'), where('teamId', '==', teamId)),
+            );
+            mergeMemberships(byTeam.docs);
+        } catch {
+            /* non-manager : ignoré */
+        }
+    }
+
+    const teamsById = new Map<string, Team>();
+    await Promise.all(
+        [...teamIds].map(async (teamId) => {
+            try {
+                const snap = await getDoc(doc(db, 'teams', teamId));
+                if (snap.exists()) {
+                    teamsById.set(
+                        teamId,
+                        sanitizeTeamForDirectory({ id: snap.id, ...snap.data() } as Team),
+                    );
+                }
+            } catch (error) {
+                console.warn(`Lecture équipe ${teamId} ignorée:`, error);
+            }
+        }),
+    );
+
+    // Annuaire : équipes ouvertes aux candidatures (requête alignée sur les rules)
+    // Désactivé si la requête échoue — ne doit jamais bloquer le login.
+    try {
+        const openTeamsSnap = await getDocs(
+            query(
+                collection(db, 'teams'),
+                where('operationalSettings.acceptRiderApplications', '==', true),
+            ),
+        );
+        for (const d of openTeamsSnap.docs) {
+            if (!teamsById.has(d.id)) {
+                teamsById.set(d.id, sanitizeTeamForDirectory({ id: d.id, ...d.data() } as Team));
+            }
+        }
+    } catch (error) {
+        console.warn('Annuaire équipes ouvertes ignoré:', error);
+    }
+
+    const usersById = new Map<string, User>();
+    try {
+        const selfSnap = await getDoc(doc(db, 'users', uid));
+        if (selfSnap.exists()) {
+            usersById.set(uid, { id: selfSnap.id, ...selfSnap.data() } as User);
+        }
+    } catch (error) {
+        console.warn('Lecture profil courant ignorée:', error);
+    }
+
+    // Membres de l’équipe uniquement si le profil a bien ce teamId (évite permission-denied)
+    const readableTeamIds = new Set<string>();
+    const selfTeamId = usersById.get(uid)?.teamId || viewer.teamId;
+    if (selfTeamId) readableTeamIds.add(selfTeamId);
+    for (const teamId of readableTeamIds) {
+        try {
+            const teammates = await getDocs(
+                query(collection(db, 'users'), where('teamId', '==', teamId)),
+            );
+            for (const d of teammates.docs) {
+                usersById.set(d.id, { id: d.id, ...d.data() } as User);
+            }
+        } catch (error) {
+            console.warn(`Lecture membres équipe ${teamId} ignorée:`, error);
+        }
+    }
+
+    try {
+        const searchable = await getDocs(
+            query(collection(db, 'users'), where('isSearchable', '==', true)),
+        );
+        for (const d of searchable.docs) {
+            if (!usersById.has(d.id)) {
+                usersById.set(d.id, { id: d.id, ...d.data() } as User);
+            }
+        }
+    } catch (error) {
+        console.warn('Annuaire profils searchable ignoré:', error);
+    }
+
+    let scoutingRequests: ScoutingRequest[] = [];
+    try {
+        const asAthlete = await getDocs(
+            query(collection(db, 'scoutingRequests'), where('athleteId', '==', uid)),
+        );
+        scoutingRequests = asAthlete.docs.map((d) => ({ id: d.id, ...d.data() } as ScoutingRequest));
+    } catch {
+        /* ignore */
+    }
+    for (const teamId of teamIds) {
+        try {
+            const asManager = await getDocs(
+                query(collection(db, 'scoutingRequests'), where('requesterTeamId', '==', teamId)),
+            );
+            const seen = new Set(scoutingRequests.map((r) => r.id));
+            for (const d of asManager.docs) {
+                if (!seen.has(d.id)) {
+                    scoutingRequests.push({ id: d.id, ...d.data() } as ScoutingRequest);
+                }
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
+    const { permissions, permissionRoles } = await loadPermissionsBundle();
+
+    return {
+        users: [...usersById.values()],
+        teams: [...teamsById.values()],
+        teamMemberships: [...membershipById.values()],
+        permissions,
+        permissionRoles,
+        scoutingRequests,
+        organizations: await loadOrganizations(),
+        partnerAccesses: await loadPartnerAccesses(),
+        partnerMarketplaceProfiles: await loadPartnerMarketplaceProfiles(),
+        teamSponsorshipNeeds: await loadTeamSponsorshipNeeds(),
+        partnershipMatchRequests: await loadPartnershipMatchRequests(),
+    };
+}
+
+// --- GLOBAL DATA ---
+export const getGlobalData = async (viewer?: User): Promise<Partial<GlobalState>> => {
+    try {
+        let effectiveViewer = viewer;
+        if (!effectiveViewer && auth.currentUser) {
+            const selfSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            if (selfSnap.exists()) {
+                effectiveViewer = { id: selfSnap.id, ...selfSnap.data() } as User;
+            }
+        }
+
+        // Super Admin : lecture large (cockpit plateforme)
+        if (effectiveViewer && isSuperAdminUser(effectiveViewer)) {
+            const [usersSnap, teamsSnap, membershipsSnap, scoutingRequestsSnap, bundle] =
+                await Promise.all([
+                    getDocs(collection(db, 'users')),
+                    getDocs(collection(db, 'teams')),
+                    getDocs(collection(db, 'teamMemberships')),
+                    getDocs(collection(db, 'scoutingRequests')),
+                    loadPermissionsBundle(),
+                ]);
+
+            return {
+                users: usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as User)),
+                teams: teamsSnap.docs.map((d) =>
+                    sanitizeTeamForDirectory({ id: d.id, ...d.data() } as Team),
+                ),
+                teamMemberships: membershipsSnap.docs.map(
+                    (d) => ({ id: d.id, ...d.data() } as TeamMembership),
+                ),
+                permissions: bundle.permissions,
+                permissionRoles: bundle.permissionRoles,
+                scoutingRequests: scoutingRequestsSnap.docs.map(
+                    (d) => ({ id: d.id, ...d.data() } as ScoutingRequest),
+                ),
+                organizations: await loadOrganizations(),
+                partnerAccesses: await loadPartnerAccesses(),
+                partnerMarketplaceProfiles: await loadPartnerMarketplaceProfiles(),
+                teamSponsorshipNeeds: await loadTeamSponsorshipNeeds(),
+                partnershipMatchRequests: await loadPartnershipMatchRequests(),
+            };
+        }
+
+        if (effectiveViewer) {
+            try {
+                return await getScopedGlobalData(effectiveViewer);
+            } catch (scopedErr) {
+                console.error('getScopedGlobalData a échoué, fallback minimal:', scopedErr);
+                const bundle = await loadPermissionsBundle().catch(() => ({
+                    permissions: mergeConfiguredPermissions({}),
+                    permissionRoles: getInitialGlobalState().permissionRoles,
+                }));
+                return {
+                    users: [effectiveViewer],
+                    teams: [],
+                    teamMemberships: [],
+                    permissions: bundle.permissions,
+                    permissionRoles: bundle.permissionRoles,
+                    scoutingRequests: [],
+                    organizations: [],
+                    partnerAccesses: [],
+                    partnerMarketplaceProfiles: [],
+                    teamSponsorshipNeeds: [],
+                    partnershipMatchRequests: [],
+                };
+            }
+        }
+
+        // Fallback minimal (pas de viewer résolu)
+        const bundle = await loadPermissionsBundle();
+        return {
+            users: [],
+            teams: [],
+            teamMemberships: [],
+            permissions: bundle.permissions,
+            permissionRoles: bundle.permissionRoles,
+            scoutingRequests: [],
             organizations: await loadOrganizations(),
             partnerAccesses: await loadPartnerAccesses(),
             partnerMarketplaceProfiles: await loadPartnerMarketplaceProfiles(),
@@ -1146,28 +1395,33 @@ export const getTeamData = async (
     const teamDocRef = doc(db, 'teams', teamId);
     
     const teamState: Partial<TeamState> = {};
-    const teamDocSnap = await getDoc(teamDocRef);
-    if(teamDocSnap.exists()) {
-        const teamData = teamDocSnap.data();
-        if (teamData) {
-            Object.assign(teamState, {
-                teamLevel: teamData.level,
-                subscription: teamData.subscription ?? {
-                    planId: getDefaultPlanForTeamLevel(teamData.level as TeamLevel),
-                    status: 'pilot',
-                    pilotEndsAt: new Date(Date.now() + 90 * 86400000).toISOString(),
-                },
-                operationalSettings: teamData.operationalSettings,
-                themePrimaryColor: teamData.themePrimaryColor,
-                themeAccentColor: teamData.themeAccentColor,
-                language: teamData.language,
-                teamLogoUrl: teamData.teamLogoUrl,
-                categoryBudgets: teamData.categoryBudgets,
-                sepaSettings: teamData.sepaSettings,
-                invoiceSettings: teamData.invoiceSettings,
-                // gpsWebhookKey chargé séparément (privateConfig) — pas depuis le doc public
-            });
+    try {
+        const teamDocSnap = await getDoc(teamDocRef);
+        if(teamDocSnap.exists()) {
+            const teamData = teamDocSnap.data();
+            if (teamData) {
+                Object.assign(teamState, {
+                    teamLevel: teamData.level,
+                    subscription: teamData.subscription ?? {
+                        planId: getDefaultPlanForTeamLevel(teamData.level as TeamLevel),
+                        status: 'pilot',
+                        pilotEndsAt: new Date(Date.now() + 90 * 86400000).toISOString(),
+                    },
+                    operationalSettings: teamData.operationalSettings,
+                    themePrimaryColor: teamData.themePrimaryColor,
+                    themeAccentColor: teamData.themeAccentColor,
+                    language: teamData.language,
+                    teamLogoUrl: teamData.teamLogoUrl,
+                    categoryBudgets: teamData.categoryBudgets,
+                    sepaSettings: teamData.sepaSettings,
+                    invoiceSettings: teamData.invoiceSettings,
+                    // gpsWebhookKey chargé séparément (privateConfig) — pas depuis le doc public
+                });
+            }
         }
+    } catch (error) {
+        console.warn(`Lecture doc équipe ${teamId} refusée:`, error);
+        // Continuer avec un état vide plutôt que de bloquer tout le login
     }
 
     // Clé GPS : uniquement si le viewer est manager (sinon rules refusent privateConfig)
@@ -1179,28 +1433,38 @@ export const getTeamData = async (
     }
 
     // Charger les modèles de checklist depuis la sous-collection et grouper par rôle
-    const checklistCollRef = collection(teamDocRef, 'checklistTemplates');
-    const checklistSnap = await getDocs(checklistCollRef);
-    const checklistDocs = checklistSnap.docs
-        .filter(d => d.id !== '_init_')
-        .map(d => ({ id: d.id, ...d.data() } as ChecklistTemplate & { role?: string }));
     const checklistByRole = buildEmptyChecklistTemplatesRecord();
-    for (const t of checklistDocs) {
-        const role = (t.role as ChecklistRole) || ChecklistRole.DS;
-        if (checklistByRole[role]) checklistByRole[role].push({ id: t.id, name: t.name, role, kind: t.kind, eventType: t.eventType, timing: t.timing, timingLabel: t.timingLabel });
+    try {
+        const checklistCollRef = collection(teamDocRef, 'checklistTemplates');
+        const checklistSnap = await getDocs(checklistCollRef);
+        const checklistDocs = checklistSnap.docs
+            .filter(d => d.id !== '_init_')
+            .map(d => ({ id: d.id, ...d.data() } as ChecklistTemplate & { role?: string }));
+        for (const t of checklistDocs) {
+            const role = (t.role as ChecklistRole) || ChecklistRole.DS;
+            if (checklistByRole[role]) checklistByRole[role].push({ id: t.id, name: t.name, role, kind: t.kind, eventType: t.eventType, timing: t.timing, timingLabel: t.timingLabel });
+        }
+    } catch (error) {
+        console.warn(`Chargement checklistTemplates ${teamId} ignoré:`, error);
     }
     teamState.checklistTemplates = checklistByRole;
 
     // Chargement parallèle (évite ~40 getDocs séquentiels au login équipe).
+    // Chaque collection est isolée : un refus rules ne bloque pas tout le chargement.
     const collectionSnapshots = await Promise.all(
         TEAM_STATE_COLLECTIONS.map(async (coll) => {
-            const snapshot = await getDocs(collection(teamDocRef, coll));
-            return {
-                coll,
-                docs: snapshot.docs
-                    .filter((d) => d.id !== '_init_')
-                    .map((d) => ({ id: d.id, ...d.data() })),
-            };
+            try {
+                const snapshot = await getDocs(collection(teamDocRef, coll));
+                return {
+                    coll,
+                    docs: snapshot.docs
+                        .filter((d) => d.id !== '_init_')
+                        .map((d) => ({ id: d.id, ...d.data() })),
+                };
+            } catch (error) {
+                console.warn(`Chargement teams/${teamId}/${coll} ignoré:`, error);
+                return { coll, docs: [] as Array<{ id: string } & Record<string, unknown>> };
+            }
         }),
     );
     for (const { coll, docs } of collectionSnapshots) {

@@ -11,7 +11,8 @@ import NutritionPlanAiAssistant from '../components/nutrition/NutritionPlanAiAss
 import { PREDEFINED_ALLERGEN_INFO } from '../constants';
 import { useTranslations } from '../hooks/useTranslations';
 import { createEmptyCustomProduct, formatProductNutritionSummary, formatGlucoseFructoseRatio } from '../utils/nutritionProductUtils';
-import { GeneratedNutritionPlan, formatTimelineForDisplay } from '../utils/nutritionPlanBuilder';
+import { GeneratedNutritionPlan, formatHourlyPlanForDisplay, formatTimelineForDisplay } from '../utils/nutritionPlanBuilder';
+import { ULDRY_EXAMPLE_PRODUCTS } from '../constants/uldryExampleProducts';
 
 interface NutritionSectionProps {
   rider: Rider | undefined;
@@ -170,18 +171,40 @@ const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, o
   };
 
   const handleApplyAiPlan = (plan: GeneratedNutritionPlan) => {
-    updateRiderProperty(currentRider => ({
-      ...currentRider,
-      performanceNutrition: {
-        ...(currentRider.performanceNutrition || {}),
-        carbsPerHourTarget: plan.carbsPerHourTarget,
-        hydrationNotes: plan.hydrationNotes,
-        notes: `${plan.strategyNotes}\n\n--- Timeline ---\n${formatTimelineForDisplay(plan.timeline)}`,
-        selectedGels: plan.selectedGels,
-        selectedBars: plan.selectedBars,
-        selectedDrinks: plan.selectedDrinks,
-      },
-    }));
+    updateRiderProperty(currentRider => {
+      const usedIds = new Set([
+        ...plan.selectedGels.map(s => s.productId),
+        ...plan.selectedBars.map(s => s.productId),
+        ...plan.selectedDrinks.map(s => s.productId),
+      ]);
+      const existingCustom = currentRider.performanceNutrition?.customProducts ?? [];
+      const exampleToAdd = plan.usedExampleCatalog
+        ? ULDRY_EXAMPLE_PRODUCTS.filter(
+            p => usedIds.has(p.id) && !existingCustom.some(c => c.id === p.id) && !teamProducts.some(t => t.id === p.id)
+          )
+        : [];
+      return {
+        ...currentRider,
+        performanceNutrition: {
+          ...(currentRider.performanceNutrition || {}),
+          carbsPerHourTarget: plan.carbsPerHourTarget,
+          hydrationNotes: plan.hydrationNotes,
+          notes: [
+            plan.strategyNotes,
+            '',
+            '--- Plan horaire ---',
+            formatHourlyPlanForDisplay(plan.hourlyPlan),
+            '',
+            '--- Timeline ---',
+            formatTimelineForDisplay(plan.timeline),
+          ].join('\n'),
+          selectedGels: plan.selectedGels,
+          selectedBars: plan.selectedBars,
+          selectedDrinks: plan.selectedDrinks,
+          customProducts: [...existingCustom, ...exampleToAdd],
+        },
+      };
+    });
   };
 
   const allProducts = useMemo(
@@ -484,6 +507,7 @@ const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, o
             <div>
               <label className={labelClass}>Objectif glucides / heure (g)</label>
               <input type="number" name="performanceNutrition.carbsPerHourTarget" value={rider.performanceNutrition?.carbsPerHourTarget ?? ''} onChange={handleInputChange} placeholder="90" className={inputClass} min={0} />
+              <p className="text-[11px] text-gray-500 mt-1">Utilisé par l’assistant pour construire le plan (sinon suggestion selon durée).</p>
             </div>
             <div>
               <label className={labelClass}>Notes hydratation</label>
