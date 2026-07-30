@@ -5,6 +5,9 @@ import {
   CampAthleteTest,
   CampMonitorColumnKey,
   CampMonitoringConfig,
+  CampProgrammeDay,
+  CampProgrammeItem,
+  CampProgrammeSlotKind,
   CampStageKind,
   CampTestType,
   EventType,
@@ -814,4 +817,393 @@ export function testsForDay(
   return (tests || []).filter(
     (t) => t.date === date && (!riderId || t.riderId === riderId),
   );
+}
+
+function newProgrammeId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function emptyCampProgrammeItem(
+  partial?: Partial<CampProgrammeItem>,
+): CampProgrammeItem {
+  return {
+    id: newProgrammeId('camp_prog_item'),
+    title: '',
+    sessionType: 'endurance',
+    ...partial,
+  };
+}
+
+export function emptyCampProgrammeDay(
+  date: string,
+  partial?: Partial<CampProgrammeDay>,
+): CampProgrammeDay {
+  return {
+    id: newProgrammeId('camp_prog_day'),
+    date,
+    items: [],
+    ...partial,
+  };
+}
+
+/** Aligne le programme sur les dates du stage (ajoute les jours manquants, retire les hors période). */
+export function syncCampProgrammeDays(
+  event: Pick<RaceEvent, 'date' | 'endDate' | 'campProgrammeDays'>,
+): CampProgrammeDay[] {
+  const dates = listEventDayDates(event);
+  const existing = event.campProgrammeDays || [];
+  const byDate = new Map(existing.map((d) => [d.date, d]));
+  return dates.map((date) => {
+    const found = byDate.get(date);
+    if (found) return found;
+    return emptyCampProgrammeDay(date);
+  });
+}
+
+export function findCampProgrammeDay(
+  days: CampProgrammeDay[] | undefined,
+  date: string,
+): CampProgrammeDay | undefined {
+  return (days || []).find((d) => d.date === date);
+}
+
+export function upsertCampProgrammeDay(
+  days: CampProgrammeDay[] | undefined,
+  day: CampProgrammeDay,
+): CampProgrammeDay[] {
+  const list = [...(days || [])];
+  const idx = list.findIndex((d) => d.id === day.id || d.date === day.date);
+  if (idx >= 0) list[idx] = day;
+  else list.push(day);
+  return list.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function sortProgrammeItems(items: CampProgrammeItem[]): CampProgrammeItem[] {
+  return [...items].sort((a, b) => {
+    const ta = a.startTime || '99:99';
+    const tb = b.startTime || '99:99';
+    if (ta !== tb) return ta.localeCompare(tb);
+    return (a.title || '').localeCompare(b.title || '');
+  });
+}
+
+export const CAMP_PROGRAMME_SLOT_KIND_LABELS: Record<CampProgrammeSlotKind, string> = {
+  meal: 'Repas',
+  briefing: 'Briefing',
+  training: 'Séance',
+  test: 'Test',
+  recovery: 'Récup / soins',
+  transfer: 'Transfert',
+  other: 'Autre',
+};
+
+export type CampProgrammeDayTemplateId =
+  | 'arrival'
+  | 'endurance'
+  | 'intensity'
+  | 'recovery'
+  | 'test'
+  | 'departure';
+
+type ProgrammeSlotDraft = Omit<CampProgrammeItem, 'id'>;
+
+export interface CampProgrammeDayTemplate {
+  id: CampProgrammeDayTemplateId;
+  label: string;
+  shortLabel: string;
+  theme: string;
+  description: string;
+  slots: ProgrammeSlotDraft[];
+}
+
+/** Créneaux types pour remplir un jour en 1 clic. */
+export const CAMP_PROGRAMME_QUICK_SLOTS: Array<ProgrammeSlotDraft & { id: string; label: string }> = [
+  {
+    id: 'breakfast',
+    label: 'Petit-déj',
+    startTime: '07:00',
+    endTime: '07:45',
+    title: 'Petit-déjeuner',
+    slotKind: 'meal',
+    sessionType: 'other',
+  },
+  {
+    id: 'brief_am',
+    label: 'Brief AM',
+    startTime: '08:00',
+    endTime: '08:15',
+    title: 'Briefing matin',
+    slotKind: 'briefing',
+    sessionType: 'other',
+  },
+  {
+    id: 'train_am',
+    label: 'Séance AM',
+    startTime: '08:30',
+    endTime: '12:00',
+    title: 'Séance matin',
+    slotKind: 'training',
+    sessionType: 'endurance',
+  },
+  {
+    id: 'lunch',
+    label: 'Déjeuner',
+    startTime: '12:30',
+    endTime: '13:30',
+    title: 'Déjeuner',
+    slotKind: 'meal',
+    sessionType: 'other',
+  },
+  {
+    id: 'recovery_pm',
+    label: 'Récup',
+    startTime: '14:00',
+    endTime: '15:00',
+    title: 'Récupération / soins',
+    slotKind: 'recovery',
+    sessionType: 'recovery',
+  },
+  {
+    id: 'train_pm',
+    label: 'Séance PM',
+    startTime: '15:30',
+    endTime: '17:30',
+    title: 'Séance après-midi',
+    slotKind: 'training',
+    sessionType: 'endurance',
+  },
+  {
+    id: 'dinner',
+    label: 'Dîner',
+    startTime: '19:00',
+    endTime: '20:00',
+    title: 'Dîner',
+    slotKind: 'meal',
+    sessionType: 'other',
+  },
+  {
+    id: 'brief_pm',
+    label: 'Brief soir',
+    startTime: '20:30',
+    endTime: '21:00',
+    title: 'Briefing soir',
+    slotKind: 'briefing',
+    sessionType: 'other',
+  },
+];
+
+/** Journées types — structure opérationnelle standard d’un stage. */
+export const CAMP_PROGRAMME_DAY_TEMPLATES: CampProgrammeDayTemplate[] = [
+  {
+    id: 'arrival',
+    label: 'Arrivée',
+    shortLabel: 'Arrivée',
+    theme: 'Arrivée / installation',
+    description: 'Transfert, installation, activation légère',
+    slots: [
+      { startTime: '10:00', endTime: '12:00', title: 'Arrivée / transfert', slotKind: 'transfer', sessionType: 'other' },
+      { startTime: '12:30', endTime: '13:30', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '14:00', endTime: '15:00', title: 'Installation hôtel / matériel', slotKind: 'other', sessionType: 'other' },
+      { startTime: '15:30', endTime: '17:00', title: 'Activation / sortie courte', slotKind: 'training', sessionType: 'recovery' },
+      { startTime: '18:00', endTime: '18:30', title: 'Briefing stage', slotKind: 'briefing', sessionType: 'other' },
+      { startTime: '19:00', endTime: '20:00', title: 'Dîner', slotKind: 'meal', sessionType: 'other' },
+    ],
+  },
+  {
+    id: 'endurance',
+    label: 'Endurance',
+    shortLabel: 'Endurance',
+    theme: 'Journée endurance',
+    description: 'Rythme classique : brief → séance → repas → récup',
+    slots: [
+      { startTime: '07:00', endTime: '07:45', title: 'Petit-déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '08:00', endTime: '08:15', title: 'Briefing matin', slotKind: 'briefing', sessionType: 'other' },
+      { startTime: '08:30', endTime: '12:30', title: 'Séance endurance', slotKind: 'training', sessionType: 'endurance' },
+      { startTime: '13:00', endTime: '14:00', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '14:30', endTime: '16:00', title: 'Récupération / soins', slotKind: 'recovery', sessionType: 'recovery' },
+      { startTime: '19:00', endTime: '20:00', title: 'Dîner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '20:30', endTime: '21:00', title: 'Briefing soir', slotKind: 'briefing', sessionType: 'other' },
+    ],
+  },
+  {
+    id: 'intensity',
+    label: 'Intensité',
+    shortLabel: 'Intensité',
+    theme: 'Journée intensité',
+    description: 'Séance qualité le matin, récup structurée',
+    slots: [
+      { startTime: '07:00', endTime: '07:45', title: 'Petit-déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '08:00', endTime: '08:20', title: 'Briefing intensité', slotKind: 'briefing', sessionType: 'other' },
+      { startTime: '08:45', endTime: '11:30', title: 'Séance intensité', slotKind: 'training', sessionType: 'intensity' },
+      { startTime: '12:15', endTime: '13:15', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '14:00', endTime: '16:00', title: 'Récupération active / kiné', slotKind: 'recovery', sessionType: 'recovery' },
+      { startTime: '19:00', endTime: '20:00', title: 'Dîner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '20:30', endTime: '21:00', title: 'Débrief séance', slotKind: 'briefing', sessionType: 'other' },
+    ],
+  },
+  {
+    id: 'recovery',
+    label: 'Récup',
+    shortLabel: 'Récup',
+    theme: 'Journée récupération',
+    description: 'Charge basse, mobilité, soins',
+    slots: [
+      { startTime: '07:30', endTime: '08:15', title: 'Petit-déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '09:00', endTime: '10:30', title: 'Sortie récupération', slotKind: 'training', sessionType: 'recovery' },
+      { startTime: '11:00', endTime: '12:00', title: 'Mobilité / prépa physique', slotKind: 'recovery', sessionType: 'recovery' },
+      { startTime: '12:30', endTime: '13:30', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '15:00', endTime: '17:00', title: 'Soins / repos', slotKind: 'recovery', sessionType: 'rest' },
+      { startTime: '19:00', endTime: '20:00', title: 'Dîner', slotKind: 'meal', sessionType: 'other' },
+    ],
+  },
+  {
+    id: 'test',
+    label: 'Tests',
+    shortLabel: 'Tests',
+    theme: 'Journée tests',
+    description: 'Protocole labo / terrain + récup',
+    slots: [
+      { startTime: '07:00', endTime: '07:30', title: 'Petit-déjeuner léger', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '07:45', endTime: '08:00', title: 'Briefing protocole', slotKind: 'briefing', sessionType: 'other' },
+      { startTime: '08:15', endTime: '11:30', title: 'Tests (puissance / lactate)', slotKind: 'test', sessionType: 'test' },
+      { startTime: '12:00', endTime: '13:00', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '14:30', endTime: '16:00', title: 'Récupération', slotKind: 'recovery', sessionType: 'recovery' },
+      { startTime: '17:00', endTime: '18:00', title: 'Restitution résultats', slotKind: 'briefing', sessionType: 'other' },
+      { startTime: '19:00', endTime: '20:00', title: 'Dîner', slotKind: 'meal', sessionType: 'other' },
+    ],
+  },
+  {
+    id: 'departure',
+    label: 'Départ',
+    shortLabel: 'Départ',
+    theme: 'Journée départ',
+    description: 'Session courte optionnelle + transfert',
+    slots: [
+      { startTime: '07:00', endTime: '07:45', title: 'Petit-déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '08:00', endTime: '09:30', title: 'Sortie courte / activation', slotKind: 'training', sessionType: 'recovery' },
+      { startTime: '10:00', endTime: '11:00', title: 'Rangement matériel', slotKind: 'other', sessionType: 'other' },
+      { startTime: '11:30', endTime: '12:30', title: 'Déjeuner', slotKind: 'meal', sessionType: 'other' },
+      { startTime: '13:00', endTime: '15:00', title: 'Départ / transfert', slotKind: 'transfer', sessionType: 'other' },
+    ],
+  },
+];
+
+export function buildItemsFromTemplateSlots(
+  slots: ProgrammeSlotDraft[],
+): CampProgrammeItem[] {
+  return sortProgrammeItems(
+    slots.map((slot) =>
+      emptyCampProgrammeItem({
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        title: slot.title,
+        slotKind: slot.slotKind,
+        sessionType: slot.sessionType,
+        location: slot.location,
+        notes: slot.notes,
+      }),
+    ),
+  );
+}
+
+export function applyCampProgrammeTemplate(
+  day: CampProgrammeDay,
+  templateId: CampProgrammeDayTemplateId,
+): CampProgrammeDay {
+  const template = CAMP_PROGRAMME_DAY_TEMPLATES.find((t) => t.id === templateId);
+  if (!template) return day;
+  return {
+    ...day,
+    theme: template.theme,
+    items: buildItemsFromTemplateSlots(template.slots),
+  };
+}
+
+export function addQuickProgrammeSlot(
+  day: CampProgrammeDay,
+  quickId: string,
+): CampProgrammeDay {
+  const quick = CAMP_PROGRAMME_QUICK_SLOTS.find((s) => s.id === quickId);
+  if (!quick) return day;
+  const item = emptyCampProgrammeItem({
+    startTime: quick.startTime,
+    endTime: quick.endTime,
+    title: quick.title,
+    slotKind: quick.slotKind,
+    sessionType: quick.sessionType,
+  });
+  return {
+    ...day,
+    items: sortProgrammeItems([...day.items, item]),
+  };
+}
+
+function timeToMinutes(time?: string): number | null {
+  if (!time || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const [h, m] = time.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+/** Chevauchements horaires (même jour) pour signaler un timing incohérent. */
+export function findProgrammeOverlaps(
+  items: CampProgrammeItem[],
+): Array<{ aId: string; bId: string }> {
+  const timed = sortProgrammeItems(items).filter(
+    (item) => timeToMinutes(item.startTime) !== null && timeToMinutes(item.endTime) !== null,
+  );
+  const overlaps: Array<{ aId: string; bId: string }> = [];
+  for (let i = 0; i < timed.length; i += 1) {
+    for (let j = i + 1; j < timed.length; j += 1) {
+      const aStart = timeToMinutes(timed[i].startTime)!;
+      const aEnd = timeToMinutes(timed[i].endTime)!;
+      const bStart = timeToMinutes(timed[j].startTime)!;
+      const bEnd = timeToMinutes(timed[j].endTime)!;
+      if (aStart < bEnd && bStart < aEnd) {
+        overlaps.push({ aId: timed[i].id, bId: timed[j].id });
+      }
+    }
+  }
+  return overlaps;
+}
+
+/** Jours sans créneau — pour appliquer un modèle en masse. */
+export function emptyProgrammeDayDates(days: CampProgrammeDay[]): string[] {
+  return days.filter((d) => (d.items?.length || 0) === 0).map((d) => d.date);
+}
+
+export function applyTemplateToEmptyDays(
+  days: CampProgrammeDay[],
+  templateId: CampProgrammeDayTemplateId,
+  onlyDates?: string[],
+): CampProgrammeDay[] {
+  const allow = onlyDates ? new Set(onlyDates) : null;
+  return days.map((day) => {
+    if (allow && !allow.has(day.date)) return day;
+    if ((day.items?.length || 0) > 0) return day;
+    return applyCampProgrammeTemplate(day, templateId);
+  });
+}
+
+/** Suggestion de modèle selon la position du jour dans le stage. */
+export function suggestTemplateForDayIndex(
+  dayIndex: number,
+  totalDays: number,
+): CampProgrammeDayTemplateId {
+  if (totalDays <= 1) return 'endurance';
+  if (dayIndex === 0) return 'arrival';
+  if (dayIndex === totalDays - 1) return 'departure';
+  if (dayIndex === 1) return 'endurance';
+  return 'endurance';
+}
+
+/** Remplit tout le stage vide avec une structure type Arrivée → Endurance… → Départ. */
+export function seedCampProgrammeStructure(
+  days: CampProgrammeDay[],
+): CampProgrammeDay[] {
+  const total = days.length;
+  return days.map((day, index) => {
+    if ((day.items?.length || 0) > 0) return day;
+    return applyCampProgrammeTemplate(day, suggestTemplateForDayIndex(index, total));
+  });
 }

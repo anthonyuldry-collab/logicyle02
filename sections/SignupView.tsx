@@ -443,7 +443,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
             );
           })}
         </svg>
-        <img src="/icons/logicycle-logo.png" alt="" className="lc-signup-mark-logo" />
+        <img src="/icons/logicycle-logo-display.webp" alt="" className="lc-signup-mark-logo" />
       </div>
 
       <div className="lc-signup-right" aria-hidden>

@@ -51,3 +51,27 @@ export async function deleteTeamAndAllDataSecure(
 
   await clientDeleteTeam(teamId, performedBy);
 }
+
+export type OrphanCleanupReport = {
+  dryRun: boolean;
+  authUserCount: number;
+  deletedUserDocs: Array<{ id: string; email: string | null }>;
+  deletedMemberships: Array<{ id: string; userId: string; teamId: string | null }>;
+  deletedTeams: Array<{ id: string; name: string | null; createdByUserId: string | null }>;
+  deletedPartnerAccesses: string[];
+  deletedScoutingRequests: string[];
+  deletedMarketplaceProfiles: string[];
+};
+
+/** Super Admin — purge Firestore orphelin (sans compte Auth). */
+export async function cleanupOrphanedDataSecure(
+  dryRun = true
+): Promise<OrphanCleanupReport> {
+  const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
+  const callable = httpsCallable<{ dryRun?: boolean }, OrphanCleanupReport>(
+    functions,
+    'cleanupOrphanedData'
+  );
+  const result = await callable({ dryRun });
+  return result.data;
+}

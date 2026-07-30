@@ -57,6 +57,8 @@ interface TalentSearchTabProps {
   onRequestScoutingAccess: (user: User, requestedScopes: ScoutingDataScope[]) => Promise<void>;
   currentTeamId: string | null;
   onRecruitmentTargetChange?: (target: TeamRecruitmentTarget) => void;
+  /** Profils fictifs — Horizon Atlantique / présentation uniquement. */
+  allowDemoExamples?: boolean;
 }
 
 const getAge = (birthDate?: string): number | null => {
@@ -109,6 +111,7 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
   onRequestScoutingAccess,
   currentTeamId,
   onRecruitmentTargetChange,
+  allowDemoExamples = false,
 }) => {
   const { t } = useTranslations();
 
@@ -136,7 +139,7 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
   const [maxAge, setMaxAge] = useState(40);
   const [nationalityFilter, setNationalityFilter] = useState('all');
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
-  const [showDevExamples, setShowDevExamples] = useState(import.meta.env.DEV);
+  const [showDevExamples, setShowDevExamples] = useState(allowDemoExamples);
   const [previewUser, setPreviewUser] = useState<User | null>(null);
   const [searchGoal, setSearchGoal] = useState<TalentSearchProfileGoal>('all');
   const [sortKey, setSortKey] = useState<TalentSortKey>('generalScore');
@@ -157,8 +160,9 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
   );
 
   const filteredTalents = useMemo(() => {
+    const includeExamples = allowDemoExamples && showDevExamples;
     if (!currentTeamId || !appState.teamMemberships || !appState.users || !appState.scoutingRequests) {
-      return showDevExamples
+      return includeExamples
         ? DEMO_TALENT_PROFILES.filter(u => matchesTalentFilters(u, appState, filterParams))
         : [];
     }
@@ -186,11 +190,11 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
       return canTeamScoutRider(marketContext, riderSegment);
     });
 
-    if (!showDevExamples) return realTalents;
+    if (!includeExamples) return realTalents;
 
     const demoTalents = DEMO_TALENT_PROFILES.filter(u => matchesTalentFilters(u, appState, filterParams));
     return [...realTalents, ...demoTalents];
-  }, [appState, filterParams, currentTeamId, showDevExamples, teamScoutingRequests, marketContext]);
+  }, [appState, filterParams, currentTeamId, showDevExamples, allowDemoExamples, teamScoutingRequests, marketContext]);
 
   const sortedTalents = useMemo(
     () =>
@@ -441,7 +445,7 @@ const TalentSearchTab: React.FC<TalentSearchTabProps> = ({
           </div>
         </div>
 
-        {import.meta.env.DEV && (
+        {allowDemoExamples && (
           <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
             <input
               type="checkbox"

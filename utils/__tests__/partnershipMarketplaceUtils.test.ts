@@ -29,8 +29,12 @@ describe('formatPartnershipFeeLabel', () => {
 });
 
 describe('getOpenSponsorshipNeeds', () => {
-  it('retourne les annonces démo si aucune annonce réelle', () => {
-    const needs = getOpenSponsorshipNeeds([]);
+  it('ne retourne pas les annonces démo par défaut', () => {
+    expect(getOpenSponsorshipNeeds([])).toEqual([]);
+  });
+
+  it('retourne les annonces démo seulement si includeDemo', () => {
+    const needs = getOpenSponsorshipNeeds([], { includeDemo: true });
     expect(needs.length).toBeGreaterThan(0);
   });
 });

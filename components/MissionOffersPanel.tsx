@@ -40,6 +40,8 @@ interface MissionOffersPanelProps {
     application: MissionApplication;
     eventId: string;
   }) => void;
+  /** Missions / candidatures fictives — Horizon Atlantique uniquement. */
+  includeDemoExamples?: boolean;
 }
 
 const emptyForm = {
@@ -99,6 +101,7 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
   canEdit,
   raceEvents = [],
   onIntegrateAcceptedStaff,
+  includeDemoExamples = false,
 }) => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -108,9 +111,10 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
 
   const demoVacatairesById = useMemo(() => {
     const map = new Map<string, StaffMember>();
+    if (!includeDemoExamples) return map;
     for (const v of buildDemoVacataires()) map.set(v.id, v);
     return map;
-  }, []);
+  }, [includeDemoExamples]);
 
   const resolveStaffProfile = (app: MissionApplication): StaffMember | undefined => {
     const vacId = resolveVacataireIdForApplicant(app.userId, app.email);
@@ -122,10 +126,12 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
   };
 
   const teamMissions = useMemo(() => {
-    const demos = buildDemoMissionsForTeam(teamId).map((m) => ({
-      ...m,
-      teamId,
-    }));
+    const demos = includeDemoExamples
+      ? buildDemoMissionsForTeam(teamId).map((m) => ({
+          ...m,
+          teamId,
+        }))
+      : [];
     const real = (missions || []).filter((m) => m.teamId === teamId || !m.teamId);
     const byId = new Map<string, Mission>();
     for (const m of demos) byId.set(m.id, m);
@@ -140,11 +146,11 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
       });
     }
     return Array.from(byId.values()).sort((a, b) => {
-      if (a.id === DEMO_MISSION_WITH_PIPELINE_ID) return -1;
-      if (b.id === DEMO_MISSION_WITH_PIPELINE_ID) return 1;
+      if (includeDemoExamples && a.id === DEMO_MISSION_WITH_PIPELINE_ID) return -1;
+      if (includeDemoExamples && b.id === DEMO_MISSION_WITH_PIPELINE_ID) return 1;
       return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
     });
-  }, [missions, teamId]);
+  }, [missions, teamId, includeDemoExamples]);
 
   const trackingMission = useMemo(
     () => (trackingMissionId ? teamMissions.find((m) => m.id === trackingMissionId) || null : null),

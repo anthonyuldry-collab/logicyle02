@@ -260,7 +260,7 @@ export function buildNutritionPlanContext(
   teamProducts: TeamProduct[],
   options?: { allowExampleCatalog?: boolean }
 ): NutritionPlanContext {
-  const allowExamples = options?.allowExampleCatalog !== false;
+  const allowExamples = options?.allowExampleCatalog === true;
   const custom = rider.performanceNutrition?.customProducts ?? [];
   const merged = [...teamProducts, ...custom];
   const byId = new Map<string, TeamProduct>();

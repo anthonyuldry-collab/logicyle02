@@ -293,7 +293,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
           })}
         </svg>
         <img
-          src="/icons/logicycle-logo.png"
+          src="/icons/logicycle-logo-display.webp"
           alt=""
           className="lc-login-mark-logo"
         />

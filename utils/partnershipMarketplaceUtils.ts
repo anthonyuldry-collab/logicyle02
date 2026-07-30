@@ -38,7 +38,8 @@ export function getOpenSponsorshipNeeds(
   options?: { includeDemo?: boolean },
 ): TeamSponsorshipNeed[] {
   const open = needs.filter((n) => n.isOpen);
-  if (open.length > 0 || options?.includeDemo === false) {
+  // Exemples réservés au contexte présentation (Horizon Atlantique) — jamais par défaut.
+  if (open.length > 0 || !options?.includeDemo) {
     return open;
   }
   return DEMO_TEAM_SPONSORSHIP_NEEDS;

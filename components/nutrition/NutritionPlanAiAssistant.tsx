@@ -21,6 +21,8 @@ interface NutritionPlanAiAssistantProps {
   teamProducts: TeamProduct[];
   onApply: (plan: GeneratedNutritionPlan) => void;
   variant?: 'light' | 'dark';
+  /** Produits d’illustration — réservé à Horizon Atlantique / présentation. */
+  allowDemoExamples?: boolean;
 }
 
 const NutritionPlanAiAssistant: React.FC<NutritionPlanAiAssistantProps> = ({
@@ -28,6 +30,7 @@ const NutritionPlanAiAssistant: React.FC<NutritionPlanAiAssistantProps> = ({
   teamProducts,
   onApply,
   variant = 'light',
+  allowDemoExamples = false,
 }) => {
   const [durationHours, setDurationHours] = useState('4');
   const [sessionType, setSessionType] = useState<NutritionPlanSessionType>('race');
@@ -50,7 +53,7 @@ const NutritionPlanAiAssistant: React.FC<NutritionPlanAiAssistantProps> = ({
   }, [rider.performanceNutrition?.carbsPerHourTarget]);
 
   const context = useMemo(() => {
-    if (forceExamples) {
+    if (allowDemoExamples && forceExamples) {
       return buildNutritionPlanContext(
         {
           ...rider,
@@ -68,11 +71,13 @@ const NutritionPlanAiAssistant: React.FC<NutritionPlanAiAssistantProps> = ({
         { allowExampleCatalog: true }
       );
     }
-    return buildNutritionPlanContext(rider, teamProducts, { allowExampleCatalog: true });
-  }, [rider, teamProducts, forceExamples]);
+    return buildNutritionPlanContext(rider, teamProducts, {
+      allowExampleCatalog: allowDemoExamples,
+    });
+  }, [rider, teamProducts, forceExamples, allowDemoExamples]);
 
   const productCount = context.products.length;
-  const usingExamples = context.usedExampleCatalog || forceExamples;
+  const usingExamples = allowDemoExamples && (context.usedExampleCatalog || forceExamples);
 
   const isDark = variant === 'dark';
   const inputClass = isDark
@@ -234,14 +239,16 @@ const NutritionPlanAiAssistant: React.FC<NutritionPlanAiAssistantProps> = ({
         </div>
       </div>
 
-      <label className={`flex items-center gap-2 text-xs mb-3 ${muted}`}>
-        <input
-          type="checkbox"
-          checked={forceExamples}
-          onChange={e => setForceExamples(e.target.checked)}
-        />
-        Utiliser des produits d’illustration (démo)
-      </label>
+      {allowDemoExamples && (
+        <label className={`flex items-center gap-2 text-xs mb-3 ${muted}`}>
+          <input
+            type="checkbox"
+            checked={forceExamples}
+            onChange={e => setForceExamples(e.target.checked)}
+          />
+          Utiliser des produits d’illustration (démo)
+        </label>
+      )}
 
       <ActionButton
         type="button"

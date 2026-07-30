@@ -21,6 +21,7 @@ import {
   UserIcon,
 } from '@heroicons/react/24/outline';
 import { deleteData } from '../services/firebaseService';
+import { cleanupOrphanedDataSecure } from '../services/gdprCloudService';
 import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 import { isSuperAdminUser } from '../utils/superAdminUtils';
 import { getPlanById } from '../constants/subscriptionPlans';
@@ -107,6 +108,8 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
   const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
   const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [orphanBusy, setOrphanBusy] = useState(false);
+  const [orphanReport, setOrphanReport] = useState<string>('');
 
   const isSuperAdmin = isSuperAdminUser(currentUser);
   const teams = appState.teams || [];
@@ -311,11 +314,77 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
     }
   };
 
+  const handleOrphanCleanup = async (dryRun: boolean) => {
+    if (!isSuperAdmin) return;
+    if (
+      !dryRun &&
+      !window.confirm(
+        'Supprimer définitivement les documents Firestore sans compte Auth (users, memberships, équipes orphelines) ?'
+      )
+    ) {
+      return;
+    }
+    setOrphanBusy(true);
+    setOrphanReport('');
+    try {
+      const report = await cleanupOrphanedDataSecure(dryRun);
+      const summary = [
+        dryRun ? 'Simulation (aucune suppression)' : 'Nettoyage effectué',
+        `Comptes Auth: ${report.authUserCount}`,
+        `Users orphelins: ${report.deletedUserDocs.length}`,
+        `Memberships: ${report.deletedMemberships.length}`,
+        `Équipes: ${report.deletedTeams.length}`,
+        `Partner accesses: ${report.deletedPartnerAccesses.length}`,
+        `Scouting: ${report.deletedScoutingRequests.length}`,
+        `Marketplace: ${report.deletedMarketplaceProfiles.length}`,
+      ].join('\n');
+      setOrphanReport(summary);
+      if (!dryRun) {
+        alert(summary);
+      }
+    } catch (error) {
+      console.error('Erreur cleanup orphelins:', error);
+      alert(error instanceof Error ? error.message : 'Erreur lors du nettoyage orphelins.');
+    } finally {
+      setOrphanBusy(false);
+    }
+  };
+
   return (
     <SectionWrapper title="Super Administrateur — Pilotage plateforme">
       <div className="space-y-6">
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
           Accès unique à ton compte. Aucune équipe ni nouvel utilisateur ne peut être promu Super Admin.
+        </div>
+
+        <div className="rounded-lg border border-sky-700/40 bg-sky-950/30 px-4 py-3 space-y-3">
+          <div>
+            <p className="font-semibold text-sky-100">Nettoyage Firebase — données orphelines</p>
+            <p className="text-xs text-sky-200/80 mt-1">
+              Supprime les docs Firestore (users, memberships, équipes, etc.) dont le compte Authentication n’existe plus.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton
+              onClick={() => handleOrphanCleanup(true)}
+              disabled={orphanBusy}
+              variant="secondary"
+            >
+              {orphanBusy ? 'Analyse…' : 'Simuler'}
+            </ActionButton>
+            <ActionButton
+              onClick={() => handleOrphanCleanup(false)}
+              disabled={orphanBusy}
+              variant="danger"
+            >
+              {orphanBusy ? 'Nettoyage…' : 'Purger les orphelins'}
+            </ActionButton>
+          </div>
+          {orphanReport && (
+            <pre className="text-xs text-sky-100/90 whitespace-pre-wrap bg-black/20 rounded p-3">
+              {orphanReport}
+            </pre>
+          )}
         </div>
 
         {cleanupTeams.length > 0 && onDeleteTeam && (

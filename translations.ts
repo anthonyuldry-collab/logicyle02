@@ -485,6 +485,7 @@ export const translations = {
   eventTabInfo: { fr: 'Infos Course', en: 'Race Info' },
   eventTabInfoStage: { fr: 'Infos Stage', en: 'Camp Info' },
   eventTabCampMonitoring: { fr: 'Suivi stage', en: 'Camp monitoring' },
+  eventTabCampProgramme: { fr: 'Programme', en: 'Programme' },
   eventTabParticipants: { fr: 'Participants', en: 'Participants' },
   eventTabOpLogistics: { fr: 'Timing Op.', en: 'Op. Timing' },
   eventTabTransport: { fr: 'Transport', en: 'Transport' },

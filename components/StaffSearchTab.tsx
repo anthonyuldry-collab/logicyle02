@@ -42,6 +42,8 @@ interface StaffSearchTabProps {
     application: import('../types').MissionApplication;
     eventId: string;
   }) => void;
+  /** Vacataires / offres fictives — Horizon Atlantique uniquement. */
+  includeDemoExamples?: boolean;
 }
 
 type VacataireResult = StaffMember & {
@@ -81,6 +83,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({
   currentUser,
   canEditOffers = true,
   onIntegrateAcceptedStaff,
+  includeDemoExamples = false,
 }) => {
   const [hubTab, setHubTab] = useState<'search' | 'offers'>('search');
   const [searchLocation, setSearchLocation] = useState<'teamBase' | string>('teamBase');
@@ -326,6 +329,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({
             canEdit={canEditOffers}
             raceEvents={raceEvents}
             onIntegrateAcceptedStaff={onIntegrateAcceptedStaff}
+            includeDemoExamples={includeDemoExamples}
           />
         ) : (
           <p className="text-sm text-gray-500 py-8 text-center">

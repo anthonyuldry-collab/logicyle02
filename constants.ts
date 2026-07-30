@@ -395,19 +395,64 @@ export const SUPER_ADMIN_EMAILS = [
 /** Même compte — vue holding (pilotage multi-équipes plateforme). */
 export const HOLDING_SUPER_ADMIN_EMAIL = 'anthony.uldry@hotmail.fr' as const;
 
-export const TEAM_STATE_COLLECTIONS = [
-    'riders', 'staff', 'vehicles', 'equipment', 'raceEvents', 'eventTransportLegs',
-    'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments',
-    'eventBudgetItems', 'expenseReceipts', 'eventChecklistItems', 'performanceEntries', 'riderEventSelections',
+/**
+ * Collections nécessaires pour le 1er paint (dashboard, calendrier, événements, roster).
+ * Chargées en priorité au login pour débloquer l’UI mobile rapidement.
+ */
+export const TEAM_STATE_PRIORITY_COLLECTIONS = [
+    'riders',
+    'staff',
+    'raceEvents',
+    'riderEventSelections',
     'staffEventSelections',
-    'eventStaffAvailabilities', 'incomeItems', 'scoutingProfiles', 'teamProducts',
-    'stockItems', 'equipmentStockItems', 'warehouses', 'stockMovements', 'vehiclePositions',
+    'eventStaffAvailabilities',
     'convocationResponses',
-    'clientRecords', 'supplierInvoices', 'sepaBatches', 'bankTransactions', 'quotes',
-    'peerRatings', 'riderSelfDebriefs', 'teamEventReviews', 'debriefings', 'missions', 'recruitmentOffers',
-    'recruitmentCampaigns', 'meetingReports',
-    'performanceArchives', 'organizerContacts', 'partnerNewsletters',
-    'partnerMediaItems', 'partnerRaceReports',
+    'missions',
+    'incomeItems',
+    'expenseReceipts',
+    'vehicles',
+    'equipment',
+    'performanceEntries',
+    'peerRatings',
+    'riderSelfDebriefs',
+] as const;
+
+/** Collections secondaires : chargées après le 1er paint (logistique, finance, partenaires…). */
+export const TEAM_STATE_DEFERRED_COLLECTIONS = [
+    'eventTransportLegs',
+    'eventAccommodations',
+    'eventDocuments',
+    'eventRadioEquipments',
+    'eventRadioAssignments',
+    'eventBudgetItems',
+    'eventChecklistItems',
+    'scoutingProfiles',
+    'teamProducts',
+    'stockItems',
+    'equipmentStockItems',
+    'warehouses',
+    'stockMovements',
+    'vehiclePositions',
+    'clientRecords',
+    'supplierInvoices',
+    'sepaBatches',
+    'bankTransactions',
+    'quotes',
+    'teamEventReviews',
+    'debriefings',
+    'recruitmentOffers',
+    'recruitmentCampaigns',
+    'meetingReports',
+    'performanceArchives',
+    'organizerContacts',
+    'partnerNewsletters',
+    'partnerMediaItems',
+    'partnerRaceReports',
+] as const;
+
+export const TEAM_STATE_COLLECTIONS = [
+    ...TEAM_STATE_PRIORITY_COLLECTIONS,
+    ...TEAM_STATE_DEFERRED_COLLECTIONS,
 ];
 
 export const emptyRaceInformation: RaceInformation = {

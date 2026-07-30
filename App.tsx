@@ -186,7 +186,6 @@ import {
 } from "./sections/lazySections";
 import { getContrastYIQ, generateId, lightenDarkenColor } from "./utils/themeUtils";
 import { isIndependentUser, userToRiderProfile, userToStaffProfile, resolveRiderForUser, riderProfileToUserUpdates, resolveStaffForUser, staffProfileToUserUpdates } from "./utils/independentUtils";
-import { buildDemoAcceptedMissionsForUser } from "./constants/demoMissions";
 import { isSuperAdminUser, resolveSuperAdminTeamId, isSuperAdminPlatformMode, SUPER_ADMIN_PLATFORM_SECTIONS } from "./utils/superAdminUtils";
 import StageCampPerformancePanel from "./components/performance/StageCampPerformancePanel";
 import { enrichIncomeWithAccounting } from "./utils/invoiceUtils";
@@ -636,7 +635,10 @@ const App: React.FC = () => {
 
       if (finalActiveTeamId) {
         try {
-          teamData = await firebaseService.getTeamData(finalActiveTeamId, activeUser);
+          // Priorité mobile : ~13 collections pour débloquer l’UI, le reste en arrière-plan.
+          teamData = await firebaseService.getTeamData(finalActiveTeamId, activeUser, {
+            mode: 'priority',
+          });
         } catch (teamErr) {
           console.error('getTeamData a échoué, équipe vide:', teamErr);
           teamData = getInitialTeamState();
@@ -705,6 +707,27 @@ const App: React.FC = () => {
       });
 
       setLanguageState(teamData.language || "fr");
+
+      // Collections secondaires (hébergements, stocks, finance…) après le 1er paint.
+      if (finalActiveTeamId) {
+        const deferredTeamId = finalActiveTeamId;
+        const deferredUser = activeUser;
+        void (async () => {
+          try {
+            const deferred = await firebaseService.getDeferredTeamCollections(
+              deferredTeamId,
+              deferredUser,
+            );
+            if (!isMountedRef.current) return;
+            setAppState((prev) => {
+              if (!prev || prev.activeTeamId !== deferredTeamId) return prev;
+              return { ...prev, ...deferred };
+            });
+          } catch (deferredErr) {
+            console.warn('Chargement différé équipe ignoré:', deferredErr);
+          }
+        })();
+      }
     } catch (error: unknown) {
       console.error("Erreur lors du chargement des données utilisateur:", error);
       // Ne jamais bloquer sur load_error : dégradation contrôlée (permissions Firestore, etc.)
@@ -2329,7 +2352,9 @@ const App: React.FC = () => {
       if (!teamId || teamId === appState.activeTeamId) return;
       setIsLoading(true);
       try {
-        const teamData = await firebaseService.getTeamData(teamId, currentUser);
+        const teamData = await firebaseService.getTeamData(teamId, currentUser, {
+          mode: 'priority',
+        });
         const teamMeta = (appState.teams || []).find((t) => t.id === teamId);
         const unlocked = isPresentationDemoTeam(teamMeta)
           ? getUnlockedPresentationSubscription()
@@ -2357,6 +2382,24 @@ const App: React.FC = () => {
           });
         }
         setCurrentSection('myDashboard');
+
+        const deferredTeamId = teamId;
+        const deferredUser = currentUser;
+        void (async () => {
+          try {
+            const deferred = await firebaseService.getDeferredTeamCollections(
+              deferredTeamId,
+              deferredUser,
+            );
+            if (!isMountedRef.current) return;
+            setAppState((prev) => {
+              if (!prev || prev.activeTeamId !== deferredTeamId) return prev;
+              return { ...prev, ...deferred };
+            });
+          } catch (deferredErr) {
+            console.warn('Chargement différé équipe (switch) ignoré:', deferredErr);
+          }
+        })();
       } catch (error) {
         console.error('Erreur bascule équipe:', error);
       } finally {
@@ -3000,7 +3043,7 @@ const App: React.FC = () => {
   const EVENT_DETAIL_TAB_HINTS = new Set([
     'logisticsSummary', 'info', 'participants', 'opLogistics', 'transport', 'accommodation',
     'accommodationHistory', 'documents', 'budget', 'checklist', 'peerReview', 'performance',
-    'riderDebrief', 'staffMission', 'campMonitoring',
+    'riderDebrief', 'staffMission', 'campMonitoring', 'campProgramme',
   ]);
 
   const navigateTo = (section: AppSection, eventIdOrTab?: string, tabHint?: string) => {
@@ -3162,9 +3205,13 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-              <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-          {t("loading")}
-        </div>
+      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-gray-900 text-white px-6">
+        <div
+          className="h-9 w-9 rounded-full border-2 border-white/25 border-t-white animate-spin"
+          aria-hidden
+        />
+        <p className="text-sm text-slate-300">{t("loading")}</p>
+      </div>
     );
   }
 
@@ -3933,7 +3980,9 @@ const App: React.FC = () => {
                       organizerContacts={viewAppState.organizerContacts || []}
                       onSaveOrganizerContact={onSaveOrganizerContact}
                       onSyncOrganizerContactsFromEvents={onSyncOrganizerContactsFromEvents}
-                      onLoadDemoOrganizerExamples={onLoadDemoOrganizerExamples}
+                      onLoadDemoOrganizerExamples={
+                        isDemoTeamContext ? onLoadDemoOrganizerExamples : undefined
+                      }
                     />
                   )}
                   {currentSection === "roster" && appState.riders && (
@@ -4266,7 +4315,9 @@ const App: React.FC = () => {
                       onOpenPartnerPortal={handleOpenPartnerPortal}
                       partnerNewsletters={appState.partnerNewsletters || []}
                       onSavePartnerNewsletter={onSavePartnerNewsletter}
-                      onInstallDemoPartnerExample={onInstallDemoPartnerExample}
+                      onInstallDemoPartnerExample={
+                        isDemoTeamContext ? onInstallDemoPartnerExample : undefined
+                      }
                       partnerMarketplaceProfiles={appState.partnerMarketplaceProfiles || []}
                       teamSponsorshipNeeds={appState.teamSponsorshipNeeds || []}
                       partnershipMatchRequests={appState.partnershipMatchRequests || []}
@@ -5171,6 +5222,7 @@ const App: React.FC = () => {
                           : appState.teamProducts
                       }
                       setTeamProducts={createLocalOnlyBatchSetHandler<TeamProduct>("teamProducts")}
+                      allowDemoExamples={isDemoTeamContext}
                     />
                   )}
                   {currentSection === "riderEquipment" && (
@@ -5211,10 +5263,7 @@ const App: React.FC = () => {
                     isIndependentStaffUi ? (
                     <LazyIndependentStaffCalendarSection
                       currentUser={uiUser}
-                      missions={[
-                        ...(appState.missions || []),
-                        ...buildDemoAcceptedMissionsForUser(uiUser.id),
-                      ]}
+                      missions={appState.missions || []}
                       teams={appState.teams}
                       raceEvents={appState.raceEvents}
                       onNavigateToMissions={() => navigateTo('missionSearch')}

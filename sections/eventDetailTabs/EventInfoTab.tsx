@@ -609,6 +609,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
         </h3>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
           Stage d’entraînement — pas de permanence, départs course ni radio d’épreuve.
+          Le programme jour par jour se définit dans l’onglet « Programme ».
           Le suivi HRV / SpO₂ / hydratation / chaleur se fait dans l’onglet « Suivi stage ».
         </p>
       </div>

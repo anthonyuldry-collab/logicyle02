@@ -209,8 +209,12 @@ export function isIndependentUser(user: User | null | undefined): boolean {
   return user.signupMode === 'independent' || user.isIndependentProfile === true;
 }
 
-/** Staff vacataires : équipe + profils indépendants + exemples démo. */
-export function getGlobalRecruitableStaff(users: User[], teamStaff: StaffMember[]): StaffMember[] {
+/** Staff vacataires : équipe + profils indépendants (+ exemples démo si demandé). */
+export function getGlobalRecruitableStaff(
+  users: User[],
+  teamStaff: StaffMember[],
+  options?: { includeDemo?: boolean },
+): StaffMember[] {
   const independentStaff = users
     .filter(
       (u) =>
@@ -221,7 +225,7 @@ export function getGlobalRecruitableStaff(users: User[], teamStaff: StaffMember[
     .map(userToStaffProfile);
 
   const teamVacataires = teamStaff.filter((s) => s.openToExternalMissions);
-  const demos = buildDemoVacataires();
+  const demos = options?.includeDemo ? buildDemoVacataires() : [];
   const seen = new Set<string>();
   return [...teamVacataires, ...independentStaff, ...demos].filter((s) => {
     if (seen.has(s.id) || seen.has(s.email.toLowerCase())) return false;

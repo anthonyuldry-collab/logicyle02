@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Mission, MissionStatus, StaffRole, Team, User } from '../types';
-import { buildDemoMissionsForTeam, getDemoMissionTeamName, isDemoMission } from '../constants/demoMissions';
+import { isDemoMission } from '../constants/demoMissions';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -65,17 +65,12 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
     }
 
     const getTeamName = (teamId: string) =>
-        getDemoMissionTeamName(teamId) || teams.find(t => t.id === teamId)?.name || 'Équipe partenaire';
+        teams.find(t => t.id === teamId)?.name || 'Équipe partenaire';
 
     const allMissions = useMemo(() => {
-        const list = missions || [];
-        const demo = buildDemoMissionsForTeam(currentUser.teamId || teams[0]?.id);
-        const demoById = new Map(demo.map(d => [d.id, d]));
-        const withoutStaleDemos = list.filter(m => !isDemoMission(m.id) || demoById.has(m.id));
-        const merged = withoutStaleDemos.map(m => (isDemoMission(m.id) ? { ...demoById.get(m.id)!, applicants: m.applicants } : m));
-        const existingIds = new Set(merged.map(m => m.id));
-        return [...merged, ...demo.filter(d => !existingIds.has(d.id))];
-    }, [missions, teams, currentUser.teamId]);
+        // Pas de missions fictives hors contexte présentation (Horizon Atlantique).
+        return (missions || []).filter((m) => !isDemoMission(m.id));
+    }, [missions]);
 
     const myApplications = useMemo(() => {
         if (!allMissions.length || !currentUser?.id) return new Set<string>();
@@ -94,36 +89,23 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
 
     const handleApply = async (missionToApply: Mission) => {
         if (!currentUser?.id) return;
-        if (!isDemoMission(missionToApply.id) && onApplyToMission) {
+        if (onApplyToMission) {
             await onApplyToMission(missionToApply);
         }
-                setMissions(prevMissions => {
-            if (isDemoMission(missionToApply.id)) {
-                const demoMission = buildDemoMissionsForTeam().find(m => m.id === missionToApply.id);
-                if (!demoMission) return prevMissions;
-                const exists = prevMissions.some(m => m.id === demoMission.id);
-                if (exists) {
-                    return prevMissions.map(m =>
-                        m.id === missionToApply.id
-                            ? { ...m, applicants: [...(m.applicants || []), currentUser.id] }
-                            : m
-                    );
-                }
-                return [...prevMissions, { ...demoMission, applicants: [currentUser.id] }];
-            }
-            return prevMissions.map(m =>
+        setMissions(prevMissions =>
+            prevMissions.map(m =>
                 m.id === missionToApply.id
                     ? { ...m, applicants: [...(m.applicants || []), currentUser.id] }
                     : m
-            );
-        });
+            )
+        );
         alert(`Candidature envoyée pour le poste de "${missionToApply.title}" avec l'équipe ${getTeamName(missionToApply.teamId)}.`);
     };
     
     return (
         <SectionWrapper title="Offres & Missions">
             <p className="mb-4 text-sm text-gray-600">
-              Missions vacataires ouvertes — exemples alignés sur le calendrier UCI Femmes 2026 et quelques courses nationales.
+              Missions vacataires ouvertes publiées par les équipes.
               Une fois accepté(e) sur un week-end, la mission apparaît automatiquement dans{' '}
               <strong>Mon Calendrier</strong>.
             </p>

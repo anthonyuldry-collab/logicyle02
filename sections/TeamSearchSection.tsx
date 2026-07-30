@@ -178,9 +178,8 @@ const TeamSearchSection: React.FC<TeamSearchSectionProps> = ({
       if (activeTeamIds.has(team.id)) return false;
       return teamAcceptsRiderApplications(team, team.operationalSettings);
     });
-    const demo = buildDemoRecruitmentTeams();
-    const realIds = new Set(real.map((t) => t.id));
-    return [...real, ...demo.filter((d) => !realIds.has(d.id))];
+    // Pas d’équipes fictives hors Horizon Atlantique (évite de polluer les comptes réels).
+    return real;
   }, [teams, currentTeamId, activeTeamIds]);
 
   const filteredTeams = useMemo(() => {

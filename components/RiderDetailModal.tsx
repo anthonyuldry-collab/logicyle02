@@ -33,6 +33,7 @@ import RiderDashboardTab from './riderDetailTabs/RiderDashboardTab';
 import { calculateRiderCharacteristics } from '../utils/performanceCalculations';
 import { uploadFile, updateRiderPowerProfiles, extractBase64Data } from '../services/firebaseService';
 import { getAgeCategory } from '../utils/ageUtils';
+import { isPresentationDemoTeam } from '../utils/presentationDemoAccess';
 
 
 interface RiderDetailModalProps {
@@ -693,6 +694,9 @@ export const RiderDetailModal: React.FC<RiderDetailModalProps> = ({
             setFormData={setFormDataForChild}
             formFieldsEnabled={isEditMode}
             teamProducts={appState.teamProducts || []}
+            allowDemoExamples={isPresentationDemoTeam(
+              (appState.teams || []).find((t) => t.id === appState.activeTeamId),
+            )}
           />
         );
       case 'equipment':

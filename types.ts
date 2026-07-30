@@ -1170,6 +1170,45 @@ export interface CampMonitoringConfig {
   visibleMetrics?: CampMonitorColumnKey[];
 }
 
+/** Nature d’un créneau du programme stage (rythme opérationnel). */
+export type CampProgrammeSlotKind =
+  | 'meal'
+  | 'briefing'
+  | 'training'
+  | 'test'
+  | 'recovery'
+  | 'transfer'
+  | 'other';
+
+/** Séance / créneau du programme équipe d’un stage. */
+export interface CampProgrammeItem {
+  id: string;
+  /** Heure de début (HH:mm) */
+  startTime?: string;
+  /** Heure de fin (HH:mm) */
+  endTime?: string;
+  title: string;
+  /** Catégorie opérationnelle (repas, briefing, séance…) */
+  slotKind?: CampProgrammeSlotKind;
+  sessionType?: StageCampSessionType;
+  location?: string;
+  notes?: string;
+  /**
+   * Athlètes concernés. Vide / absent = tout le groupe du stage.
+   */
+  riderIds?: string[];
+}
+
+/** Programme d’une journée de stage (équipe). */
+export interface CampProgrammeDay {
+  id: string;
+  date: string;
+  /** Thème du jour (ex. « Arrivée / activation ») */
+  theme?: string;
+  notes?: string;
+  items: CampProgrammeItem[];
+}
+
 /** Type de test terrain / labo saisi sur un stage. */
 export type CampTestType = 'power' | 'lactate' | 'field' | 'lab' | 'custom';
 
@@ -1271,6 +1310,8 @@ export interface RaceEvent {
     campMonitoringConfig?: CampMonitoringConfig;
     /** Tests puissance / lactate / custom sur le stage */
     campAthleteTests?: CampAthleteTest[];
+    /** Programme équipe jour par jour (horaires, séances, lieux) */
+    campProgrammeDays?: CampProgrammeDay[];
     
     // Limites de sélection des athlètes
     minRiders?: number;

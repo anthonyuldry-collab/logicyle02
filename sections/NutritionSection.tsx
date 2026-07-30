@@ -20,13 +20,21 @@ interface NutritionSectionProps {
   onSaveRider: (rider: Rider) => void;
   teamProducts: TeamProduct[];
   setTeamProducts: (updater: React.SetStateAction<TeamProduct[]>) => void;
+  /** Produits d’illustration — Horizon Atlantique uniquement. */
+  allowDemoExamples?: boolean;
 }
 
 type NutritionTab = 'profile' | 'allergies' | 'race' | 'assistants';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
-const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, onSaveRider, teamProducts }) => {
+const NutritionSection: React.FC<NutritionSectionProps> = ({
+  rider,
+  setRiders,
+  onSaveRider,
+  teamProducts,
+  allowDemoExamples = false,
+}) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'gel' | 'bar' | 'drink'>('gel');
   const [customProduct, setCustomProduct] = useState<Omit<TeamProduct, 'id'>>(createEmptyCustomProduct());
@@ -501,7 +509,12 @@ const NutritionSection: React.FC<NutritionSectionProps> = ({ rider, setRiders, o
       {/* Plan course */}
       {activeTab === 'race' && (
         <div className="space-y-4">
-          <NutritionPlanAiAssistant rider={rider} teamProducts={allProducts} onApply={handleApplyAiPlan} />
+          <NutritionPlanAiAssistant
+            rider={rider}
+            teamProducts={allProducts}
+            onApply={handleApplyAiPlan}
+            allowDemoExamples={allowDemoExamples}
+          />
 
           <div className={`${cardClass} grid grid-cols-1 lg:grid-cols-2 gap-4`}>
             <div>

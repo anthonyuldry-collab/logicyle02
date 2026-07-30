@@ -46,6 +46,7 @@ import { saveData } from '../services/firebaseService';
 import { StaffTransitionManager, StaffArchiveViewer, StaffArchiveDetailModal, StaffSeasonPlanning } from '../components';
 import StaffSearchTab from '../components/StaffSearchTab';
 import { getGlobalRecruitableStaff } from '../utils/independentUtils';
+import { isPresentationDemoTeam } from '../utils/presentationDemoAccess';
 import { useTranslations } from '../hooks/useTranslations';
 import {
   canManageMeetingReports,
@@ -364,9 +365,10 @@ export default function StaffSection({
   const [staffListSearch, setStaffListSearch] = useState('');
   const [staffStatusFilter, setStaffStatusFilter] = useState<'' | StaffStatusKey>('');
   const [staffSortBy, setStaffSortBy] = useState<'name' | 'status' | 'role'>('name');
+  const includeDemoExamples = isPresentationDemoTeam(team);
   const recruitableStaff = useMemo(
-    () => getGlobalRecruitableStaff(users || [], staff || []),
-    [users, staff]
+    () => getGlobalRecruitableStaff(users || [], staff || [], { includeDemo: includeDemoExamples }),
+    [users, staff, includeDemoExamples]
   );
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentSeasonYear());
   const [staffRoleFilter, setStaffRoleFilter] = useState<StaffRoleKeyString | ''>('');
@@ -516,7 +518,9 @@ export default function StaffSection({
           (application.email &&
             s.email?.trim().toLowerCase() === application.email.trim().toLowerCase()),
       ) ||
-      getGlobalRecruitableStaff(appState?.users || [], staff || []).find(
+      getGlobalRecruitableStaff(appState?.users || [], staff || [], {
+        includeDemo: includeDemoExamples,
+      }).find(
         (s) =>
           s.id === application.userId ||
           (application.email &&
@@ -2087,6 +2091,7 @@ export default function StaffSection({
                )
              }
              onIntegrateAcceptedStaff={handleIntegrateAcceptedMissionStaff}
+             includeDemoExamples={includeDemoExamples}
            />
          ) :
          activeTab === 'meetings' ? <MeetingReportsTab /> :

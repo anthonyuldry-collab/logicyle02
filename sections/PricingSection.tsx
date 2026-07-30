@@ -396,7 +396,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           {isPublic && (
             <div className="mb-6 flex flex-col items-center gap-4">
               <img
-                src="/icons/logicycle-logo.png"
+                src="/icons/logicycle-logo-display.webp"
                 alt="LogiCycle"
                 className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_28px_rgba(0,212,255,0.3)]"
               />

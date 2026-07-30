@@ -17,6 +17,8 @@ interface NutritionTabProps {
     setFormData: React.Dispatch<React.SetStateAction<Rider | Omit<Rider, 'id'>>>;
     formFieldsEnabled: boolean;
     teamProducts: TeamProduct[];
+    /** Produits d’illustration — Horizon Atlantique uniquement. */
+    allowDemoExamples?: boolean;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -26,6 +28,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
     setFormData,
     formFieldsEnabled,
     teamProducts,
+    allowDemoExamples = false,
 }) => {
     // Modal state for product selection
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -504,6 +507,7 @@ const NutritionTab: React.FC<NutritionTabProps> = ({
                                 teamProducts={allProducts}
                                 onApply={handleApplyAiPlan}
                                 variant="dark"
+                                allowDemoExamples={allowDemoExamples}
                               />
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

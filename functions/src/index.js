@@ -359,6 +359,138 @@ exports.gdprPurgeTeam = onCall({ memory: '1GiB', timeoutSeconds: 540 }, async (r
   return { success: true };
 });
 
+/**
+ * Super Admin only — purge Firestore orphelins (users/memberships/teams sans compte Auth).
+ * data.dryRun=true : rapport sans suppression.
+ */
+exports.cleanupOrphanedData = onCall({ memory: '1GiB', timeoutSeconds: 540 }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Authentification requise.');
+  }
+  const authEmail = (request.auth.token.email || '').toLowerCase();
+  if (authEmail !== 'anthony.uldry@hotmail.fr') {
+    throw new HttpsError('permission-denied', 'Réservé au Super Admin.');
+  }
+
+  const dryRun = Boolean(request.data?.dryRun);
+  const authUids = new Set();
+  let nextPageToken;
+  do {
+    const listed = await admin.auth().listUsers(1000, nextPageToken);
+    for (const u of listed.users) authUids.add(u.uid);
+    nextPageToken = listed.pageToken;
+  } while (nextPageToken);
+
+  const report = {
+    dryRun,
+    authUserCount: authUids.size,
+    deletedUserDocs: [],
+    deletedMemberships: [],
+    deletedTeams: [],
+    deletedPartnerAccesses: [],
+    deletedScoutingRequests: [],
+    deletedMarketplaceProfiles: [],
+  };
+
+  const usersSnap = await db.collection('users').get();
+  for (const docSnap of usersSnap.docs) {
+    if (authUids.has(docSnap.id)) continue;
+    report.deletedUserDocs.push({
+      id: docSnap.id,
+      email: docSnap.data()?.email || null,
+    });
+    if (!dryRun) {
+      await purgeUserData(docSnap.id, request.auth.uid);
+    }
+  }
+
+  const membershipsSnap = await db.collection('teamMemberships').get();
+  for (const docSnap of membershipsSnap.docs) {
+    const userId = docSnap.data()?.userId;
+    if (userId && authUids.has(userId)) continue;
+    // Invitation email sans userId : garder si email Auth connu, sinon supprimer si stale userId
+    if (!userId) continue;
+    report.deletedMemberships.push({
+      id: docSnap.id,
+      userId,
+      teamId: docSnap.data()?.teamId || null,
+    });
+    if (!dryRun) {
+      await docSnap.ref.delete().catch(() => {});
+    }
+  }
+
+  const teamsSnap = await db.collection('teams').get();
+  for (const teamDoc of teamsSnap.docs) {
+    const teamId = teamDoc.id;
+    const members = await db.collection('teamMemberships').where('teamId', '==', teamId).get();
+    const hasLivingMember = members.docs.some((m) => {
+      const uid = m.data()?.userId;
+      return uid && authUids.has(uid);
+    });
+    const creatorId = teamDoc.data()?.createdByUserId;
+    const creatorAlive = creatorId ? authUids.has(creatorId) : false;
+    if (hasLivingMember || creatorAlive) continue;
+
+    report.deletedTeams.push({
+      id: teamId,
+      name: teamDoc.data()?.name || null,
+      createdByUserId: creatorId || null,
+    });
+    if (!dryRun) {
+      await purgeTeamData(teamId, request.auth.uid);
+    }
+  }
+
+  const partnerSnap = await db.collection('partnerAccesses').get();
+  for (const docSnap of partnerSnap.docs) {
+    const userId = docSnap.data()?.userId;
+    if (userId && authUids.has(userId)) continue;
+    if (!userId) continue;
+    report.deletedPartnerAccesses.push(docSnap.id);
+    if (!dryRun) await docSnap.ref.delete().catch(() => {});
+  }
+
+  const scoutingSnap = await db.collection('scoutingRequests').get();
+  for (const docSnap of scoutingSnap.docs) {
+    const athleteId = docSnap.data()?.athleteId;
+    if (athleteId && authUids.has(athleteId)) continue;
+    if (!athleteId) continue;
+    report.deletedScoutingRequests.push(docSnap.id);
+    if (!dryRun) await docSnap.ref.delete().catch(() => {});
+  }
+
+  const marketSnap = await db.collection('partnerMarketplaceProfiles').get();
+  for (const docSnap of marketSnap.docs) {
+    const userId = docSnap.data()?.userId;
+    if (userId && authUids.has(userId)) continue;
+    if (!userId) continue;
+    report.deletedMarketplaceProfiles.push(docSnap.id);
+    if (!dryRun) await docSnap.ref.delete().catch(() => {});
+  }
+
+  await writeAuditLog({
+    action: dryRun ? 'orphan_cleanup_dry_run' : 'orphan_cleanup',
+    targetId: 'firestore',
+    performedBy: request.auth.uid,
+    method: 'cloud_function',
+    summary: {
+      users: report.deletedUserDocs.length,
+      memberships: report.deletedMemberships.length,
+      teams: report.deletedTeams.length,
+    },
+  });
+
+  logStructured('INFO', 'orphan_cleanup_done', {
+    dryRun,
+    users: report.deletedUserDocs.length,
+    memberships: report.deletedMemberships.length,
+    teams: report.deletedTeams.length,
+  });
+
+  return report;
+});
+
 // --- Stripe Billing ---
 let stripe = null;
 function getStripe() {

@@ -35,6 +35,7 @@ import LogisticsSummaryTab from './sections/eventDetailTabs/LogisticsSummaryTab'
 import PeerReviewTab from './sections/eventDetailTabs/PeerReviewTab';
 import RiderEventDebriefTab from './sections/eventDetailTabs/RiderEventDebriefTab';
 import StageCampMonitoringTab from './sections/eventDetailTabs/StageCampMonitoringTab';
+import StageCampProgrammeTab from './sections/eventDetailTabs/StageCampProgrammeTab';
 import { getRiderProfileForUser, isRiderAbsentFromEvent } from './utils/eventRiderUtils';
 import { useTranslations } from './hooks/useTranslations';
 import { getStaffMemberForUser } from './utils/staffMemberUtils';
@@ -96,7 +97,8 @@ export type EventDetailTab =
   | 'performance'
   | 'riderDebrief'
   | 'staffMission'
-  | 'campMonitoring';
+  | 'campMonitoring'
+  | 'campProgramme';
 
 function EventDetailView({ 
   event: initialEvent, 
@@ -277,7 +279,10 @@ function EventDetailView({
           label: trainingCamp ? t('eventTabInfoStage') : t('eventTabInfo'),
         },
         ...(trainingCamp
-          ? [{ id: 'campMonitoring' as const, label: t('eventTabCampMonitoring') }]
+          ? [
+              { id: 'campProgramme' as const, label: t('eventTabCampProgramme') },
+              { id: 'campMonitoring' as const, label: t('eventTabCampMonitoring') },
+            ]
           : []),
       ],
     },
@@ -428,6 +433,17 @@ function EventDetailView({
                 radioAssignments={appState.eventRadioAssignments.filter(as => as.eventId === eventId)}
                 setRadioAssignments={setEventRadioAssignments}
             />
+        </div>
+        <div style={{ display: activeTab === 'campProgramme' ? 'block' : 'none' }}>
+          {trainingCamp && (
+            <StageCampProgrammeTab
+              event={currentEvent}
+              eventId={eventId}
+              appState={appState}
+              updateEvent={updateEventDetails}
+              readOnly={isRider}
+            />
+          )}
         </div>
         <div style={{ display: activeTab === 'campMonitoring' ? 'block' : 'none' }}>
           {trainingCamp && (

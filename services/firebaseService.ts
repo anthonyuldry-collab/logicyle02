@@ -76,7 +76,14 @@ import {
   TeamInvoiceSettings,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
-import { SECTIONS, TEAM_STATE_COLLECTIONS, getInitialGlobalState, LEGAL_VERSIONS } from '../constants';
+import {
+    SECTIONS,
+    TEAM_STATE_COLLECTIONS,
+    TEAM_STATE_PRIORITY_COLLECTIONS,
+    TEAM_STATE_DEFERRED_COLLECTIONS,
+    getInitialGlobalState,
+    LEGAL_VERSIONS,
+} from '../constants';
 import { resolveDocumentSequence } from '../utils/invoiceSequenceUtils';
 import {
   DEFAULT_ROLE_PERMISSIONS,
@@ -1388,10 +1395,57 @@ export const getEffectivePermissions = (
 };
 
 // --- TEAM DATA ---
+
+/** Limite la concurrence Firestore : trop de getDocs en parallèle saturent le réseau mobile. */
+const TEAM_COLLECTION_FETCH_CONCURRENCY = 6;
+
+async function mapInBatches<T, R>(
+    items: readonly T[],
+    concurrency: number,
+    mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+        const batch = items.slice(i, i + concurrency);
+        results.push(...(await Promise.all(batch.map(mapper))));
+    }
+    return results;
+}
+
+type TeamCollectionDoc = { id: string } & Record<string, unknown>;
+
+async function fetchTeamCollectionDocs(
+    teamDocRef: ReturnType<typeof doc>,
+    teamId: string,
+    collections: readonly string[],
+): Promise<Array<{ coll: string; docs: TeamCollectionDoc[] }>> {
+    return mapInBatches(collections, TEAM_COLLECTION_FETCH_CONCURRENCY, async (coll) => {
+        try {
+            const snapshot = await getDocs(collection(teamDocRef, coll));
+            return {
+                coll,
+                docs: snapshot.docs
+                    .filter((d) => d.id !== '_init_')
+                    .map((d) => ({ id: d.id, ...d.data() })),
+            };
+        } catch (error) {
+            console.warn(`Chargement teams/${teamId}/${coll} ignoré:`, error);
+            return { coll, docs: [] as TeamCollectionDoc[] };
+        }
+    });
+}
+
+export type GetTeamDataOptions = {
+    /** `priority` = collections critiques seulement (1er paint mobile). Défaut : `full`. */
+    mode?: 'priority' | 'full';
+};
+
 export const getTeamData = async (
     teamId: string,
-    viewer?: User
+    viewer?: User,
+    options?: GetTeamDataOptions,
 ): Promise<Partial<TeamState>> => {
+    const mode = options?.mode ?? 'full';
     const teamDocRef = doc(db, 'teams', teamId);
     
     const teamState: Partial<TeamState> = {};
@@ -1449,23 +1503,15 @@ export const getTeamData = async (
     }
     teamState.checklistTemplates = checklistByRole;
 
-    // Chargement parallèle (évite ~40 getDocs séquentiels au login équipe).
+    const collectionsToLoad =
+        mode === 'priority' ? TEAM_STATE_PRIORITY_COLLECTIONS : TEAM_STATE_COLLECTIONS;
+
+    // Lots de 6 : évite de saturer la 4G / le client Firestore avec ~40 getDocs d’un coup.
     // Chaque collection est isolée : un refus rules ne bloque pas tout le chargement.
-    const collectionSnapshots = await Promise.all(
-        TEAM_STATE_COLLECTIONS.map(async (coll) => {
-            try {
-                const snapshot = await getDocs(collection(teamDocRef, coll));
-                return {
-                    coll,
-                    docs: snapshot.docs
-                        .filter((d) => d.id !== '_init_')
-                        .map((d) => ({ id: d.id, ...d.data() })),
-                };
-            } catch (error) {
-                console.warn(`Chargement teams/${teamId}/${coll} ignoré:`, error);
-                return { coll, docs: [] as Array<{ id: string } & Record<string, unknown>> };
-            }
-        }),
+    const collectionSnapshots = await fetchTeamCollectionDocs(
+        teamDocRef,
+        teamId,
+        collectionsToLoad,
     );
     for (const { coll, docs } of collectionSnapshots) {
         (teamState as any)[coll] = docs;
@@ -1482,6 +1528,49 @@ export const getTeamData = async (
         return scopeTeamStateForCoureur(teamState, viewer);
     }
 
+    return teamState;
+};
+
+/**
+ * Charge les collections secondaires après le 1er paint (logistique, finance, etc.).
+ * À fusionner dans l’état app sans rebloquer l’UI.
+ * Ne renvoie que les clés différées (ne pas écraser riders/staff déjà chargés).
+ */
+export const getDeferredTeamCollections = async (
+    teamId: string,
+    viewer?: User,
+): Promise<Partial<TeamState>> => {
+    const teamDocRef = doc(db, 'teams', teamId);
+    const teamState: Partial<TeamState> = {};
+    const collectionSnapshots = await fetchTeamCollectionDocs(
+        teamDocRef,
+        teamId,
+        TEAM_STATE_DEFERRED_COLLECTIONS,
+    );
+    for (const { coll, docs } of collectionSnapshots) {
+        (teamState as any)[coll] = docs;
+    }
+    for (const coll of TEAM_STATE_DEFERRED_COLLECTIONS) {
+        if (!(teamState as any)[coll]) {
+            (teamState as any)[coll] = [];
+        }
+    }
+
+    if (viewer && isCoureurUser(viewer)) {
+        // Filtrage coureur limité aux collections différées (ne pas vider riders/staff).
+        return {
+            ...teamState,
+            scoutingProfiles: [],
+            performanceArchives: [],
+            sepaBatches: [],
+            bankTransactions: [],
+            quotes: [],
+            clientRecords: [],
+            supplierInvoices: [],
+            recruitmentOffers: [],
+            recruitmentCampaigns: [],
+        };
+    }
     return teamState;
 };
 

@@ -22,6 +22,7 @@ import {
   buildPcsSearchUrl,
   openExternalUrl,
 } from '../utils/cyclingResultsLinks';
+import { isPresentationDemoTeam } from '../utils/presentationDemoAccess';
 import { demoUserToScoutingProfile, isDemoPreviewScoutingProfile, isDemoTalentUser } from '../constants/demoTalentProfiles';
 import {
   buildContactRequestMessage,
@@ -526,6 +527,9 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
         
         <TalentSearchTab 
           appState={appState}
+          allowDemoExamples={isPresentationDemoTeam(
+            appState?.teams?.find((t) => t.id === currentTeamId),
+          )}
           onRecruitmentTargetChange={onRecruitmentTargetChange}
           onAddWatchlistProspect={(user) => {
             if (isAthleteOnWatchlist(user.id, scoutingProfiles)) return;
