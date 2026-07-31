@@ -3,7 +3,6 @@ import SupportFaqPanel from '../components/SupportFaqPanel';
 import { LANGUAGE_OPTIONS } from '../constants';
 import {
   SUBSCRIPTION_PLANS,
-  TRIAL_DAYS,
   formatPriceEur,
 } from '../constants/subscriptionPlans';
 import { LEGAL_ENTITY } from '../legal/meta';
@@ -105,7 +104,7 @@ const LandingView: React.FC<LandingViewProps> = ({
           <button
             type="button"
             onClick={onLogin}
-            className="hidden sm:inline-flex px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-200 hover:bg-white/10 transition"
+            className="inline-flex px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-200 hover:bg-white/10 transition"
           >
             {t('landingNavLogin')}
           </button>
@@ -152,9 +151,27 @@ const LandingView: React.FC<LandingViewProps> = ({
             >
               {t('landingCtaPricing')}
             </button>
+            <a
+              href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('LogiCycle — démo / early access')}`}
+              className="px-7 py-3 rounded-xl border border-white/20 text-slate-100 font-medium hover:bg-white/10 transition"
+            >
+              {t('landingCtaTalk')}
+            </a>
           </div>
-          <p className="lc-landing-rise lc-landing-rise-4 mt-4 text-xs text-slate-500">
-            {t('landingTrialNote').replace('{days}', String(TRIAL_DAYS))}
+          <p className="lc-landing-rise lc-landing-rise-4 mt-4 text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+            {t('landingTrialNote')}
+          </p>
+        </div>
+      </section>
+
+      {/* Early access — honnête, sans faux logos */}
+      <section className="relative z-10 px-4 sm:px-8 py-16 border-t border-white/10">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+            {t('landingEarlyTitle')}
+          </h2>
+          <p className="mt-3 text-sm sm:text-base text-slate-400 leading-relaxed">
+            {t('landingEarlyBody')}
           </p>
         </div>
       </section>

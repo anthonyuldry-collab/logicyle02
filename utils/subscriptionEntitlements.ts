@@ -1,4 +1,4 @@
-import { SECTION_MIN_PLAN, getIndependentPlanIdForRole, getPlanById, isPlanAtLeast } from '../constants/subscriptionPlans';
+import { SECTION_MIN_PLAN, getIndependentPlanIdForRole, getPlanById, isPlanAtLeast, PILOT_DAYS } from '../constants/subscriptionPlans';
 import { AppSection, SubscriptionPlanId, TeamSubscription, User, UserRole } from '../types';
 
 export interface SubscriptionAccess {
@@ -26,7 +26,7 @@ export function normalizeSubscription(
   }
   const now = new Date();
   const pilotEnds = new Date(now);
-  pilotEnds.setDate(pilotEnds.getDate() + 90);
+  pilotEnds.setDate(pilotEnds.getDate() + PILOT_DAYS);
   return {
     planId: teamLevelPlan,
     status: 'pilot',

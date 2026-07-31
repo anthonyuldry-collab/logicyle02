@@ -7,6 +7,7 @@ import {
   TRIAL_DAYS,
   getDefaultPlanForTeamLevel,
   getIndependentPlanIdForRole,
+  getTrialDaysForPlan,
 } from '../constants/subscriptionPlans';
 import { TeamLevel } from '../types';
 
@@ -16,11 +17,8 @@ export function buildInitialSubscription(
 ): TeamSubscription {
   const planId = selectedPlanId ?? getDefaultPlanForTeamLevel(level);
   const now = new Date();
-
-  const isHighTier =
-    planId === SubscriptionPlanId.CONTINENTAL ||
-    planId === SubscriptionPlanId.PRO ||
-    planId === SubscriptionPlanId.FEDERATION;
+  const trialDays = getTrialDaysForPlan(planId);
+  const isHighTier = trialDays === PILOT_DAYS;
 
   if (isHighTier) {
     const pilotEnds = new Date(now);
@@ -184,12 +182,5 @@ export async function requestPlanUpgrade(
 
 /** Jours d’essai Stripe selon la formule (aligné essai / pilote app). */
 export function getSignupTrialDaysForPlan(planId: SubscriptionPlanId): number {
-  if (
-    planId === SubscriptionPlanId.CONTINENTAL ||
-    planId === SubscriptionPlanId.PRO ||
-    planId === SubscriptionPlanId.FEDERATION
-  ) {
-    return PILOT_DAYS;
-  }
-  return TRIAL_DAYS;
+  return getTrialDaysForPlan(planId);
 }

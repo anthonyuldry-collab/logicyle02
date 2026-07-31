@@ -70,9 +70,9 @@ Aliases attendus : `support@`, `contact@`, `privacy@` → boîte fondateur.
 
 ## Stripe : TEST → Live
 
-Compte MCP actuel : **TEST** (`environnement de test Logicycle SAS`).
+Compte MCP actuel : **TEST**. Offre prix : [`COMMERCIAL_OFFER.md`](./COMMERCIAL_OFFER.md) (59/119/199/349 équipes).
 
-Checklist Live :
+Checklist montants + Live : `./scripts/stripe-live-checklist.sh`
 1. Dashboard Stripe → activer / basculer **Live** (KYC société)
 2. Copier `sk_live_…` + créer webhook Live →  
    `https://europe-west1-logicycle01.cloudfunctions.net/stripeWebhook`  

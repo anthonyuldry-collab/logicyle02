@@ -264,7 +264,7 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
   const highTier = ['continental', 'pro', 'federation', 'CONTINENTAL', 'PRO', 'FEDERATION'];
   const isHigh = planId && highTier.map(String).includes(String(planId));
   const pilotEnds = new Date(now);
-  pilotEnds.setDate(pilotEnds.getDate() + 90);
+  pilotEnds.setDate(pilotEnds.getDate() + 30);
 
   const subscription = isHigh
     ? { planId: planId || 'pro', status: 'pilot', pilotEndsAt: pilotEnds.toISOString() }

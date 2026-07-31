@@ -13,8 +13,19 @@ export const SUPPORT_FAQ_ITEMS: SupportFaqItem[] = [
       en: 'How does the free trial work?',
     },
     answer: {
-      fr: 'À l’inscription, vous choisissez une formule et enregistrez une carte via Stripe. L’essai démarre immédiatement (14 jours sur Club/Compétition, 90 jours pilote sur Élite/Performance). Le premier prélèvement a lieu à la fin de l’essai si vous ne résiliez pas.',
-      en: 'At signup you pick a plan and save a card via Stripe. The trial starts immediately (14 days on Club/Competition, 90-day pilot on Elite/Performance). The first charge happens after the trial unless you cancel.',
+      fr: 'À l’inscription, vous choisissez une formule et enregistrez une carte via Stripe. L’essai démarre immédiatement (14 jours sur Club/Compétition, 30 jours sur Élite/Performance). Le premier prélèvement a lieu à la fin de l’essai si vous ne résiliez pas.',
+      en: 'At signup you pick a plan and save a card via Stripe. The trial starts immediately (14 days on Club/Competition, 30 days on Elite/Performance). The first charge happens after the trial unless you cancel.',
+    },
+  },
+  {
+    id: 'pricing',
+    question: {
+      fr: 'Quels sont les tarifs ?',
+      en: 'What are the prices?',
+    },
+    answer: {
+      fr: 'Équipes (HT) : Club 59 €/mois, Compétition 119 €, Élite 199 €, Performance 349 € — ou annuel avec 2 mois offerts. Indépendants : Athlète 12 €, Staff 15 €. Fédération sur devis. Soft-launch : un annuel avant juin 2027 fige le tarif fondateur 24 mois.',
+      en: 'Teams (excl. VAT): Club €59/mo, Competition €119, Elite €199, Performance €349 — or annual with 2 months free. Independents: Athlete €12, Staff €15. Federation on quote. Soft launch: annual before June 2027 locks founding pricing for 24 months.',
     },
   },
   {

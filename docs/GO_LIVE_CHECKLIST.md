@@ -22,12 +22,13 @@ Checklist opérationnelle pour un lancement **payant**.
 - [x] Build courante live (landing / legal / FAQ) — smoke 31/07 OK
 
 ### Stripe
-- [x] Price IDs **test** + produits test
+- [x] Price IDs **test** présents (à **recréer** aux montants 59/119/199/349 — voir `COMMERCIAL_OFFER.md`)
+- [x] Produits Stripe test présents (Club→Performance + Athlete/Staff)
 - [ ] Compte Stripe **Live** activé (KYC)
 - [ ] Secrets Functions live : `STRIPE_SECRET_KEY` (`sk_live_…`), `STRIPE_WEBHOOK_SECRET`
-- [ ] Price IDs **live** dans `functions/.env.logicycle01`
+- [ ] Price IDs **live** alignés sur `docs/COMMERCIAL_OFFER.md`
 - [ ] Webhook live → `stripeWebhook`
-- [x] Parcours TEST signup → Checkout (`4242…`) validé antérieurement
+- [x] Parcours TEST signup → Checkout (`4242…`) validé antérieurement *(re-tester après nouveaux Price IDs)*
 - [x] `.env.production` sans `VITE_SKIP_SIGNUP_PAYMENT`
 
 ### Ops
@@ -76,9 +77,11 @@ Test paiement TEST : `4242 4242 4242 4242`.
 | Fichier | Rôle |
 |---------|------|
 | `legal/meta.ts` | Identité éditeur |
+| `docs/COMMERCIAL_OFFER.md` | Grille, tunnel CA, fondateurs, Stripe prices |
 | `docs/OPS_RUNBOOK.md` | Backup, rollback, Stripe Live, TVA |
 | `docs/EMAIL_FORWARDING.md` | Mails @logicycle.app |
 | `docs/RGPD_REGISTRE.md` | Registre traitements (brouillon) |
 | `constants/missionMarketplace.ts` | Flag paiement missions |
+| `constants/subscriptionPlans.ts` | Prix & caps plans |
 | `scripts/preflight-soft-launch.sh` | Préflight local |
 | `scripts/complete-production-deploy.sh` | Déploiement + rappels |

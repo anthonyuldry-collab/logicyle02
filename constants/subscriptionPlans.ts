@@ -36,10 +36,10 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       fr: 'Clubs, comités & structures jeunes',
       en: 'Clubs, committees & youth structures',
     },
-    monthlyPriceEur: 49,
-    annualPriceEur: 490,
-    maxUsers: 25,
-    maxEventsPerSeason: 30,
+    monthlyPriceEur: 59,
+    annualPriceEur: 590,
+    maxUsers: 30,
+    maxEventsPerSeason: 35,
     features: [
       { fr: 'Effectif, calendrier & invitations', en: 'Roster, calendar & invites' },
       { fr: 'Logistique course (6 modules)', en: 'Race logistics (6 modules)' },
@@ -51,31 +51,32 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     id: SubscriptionPlanId.COMPETITION,
     name: { fr: 'Compétition', en: 'Competition' },
     tagline: {
-      fr: 'Équipes fédérales & élite nationale',
-      en: 'National federation & elite teams',
+      fr: 'Équipes fédérales & élite nationale — camp & perf',
+      en: 'National federation & elite teams — camp & perf',
     },
-    monthlyPriceEur: 99,
-    annualPriceEur: 990,
-    maxUsers: 45,
-    maxEventsPerSeason: 80,
+    monthlyPriceEur: 119,
+    annualPriceEur: 1190,
+    maxUsers: 50,
+    maxEventsPerSeason: 100,
     features: [
       { fr: 'Logistique course complète (12 onglets)', en: 'Full race logistics (12 tabs)' },
       { fr: 'Performance, nutrition & bike fit', en: 'Performance, nutrition & bike fit' },
       { fr: 'Suivi stage : wellness, chaleur, tests', en: 'Camp monitoring: wellness, heat, tests' },
       { fr: 'Budgets, justificatifs OCR & SEPA', en: 'Budgets, OCR receipts & SEPA' },
       { fr: 'Bulletins UCI J-20 / J-3 (équipes N1+)', en: 'UCI entry forms J-20 / J-3 (N1+ teams)' },
+      { fr: 'Essai 14 jours inclus', en: '14-day trial included' },
     ],
   },
   {
     id: SubscriptionPlanId.CONTINENTAL,
     name: { fr: 'Élite', en: 'Elite' },
     tagline: {
-      fr: 'Circuits internationaux & structures ambitieuses',
-      en: 'International circuits & ambitious structures',
+      fr: 'Circuits internationaux — scouting & missions',
+      en: 'International circuits — scouting & missions',
     },
-    monthlyPriceEur: 179,
-    annualPriceEur: 1790,
-    maxUsers: 70,
+    monthlyPriceEur: 199,
+    annualPriceEur: 1990,
+    maxUsers: 80,
     maxEventsPerSeason: null,
     highlighted: true,
     features: [
@@ -84,25 +85,26 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       { fr: 'Marketplace missions staff (mise en relation)', en: 'Staff mission marketplace (matching)' },
       { fr: 'Camps altitude & chaleur avancés', en: 'Advanced altitude & heat camps' },
       { fr: 'Export compta & peer review', en: 'Accounting export & peer review' },
-      { fr: 'Pilote 90 jours inclus', en: '90-day pilot included' },
+      { fr: 'Essai 30 jours inclus', en: '30-day trial included' },
     ],
   },
   {
     id: SubscriptionPlanId.PRO,
     name: { fr: 'Performance', en: 'Performance' },
     tagline: {
-      fr: 'Structures professionnelles à haute exigence',
-      en: 'High-demand professional structures',
+      fr: 'Wedge Pro / WT — support prioritaire, essai 30 j',
+      en: 'Pro / WT wedge — priority support, 30-day trial',
     },
-    monthlyPriceEur: 329,
-    annualPriceEur: 3290,
-    maxUsers: 120,
+    monthlyPriceEur: 349,
+    annualPriceEur: 3490,
+    maxUsers: 150,
     maxEventsPerSeason: null,
     features: [
       { fr: 'Tout Élite +', en: 'Everything in Elite +' },
       { fr: 'Templates UCI & masse salariale', en: 'UCI templates & payroll mass' },
       { fr: 'Assistant nutrition IA', en: 'AI nutrition assistant' },
       { fr: 'Dashboard admin & support prioritaire', en: 'Admin dashboard & priority support' },
+      { fr: 'Essai 30 jours inclus', en: '30-day trial included' },
       { fr: 'Commission marketplace réduite (10 %) — à venir avec paiement in-app', en: 'Reduced marketplace fee (10%) — coming with in-app payments' },
     ],
   },
@@ -123,7 +125,7 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       { fr: 'Stats réseau anonymisées', en: 'Anonymized network stats' },
       { fr: 'SLA, SSO & API dédiées', en: 'Dedicated SLA, SSO & API' },
       { fr: 'Centres altitude & white-label', en: 'Altitude centres & white-label' },
-      { fr: 'Sur devis — dès 449 €/mois', en: 'Custom quote — from €449/mo' },
+      { fr: 'Sur devis — dès 499 €/mois', en: 'Custom quote — from €499/mo' },
     ],
   },
 ];
@@ -138,7 +140,7 @@ export const ALTITUDE_CENTRE_OFFER = {
     fr: 'CNEA, stations, hôtels stage — suivi multi-athlètes invités',
     en: 'National centres, resorts, camp hotels — multi-guest athlete monitoring',
   },
-  monthlyFromEur: 449,
+  monthlyFromEur: 499,
   seasonalPackEur: { min: 2990, max: 4990 },
   maxGuestAthletesPerCamp: 80,
   examples: ['CNEA Font-Romeu', 'Sierra Nevada', 'Livigno', 'St-Moritz', 'Teide'],
@@ -225,7 +227,20 @@ export const INDEPENDENT_PLANS: PlanDefinition[] = [
 ];
 
 export const TRIAL_DAYS = 14;
-export const PILOT_DAYS = 90;
+/** Essai prolongé self-serve Élite / Performance — 1 cycle course, pas une demi-saison. */
+export const PILOT_DAYS = 30;
+
+/** Jours d’essai / pilote selon la formule (aligné Stripe + copy marketing). */
+export function getTrialDaysForPlan(planId: SubscriptionPlanId): number {
+  if (
+    planId === SubscriptionPlanId.CONTINENTAL ||
+    planId === SubscriptionPlanId.PRO ||
+    planId === SubscriptionPlanId.FEDERATION
+  ) {
+    return PILOT_DAYS;
+  }
+  return TRIAL_DAYS;
+}
 
 export const REFERRAL_DISCOUNT_PERCENT = REFERRAL_PROGRAM.refereeDiscountPercent;
 

@@ -110,6 +110,8 @@ import {
   persistPendingSignup,
   readPendingSignup,
 } from "./utils/pendingSignupStorage";
+import { setPendingSignupPlan } from "./utils/pendingSignupPlan";
+import { LEGAL_ENTITY } from "./legal/meta";
 import { addRiderToSeasonArchive } from "./utils/performanceArchiveUtils";
 import { getCurrentSeasonYear } from "./utils/seasonUtils";
 import {
@@ -3369,7 +3371,13 @@ const App: React.FC = () => {
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
             <SectionSuspense>
-              <LazyPricingSection isPublic />
+              <LazyPricingSection
+                isPublic
+                onSelectPlan={(planId, _referral, interval) => {
+                  setPendingSignupPlan(planId, interval);
+                  setView("signup");
+                }}
+              />
             </SectionSuspense>
             <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
               <button
@@ -3379,6 +3387,12 @@ const App: React.FC = () => {
               >
                 {t("loginSignUpLink")}
               </button>
+              <a
+                href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent("LogiCycle — démo / early access")}`}
+                className="px-6 py-2.5 rounded-xl border border-white/20 text-slate-200 font-medium hover:bg-white/10 transition"
+              >
+                {t("landingCtaTalk")}
+              </a>
               <button
                 type="button"
                 onClick={() => setView("login")}

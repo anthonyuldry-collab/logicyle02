@@ -85,11 +85,20 @@ export const translations = {
     fr: 'Effectif, courses, logistique, budget et performance — une plateforme pour structures, indépendants et staff.',
     en: 'Roster, races, logistics, budget and performance — one platform for teams, independents and staff.',
   },
-  landingCtaTrial: { fr: 'Démarrer l’essai 14 jours', en: 'Start 14-day trial' },
+  landingCtaTrial: { fr: 'Démarrer l’essai', en: 'Start free trial' },
   landingCtaPricing: { fr: 'Voir les tarifs', en: 'See pricing' },
+  landingCtaTalk: { fr: 'Parler à l’équipe', en: 'Talk to the team' },
   landingTrialNote: {
-    fr: 'Essai {days} jours · carte enregistrée via Stripe · résiliable avant prélèvement',
-    en: '{days}-day trial · card saved via Stripe · cancel before first charge',
+    fr: 'Club & Compétition : 14 j · Élite & Performance : 30 j · carte via Stripe · résiliable avant prélèvement · prix HT',
+    en: 'Club & Competition: 14 days · Elite & Performance: 30 days · card via Stripe · cancel before charge · prices excl. VAT',
+  },
+  landingEarlyTitle: {
+    fr: 'Early access — premières structures.',
+    en: 'Early access — first teams onboard.',
+  },
+  landingEarlyBody: {
+    fr: 'LogiCycle n’a pas encore de logos clients à afficher : on ouvre progressivement avec des équipes pilotes. Tu parles directement au fondateur, et ton retour façonne le produit.',
+    en: 'LogiCycle doesn’t have customer logos yet — we’re opening gradually with pilot teams. You talk to the founder, and your feedback shapes the product.',
   },
   landingValueTitle: {
     fr: 'Tout le cycle de course, sans tableurs.',
@@ -116,11 +125,12 @@ export const translations = {
   },
   landingPricingTitle: { fr: 'Des tarifs pensés pour le cyclisme.', en: 'Pricing built for cycling.' },
   landingPricingSub: {
-    fr: 'Du club au circuit international — essai inclus, sans engagement long à l’inscription.',
-    en: 'From club level to international racing — trial included, no long lock-in at signup.',
+    fr: 'Club dès 59 €/mois HT · Compétition 119 € · Élite 199 € · Performance 349 €. Essai 14 ou 30 j. Annuel = 2 mois offerts.',
+    en: 'Club from €59/mo excl. VAT · Competition €119 · Elite €199 · Performance €349. 14 or 30-day trial. Annual = 2 months free.',
   },
-  landingPerMonth: { fr: '/mois', en: '/mo' },
+  landingPerMonth: { fr: '/mois HT', en: '/mo excl. VAT' },
   landingPricingAll: { fr: 'Comparer toutes les formules', en: 'Compare all plans' },
+  landingExclVat: { fr: 'HT', en: 'excl. VAT' },
 
   // FAQ / support
   faqTitle: { fr: 'Questions fréquentes', en: 'Frequently asked questions' },
@@ -233,8 +243,8 @@ export const translations = {
     en: 'Please select a plan to continue.',
   },
   signupPlanTrialNote: {
-    fr: 'Essai inclus : la carte est enregistrée maintenant, le premier prélèvement a lieu après l’essai.',
-    en: 'Trial included: your card is saved now, the first charge happens after the trial.',
+    fr: 'Essai inclus selon la formule (14 j Club/Compétition, 30 j Élite/Performance) : carte enregistrée maintenant, premier prélèvement après l’essai. Prix HT.',
+    en: 'Trial included by plan (14 days Club/Competition, 30 days Elite/Performance): card saved now, first charge after the trial. Prices excl. VAT.',
   },
   signupPathTeamBillingNote: {
     fr: 'L’abonnement est géré par l’équipe que vous rejoindrez.',
@@ -909,8 +919,28 @@ export const translations = {
   // Billing & Pricing
   pricingTitle: { fr: 'Tarifs LogiCycle', en: 'LogiCycle Pricing' },
   pricingSubtitle: {
-    fr: 'La performance commence bien avant la ligne de départ.',
-    en: 'Performance begins long before the start line.',
+    fr: 'Grille 2026 : Club 59 € → Performance 349 €/mois HT. Annuel = 2 mois offerts. TVA selon votre statut.',
+    en: '2026 grid: Club €59 → Performance €349/mo excl. VAT. Annual = 2 months free. Tax depends on your status.',
+  },
+  pricingFoundingNote: {
+    fr: 'Soft-launch : abonnement annuel souscrit avant juin 2027 = tarif fondateur figé 24 mois.',
+    en: 'Soft launch: annual plan started before June 2027 locks founding pricing for 24 months.',
+  },
+  pricingExclVatNote: {
+    fr: 'Tous les prix sont hors taxes (HT).',
+    en: 'All prices are exclusive of VAT (excl. tax).',
+  },
+  pricingPublicStart: {
+    fr: 'Démarrer avec cette formule',
+    en: 'Start with this plan',
+  },
+  pricingPublicStartMonthly: {
+    fr: 'Essai — mensuel',
+    en: 'Trial — monthly',
+  },
+  pricingPublicStartAnnual: {
+    fr: 'Essai — annuel',
+    en: 'Trial — annual',
   },
   pricingBillingMonthly: { fr: 'Mensuel', en: 'Monthly' },
   pricingBillingAnnual: { fr: 'Annuel', en: 'Annual' },
@@ -959,6 +989,10 @@ export const translations = {
   pricingContactSales: { fr: 'Sur devis', en: 'Contact us' },
   pricingContactUs: { fr: 'Nous contacter', en: 'Contact us' },
   pricingSignupToStart: { fr: 'Inscrivez-vous pour démarrer', en: 'Sign up to get started' },
+  billingTrialNote: {
+    fr: '14 jours d\'essai (Club/Compétition) ou 30 jours (Élite/Performance). Code parrain : -10 % sur la 1ère année.',
+    en: '14-day trial (Club/Competition) or 30 days (Elite/Performance). Referral code: -10% on first year.',
+  },
   pricingViewPlans: { fr: 'Voir les tarifs', en: 'View pricing' },
   billingCardTitle: { fr: 'Abonnement', en: 'Subscription' },
   billingCurrentPlan: { fr: 'Plan actuel', en: 'Current plan' },
@@ -970,9 +1004,8 @@ export const translations = {
   billingExpiredDesc: { fr: 'Choisissez un plan pour continuer à utiliser LogiCycle.', en: 'Choose a plan to continue using LogiCycle.' },
   billingChoosePlan: { fr: 'Choisir un plan', en: 'Choose a plan' },
   billingTrialBanner: { fr: 'Essai gratuit en cours', en: 'Free trial in progress' },
-  billingPilotBanner: { fr: 'Programme pilote actif (90 jours)', en: 'Pilot program active (90 days)' },
+  billingPilotBanner: { fr: 'Essai prolongé en cours (30 jours)', en: 'Extended trial in progress (30 days)' },
   billingDaysLeft: { fr: 'jours restants', en: 'days left' },
-  billingTrialNote: { fr: '14 jours d\'essai (Club/Compétition) ou 90 jours pilote (Continental/Pro). Code parrain : -10 % sur la 1ère année.', en: '14-day trial (Club/Competition) or 90-day pilot (Continental/Pro). Referral code: -10% on first year.' },
 
   referralForFriend: { fr: 'Votre filleul', en: 'Your referral' },
   referralForYou: { fr: 'Pour vous', en: 'For you' },

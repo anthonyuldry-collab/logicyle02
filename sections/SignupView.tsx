@@ -10,6 +10,7 @@ import {
   INDEPENDENT_PLANS,
   getIndependentPlanIdForRole,
 } from '../constants/subscriptionPlans';
+import { consumePendingSignupPlan } from '../utils/pendingSignupPlan';
 
 export interface SignupData {
   email: string;
@@ -55,9 +56,9 @@ const ROLE_OPTIONS: {
 
 const TEAM_PLAN_OPTIONS = SUBSCRIPTION_PLANS.filter((p) => !p.contactSales);
 
-const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) => {
-  const [stepId, setStepId] = useState<StepId>('role');
-  const [formData, setFormData] = useState<SignupData>({
+function initialSignupFromPending(): SignupData {
+  const pending = consumePendingSignupPlan();
+  const base: SignupData = {
     email: '',
     firstName: '',
     lastName: '',
@@ -68,10 +69,25 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
     teamName: '',
     sponsorName: '',
     staffRole: undefined,
-    planId: undefined,
-    billingInterval: 'year',
+    planId: pending.planId,
+    billingInterval: pending.interval ?? 'year',
     signupMode: SignupMode.TEAM,
-  });
+  };
+  if (pending.planId === SubscriptionPlanId.INDEPENDENT_RIDER) {
+    return { ...base, userRole: UserRole.COUREUR, signupMode: SignupMode.INDEPENDENT };
+  }
+  if (pending.planId === SubscriptionPlanId.INDEPENDENT_STAFF) {
+    return { ...base, userRole: UserRole.STAFF, signupMode: SignupMode.INDEPENDENT };
+  }
+  if (pending.planId && TEAM_PLAN_OPTIONS.some((p) => p.id === pending.planId)) {
+    return { ...base, userRole: UserRole.MANAGER, signupMode: SignupMode.TEAM };
+  }
+  return base;
+}
+
+const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) => {
+  const [stepId, setStepId] = useState<StepId>('role');
+  const [formData, setFormData] = useState<SignupData>(initialSignupFromPending);
   const isManager = formData.userRole === UserRole.MANAGER;
   const isPartner = formData.userRole === UserRole.PARTNER;
   const isStaff = formData.userRole === UserRole.STAFF;

@@ -60,7 +60,7 @@ Rédaction / relecture d’un pack **go-live décembre 2026** :
 | **DPA** (accord de sous-traitance RGPD art. 28) | Clients équipes / Enterprise | **FR + EN** |
 | **Mentions légales** | Site public | FR (+ EN) |
 | Clause **marketplace** | Commission ~12 % GMV · Stripe Connect · vacataires | Inclus CGU/CGV |
-| Option | Template contrat **Pro / Enterprise / pilote 90 j** | FR + EN |
+| Option | Template contrat **Pro / Enterprise / essai prolongé sur devis** | FR + EN |
 | Option | **NDA** mutuel (pilotes WT) | FR + EN |
 
 **Points métier à couvrir dans CGU/CGV** :

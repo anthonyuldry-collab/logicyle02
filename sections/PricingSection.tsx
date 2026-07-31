@@ -303,9 +303,13 @@ const PricingSection: React.FC<PricingSectionProps> = ({
             >
               {isCurrent
                 ? t('billingCurrentPlan')
-                : billingPeriod === 'monthly'
-                  ? t('pricingSelectPlanMonthly')
-                  : t('pricingSelectPlanAnnual')}
+                : isPublic
+                  ? billingPeriod === 'monthly'
+                    ? t('pricingPublicStartMonthly')
+                    : t('pricingPublicStartAnnual')
+                  : billingPeriod === 'monthly'
+                    ? t('pricingSelectPlanMonthly')
+                    : t('pricingSelectPlanAnnual')}
             </ActionButton>
           ) : isPublic ? (
             <p className="text-center text-sm text-slate-400">{t('pricingSignupToStart')}</p>
@@ -421,6 +425,12 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           >
             {subtitle}
           </p>
+          {isPublic && (
+            <p className="mt-2 text-xs sm:text-sm text-slate-400">{t('pricingExclVatNote')}</p>
+          )}
+          {isPublic && (
+            <p className="mt-1.5 text-xs text-indigo-300/80">{t('pricingFoundingNote')}</p>
+          )}
           <div className="mt-6 flex justify-center">{periodToggle}</div>
         </div>
 

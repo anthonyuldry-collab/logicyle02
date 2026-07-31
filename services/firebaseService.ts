@@ -97,7 +97,7 @@ import {
 import { buildCoureurPermissions, scopeTeamStateForCoureur, isCoureurUser } from '../utils/riderAccessUtils';
 import { isSuperAdminUser } from '../utils/superAdminUtils';
 import { getStaffMemberForUser } from '../utils/staffMemberUtils';
-import { getDefaultPlanForTeamLevel } from '../constants/subscriptionPlans';
+import { getDefaultPlanForTeamLevel, PILOT_DAYS } from '../constants/subscriptionPlans';
 import { buildInitialIndependentSubscription, buildInitialSubscription } from './billingService';
 import { buildDefaultRider, buildDefaultStaffMember } from '../utils/defaultTeamMemberProfiles';
 import { resolveStaffRole, resolveStaffRoleOrDefault } from '../utils/staffRoleUtils';
@@ -1459,7 +1459,7 @@ export const getTeamData = async (
                     subscription: teamData.subscription ?? {
                         planId: getDefaultPlanForTeamLevel(teamData.level as TeamLevel),
                         status: 'pilot',
-                        pilotEndsAt: new Date(Date.now() + 90 * 86400000).toISOString(),
+                        pilotEndsAt: new Date(Date.now() + PILOT_DAYS * 86400000).toISOString(),
                     },
                     operationalSettings: teamData.operationalSettings,
                     themePrimaryColor: teamData.themePrimaryColor,

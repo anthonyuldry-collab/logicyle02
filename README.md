@@ -61,6 +61,7 @@ Publier / postuler / accepter fonctionne. Paiement & commission Stripe Connect :
 ```
 
 Checklist opérationnelle : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md)  
+Offre commerciale / CA : [`docs/COMMERCIAL_OFFER.md`](docs/COMMERCIAL_OFFER.md)  
 Ops (backup / rollback / Stripe Live) : [`docs/OPS_RUNBOOK.md`](docs/OPS_RUNBOOK.md)  
 Emails domaine : [`docs/EMAIL_FORWARDING.md`](docs/EMAIL_FORWARDING.md)
 

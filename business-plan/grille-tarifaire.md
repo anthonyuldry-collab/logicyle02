@@ -1,153 +1,67 @@
-# Grille tarifaire LogiCycle — MAJ juil. 2026 (camp/wellness + indépendants)
+# Grille tarifaire LogiCycle — MAJ 31 juil. 2026
+
+> **Source de vérité** : [`docs/COMMERCIAL_OFFER.md`](../docs/COMMERCIAL_OFFER.md) + `constants/subscriptionPlans.ts`  
+> **M1** = décembre 2026 · Prix **HT** · Annuel = 10 mois (−16,7 %)
 
 ## Principes
 
 | Principe | Détail |
 |----------|--------|
-| **vs Ippogee** | 5× à 25× moins cher selon le palier équipe |
-| **Profils indépendants** | **Payants** — essai 14 j, puis 9–12 €/mois |
+| **vs Ippogee** | ~5× à 25× moins cher selon le palier (Ippogee 12–50 K€/an) |
+| **Profils indépendants** | Payants — **12 €** Athlète · **15 €** Staff (revisiter M18 / Connect) |
 | **Annuel** | 2 mois offerts (= 10 mois facturés) |
-| **Parrainage** | Filleul -10 % 1ère année · Parrain 1 mois offert/filleul (max 3/an) |
-| **Marketplace missions** | **12 % GMV vacataire** (10 % Pro) · min. 15 € · Continental+ pour publier |
-| **Suivi stage / camp** | Inclus **Compétition+** · altitude avancé **Continental+** |
-| **Politique prix** | **Pas de hausse** suite camp/wellness — levier d’upsell Club→Compétition |
-| **Essai équipe** | **14 j tous plans** · pilote 90 j **sur devis** (fédérations / multi-équipes) |
+| **Parrainage** | Filleul −10 % 1ʳᵉ année · Parrain 1 mois/filleul (max 3 crédits) |
+| **Marketplace missions** | **12 %** GMV (Élite) · **10 %** Performance · min 15 € · publication **Élite+** |
+| **Suivi stage / camp** | Inclus **Compétition+** · altitude avancé **Élite+** |
+| **Essai** | **14 j** Club/Compétition/Indép. · **30 j** Élite/Performance · &gt;30 j sur devis |
+| **Fondateurs M1–M6** | Annuel avant juin 2027 → tarif figé 24 mois |
 
 ---
 
-## Grille publique — Équipes (inchangée)
+## Grille publique — Équipes
 
 | Plan | Mensuel | Annuel | Users | Events/saison | Cible |
-|------|---------|--------|-------|---------------|-------|
-| **Club** | 39 € | **390 €** | 20 | 25 | Hors DN, Jeunes |
-| **Compétition** | 89 € | **890 €** | 40 | 60 | N1–N3 · stages |
-| **Continental** | 169 € | **1 690 €** | 65 | ∞ | Continental / ProSeries · altitude |
-| **Pro** | 299 € | **2 990 €** | 100 | ∞ | ProTeams / WT wedge |
-| **Fédération** | Sur devis | dès **449 €/mois** | ∞ | ∞ | LNR, comités |
+|------|--------:|-------:|------:|--------------:|-------|
+| **Club** | **59 €** | **590 €** | 30 | 35 | Clubs structurés, jeunes |
+| **Compétition** | **119 €** | **1 190 €** | 50 | 100 | N1–N3 · stages · cœur ARPU |
+| **Élite** | **199 €** | **1 990 €** | 80 | ∞ | Continental / ProSeries · scouting · missions |
+| **Performance** | **349 €** | **3 490 €** | 150 | ∞ | ProTeams / WT wedge |
+| **Fédération** | Sur devis | dès **499 €/mois** | ∞ | ∞ | Ligues, comités |
 
-### Pourquoi ne pas monter les prix ?
+### Pourquoi ces niveaux ?
 
 | Argument | Décision |
 |----------|----------|
-| Camp/wellness = différenciateur **unique vs Ippogee** | Inclure pour accélérer conversion |
-| Club→Compétition déjà le plus gros levier ARPU | Feature = **raison d’upsell**, pas de surcharge |
-| Positionnement « 10× moins cher qu’Ippogee » | Hausse fragiliserait le pitch Continental |
+| Valeur camp/wellness + logistique 12 onglets | Compétition à **119 €** (cœur upsell) |
+| Premium accessible vs Ippogee | Performance **349 €** encore ~10× moins cher qu’un ERP WT |
+| Densité réseau indép. avant Connect | Athlète/Staff **inchangés** (12/15) |
 
-**Option future (M24+)** : add-on « Camp Altitude Pro » **+29 €/mois** si adoption > 40 % Continental — hors grille actuelle.
+**Option future (M24+)** : add-on « Camp Altitude Pro » **+29 €/mois** si adoption &gt; 40 % Élite — hors grille actuelle.
 
 ### Profils indépendants (sans équipe)
 
 | Plan | Mensuel | Annuel | Cible |
-|------|---------|--------|-------|
-| **Indépendant Athlète** | 9 € | **90 €** | Scouting + carnet stage light |
-| **Pass Camp Perf** (add-on athlète) | **19 €** | **190 €** | SpO₂ · USG · tests · partage coach/centre |
-| **Indépendant Staff** | 12 € | **120 €** | Marketplace missions + monitoring invité |
-| **Indépendant Entraîneur** *(roadmap M6–M18)* | **29 €** | **290 €** | Roster ≤15 athlètes · suivi stage + perf light |
-| **Coach Pro** *(roadmap Y3)* | **79 €** | **790 €** | ≤40 athlètes · branding · multi-centres |
+|------|--------:|-------:|-------|
+| **Athlète** | **12 €** | **120 €** | Scouting + carnet stage |
+| **Staff** | **15 €** | **150 €** | Marketplace missions + monitoring invité |
+| **Entraîneur** *(M6–M18)* | **29 €** | **290 €** | Roster ≤15 · suivi stage + perf light |
+| **Coach Pro** *(roadmap)* | **79 €** | **790 €** | ≤40 athlètes |
 
-**Boucle long terme** : athlète ↔ **entraîneur indép.** ↔ centre altitude (Font-Romeu) — Ippogee **absent** sur les 3.
-
-| Qui paie ? | Quoi | Prix |
-|------------|------|------|
-| Athlète solo | Indép. 9 € (+ Pass 19 €) | 9–28 €/mois |
-| **Entraîneur indép.** | Suivi de *ses* athlètes en stage/perf | **29 €/mois** |
-| Centre (CNEA…) | Offre Centre altitude | dès **449 €/mois** |
-| Équipe hôte | Compétition / Continental | 890–1 690 €/an |
-
-Détail vision : **`vision-independants-coach-athlete.md`**.
-
-### Offre **Centre altitude** (Font-Romeu, CNEA, Sierra Nevada…)
+### Centre altitude
 
 | Élément | Détail |
 |---------|--------|
-| Exemples | CNEA Font-Romeu · Sierra Nevada · Livigno · St-Moritz · Teide |
-| Prix | **dès 449 €/mois** (devis) · pack haute saison **2 990–4 990 €** |
-| Capacité | jusqu’à **80 athlètes invités** / stage |
-| Inclut | Stages SpO₂/USG/wellness · invitations indép. · dashboard coach · PDF fin de stage · logo centre |
-| vs Ippogee | **Segment non adressé** — Ippogee = équipes WT, pas centres |
-
-**Pitch CNEA / Font-Romeu** :  
-*« Vos résidents saisissent SpO₂ et wellness sur mobile. Votre staff voit les alertes. Les équipes clientes repartent avec un PDF stage — LogiCycle devient l’outil du centre, pas seulement de l’équipe. »*
+| Prix | dès **499 €/mois** · pack saison **2 990–4 990 €** |
+| Capacité | jusqu’à **80** athlètes invités / stage |
 
 ### Marketplace missions
 
-| Segment | Commission | Exemple (825 € GMV) | Plan requis |
-|---------|------------|---------------------|-------------|
-| Continental / Compétition | **12 %** | **99 €** / mission | Compétition+ |
-| Pro | **10 %** | **82,50 €** | Pro |
-| Minimum | 15 € / mission | — | — |
+| Segment | Commission | Plan requis publication |
+|---------|------------|-------------------------|
+| Élite | **12 %** | Élite+ |
+| Performance | **10 %** | Performance |
+| Minimum | 15 € / mission | — |
 
 ---
 
-## Fonctionnalités par plan (aligné code)
-
-| Fonctionnalité | Club | Compétition | Continental | Pro |
-|----------------|:----:|:-----------:|:-----------:|:---:|
-| Effectif & calendrier | ✅ | ✅ | ✅ | ✅ |
-| Logistique course | 6 mod. | **12 onglets** | ✅ | ✅ |
-| PWA mobile | ✅ | ✅ | ✅ | ✅ |
-| PPR & nutrition | ❌ | ✅ | ✅ | ✅ |
-| **Suivi stage (wellness, urine, tests)** | ❌ | ✅ | ✅ | ✅ |
-| **Camp altitude (SpO2, USG, protocoles)** | ❌ | ⚠️ basique | ✅ | ✅ |
-| Bike fit UCI | ❌ | ✅ | ✅ | ✅ |
-| OCR justificatifs | ❌ | ✅ | ✅ | ✅ |
-| Scouting inter-équipes | ❌ | ✅ | ✅ | ✅ |
-| Accès réseau indépendants | ❌ | ❌ | ✅ | ✅ |
-| Marketplace staff | ❌ | ❌ | ✅ | ✅ |
-| Export compta CSV / FEC | ❌ | ❌ | ✅ | ✅ |
-| Export SEPA pain.001 / 008 | ❌ | ✅ | ✅ | ✅ |
-| Templates UCI PDF | ❌ | ❌ | ❌ | ✅ |
-| Masse salariale | ❌ | ❌ | ❌ | ✅ |
-| IA nutrition Gemini | ❌ | ❌ | ❌ | ✅ |
-| Admin dashboard | ❌ | ❌ | ❌ | ✅ |
-
----
-
-## Comparaison Ippogee (prix)
-
-| Segment | Ippogee (estimé) | LogiCycle | Économie |
-|---------|------------------|-----------|----------|
-| Continental | 12–25 K€/an | 1 690 €/an | **~85–93 %** |
-| ProTeam | 25–50 K€/an | 2 990 €/an | **~88–94 %** |
-| Club / DN | Non ciblé | 390–890 €/an | Marché libre |
-| Suivi stage / wellness | Absent / basique | **Inclus Compétition+** | Unique |
-| Coureur/staff sans équipe | Aucune offre | 90–120 €/an (+ Pass Camp 190 €) | Unique |
-| **Centre altitude** (Font-Romeu…) | Aucune offre | dès 449 €/mois | **Unique** |
-
----
-
-## Matrice indépendants × coach × camp × centre
-
-| Fonction | Athlète 9 € | Pass Camp 19 € | **Coach indép. 29 €** | Centre 449 €+ | Équipe Compétition+ |
-|----------|:-----------:|:--------------:|:---------------------:|:-------------:|:-------------------:|
-| Carnet wellness perso | ✅ | ✅ | vue athlètes liés | — | ✅ |
-| SpO₂ / USG / alertes | ❌ | ✅ | ✅ (athlètes liés) | ✅ | Cont.+ |
-| Roster athlètes perso | ❌ | ❌ | ✅ ≤15 | ✅ invités | ✅ effectif |
-| Commentaires coach / jour | ❌ | — | ✅ | ⚠️ | ✅ |
-| Perf light (charge, RPE) | light | ✅ | ✅ | — | ✅ PPR |
-| Rejoindre stage centre | ✅ | ✅ | via athlètes | invite | ✅ |
-| Dashboard multi-athlètes | ❌ | ❌ | ✅ roster | ✅ séjour | ✅ |
-| White-label | ❌ | ❌ | Coach Pro | ✅ | ❌ |
-
----
-
-## Impact pricing → valorisation
-
-| Levier | Effet |
-|--------|-------|
-| Camp/wellness inclus Compétition | ↑ conversion Club→Compétition · ARPU blended ↑ |
-| Altitude Continental+ | ↑ rétention Cont./Pro · churn ↓ |
-| Pas de hausse prix | CAC stable · pitch « 10× moins cher » intact |
-| Bonus multiple produit | **+0,4× ARR** (voir `impact-valorisation-options.md`) |
-
----
-
-## Programme parrainage
-
-| Acteur | Avantage |
-|--------|----------|
-| Filleul équipe | -10 % 1ère année |
-| Filleul indépendant | -10 % 1ère année |
-| Parrain | 1 mois offert / filleul (max 3/an) |
-
-Format lien : `https://votre-domaine/?ref=LC-XXXXXX`
+Voir tunnel & checklist Stripe : **`docs/COMMERCIAL_OFFER.md`**.
