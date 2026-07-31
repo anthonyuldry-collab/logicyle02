@@ -1,8 +1,8 @@
 # LogiCycle — Business Plan (MAJ TAM réel · juillet 2026)
 
-## Lancement commercial : **décembre 2027**
+## Lancement commercial : **décembre 2026**
 
-> M1 = déc. 2027 · Voir `calendrier-lancement.md` · pré-lancement sept.–nov. 2027.
+> M1 = déc. 2026 · Voir `calendrier-lancement.md` · pré-lancement sept.–nov. 2026 (statuts · CGU/CGV · marque).
 
 ## Base marché recalibrée
 
@@ -31,7 +31,7 @@
 |---------|---------|
 | **`tam-marche-reel.md`** | **TAM/SAM vérifié web** |
 | **`strategie-commerciale.md`** | **Plan stratégique & commercial (Arnault × Bourbon)** |
-| **`calendrier-lancement.md`** | **Dates réelles (M1 = déc. 2027)** |
+| **`calendrier-lancement.md`** | **Dates réelles (M1 = déc. 2026)** |
 | `plan-commercial-phases.csv` | Calendrier opérationnel par phase |
 | `projections-leader-100M.csv` | Scénario **Leader Dual-Track** (10 ans) |
 | **`vision-independants-coach-athlete.md`** | **Athlètes × coachs indép. × centres altitude (long terme)** |
@@ -39,17 +39,19 @@
 | `catalogue-charges.csv` | 45 postes de charges (variable/fixe/ponctuel) |
 | `seuils-rentabilite.csv` | Seuils simulés + théoriques |
 | `decomposition-charges-mensuelles.csv` | P&L mensuel 120 mois |
+| **`dossier-avocat-marque-logicycle.md`** | **Brief avocat : marque · statuts · CGU/CGV** |
+| **`checklist-juridique-pre-seed.md`** | Checklist legal pré go-live |
 
 ## Objectifs — Leader Dual-Track (phare)
 
 | Objectif | Mois | **Date calendaire** |
 |----------|------|---------------------|
-| **Lancement commercial** | M1 | **Déc. 2027** |
-| **15 K net lissé (salaire + dividendes)** | M45 | **Août 2031** |
-| Seed 750 K€ | M24 | **Nov. 2029** |
-| Series A 2 M€ | M48 | **Nov. 2031** |
-| Horizon 10 ans | M120 | **Nov. 2037** |
-| Pro/WT signés M18 | M18 | **Mai 2029** |
+| **Lancement commercial** | M1 | **Déc. 2026** |
+| **15 K net lissé (salaire + dividendes)** | M45 | **Août 2030** |
+| Seed 750 K€ | M24 | **Nov. 2028** |
+| Series A 2 M€ | M48 | **Nov. 2030** |
+| Horizon 10 ans | M120 | **Nov. 2036** |
+| Pro/WT signés M18 | M18 | **Mai 2028** |
 | **ARR Y10** | M120 | **~5,0 M€ (72 % SAM)** |
 | **Valorisation Y10** | M120 | **~76 M€** |
 
@@ -57,8 +59,8 @@
 
 | Objectif | Mois | Date |
 |----------|------|------|
-| 15 K net | M33 | Août 2030 |
-| 100 M€ valo | M74 | Jan. 2034 |
+| 15 K net | M33 | Août 2029 |
+| 100 M€ valo | M74 | Jan. 2033 |
 | ARR Y10 | M120 | ~11,5 M€ |
 
 ## 5 flux revenus

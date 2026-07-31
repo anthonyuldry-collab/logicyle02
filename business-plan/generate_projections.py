@@ -86,14 +86,14 @@ TAM_ORG_PRO_SAM = 200                # multi-épreuves · UCI 1.x / 2.x / ligues
 TAM_ORG_ARR_SAM_EUR = 2_400_000      # solo ~0,8M + pro ~1,6M (EU)
 
 # ─── Calendrier commercial (M1 = lancement payant) ─────────────────────────
-LAUNCH_YEAR = 2027
-LAUNCH_MONTH = 12  # décembre 2027
-LAUNCH_LABEL = "décembre 2027"
-PREP_START_LABEL = "septembre 2027"  # J-90 avant go-live
+LAUNCH_YEAR = 2026
+LAUNCH_MONTH = 12  # décembre 2026
+LAUNCH_LABEL = "décembre 2026"
+PREP_START_LABEL = "septembre 2026"  # J-90 avant go-live
 
 
 def month_to_calendar(month: int) -> str:
-    """Convertit un mois projeté (M1 = déc. 2027) en libellé calendaire."""
+    """Convertit un mois projeté (M1 = déc. 2026) en libellé calendaire."""
     total = LAUNCH_YEAR * 12 + (LAUNCH_MONTH - 1) + (month - 1)
     y, m0 = divmod(total, 12)
     m = m0 + 1

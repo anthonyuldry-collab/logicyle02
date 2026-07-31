@@ -1,8 +1,8 @@
 # Mémo rendez-vous initial — EC + avocat fiscaliste · LogiCycle
 
-> **Objectif** : valider la stratégie fiscale optimisée avant lancement commercial (**déc. 2027**).  
-> **Contexte** : SaaS cyclisme · SAS · fondateur solo → Seed **~750 K€ M24** · objectif secondary **~100 M€ M53**.  
-> **Documents joints** : `fiscalite-remuneration-fondateur.md` · `fiscal-strategie-optimisee.csv`
+> **Objectif** : valider la stratégie fiscale optimisée avant lancement commercial (**déc. 2026**).  
+> **Contexte** : SaaS cyclisme · SAS · fondateur solo → Seed **~750 K€ M24 (~nov. 2028)** · objectif secondary **~100 M€ M53**.  
+> **Documents joints** : `fiscalite-remuneration-fondateur.md` · `fiscal-strategie-optimisee.csv` · `dossier-avocat-marque-logicycle.md` (statuts · CGU/CGV).
 
 ---
 

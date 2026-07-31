@@ -31,3 +31,8 @@ dist-ssr
 # Compte de service CI (ne jamais committer)
 .firebase-ci-sa.json
 *-firebase-adminsdk-*.json
+
+# Python local (business-plan tools)
+__pycache__/
+*.pyc
+business-plan/.python_pkgs/

@@ -1,0 +1,8 @@
+type,signe,office,numero,titulaire,classes,statut,expiration,lien,notes
+usage_public,Logiscycle,n/a,n/a,Adam Hansen / Lotto-Intermarché,logiciel logistique courses (usage),Usage public depuis ~2012,n/a,https://www.lotto-intermarche.be/fr/partner/logiscycle,Aucun dépôt TMview trouvé le 2026-07-31
+tmview_zero,Logiscycle,TMview (multi-offices),—,—,—,0 résultat,n/a,https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=Logiscycle,Pas de rangées trouvées
+marque_enregistree,LOGICYCLE,WIPO Madrid,975030,PETCYCLE E.A.G. GmbH & Co. KG,"16,20,35,36,39,40,42",Enregistrée,2027-10-17,https://www.tmdn.org/tmview/#/tmview/detail/WO500000000975030,Classe 42 = conseil environnement/déchets — pas SaaS sport
+marque_enregistree,LOGICYCLE,Allemagne DPMA,307479803,LOGICYCLE GmbH,"16,20,35,36,39,40,42",Enregistrée,~2027-07-31,https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=Logicycle,Même famille emballage/recyclage
+marque_enregistree,LOGICYCLE,UKIPO,UK00800975030,PETCYCLE E.A.G. GmbH & Co. KG,"16,20,35,36,39,40,42",Enregistrée,,https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=Logicycle,Extension UK de la marque Madrid
+societe_FR_radiee,LOGISTICYCLE,INSEE/greffe,SIREN 754070548,LOGISTICYCLE (holding),64.20Z holding,Radiée 2022-12-29,n/a,https://openbase.fr/entreprise/logisticycle-754070548,Hors sujet probable — mention exhaustive
+marque_envisagee,LogiCycle,à déposer,—,Anthony Uldry / LogiCycle SAS,"9,42,(35)",Projet,Go-live 2027-12,,SaaS équipes cyclistes + réseau

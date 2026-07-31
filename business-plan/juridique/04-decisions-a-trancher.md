@@ -8,9 +8,9 @@
 
 | # | Question | Votre décision | Date |
 |---|----------|----------------|------|
-| A1 | Dénomination exacte : **LogiCycle** / LogiCycle SAS / autre orthographe (Logyclie) ? | | |
-| A2 | Sigle / nom commercial distinct ? | | |
-| A3 | Domaine principal retenu ? | | |
+| A1 | Dénomination exacte : **LogiCycle** / LogiCycle SAS / autre orthographe (Logyclie) ? | **LogiCycle** (SASU) | 2026-07-31 |
+| A2 | Sigle / nom commercial distinct ? | Non — LogiCycle | 2026-07-31 |
+| A3 | Domaine principal retenu ? | **logicycle.app** (live) | 2026-07-31 |
 | A4 | Logo finalisé pour dépôt marque ? | Oui / Non | |
 
 ---
@@ -32,9 +32,9 @@
 
 | # | Question | Votre décision | Date |
 |---|----------|----------------|------|
-| C1 | Siège : domicile / domiciliation / local ? | | |
-| C2 | Adresse complète | | |
-| C3 | Email officiel société | | |
+| C1 | Siège : domicile / domiciliation / local ? | *à trancher (K-bis)* | |
+| C2 | Adresse complète | *à coller post immatriculation → legal/meta.ts* | |
+| C3 | Email officiel société | **contact@logicycle.app** (+ support@, privacy@) | 2026-07-31 |
 | C4 | Justificatif de jouissance disponible (< 3 mois) ? | | |
 
 ---
@@ -43,7 +43,7 @@
 
 | # | Question | Votre décision | Date |
 |---|----------|----------------|------|
-| D1 | Président = fondateur ? | | |
+| D1 | Président = fondateur ? | **Oui — Anthony Uldry** (directeur de publication) | 2026-07-31 |
 | D2 | Durée du mandat : indéterminée / 3 ans / autre ? | | |
 | D3 | Rémunération nette mensuelle de départ ? (cible BP : 2 000 €) | | |
 | D4 | Directeur général nommé dès J1 ? (souvent non) | | |
@@ -56,7 +56,7 @@
 | # | Question | Votre décision | Date |
 |---|----------|----------------|------|
 | E1 | IS (défaut) confirmé — pas d’option IR | | |
-| E2 | TVA : franchise / réel simplifié / réel normal ? | | |
+| E2 | TVA : franchise / réel simplifié / réel normal ? | Soft-launch : **pas de Stripe Tax** tant que K-bis / registrations non prêts ; puis Stripe Tax | 2026-07-31 |
 | E3 | Date de clôture : 31/12 ? | | |
 | E4 | Candidature JEI envisagée ? | | |
 | E5 | Organisme de paie du Président ? | | |

@@ -103,10 +103,10 @@ fi
 
 echo
 echo "==> Résultat : $pass OK / $warn WARN / $fail FAIL"
-echo "    Suite manuelle ce soir :"
-echo "    1. Déployer la branche (landing + legal) sur Netlify"
-echo "    2. Tester signup → Checkout Stripe TEST (carte 4242…)"
-echo "    3. Créer projet Sentry → coller VITE_SENTRY_DSN"
-echo "    4. Stripe Dashboard → activer Live quand ready"
+echo "    Suite manuelle restante :"
+echo "    1. Emails @logicycle.app — docs/EMAIL_FORWARDING.md"
+echo "    2. Remplir legal/meta.ts avec le K-bis (SIREN/SIRET/siège)"
+echo "    3. Stripe Dashboard → activer Live + secrets (docs/OPS_RUNBOOK.md)"
+echo "    4. ./scripts/smoke-production.sh https://logicycle.app"
 if [[ "$fail" -gt 0 ]]; then exit 1; fi
 exit 0

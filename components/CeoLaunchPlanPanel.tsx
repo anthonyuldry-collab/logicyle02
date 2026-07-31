@@ -61,8 +61,8 @@ const CeoLaunchPlanPanel: React.FC<CeoLaunchPlanPanelProps> = ({ actualMrr = 0 }
           </h3>
           <p className="mt-1 text-xs text-slate-400">
             {isFr
-              ? 'Checklist J-90 (sept.–nov. 2027) · Dual-Track M1–M24 · scénario Leader.'
-              : 'D-90 checklist (Sep–Nov 2027) · Dual-Track M1–M24 · Leader scenario.'}
+              ? 'Checklist J-90 (sept.–nov. 2026) · Dual-Track M1–M24 · scénario Leader.'
+              : 'D-90 checklist (Sep–Nov 2026) · Dual-Track M1–M24 · Leader scenario.'}
           </p>
         </div>
         <div className="flex rounded-lg border border-slate-600 bg-slate-950/60 p-0.5 text-xs">
@@ -219,8 +219,8 @@ const CeoLaunchPlanPanel: React.FC<CeoLaunchPlanPanelProps> = ({ actualMrr = 0 }
               <p className="mt-0.5 text-[11px] text-slate-500">
                 {projectionMonth <= 0
                   ? isFr
-                    ? 'Avant lancement (déc. 2027) — comparaison indicative vs M1'
-                    : 'Pre-launch (Dec 2027) — indicative vs M1'
+                    ? 'Avant lancement (déc. 2026) — comparaison indicative vs M1'
+                    : 'Pre-launch (Dec 2026) — indicative vs M1'
                   : isFr
                     ? 'Scénario Dual-Track (référence)'
                     : 'Dual-Track scenario (baseline)'}

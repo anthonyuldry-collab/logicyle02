@@ -1,89 +1,84 @@
 # Checklist go-live LogiCycle
 
-Checklist opérationnelle pour un lancement **payant**. Cocher avant d’ouvrir les inscriptions commerciales.
+Checklist opérationnelle pour un lancement **payant**.
 
-> **État session 31/07/2026 (soir)**  
-> Préflight local : `./scripts/preflight-soft-launch.sh` → **6 OK / 3 WARN / 0 FAIL**.  
-> Stripe compte = **TEST** (`environnement de test Logicycle SAS`) — 6 produits actifs (Club→Performance + Athlete/Staff).  
-> Prod Netlify (`logicycle2.netlify.app`) = encore **login** (landing locale pas déployée).  
-> WARN restants : Sentry DSN, identité éditeur (K-bis), deploy landing.
+> **État 31/07/2026 (soir)**  
+> Domaine **https://logicycle.app** live · Smoke prod **9 OK / 0 FAIL** · Functions Stripe redéployées avec `ALLOWED_APP_ORIGINS` · Sentry DSN en `.env.production` · Auth domaines OK.  
+> Stripe = encore **TEST** (`environnement de test Logicycle SAS`).  
+> Identité éditeur = **placeholders K-bis**. MX `@logicycle.app` = **pas encore configurés**.
 
-## P0 — Bloquants
+## P0 — Bloquants restants
 
 ### Identité & légal
-- [ ] Remplir `legal/meta.ts` : SIREN, SIRET, TVA, siège, directeur de publication (valeurs K-bis uniquement)
+- [ ] Remplir `legal/meta.ts` : SIREN, SIRET, TVA, siège (valeurs K-bis uniquement — **ne pas inventer**)
 - [ ] Relire pack légal (`legal/*`, version `LEGAL_PACK_VERSION`) avec un avocat
-- [ ] Confirmer boîtes mail `contact@`, `support@`, `privacy@` (domaine figé)
+- [ ] Boîtes mail `contact@` / `support@` / `privacy@` — guide : [EMAIL_FORWARDING.md](./EMAIL_FORWARDING.md)
 
 ### Domaines & auth
-- [x] Domaine prod acheté : **logicycle.app** (à brancher Netlify + Firebase Auth + Functions)
-- [ ] Domaine pointé HTTPS vers Netlify (`logicycle.app` + `www`)
-- [ ] Firebase Auth : domaines autorisés `logicycle.app` / `www.logicycle.app`
-- [x] `ALLOWED_APP_ORIGINS` mis à jour vers logicycle.app (redeploy Functions requis)
-- [ ] **Déployer** la build courante (landing + legal pack + FAQ) sur Netlify
+- [x] Domaine prod : **logicycle.app**
+- [x] HTTPS Netlify (`logicycle.app` + `www`)
+- [x] Firebase Auth : domaines autorisés
+- [x] `ALLOWED_APP_ORIGINS` + **redeploy** Functions Stripe
+- [x] Build courante live (landing / legal / FAQ) — smoke 31/07 OK
 
 ### Stripe
-- [x] Price IDs **test** complets (12 prices) dans `functions/.env.logicycle01`
-- [x] Produits Stripe test présents (Club, Competition, Elite, Performance, Athlete, Staff)
-- [ ] Compte Stripe **Live** activé
+- [x] Price IDs **test** + produits test
+- [ ] Compte Stripe **Live** activé (KYC)
 - [ ] Secrets Functions live : `STRIPE_SECRET_KEY` (`sk_live_…`), `STRIPE_WEBHOOK_SECRET`
-- [ ] Price IDs **live** dans l’env Functions
+- [ ] Price IDs **live** dans `functions/.env.logicycle01`
 - [ ] Webhook live → `stripeWebhook`
-- [ ] Parcours réel testé : signup → essai → carte `4242…` (TEST) puis Live
+- [x] Parcours TEST signup → Checkout (`4242…`) validé antérieurement
 - [x] `.env.production` sans `VITE_SKIP_SIGNUP_PAYMENT`
 
 ### Ops
-- [ ] Backup Firestore planifié + procédure restore testée une fois
-- [ ] `./scripts/smoke-production.sh` vert sur l’URL prod
-- [ ] Rollback Netlify / Functions documenté (qui fait quoi en &lt; 15 min)
+- [ ] Backup Firestore planifié + restore testé une fois — procédure : [OPS_RUNBOOK.md](./OPS_RUNBOOK.md)
+- [x] `./scripts/smoke-production.sh` vert sur https://logicycle.app (31/07)
+- [x] Rollback Netlify / Functions documenté ([OPS_RUNBOOK.md](./OPS_RUNBOOK.md))
 
 ## P1 — Fortement recommandé
 
 ### Monitoring
-- [ ] `VITE_SENTRY_DSN` + `VITE_APP_VERSION` dans le build Netlify prod
-- [ ] Alerte healthz / budgets Firebase (email fondateur)
+- [x] `VITE_SENTRY_DSN` + `VITE_APP_VERSION` en `.env.production`
+- [ ] Alerte budgets Firebase / healthz (email fondateur)
 - [ ] Tester une erreur volontaire → event Sentry **sans** e-mail utilisateur
 
 ### Produit / vente
-- [x] Landing FR/EN + FAQ + matching-only marketplace (**code local** — await deploy)
-- [x] FAQ / support in-app (`Paramètres → Aide`)
-- [x] Marketplace annoncée matching-only
+- [x] Landing FR/EN + FAQ + matching-only marketplace (déployé)
+- [x] FAQ / support in-app
 - [ ] 2–3 clients pilotes prêts à payer
 
 ### RGPD ops
-- [ ] Registre des traitements (même brouillon interne)
+- [x] Registre des traitements brouillon — [RGPD_REGISTRE.md](./RGPD_REGISTRE.md)
 - [ ] Test export + purge compte sur un user de test
 - [ ] Consent scouting documenté
 
 ### TVA
-- [ ] Décision : Stripe Tax **ou** process manuel facturation UE
+- [x] Décision soft-launch documentée : **pas de Stripe Tax** tant que société / registrations non prêtes ; activer Stripe Tax post K-bis — [OPS_RUNBOOK.md](./OPS_RUNBOOK.md)
 
-## P2 — Peut attendre post-lancement
+## P2 — Post-lancement
 
 - [ ] Stripe Connect + `MISSION_MARKETPLACE_MODE.paymentsEnabled = true` + bump légal
 - [ ] Stores iOS / Android (Capacitor)
-- [ ] Intégrations perf hors Nolio
-- [ ] Environnement staging Firebase séparé
-- [ ] Bandeau consentement analytics (seulement si outil d’audience ajouté)
+- [ ] Staging Firebase séparé
+- [ ] Bandeau analytics (si outil d’audience ajouté)
 
-## Commandes ce soir
+## Commandes
 
 ```bash
 ./scripts/preflight-soft-launch.sh
-npm run build
-# puis deploy Netlify / push main selon votre flux
-./scripts/smoke-production.sh
+./scripts/smoke-production.sh https://logicycle.app
 ```
 
-Test paiement TEST : carte `4242 4242 4242 4242`, date future, CVC quelconque.
+Test paiement TEST : `4242 4242 4242 4242`.
 
-## Références repo
+## Références
 
 | Fichier | Rôle |
 |---------|------|
 | `legal/meta.ts` | Identité éditeur |
+| `docs/OPS_RUNBOOK.md` | Backup, rollback, Stripe Live, TVA |
+| `docs/EMAIL_FORWARDING.md` | Mails @logicycle.app |
+| `docs/RGPD_REGISTRE.md` | Registre traitements (brouillon) |
 | `constants/missionMarketplace.ts` | Flag paiement missions |
-| `services/monitoring.ts` | Sentry |
 | `scripts/preflight-soft-launch.sh` | Préflight local |
 | `scripts/complete-production-deploy.sh` | Déploiement + rappels |
-| `data/ceoLaunchPlan.ts` | Pilotage J-90 in-app |

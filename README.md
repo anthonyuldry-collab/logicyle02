@@ -60,10 +60,13 @@ Publier / postuler / accepter fonctionne. Paiement & commission Stripe Connect :
 ./scripts/smoke-production.sh            # Healthcheck post-deploy
 ```
 
-Checklist opérationnelle : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md)
+Checklist opérationnelle : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md)  
+Ops (backup / rollback / Stripe Live) : [`docs/OPS_RUNBOOK.md`](docs/OPS_RUNBOOK.md)  
+Emails domaine : [`docs/EMAIL_FORWARDING.md`](docs/EMAIL_FORWARDING.md)
 
 ## Support
 
 - Produit : `support@logicycle.app`
 - Privacy : `privacy@logicycle.app`
 - Contact : `contact@logicycle.app`
+- Setup redirection : voir docs ci-dessus (MX pas encore configurés)

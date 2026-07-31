@@ -1,5 +1,5 @@
 /**
- * Pilotage PDG — checklist J-90 (sept.–nov. 2027) + objectifs ARR Dual-Track M1–M24.
+ * Pilotage PDG — checklist J-90 (sept.–nov. 2026) + objectifs ARR Dual-Track M1–M24.
  * Sources : business-plan/projections-leader-100M.csv · calendrier-lancement.md · portail-organisateur.md
  */
 
@@ -28,9 +28,9 @@ export interface CeoArrTargetMonth {
   milestoneEn?: string;
 }
 
-/** Checklist pré-lancement · M1 = déc. 2027 → J-90 = sept.–nov. 2027 */
+/** Checklist pré-lancement · M1 = déc. 2026 → J-90 = sept.–nov. 2026 */
 export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
-  // ——— Septembre 2027 ———
+  // ——— Septembre 2026 ———
   {
     id: 'sept-stripe',
     phase: 'sept',
@@ -42,13 +42,23 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     priority: 'P0',
   },
   {
+    id: 'sept-statuts',
+    phase: 'sept',
+    category: 'legal',
+    titleFr: 'Statuts SAS/SASU + clause PI (avocat)',
+    titleEn: 'SAS/SASU articles + IP clause (counsel)',
+    detailFr: 'Objet SaaS · PI cédée à la société · pouvoirs · greffe/Kbis. Voir dossier-avocat lot B.',
+    detailEn: 'SaaS object · IP assigned to company · powers · registry/Kbis. Counsel lot B.',
+    priority: 'P0',
+  },
+  {
     id: 'sept-legal-pack',
     phase: 'sept',
     category: 'legal',
     titleFr: 'Pack legal FR+EN (CGU · CGV · privacy · DPA)',
     titleEn: 'Legal pack FR+EN (ToS · privacy · DPA)',
-    detailFr: 'Pages #/legal · marketplace 12 % · mentions · v2026-07 (relecture avocat).',
-    detailEn: 'Pages #/legal · 12% marketplace · notices · v2026-07 (counsel review).',
+    detailFr: 'Rédaction avocat lot C · pages #/legal · marketplace 12 % · mentions.',
+    detailEn: 'Counsel lot C · #/legal pages · 12% marketplace · notices.',
     priority: 'P0',
   },
   {
@@ -92,7 +102,7 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     priority: 'P1',
   },
 
-  // ——— Octobre 2027 ———
+  // ——— Octobre 2026 ———
   {
     id: 'oct-wt-wedge',
     phase: 'oct',
@@ -154,15 +164,15 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     priority: 'P1',
   },
 
-  // ——— Novembre 2027 ———
+  // ——— Novembre 2026 ———
   {
     id: 'nov-go-live-checklist',
     phase: 'nov',
     category: 'ops',
     titleFr: 'Go / No-Go commercial (checklist signée)',
     titleEn: 'Commercial Go / No-Go (signed checklist)',
-    detailFr: 'Stripe · legal · EN · 3 clients prêts à payer · backup Firebase.',
-    detailEn: 'Stripe · legal · EN · 3 ready-to-pay clients · Firebase backup.',
+    detailFr: 'Stripe · statuts/Kbis · CGU/CGV live · EN · 3 clients prêts · backup Firebase.',
+    detailEn: 'Stripe · articles/Kbis · ToS live · EN · 3 ready-to-pay · Firebase backup.',
     priority: 'P0',
   },
   {
@@ -241,32 +251,32 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
 
 /** Objectifs Dual-Track M1–M24 (projections-leader-100M.csv) */
 export const CEO_ARR_TARGETS_M1_M24: CeoArrTargetMonth[] = [
-  { month: 1, dateLabel: 'déc. 2027', teams: 4, independents: 22, mrr: 477, arr: 5725, milestoneFr: 'Go-live', milestoneEn: 'Go-live' },
-  { month: 2, dateLabel: 'jan. 2028', teams: 8, independents: 44, mrr: 950, arr: 11404 },
-  { month: 3, dateLabel: 'fév. 2028', teams: 12, independents: 65, mrr: 1420, arr: 17037 },
-  { month: 4, dateLabel: 'mars 2028', teams: 16, independents: 87, mrr: 1897, arr: 22764 },
-  { month: 5, dateLabel: 'avr. 2028', teams: 20, independents: 109, mrr: 2381, arr: 28570 },
-  { month: 6, dateLabel: 'mai 2028', teams: 24, independents: 131, mrr: 2871, arr: 34453, milestoneFr: 'UI EN · 1 Pro/WT', milestoneEn: 'EN UI · 1 Pro/WT' },
-  { month: 7, dateLabel: 'juin 2028', teams: 31, independents: 190, mrr: 3903, arr: 46839 },
-  { month: 8, dateLabel: 'juil. 2028', teams: 39, independents: 249, mrr: 4948, arr: 59377, milestoneFr: 'Point mort société', milestoneEn: 'Company break-even' },
-  { month: 9, dateLabel: 'août 2028', teams: 46, independents: 309, mrr: 6005, arr: 72064 },
-  { month: 10, dateLabel: 'sept. 2028', teams: 54, independents: 369, mrr: 7075, arr: 84902 },
-  { month: 11, dateLabel: 'oct. 2028', teams: 61, independents: 430, mrr: 8157, arr: 97888 },
-  { month: 12, dateLabel: 'nov. 2028', teams: 69, independents: 492, mrr: 9252, arr: 111023, milestoneFr: 'Fin Y1 · salaire 2 K€', milestoneEn: 'End Y1 · €2k salary' },
-  { month: 13, dateLabel: 'déc. 2028', teams: 77, independents: 554, mrr: 10423, arr: 125070 },
-  { month: 14, dateLabel: 'jan. 2029', teams: 85, independents: 617, mrr: 11619, arr: 139423 },
-  { month: 15, dateLabel: 'fév. 2029', teams: 92, independents: 680, mrr: 12840, arr: 154085 },
-  { month: 16, dateLabel: 'mars 2029', teams: 100, independents: 744, mrr: 14088, arr: 169057, milestoneFr: 'Salaire 2,5 K€', milestoneEn: '€2.5k salary' },
-  { month: 17, dateLabel: 'avr. 2029', teams: 108, independents: 808, mrr: 15362, arr: 184343 },
-  { month: 18, dateLabel: 'mai 2029', teams: 116, independents: 873, mrr: 16662, arr: 199946, milestoneFr: 'Marketplace live', milestoneEn: 'Marketplace live' },
-  { month: 19, dateLabel: 'juin 2029', teams: 129, independents: 977, mrr: 18668, arr: 224011, milestoneFr: 'Marge nette ≥20 %', milestoneEn: 'Net margin ≥20%' },
-  { month: 20, dateLabel: 'juil. 2029', teams: 141, independents: 1083, mrr: 20742, arr: 248905 },
-  { month: 21, dateLabel: 'août 2029', teams: 153, independents: 1191, mrr: 22887, arr: 274644 },
-  { month: 22, dateLabel: 'sept. 2029', teams: 166, independents: 1301, mrr: 25103, arr: 301242 },
-  { month: 23, dateLabel: 'oct. 2029', teams: 179, independents: 1413, mrr: 27393, arr: 328715 },
+  { month: 1, dateLabel: 'déc. 2026', teams: 4, independents: 22, mrr: 477, arr: 5725, milestoneFr: 'Go-live', milestoneEn: 'Go-live' },
+  { month: 2, dateLabel: 'jan. 2027', teams: 8, independents: 44, mrr: 950, arr: 11404 },
+  { month: 3, dateLabel: 'fév. 2027', teams: 12, independents: 65, mrr: 1420, arr: 17037 },
+  { month: 4, dateLabel: 'mars 2027', teams: 16, independents: 87, mrr: 1897, arr: 22764 },
+  { month: 5, dateLabel: 'avr. 2027', teams: 20, independents: 109, mrr: 2381, arr: 28570 },
+  { month: 6, dateLabel: 'mai 2027', teams: 24, independents: 131, mrr: 2871, arr: 34453, milestoneFr: 'UI EN · 1 Pro/WT', milestoneEn: 'EN UI · 1 Pro/WT' },
+  { month: 7, dateLabel: 'juin 2027', teams: 31, independents: 190, mrr: 3903, arr: 46839 },
+  { month: 8, dateLabel: 'juil. 2027', teams: 39, independents: 249, mrr: 4948, arr: 59377, milestoneFr: 'Point mort société', milestoneEn: 'Company break-even' },
+  { month: 9, dateLabel: 'août 2027', teams: 46, independents: 309, mrr: 6005, arr: 72064 },
+  { month: 10, dateLabel: 'sept. 2027', teams: 54, independents: 369, mrr: 7075, arr: 84902 },
+  { month: 11, dateLabel: 'oct. 2027', teams: 61, independents: 430, mrr: 8157, arr: 97888 },
+  { month: 12, dateLabel: 'nov. 2027', teams: 69, independents: 492, mrr: 9252, arr: 111023, milestoneFr: 'Fin Y1 · salaire 2 K€', milestoneEn: 'End Y1 · €2k salary' },
+  { month: 13, dateLabel: 'déc. 2027', teams: 77, independents: 554, mrr: 10423, arr: 125070 },
+  { month: 14, dateLabel: 'jan. 2028', teams: 85, independents: 617, mrr: 11619, arr: 139423 },
+  { month: 15, dateLabel: 'fév. 2028', teams: 92, independents: 680, mrr: 12840, arr: 154085 },
+  { month: 16, dateLabel: 'mars 2028', teams: 100, independents: 744, mrr: 14088, arr: 169057, milestoneFr: 'Salaire 2,5 K€', milestoneEn: '€2.5k salary' },
+  { month: 17, dateLabel: 'avr. 2028', teams: 108, independents: 808, mrr: 15362, arr: 184343 },
+  { month: 18, dateLabel: 'mai 2028', teams: 116, independents: 873, mrr: 16662, arr: 199946, milestoneFr: 'Marketplace live', milestoneEn: 'Marketplace live' },
+  { month: 19, dateLabel: 'juin 2028', teams: 129, independents: 977, mrr: 18668, arr: 224011, milestoneFr: 'Marge nette ≥20 %', milestoneEn: 'Net margin ≥20%' },
+  { month: 20, dateLabel: 'juil. 2028', teams: 141, independents: 1083, mrr: 20742, arr: 248905 },
+  { month: 21, dateLabel: 'août 2028', teams: 153, independents: 1191, mrr: 22887, arr: 274644 },
+  { month: 22, dateLabel: 'sept. 2028', teams: 166, independents: 1301, mrr: 25103, arr: 301242 },
+  { month: 23, dateLabel: 'oct. 2028', teams: 179, independents: 1413, mrr: 27393, arr: 328715 },
   {
     month: 24,
-    dateLabel: 'nov. 2029',
+    dateLabel: 'nov. 2028',
     teams: 192,
     independents: 1527,
     mrr: 29757,
@@ -276,15 +286,15 @@ export const CEO_ARR_TARGETS_M1_M24: CeoArrTargetMonth[] = [
   },
 ];
 
-export const CEO_LAUNCH_M1 = { year: 2027, month: 12 }; // décembre 2027
+export const CEO_LAUNCH_M1 = { year: 2026, month: 12 }; // décembre 2026
 
 export const CHECKLIST_PHASE_LABEL: Record<
   CeoChecklistPhase,
   { fr: string; en: string }
 > = {
-  sept: { fr: 'Septembre 2027 (J-90)', en: 'September 2027 (D-90)' },
-  oct: { fr: 'Octobre 2027', en: 'October 2027' },
-  nov: { fr: 'Novembre 2027 (Go-live)', en: 'November 2027 (Go-live)' },
+  sept: { fr: 'Septembre 2026 (J-90)', en: 'September 2026 (D-90)' },
+  oct: { fr: 'Octobre 2026', en: 'October 2026' },
+  nov: { fr: 'Novembre 2026 (Go-live)', en: 'November 2026 (Go-live)' },
   ongoing: { fr: 'Règles PDG (permanentes)', en: 'CEO standing rules' },
 };
 
@@ -320,7 +330,7 @@ export function saveChecklistDone(done: Record<string, boolean>): void {
   }
 }
 
-/** Mois projeté courant (1 = déc. 2027). Avant lancement → 0. */
+/** Mois projeté courant (1 = déc. 2026). Avant lancement → 0. */
 export function getCurrentProjectionMonth(now = new Date()): number {
   const launch = new Date(CEO_LAUNCH_M1.year, CEO_LAUNCH_M1.month - 1, 1);
   if (now < launch) return 0;
