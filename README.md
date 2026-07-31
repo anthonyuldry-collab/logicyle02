@@ -64,6 +64,6 @@ Checklist opérationnelle : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST
 
 ## Support
 
-- Produit : `support@logicycle.fr`
-- Privacy : `privacy@logicycle.fr`
-- Contact : `contact@logicycle.fr`
+- Produit : `support@logicycle.app`
+- Privacy : `privacy@logicycle.app`
+- Contact : `contact@logicycle.app`

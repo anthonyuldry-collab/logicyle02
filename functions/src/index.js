@@ -625,14 +625,14 @@ async function creditReferrer(referrerUserId) {
 /** Origines autorisées pour redirects Stripe (évite open redirect via Origin spoofé). */
 function resolveAppOrigin(request) {
   const raw = (request.rawRequest && request.rawRequest.headers && request.rawRequest.headers.origin) || '';
-  const defaults = ['https://logicycle2.netlify.app', 'https://logicyle.app', 'https://www.logicyle.app', 'http://localhost:5173', 'http://localhost:3000'];
+  const defaults = ['https://logicycle.app', 'https://www.logicycle.app', 'https://logicycle2.netlify.app', 'http://localhost:5173', 'http://localhost:3000'];
   const fromEnv = (process.env.ALLOWED_APP_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
   const allowed = fromEnv.length ? fromEnv : defaults;
   if (raw && allowed.includes(raw)) return raw;
-  return allowed[0] || 'https://logicyle.app';
+  return allowed[0] || 'https://logicycle.app';
 }
 
 exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: '256MiB' }, async (request) => {

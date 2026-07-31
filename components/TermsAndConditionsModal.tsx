@@ -11,7 +11,7 @@ interface TermsAndConditionsModalProps {
   onDecline: () => void;
 }
 
-const DPO_EMAIL = 'privacy@logicycle.fr';
+const DPO_EMAIL = 'privacy@logicycle.app';
 
 export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = ({
   isOpen,

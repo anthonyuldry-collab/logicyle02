@@ -2,7 +2,7 @@
 # Smoke checks production LogiCycle — à lancer après un deploy.
 set -euo pipefail
 
-SITE="${SITE_URL:-https://logicycle2.netlify.app}"
+SITE="${SITE_URL:-https://logicycle.app}"
 PROJECT="${FIREBASE_PROJECT:-logicycle01}"
 REGION="${FIREBASE_FUNCTIONS_REGION:-europe-west1}"
 HEALTHZ_RUN="${HEALTHZ_RUN_URL:-https://healthz-3hz57fnxca-ew.a.run.app}"

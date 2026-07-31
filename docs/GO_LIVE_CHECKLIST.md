@@ -16,9 +16,10 @@ Checklist opérationnelle pour un lancement **payant**. Cocher avant d’ouvrir 
 - [ ] Confirmer boîtes mail `contact@`, `support@`, `privacy@` (domaine figé)
 
 ### Domaines & auth
-- [ ] Domaine prod unique (ex. `logicycle.fr` / app) + redirects HTTPS
-- [ ] Firebase Auth : domaines autorisés + Email link activé
-- [x] `ALLOWED_APP_ORIGINS` présent (functions) — **à réaligner** si domaine change
+- [x] Domaine prod acheté : **logicycle.app** (à brancher Netlify + Firebase Auth + Functions)
+- [ ] Domaine pointé HTTPS vers Netlify (`logicycle.app` + `www`)
+- [ ] Firebase Auth : domaines autorisés `logicycle.app` / `www.logicycle.app`
+- [x] `ALLOWED_APP_ORIGINS` mis à jour vers logicycle.app (redeploy Functions requis)
 - [ ] **Déployer** la build courante (landing + legal pack + FAQ) sur Netlify
 
 ### Stripe

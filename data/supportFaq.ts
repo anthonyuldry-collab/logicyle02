@@ -68,8 +68,8 @@ export const SUPPORT_FAQ_ITEMS: SupportFaqItem[] = [
       en: 'How do I contact support?',
     },
     answer: {
-      fr: 'Écrivez à support@logicycle.fr (réponse sous 2 jours ouvrés en période beta). Indiquez votre e-mail de compte et une description courte du problème.',
-      en: 'Email support@logicycle.fr (reply within 2 business days during beta). Include your account email and a short description of the issue.',
+      fr: 'Écrivez à support@logicycle.app (réponse sous 2 jours ouvrés en période beta). Indiquez votre e-mail de compte et une description courte du problème.',
+      en: 'Email support@logicycle.app (reply within 2 business days during beta). Include your account email and a short description of the issue.',
     },
   },
 ];

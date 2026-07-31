@@ -41,7 +41,7 @@ function hashToCode(seed: string): string {
 }
 
 export function buildReferralShareUrl(code: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://logicyle.app';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://logicycle.app';
   return `${origin}/?${REFERRAL_URL_PARAM}=${encodeURIComponent(code)}`;
 }
 
