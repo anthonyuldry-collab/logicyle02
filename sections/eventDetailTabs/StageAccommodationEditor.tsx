@@ -23,6 +23,7 @@ interface StageAccommodationEditorProps {
   updateEvent: (data: Partial<RaceEvent>) => void;
   appState: AppState;
   canViewFinancialInfo?: boolean;
+  readOnly?: boolean;
 }
 
 const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
@@ -31,6 +32,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
   updateEvent,
   appState,
   canViewFinancialInfo = false,
+  readOnly = false,
 }) => {
   const [formData, setFormData] = useState<RaceEvent>(() => ensureStageRaceLogistics(event));
   const [activeStageTab, setActiveStageTab] = useState(0);
@@ -78,6 +80,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
   };
 
   const handleSave = async () => {
+    if (readOnly) return;
     setIsSaving(true);
     try {
       const toSave = ensureStageRaceLogistics({ ...formData, id: eventId });
@@ -106,6 +109,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
                 id={`${acco.id}-${key}`}
                 checked={Boolean(acco[key])}
                 onChange={e => handleAccoChange(acco.id, key, e.target.checked)}
+                disabled={readOnly}
                 className="h-4 w-4 text-blue-600 border-gray-300 rounded"
               />
               <label htmlFor={`${acco.id}-${key}`} className="ml-2 text-sm text-gray-700">
@@ -121,6 +125,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
               <select
                 value={acco.status}
                 onChange={e => handleAccoChange(acco.id, key, e.target.value as AccommodationStatus)}
+                disabled={readOnly}
                 className={lightInputClass}
               >
                 {Object.values(AccommodationStatus).map(s => (
@@ -138,6 +143,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
                 rows={2}
                 value={(acco[key] as string) || ''}
                 onChange={e => handleAccoChange(acco.id, key, e.target.value)}
+                disabled={readOnly}
                 className={lightInputClass}
               />
             ) : (
@@ -155,6 +161,7 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
                       : e.target.value,
                   )
                 }
+                disabled={readOnly}
                 className={lightInputClass}
                 step={type === 'number' ? 'any' : undefined}
                 min={type === 'number' ? 0 : undefined}
@@ -172,9 +179,11 @@ const StageAccommodationEditor: React.FC<StageAccommodationEditorProps> = ({
         <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 flex-1">
           Hébergement par étape — {formatEventDateRange(formData)}. Chaque onglet correspond à la nuit de la veille avant le jour de course.
         </p>
-        <ActionButton onClick={handleSave} disabled={isSaving} size="sm">
-          {isSaving ? 'Sauvegarde…' : 'Sauvegarder l\'hébergement par étape'}
-        </ActionButton>
+        {!readOnly && (
+          <ActionButton onClick={handleSave} disabled={isSaving} size="sm">
+            {isSaving ? 'Sauvegarde…' : 'Sauvegarder l\'hébergement par étape'}
+          </ActionButton>
+        )}
       </div>
 
       <StageRaceSubTabs

@@ -40,7 +40,8 @@ Stripe est en MODE TEST. Pour passer en live :
   4. Recréer les Price IDs live dans functions/.env.logicycle01
   5. Webhook live → https://europe-west1-logicycle01.cloudfunctions.net/stripeWebhook
   6. Redeploy functions:createStripeCheckout,createStripePortal,stripeWebhook
-  7. ./scripts/smoke-production.sh
+  7. Vérifier que VITE_SKIP_SIGNUP_PAYMENT n’est PAS dans .env.production (ignoré en PROD de toute façon)
+  8. ./scripts/smoke-production.sh
 
 CI GitHub encore optionnelle :
   - NETLIFY_AUTH_TOKEN + NETLIFY_SITE_ID (sinon Netlify Git suffit)

@@ -50,7 +50,11 @@ interface RosterSectionProps {
   appState: AppState;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
   staff?: StaffMember[];
-  onRosterTransition?: (archive: RosterArchive, transition: RosterTransition) => void;
+  onRosterTransition?: (
+    archive: RosterArchive,
+    transition: RosterTransition,
+    updated: { riders: Rider[]; staff: StaffMember[] }
+  ) => void;
 }
 
 export default function RosterSection({ 
@@ -1227,22 +1231,24 @@ export default function RosterSection({
   };
 
   // Fonctions pour la gestion de l'archivage des effectifs
-  const handleRosterTransition = (archive: RosterArchive, transition: RosterTransition) => {
-    console.log('🔄 Transition des effectifs:', { archive, transition });
-    
-    // Ajouter l'archive à la liste
+  const handleRosterTransition = (
+    archive: RosterArchive,
+    transition: RosterTransition,
+    updated: { riders: Rider[]; staff: StaffMember[] }
+  ) => {
     setRosterArchives(prev => [...prev, archive]);
-    
-    // Notifier le composant parent si la fonction est fournie
-    if (onRosterTransition) {
-      onRosterTransition(archive, transition);
+    if (updated.riders.length) {
+      updated.riders.forEach((rider) => {
+        void onSaveRider(rider);
+      });
     }
-    
-    // Afficher un message de confirmation
-    alert(`Effectifs de la saison ${archive.season} archivés avec succès !
-    
-Tous les coureurs et staff actifs ont été conservés pour 2026.
-Les compteurs de jours de course ont été remis à 0.`);
+    if (onRosterTransition) {
+      onRosterTransition(archive, transition, updated);
+    }
+    alert(
+      `Effectifs de la saison ${archive.season} archivés.\n` +
+        `Transition vers ${transition.toSeason} enregistrée (compteurs remis à 0).`
+    );
   };
 
   const handleViewArchive = (archive: RosterArchive) => {
@@ -4441,6 +4447,7 @@ Les compteurs de jours de course ont été remis à 0.`);
       <RosterTransitionManager
         riders={riders}
         staff={staff}
+        teamId={appState.activeTeamId}
         onRosterTransition={handleRosterTransition}
       />
 

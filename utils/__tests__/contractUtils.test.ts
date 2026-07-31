@@ -136,6 +136,9 @@ describe('contractUtils', () => {
     expect(hasUciPdfAccess(SubscriptionPlanId.CONTINENTAL)).toBe(false);
     expect(hasUciPdfAccess(SubscriptionPlanId.COMPETITION, TeamLevel.N1_N3)).toBe(true);
     expect(hasUciPdfAccess(SubscriptionPlanId.CLUB, TeamLevel.N1_N3)).toBe(false);
+    expect(hasUciPdfAccess(SubscriptionPlanId.COMPETITION, TeamLevel.N1)).toBe(true);
+    expect(hasUciPdfAccess(SubscriptionPlanId.COMPETITION, TeamLevel.N2)).toBe(true);
+    expect(hasUciPdfAccess(SubscriptionPlanId.COMPETITION, TeamLevel.N3)).toBe(true);
   });
 
   it('calculateVacataireCostForMonth returns 0 without scheduled events', () => {

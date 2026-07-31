@@ -68,7 +68,11 @@ interface StaffSectionProps {
   onDelete?: (staff: StaffMember) => void;
   onSaveMeetingReport?: (report: MeetingReport) => void;
   onDeleteMeetingReport?: (report: MeetingReport) => void;
-  onStaffTransition?: (archive: StaffArchive, transition: StaffTransition) => void;
+  onStaffTransition?: (
+    archive: StaffArchive,
+    transition: StaffTransition,
+    updatedStaff: StaffMember[]
+  ) => void;
   staffEventSelections?: StaffEventSelection[];
   setStaffEventSelections?: (updater: React.SetStateAction<StaffEventSelection[]>) => void;
   effectivePermissions?: any;
@@ -733,13 +737,19 @@ export default function StaffSection({
   };
 
   // Fonctions pour la gestion des effectifs
-  const handleStaffTransition = (archive: StaffArchive, transition: StaffTransition) => {
-    // Ajouter l'archive à la liste
+  const handleStaffTransition = (
+    archive: StaffArchive,
+    transition: StaffTransition,
+    updatedStaff: StaffMember[]
+  ) => {
     setStaffArchives(prev => [...prev, archive]);
-    
-    // Notifier le parent si nécessaire
+    if (onSave && updatedStaff.length) {
+      updatedStaff.forEach((member) => {
+        void onSave(member);
+      });
+    }
     if (onStaffTransition) {
-      onStaffTransition(archive, transition);
+      onStaffTransition(archive, transition, updatedStaff);
     }
   };
 
@@ -1106,6 +1116,7 @@ export default function StaffSection({
         {/* Gestionnaire de transition des effectifs */}
         <StaffTransitionManager
           staff={staff}
+          teamId={team?.id}
           onStaffTransition={handleStaffTransition}
         />
         

@@ -1,9 +1,18 @@
 /**
- * Marketplace missions vacataires — commissions & règles économiques.
+ * Marketplace missions vacataires — mode produit & règles économiques.
  * Aligné business-plan/marketplace-missions-commissions.md
+ *
+ * Aujourd’hui : matching only (publier / postuler / accepter).
+ * Stripe Connect + commission in-app : activés quand paymentsEnabled = true.
  */
 
-/** Commission LogiCycle sur le montant vacataire (HT, avant Stripe Connect) */
+/** Mode runtime de la marketplace missions. */
+export const MISSION_MARKETPLACE_MODE = {
+  /** false = mise en relation uniquement ; paiement hors plateforme */
+  paymentsEnabled: false,
+} as const;
+
+/** Commission LogiCycle sur le montant vacataire (HT) — applicable quand paymentsEnabled. */
 export const MISSION_COMMISSION = {
   /** Taux standard Continental / Compétition */
   standardTakeRatePercent: 12,
@@ -30,13 +39,17 @@ export const MISSION_MARKET_ASSUMPTIONS = {
 } as const;
 
 export const MISSION_COMMISSION_LABELS = {
+  matchingOnlyBanner: {
+    fr: 'Mise en relation uniquement : publiez, postulez et acceptez des missions. Le règlement se fait hors plateforme pour le moment (pas de paiement in-app).',
+    en: 'Matching only: post, apply and accept missions. Payment is handled off-platform for now (no in-app payouts yet).',
+  },
   feeExplanation: {
-    fr: 'Commission LogiCycle : {rate} % sur le montant vacataire (min. {min} €). Paiement sécurisé via Stripe.',
-    en: 'LogiCycle fee: {rate}% on freelancer amount (min. €{min}). Secure payment via Stripe.',
+    fr: 'Commission LogiCycle : {rate} % sur le montant vacataire (min. {min} €). Paiement sécurisé via Stripe — disponible lorsque le paiement in-app sera activé.',
+    en: 'LogiCycle fee: {rate}% on freelancer amount (min. €{min}). Secure Stripe payment — available when in-app payments are enabled.',
   },
   proDiscount: {
-    fr: 'Plan Pro : commission réduite à {rate} %',
-    en: 'Pro plan: reduced fee at {rate}%',
+    fr: 'Plan Pro : commission réduite à {rate} % (lorsque le paiement in-app sera activé)',
+    en: 'Pro plan: reduced fee at {rate}% (when in-app payments are enabled)',
   },
 } as const;
 
@@ -59,6 +72,10 @@ export const EXPANSION_REGIONS = {
     startYear: 6,
   },
 } as const;
+
+export function isMissionMarketplacePaymentsEnabled(): boolean {
+  return Boolean(MISSION_MARKETPLACE_MODE.paymentsEnabled);
+}
 
 export function computeMissionCommissionEur(
   gmvEur: number,

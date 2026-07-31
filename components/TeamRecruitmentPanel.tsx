@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  TeamGender,
   TeamMembership,
   TeamMembershipStatus,
   TeamRecruitmentCampaign,
@@ -16,13 +17,14 @@ import Modal from './Modal';
 import {
   DISCIPLINE_FILTER_OPTIONS,
   formatRecruitmentCriteriaSummary,
-  RIDER_SEGMENT_FILTER_OPTIONS,
   riderMatchesRecruitmentCriteria,
 } from '../utils/recruitmentCampaignUtils';
 import {
+  getRiderSegmentFilterOptions,
   RECRUITMENT_TARGET_OPTIONS,
   resolveRiderMarketSegmentFromUser,
   RIDER_SEGMENT_LABELS,
+  RiderMarketSegment,
 } from '../utils/riderTeamMarketSegment';
 
 type RecruitmentTab = 'applications' | 'offers' | 'campaigns';
@@ -39,6 +41,7 @@ interface TeamRecruitmentPanelProps {
   onApproveMembership?: (membership: TeamMembership) => Promise<void>;
   onDenyMembership?: (membership: TeamMembership) => Promise<void>;
   canEdit?: boolean;
+  teamGender?: TeamGender;
 }
 
 const generateId = () => `rec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -54,7 +57,8 @@ const emptyCriteria = (): TeamRecruitmentCriteria => ({
 const CriteriaEditor: React.FC<{
   value: TeamRecruitmentCriteria;
   onChange: (next: TeamRecruitmentCriteria) => void;
-}> = ({ value, onChange }) => (
+  segmentOptions: { id: RiderMarketSegment; label: string }[];
+}> = ({ value, onChange, segmentOptions }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
     <div>
       <label className="block text-xs font-medium text-slate-300 mb-1">Âge min</label>
@@ -81,7 +85,7 @@ const CriteriaEditor: React.FC<{
     <div className="md:col-span-2">
       <label className="block text-xs font-medium text-slate-300 mb-1">Segments coureur</label>
       <div className="flex flex-wrap gap-2">
-        {RIDER_SEGMENT_FILTER_OPTIONS.map((opt) => {
+        {segmentOptions.map((opt) => {
           const selected = value.riderSegments?.includes(opt.id) ?? false;
           return (
             <button
@@ -149,6 +153,7 @@ const TeamRecruitmentPanel: React.FC<TeamRecruitmentPanelProps> = ({
   onApproveMembership,
   onDenyMembership,
   canEdit = true,
+  teamGender = 'mixed',
 }) => {
   const [tab, setTab] = useState<RecruitmentTab>('applications');
   const [offerModalOpen, setOfferModalOpen] = useState(false);
@@ -156,6 +161,10 @@ const TeamRecruitmentPanel: React.FC<TeamRecruitmentPanelProps> = ({
   const [offerForm, setOfferForm] = useState({ title: '', description: '' });
   const [offerCriteria, setOfferCriteria] = useState<TeamRecruitmentCriteria>(emptyCriteria());
   const [campaignForm, setCampaignForm] = useState({ title: '', description: '' });
+  const segmentOptions = useMemo(
+    () => getRiderSegmentFilterOptions({ teamGender }),
+    [teamGender],
+  );
   const [campaignCriteria, setCampaignCriteria] = useState<TeamRecruitmentCriteria>(emptyCriteria());
   const [useCampaignCriteria, setUseCampaignCriteria] = useState(true);
 
@@ -486,7 +495,11 @@ const TeamRecruitmentPanel: React.FC<TeamRecruitmentPanelProps> = ({
             Définir des critères de recherche
           </label>
           {useCampaignCriteria && (
-            <CriteriaEditor value={offerCriteria} onChange={setOfferCriteria} />
+            <CriteriaEditor
+              value={offerCriteria}
+              onChange={setOfferCriteria}
+              segmentOptions={segmentOptions}
+            />
           )}
           <div className="flex justify-end gap-2 pt-2">
             <ActionButton variant="secondary" onClick={() => publishOffer(false)}>
@@ -530,7 +543,11 @@ const TeamRecruitmentPanel: React.FC<TeamRecruitmentPanelProps> = ({
             Critères de recherche (âge, segment, discipline…)
           </label>
           {useCampaignCriteria && (
-            <CriteriaEditor value={campaignCriteria} onChange={setCampaignCriteria} />
+            <CriteriaEditor
+              value={campaignCriteria}
+              onChange={setCampaignCriteria}
+              segmentOptions={segmentOptions}
+            />
           )}
           <p className="text-xs text-gray-500">
             Une offre liée sera publiée automatiquement sur le portail coureur.

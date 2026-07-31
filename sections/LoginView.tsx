@@ -10,9 +10,17 @@ interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   onSwitchToSignup: () => void;
   onViewPricing?: () => void;
+  onViewLegal?: (docId: 'cgu' | 'cgv' | 'privacy' | 'dpa' | 'mentions' | 'cookies') => void;
+  onBackToLanding?: () => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onViewPricing }) => {
+const LoginView: React.FC<LoginViewProps> = ({
+  onLogin,
+  onSwitchToSignup,
+  onViewPricing,
+  onViewLegal,
+  onBackToLanding,
+}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -49,8 +57,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
       // Avec la protection anti-énumération Firebase, cet appel peut « réussir »
       // même sans compte — l’email n’est alors pas envoyé.
       setResetMessage(
-        `${t('loginResetSuccess')} ${targetEmail}, ${t('loginResetSuccess2')} ` +
-          'Si rien n’arrive sous 2 min (spams inclus), le compte n’existe probablement plus : réinscrivez-vous.',
+        `${t('loginResetSuccess')} ${targetEmail}, ${t('loginResetSuccess2')} ${t('loginResetHintSpam')}`,
       );
       setTimeout(() => {
         setIsForgotPasswordModalOpen(false);
@@ -62,11 +69,11 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
           ? String((err as { code: unknown }).code)
           : '';
       if (code === 'auth/invalid-email') {
-        setResetError(t('signupInvalidEmail') || 'Adresse email invalide.');
+        setResetError(t('signupInvalidEmail'));
       } else if (code === 'auth/user-not-found') {
-        setResetError('Aucun compte avec cet email. Réinscrivez-vous.');
+        setResetError(t('loginResetUserNotFound'));
       } else if (code === 'auth/too-many-requests') {
-        setResetError('Trop de demandes. Réessayez dans quelques minutes.');
+        setResetError(t('loginResetTooMany'));
       } else {
         console.error('sendPasswordResetEmail:', err);
         setResetError(t('loginResetError'));
@@ -325,8 +332,19 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
         />
       </div>
 
-      {/* Langue */}
-      <div className="absolute top-4 right-4 z-20">
+      {/* Accueil + langue */}
+      <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between gap-3">
+        {onBackToLanding ? (
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="text-sm font-medium text-slate-300 hover:text-white transition"
+          >
+            {t('loginBackToHome')}
+          </button>
+        ) : (
+          <span />
+        )}
         <select
           onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}
           value={language}
@@ -450,6 +468,30 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onSwitchToSignup, onView
                     {t('pricingViewPlans')}
                   </button>
                 </p>
+              )}
+              {onViewLegal && (
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-1 text-xs text-slate-500">
+                  {(
+                    [
+                      ['cgu', 'legalLinkCgu'],
+                      ['cgv', 'legalLinkCgv'],
+                      ['privacy', 'legalLinkPrivacy'],
+                      ['dpa', 'legalLinkDpa'],
+                      ['mentions', 'legalLinkMentions'],
+                    ] as const
+                  ).map(([id, key], index, arr) => (
+                    <React.Fragment key={id}>
+                      <button
+                        type="button"
+                        onClick={() => onViewLegal(id)}
+                        className="hover:text-slate-300 underline-offset-2 hover:underline"
+                      >
+                        {t(key)}
+                      </button>
+                      {index < arr.length - 1 && <span aria-hidden>·</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
               )}
             </div>
           </div>

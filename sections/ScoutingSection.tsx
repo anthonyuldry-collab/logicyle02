@@ -32,6 +32,7 @@ import {
 } from '../utils/scoutingProspectUtils';
 import TeamRecruitmentPanel from '../components/TeamRecruitmentPanel';
 import SpiderChart from '../components/SpiderChart';
+import { getTeamGender } from '../utils/teamGenderUtils';
 
 interface ScoutingSectionProps {
   scoutingProfiles: ScoutingProfile[];
@@ -1201,6 +1202,7 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
           onReviewRiderApplication ? (m) => onReviewRiderApplication(m, 'deny') : undefined
         }
         canEdit={canEdit}
+        teamGender={team ? getTeamGender(team) : 'mixed'}
       />
     );
   };

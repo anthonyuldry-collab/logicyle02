@@ -27,14 +27,14 @@ export const ADMIN_SECTIONS: AppSection[] = SECTIONS
   .map((s) => s.id as AppSection)
   .filter((id) => id !== 'eventDetail' && !MY_SPACE_SECTIONS.includes(id));
 
-/** Directeur sportif : coordination planification, staff et déplacements (hors finances globales). */
+/** Directeur sportif : coordination planification, staff, scouting / recrutement et déplacements (hors finances globales). */
 export const DIRECTEUR_SPORTIF_SECTION_GRANTS: Partial<Record<AppSection, PermissionLevel[]>> = {
   // Planification sportive
   'season-planning': ['view', 'edit'],
   events: ['view', 'edit'],
   roster: ['view', 'edit'],
   staff: ['view', 'edit'],
-  scouting: ['view'],
+  scouting: ['view', 'edit'],
   performance: ['view'],
 
   // Logistique & déplacements

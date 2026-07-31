@@ -15,6 +15,7 @@ import {
   resolveRiderMarketSegmentFromUser,
   RIDER_SEGMENT_LABELS,
 } from '../utils/riderTeamMarketSegment';
+import { getSelectableTeamLevels } from '../utils/teamLevelUtils';
 import {
   STAFF_ROLE_KEYS,
   getStaffRoleDisplayLabel,
@@ -274,12 +275,15 @@ const NoTeamView: React.FC<NoTeamViewProps> = ({
                   onChange={(e) => setNewTeamLevel(e.target.value as TeamLevel)}
                   className="input-field-sm w-full mt-1"
                 >
-                  {Object.values(TeamLevel).map((level) => (
+                  {getSelectableTeamLevels('mixed').map((level) => (
                     <option key={level} value={level}>
                       {level}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Hommes : N1–N3 · Femmes : N1–N2 (à préciser ensuite dans le profil équipe).
+                </p>
               </div>
               <div>
                 <label htmlFor="newTeamCountryLobby" className="text-sm font-medium text-slate-300">

@@ -1,7 +1,7 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import { DEFAULT_THEME_PRIMARY_COLOR, DEFAULT_THEME_ACCENT_COLOR, LANGUAGE_OPTIONS } from '../constants';
@@ -14,7 +14,8 @@ import UploadIcon from '../components/icons/UploadIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useTranslations } from '../hooks/useTranslations';
-
+import { getTeamGender } from '../utils/teamGenderUtils';
+import { getSelectableTeamLevels } from '../utils/teamLevelUtils';
 
 export interface SettingsSectionProps {
   teamLogoBase64?: string;
@@ -105,6 +106,15 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const [levelToChange, setLevelToChange] = useState<TeamLevel | null>(null);
   const [localAddress, setLocalAddress] = useState<Address>(team?.address || {});
   const [showTeamDeleteModal, setShowTeamDeleteModal] = useState(false);
+
+  const selectableTeamLevels = useMemo(() => {
+    const gender = getTeamGender(team ?? { operationalSettings, gender: operationalSettings?.gender });
+    const levels = getSelectableTeamLevels(gender);
+    if (teamLevel && !levels.includes(teamLevel)) {
+      return [teamLevel, ...levels];
+    }
+    return levels;
+  }, [team, operationalSettings, teamLevel]);
   const [teamDeletePassword, setTeamDeletePassword] = useState('');
   const [teamDeleteNameConfirm, setTeamDeleteNameConfirm] = useState('');
   const [teamDeleteError, setTeamDeleteError] = useState('');
@@ -336,10 +346,15 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     className={`${inputBaseClass} max-w-md`}
                 >
                     <option value="" disabled>-- {teamLevel ? "Sélectionner un niveau" : "Non défini"} --</option>
-                    {Object.values(TeamLevel).map(level => (
+                    {selectableTeamLevels.map(level => (
                         <option key={level} value={level}>{level}</option>
                     ))}
                 </select>
+                {getTeamGender(team ?? { operationalSettings }) === 'women' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Calendrier femmes : N1 et N2 uniquement (pas de N3).
+                  </p>
+                )}
             </div>
         </SettingsCard>
 

@@ -17,6 +17,7 @@
 | `04-decisions-a-trancher.md` | Liste des choix à fixer avant dépôt |
 | `05-proces-verbal-nomination-president.md` | PV de nomination + acceptation mandat |
 | `06-attestation-depot-fonds.md` | Modèle attestation (banque / notaire / Caisse des dépôts) |
+| `legal-pack/README.md` | Pack SaaS CGU · CGV · privacy · DPA · mentions · cookies (FR+EN) |
 
 ---
 

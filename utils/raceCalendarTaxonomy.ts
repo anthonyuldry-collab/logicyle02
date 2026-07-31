@@ -493,9 +493,20 @@ export function isCandidatureWindowOpen(
   return ref <= theoreticalEventDate && ref >= deadline;
 }
 
+const DN_TIER_ACCESS: RaceCircuitTier[] = [
+  'proseries',
+  'continental1',
+  'continental2',
+  'national_elite',
+  'international',
+];
+
 const TEAM_TIER_ACCESS: Record<TeamLevel, RaceCircuitTier[]> = {
   [TeamLevel.PRO]: ['worldtour', 'proseries', 'continental1', 'continental2', 'international'],
-  [TeamLevel.N1_N3]: ['proseries', 'continental1', 'continental2', 'national_elite', 'international'],
+  [TeamLevel.N1]: DN_TIER_ACCESS,
+  [TeamLevel.N2]: DN_TIER_ACCESS,
+  [TeamLevel.N3]: DN_TIER_ACCESS,
+  [TeamLevel.N1_N3]: DN_TIER_ACCESS,
   [TeamLevel.HORS_DN]: ['continental2', 'national_elite', 'amateur', 'youth'],
   [TeamLevel.JEUNES]: ['youth', 'amateur', 'national_elite'],
   [TeamLevel.FEDERATION]: [
@@ -546,11 +557,14 @@ export function getTeamCalendarOfferSummary(teamLevel?: TeamLevel): {
         en: 'Target offer: WorldTour & ProSeries (M/W), UCI Class 1 invites, international selections.',
         recommendedTiers: TEAM_TIER_ACCESS[TeamLevel.PRO],
       };
+    case TeamLevel.N1:
+    case TeamLevel.N2:
+    case TeamLevel.N3:
     case TeamLevel.N1_N3:
       return {
-        fr: 'Offre cible : ProSeries invité, UCI 1.1/2.1, Elite nationale & Coupes de France N1–N3 (H/F).',
-        en: 'Target offer: ProSeries guest, UCI 1.1/2.1, national elite & French Cup N1–N3 (M/W).',
-        recommendedTiers: TEAM_TIER_ACCESS[TeamLevel.N1_N3],
+        fr: 'Offre cible : ProSeries invité, UCI 1.1/2.1, Elite nationale & Coupes de France N1–N3 (H) / N1–N2 (F).',
+        en: 'Target offer: ProSeries guest, UCI 1.1/2.1, national elite & French Cup N1–N3 (M) / N1–N2 (W).',
+        recommendedTiers: TEAM_TIER_ACCESS[teamLevel] ?? DN_TIER_ACCESS,
       };
     case TeamLevel.JEUNES:
       return {

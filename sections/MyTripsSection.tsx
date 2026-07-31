@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   User,
+  UserRole,
   RaceEvent,
   EventTransportLeg,
   Rider,
@@ -92,6 +93,7 @@ const MyTripsSection: React.FC<MyTripsSectionProps> = ({
 }) => {
   const { t } = useTranslations();
   const canScan = canScanExpenseReceipts(currentUser, staff);
+  const isRider = currentUser.userRole === UserRole.COUREUR || currentUser.userRole === 'Coureur';
   const [tripFilter, setTripFilter] = useState<TripFilter>('upcoming');
   const [showPast, setShowPast] = useState(false);
 
@@ -100,6 +102,8 @@ const MyTripsSection: React.FC<MyTripsSectionProps> = ({
     [staff, currentUser],
   );
   const isDirecteurSportif = staffMember ? getStaffRoleKey(staffMember.role) === 'DS' : false;
+  /** Formulaires UCI : staff / DS uniquement, pas les coureurs */
+  const canViewUciForms = !isRider;
 
   const driverAssignments = useMemo(() => {
     if (!staffMember || !teamId) return [];
@@ -176,10 +180,11 @@ const MyTripsSection: React.FC<MyTripsSectionProps> = ({
   );
 
   const uciEventsNeedingDocs = useMemo(() => {
+    if (!canViewUciForms) return [];
     return tripItems
       .filter(t => isUciCategoryEvent(t.event, teamLevel))
       .filter(t => ensureUciDocumentsForEvent(t.event, eventDocuments, teamLevel).length > 0);
-  }, [tripItems, eventDocuments, teamLevel]);
+  }, [canViewUciForms, tripItems, eventDocuments, teamLevel]);
 
   React.useEffect(() => {
     if (!onEnsureUciDocuments || uciEventsNeedingDocs.length === 0) return;
@@ -297,7 +302,7 @@ const MyTripsSection: React.FC<MyTripsSectionProps> = ({
               );
             })}
 
-            {isUciCategoryEvent(event, teamLevel) && (
+            {canViewUciForms && isUciCategoryEvent(event, teamLevel) && (
               <div className="mt-3">
                 <UciFormsWorkflowPanel
                   compact

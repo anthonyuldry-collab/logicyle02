@@ -16,6 +16,9 @@ describe('teamLevelToFicheStructure', () => {
 
   it('mappe le niveau compétition', () => {
     expect(teamLevelToFicheStructure(TeamLevel.N1_N3)).toBe('competition');
+    expect(teamLevelToFicheStructure(TeamLevel.N1)).toBe('competition');
+    expect(teamLevelToFicheStructure(TeamLevel.N2)).toBe('competition');
+    expect(teamLevelToFicheStructure(TeamLevel.N3)).toBe('competition');
   });
 
   it('mappe le niveau pro', () => {

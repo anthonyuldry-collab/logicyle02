@@ -79,16 +79,35 @@ export const getLevelCategory = (rider: any): string => {
     // 1. Priorité : Si le coureur a des catégories de niveau sélectionnées manuellement
     if (rider.categories && Array.isArray(rider.categories) && rider.categories.length > 0) {
         // Retourner la première catégorie sélectionnée (ou la plus élevée)
-        const sortedCategories = ['Pro', 'Elite', 'Open 1', 'Open 2', 'Open 3', 'Handisport'];
-        const selectedCategory = rider.categories.find(cat => sortedCategories.includes(cat));
+        const sortedCategories = [
+          'Pro',
+          'Elite N1',
+          'Elite N2',
+          'Elite N3',
+          'Elite',
+          'Open 1',
+          'Open 2',
+          'Open 3',
+          'Handisport',
+        ];
+        const selectedCategory = sortedCategories.find(cat => rider.categories.includes(cat));
         if (selectedCategory) {
-            return selectedCategory;
+            return selectedCategory === 'Elite' ? 'Elite N1' : selectedCategory;
+        }
+        // Synonymes DN / N1–N3 dans une catégorie libre
+        for (const cat of rider.categories) {
+          const s = String(cat).toLowerCase();
+          if (/\bn\s*3\b|\bdn\s*3\b/.test(s)) return 'Elite N3';
+          if (/\bn\s*2\b|\bdn\s*2\b/.test(s)) return 'Elite N2';
+          if (/\bn\s*1\b|\bdn\s*1\b/.test(s)) return 'Elite N1';
         }
     }
     
     // 2. Si le coureur a un statut spécifique défini
     if (rider.levelCategory) {
-        return rider.levelCategory;
+        const lc = String(rider.levelCategory);
+        if (lc === 'Elite') return 'Elite N1';
+        return lc;
     }
     
     // 3. Calcul basé sur les caractéristiques de performance si disponibles
@@ -99,7 +118,9 @@ export const getLevelCategory = (rider: any): string => {
         
         // Seuils approximatifs pour les catégories de niveau (W/kg)
         if (ftpWkg >= 6.0) return 'Pro';
-        if (ftpWkg >= 5.5) return 'Elite';
+        if (ftpWkg >= 5.5) return 'Elite N1';
+        if (ftpWkg >= 5.2) return 'Elite N2';
+        if (ftpWkg >= 4.9) return 'Elite N3';
         if (ftpWkg >= 4.8) return 'Open 1';
         if (ftpWkg >= 4.0) return 'Open 2';
         if (ftpWkg >= 3.0) return 'Open 3';

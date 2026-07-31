@@ -12,6 +12,9 @@ import { checkUciTtCompliance, getUciHeightCategory } from './uciBikeFitUtils';
 import { inferCategoryIdFromText, resolveRaceTaxonomy } from './raceCalendarTaxonomy';
 
 const UCI_ENABLED_TEAM_LEVELS = new Set<TeamLevel>([
+  TeamLevel.N1,
+  TeamLevel.N2,
+  TeamLevel.N3,
   TeamLevel.N1_N3,
   TeamLevel.PRO,
   TeamLevel.FEDERATION,

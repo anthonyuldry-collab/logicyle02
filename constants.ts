@@ -382,9 +382,11 @@ export const INDEPENDENT_STAFF_ONLY_SECTIONS: AppSection[] = [
 export const INDEPENDENT_SHARED_PLANNING_SECTIONS: AppSection[] = ['myCalendar'];
 
 export const LEGAL_VERSIONS = {
-  TERMS_VERSION: '2026-01',
-  PRIVACY_POLICY_VERSION: '2026-01',
-  NDA_VERSION: '2026-01',
+  TERMS_VERSION: '2026-07.1',
+  PRIVACY_POLICY_VERSION: '2026-07.1',
+  NDA_VERSION: '2026-07.1',
+  /** Pack public CGU·CGV·privacy·DPA·mentions·cookies — aligné legal/meta.ts */
+  PACK_VERSION: '2026-07.1',
 } as const;
 
 /** Unique compte plateforme avec accès Super Admin (maintenance globale). */
@@ -444,6 +446,8 @@ export const TEAM_STATE_DEFERRED_COLLECTIONS = [
     'recruitmentCampaigns',
     'meetingReports',
     'performanceArchives',
+    'staffArchives',
+    'rosterArchives',
     'organizerContacts',
     'partnerNewsletters',
     'partnerMediaItems',
@@ -555,6 +559,8 @@ export const getInitialTeamState = (): TeamState => ({
     recruitmentOffers: [],
     recruitmentCampaigns: [],
     performanceArchives: [],
+    staffArchives: [],
+    rosterArchives: [],
     meetingReports: [],
     organizerContacts: [],
 });
@@ -903,13 +909,33 @@ export const emptyEventAccommodation = (eventId: string, id: string): EventAccom
     proofDocumentName: '',
 });
 
-export const RIDER_LEVEL_CATEGORIES: string[] = ["Elite", "Pro", "Open 1", "Open 2", "Open 3", "Handisport"];
+export const RIDER_LEVEL_CATEGORIES: string[] = [
+  "Elite N1",
+  "Elite N2",
+  "Elite N3",
+  "Elite",
+  "Pro",
+  "Open 1",
+  "Open 2",
+  "Open 3",
+  "Handisport",
+];
 
 // Nouvelles constantes pour les catégories d'âge (calculées automatiquement)
 export const RIDER_AGE_CATEGORIES: string[] = ["U15", "U17", "U19", "U23", "Senior"];
 
 // Nouvelles constantes pour les catégories de niveau (sélectionnables manuellement)
-export const RIDER_PERFORMANCE_LEVELS: string[] = ["Elite", "Pro", "Open 1", "Open 2", "Open 3", "Handisport"];
+export const RIDER_PERFORMANCE_LEVELS: string[] = [
+  "Elite N1",
+  "Elite N2",
+  "Elite N3",
+  "Elite",
+  "Pro",
+  "Open 1",
+  "Open 2",
+  "Open 3",
+  "Handisport",
+];
 
 export const POWER_ANALYSIS_DURATIONS_CONFIG: { key: keyof PowerProfile; label: string; unit: string; sortable: boolean; }[] = [
     { key: 'power1s', label: '1s', unit: 'W', sortable: true },

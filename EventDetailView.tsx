@@ -261,7 +261,7 @@ function EventDetailView({
   const showStaffMissionTab = staffRoleHasMissionTab(staffRoleKey);
   const isAssistantRole = staffRoleKey === 'ASSISTANT';
   const isCommunicationRole = staffRoleKey === 'COMMUNICATION';
-  const opLogisticsReadOnly = isAssistantRole || isCommunicationRole;
+  const opLogisticsReadOnly = isRider || isAssistantRole || isCommunicationRole;
   const canEditMissionLogistics = staffMissionProfile?.canEditEventMissionLogistics ?? false;
 
   type TabDef = { id: EventDetailTab; label: string };
@@ -432,6 +432,7 @@ function EventDetailView({
                 setRadioEquipment={updateRadioEquipment}
                 radioAssignments={appState.eventRadioAssignments.filter(as => as.eventId === eventId)}
                 setRadioAssignments={setEventRadioAssignments}
+                readOnly={isRider}
             />
         </div>
         <div style={{ display: activeTab === 'campProgramme' ? 'block' : 'none' }}>
@@ -516,6 +517,7 @@ function EventDetailView({
                 setVehicles={setVehicles}
                 currentUser={currentUser}
                 effectivePermissions={effectivePermissions}
+                readOnly={isRider}
             />
         </div>
         <div style={{ display: activeTab === 'accommodation' ? 'block' : 'none' }}>
@@ -525,6 +527,7 @@ function EventDetailView({
                 setEventBudgetItems={setEventBudgetItems}
                 currentUser={currentUser}
                 effectivePermissions={effectivePermissions}
+                readOnly={isRider}
             />
         </div>
         <div style={{ display: activeTab === 'accommodationHistory' ? 'block' : 'none' }}>
@@ -539,6 +542,7 @@ function EventDetailView({
             <EventDocumentsTab
                 {...eventDetailProps}
                 setEventDocuments={setEventDocuments}
+                hideUciWorkflow={isRider}
             />
         </div>
         {!isRider && (

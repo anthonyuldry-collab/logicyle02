@@ -11,8 +11,9 @@ describe('canAccessSection — admin toujours accessible', () => {
   it('laisse passer userSettings et adminDashboard même abo expiré', () => {
     expect(canAccessSection('userSettings', expired, SubscriptionPlanId.CLUB)).toBe(true);
     expect(canAccessSection('adminDashboard', expired, SubscriptionPlanId.CLUB)).toBe(true);
-    expect(canAccessSection('myDashboard', expired, SubscriptionPlanId.CLUB)).toBe(true);
     expect(canAccessSection('pricing', expired, SubscriptionPlanId.CLUB)).toBe(true);
+    // Dashboard métier reste verrouillé → pousse vers Abonnement
+    expect(canAccessSection('myDashboard', expired, SubscriptionPlanId.CLUB)).toBe(false);
   });
 
   it('bloque encore les modules premium si abo expiré', () => {

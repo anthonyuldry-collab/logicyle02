@@ -224,7 +224,9 @@ export const STAFF_ROLE_ACCESS: Record<StaffRoleKeyString, StaffRoleAccessProfil
     missionTabLabel: '',
     missionTabDescription: '',
     sectionDenials: [],
-    sectionGrants: {},
+    sectionGrants: {
+      scouting: ['view', 'edit'],
+    },
     riderFields: [],
     canEditEventMissionLogistics: false,
   },

@@ -3,6 +3,7 @@ import Modal from './Modal';
 import ActionButton from './ActionButton';
 import { useTranslations } from '../hooks/useTranslations';
 import { LEGAL_VERSIONS } from '../constants';
+import { PRIVACY_DOCUMENT, pickLegalLocale, legalHashFor } from '../legal';
 
 interface PrivacyPolicyModalProps {
   isOpen: boolean;
@@ -10,59 +11,52 @@ interface PrivacyPolicyModalProps {
 }
 
 export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, onClose }) => {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
+  const locale = pickLegalLocale(language);
+  const doc = PRIVACY_DOCUMENT;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('gdprPrivacyTitle')}>
+    <Modal isOpen={isOpen} onClose={onClose} title={doc.title[locale]}>
       <div className="max-h-[70vh] overflow-y-auto space-y-4 text-sm text-gray-700">
         <p className="text-xs text-gray-500">
-          {t('gdprPrivacyVersion')} {LEGAL_VERSIONS.PRIVACY_POLICY_VERSION}
+          {t('gdprPrivacyVersion')} {doc.version} · {doc.effectiveDate}
         </p>
+        <p className="text-xs text-gray-600">{doc.summary[locale]}</p>
 
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection1Title')}</h3>
-          <p>{t('gdprSection1Text')}</p>
-        </section>
+        {doc.sections.map((section) => {
+          const blocks = section.blocks[locale];
+          const prose = blocks.filter((b) => !b.startsWith('•'));
+          const bullets = blocks.filter((b) => b.startsWith('•'));
+          return (
+            <section key={section.id}>
+              <h3 className="font-semibold text-gray-900 mb-2">{section.title[locale]}</h3>
+              <div className="space-y-2">
+                {prose.map((p, i) => (
+                  <p key={i}>{p}</p>
+                ))}
+                {bullets.length > 0 && (
+                  <ul className="list-disc list-inside space-y-1">
+                    {bullets.map((b, i) => (
+                      <li key={i}>{b.replace(/^•\s*/, '')}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          );
+        })}
 
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection2Title')}</h3>
-          <ul className="list-disc list-inside space-y-1">
-            <li>{t('gdprDataIdentity')}</li>
-            <li>{t('gdprDataPerformance')}</li>
-            <li>{t('gdprDataHealth')}</li>
-            <li>{t('gdprDataLogistics')}</li>
-            <li>{t('gdprDataTechnical')}</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection3Title')}</h3>
-          <p>{t('gdprSection3Text')}</p>
-        </section>
-
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection4Title')}</h3>
-          <ul className="list-disc list-inside space-y-1">
-            <li>{t('gdprRightAccess')}</li>
-            <li>{t('gdprRightRectification')}</li>
-            <li>{t('gdprRightErasure')}</li>
-            <li>{t('gdprRightPortability')}</li>
-            <li>{t('gdprRightObjection')}</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection5Title')}</h3>
-          <p>{t('gdprSection5Text')}</p>
-        </section>
-
-        <section>
-          <h3 className="font-semibold text-gray-900 mb-2">{t('gdprSection6Title')}</h3>
-          <p>{t('gdprSection6Text')}</p>
-        </section>
-
-        <section className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <section className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
           <p className="text-blue-800 text-xs">{t('gdprContact')}</p>
+          <a
+            href={legalHashFor('privacy')}
+            className="text-xs font-semibold text-indigo-700 hover:underline"
+            onClick={() => {
+              /* hash navigation handled by App */
+            }}
+          >
+            /legal/privacy · pack {LEGAL_VERSIONS.PACK_VERSION}
+          </a>
         </section>
       </div>
 

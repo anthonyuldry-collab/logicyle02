@@ -1,162 +1,138 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Rider, StaffMember, RosterArchive, RosterTransition } from '../types';
 import { 
   archiveRosterForSeason, 
   prepareRosterTransition, 
   getRosterStatsForSeason,
-  shouldTransitionToNewSeason,
   getRosterTransitionMessage,
   getActiveRidersForCurrentSeason,
   getActiveStaffForCurrentSeason,
   resetRaceDayCountersForNewSeason
 } from '../utils/rosterArchiveUtils';
-import { getCurrentSeasonYear } from '../utils/seasonUtils';
+import { getCurrentSeasonYear, isInSeasonTransition } from '../utils/seasonUtils';
 import { InformationCircleIcon, DocumentDuplicateIcon, UsersIcon } from './icons';
 
 interface RosterTransitionManagerProps {
   riders: Rider[];
   staff: StaffMember[];
-  onRosterTransition: (archive: RosterArchive, transition: RosterTransition) => void;
+  teamId?: string | null;
+  onRosterTransition: (
+    archive: RosterArchive,
+    transition: RosterTransition,
+    updated: { riders: Rider[]; staff: StaffMember[] }
+  ) => void;
+}
+
+function transitionStorageKey(teamId: string | null | undefined, toSeason: number): string {
+  return `logicycle_roster_transition_${teamId || 'local'}_${toSeason}`;
 }
 
 const RosterTransitionManager: React.FC<RosterTransitionManagerProps> = ({
   riders,
   staff,
+  teamId,
   onRosterTransition
 }) => {
+  const toSeason = getCurrentSeasonYear();
+  const fromSeason = toSeason - 1;
   const [showTransitionModal, setShowTransitionModal] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [currentSeason, setCurrentSeason] = useState(getCurrentSeasonYear());
-  
-  // Vérifier si une transition est nécessaire
+
+  const alreadyDone = useMemo(() => {
+    try {
+      return localStorage.getItem(transitionStorageKey(teamId, toSeason)) === '1';
+    } catch {
+      return false;
+    }
+  }, [teamId, toSeason]);
+
   useEffect(() => {
-    if (shouldTransitionToNewSeason() && currentSeason < 2026) {
+    if (isInSeasonTransition() && !alreadyDone && fromSeason >= 2020) {
       setShowTransitionModal(true);
     }
-  }, [currentSeason]);
+  }, [alreadyDone, fromSeason]);
 
-  const handleTransitionTo2026 = async () => {
+  const handleConfirmTransition = async () => {
     setIsTransitioning(true);
-    
     try {
-      // 1. Archiver l'effectif 2025
-      const archive2025 = archiveRosterForSeason(riders, staff, 2025);
-      
-      // 2. Préparer la transition vers 2026 (conserve tous les effectifs actifs)
-      const transition = prepareRosterTransition(riders, staff, 2025, 2026);
-      
-      // 3. Réinitialiser les compteurs pour la nouvelle saison
-      const { riders: updatedRiders, staff: updatedStaff } = resetRaceDayCountersForNewSeason(riders, staff, 2026);
-      
-      // 4. Notifier le parent de la transition avec les effectifs mis à jour
-      onRosterTransition(archive2025, transition);
-      
-      // 4. Mettre à jour la saison courante
-      setCurrentSeason(2026);
+      const archive = archiveRosterForSeason(riders, staff, fromSeason);
+      const transition = prepareRosterTransition(riders, staff, fromSeason, toSeason);
+      const updated = resetRaceDayCountersForNewSeason(riders, staff, toSeason);
+      await Promise.resolve(onRosterTransition(archive, transition, updated));
+      try {
+        localStorage.setItem(transitionStorageKey(teamId, toSeason), '1');
+      } catch {
+        /* ignore */
+      }
       setShowTransitionModal(false);
-      
     } catch (error) {
       console.error('Erreur lors de la transition des effectifs:', error);
+      alert('Impossible d’archiver la saison. Réessayez ou contactez le support.');
     } finally {
       setIsTransitioning(false);
     }
   };
 
-  const handleCancelTransition = () => {
-    setShowTransitionModal(false);
-  };
-
-  // Obtenir les statistiques actuelles
-  const currentStats = getRosterStatsForSeason(riders, staff, currentSeason);
-  const activeRiders = getActiveRidersForCurrentSeason(riders);
-  const activeStaff = getActiveStaffForCurrentSeason(staff);
-
-  if (!showTransitionModal && currentSeason >= 2026) {
-    return null;
-  }
-
   if (!showTransitionModal) {
     return null;
   }
 
+  const currentStats = getRosterStatsForSeason(riders, staff, fromSeason);
+  const activeRiders = getActiveRidersForCurrentSeason(riders);
+  const activeStaff = getActiveStaffForCurrentSeason(staff);
+
   return (
-    <>
-      {/* Modal de transition */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4">
-          <div className="flex items-start mb-6">
-            <DocumentDuplicateIcon className="w-8 h-8 text-blue-600 mt-1 mr-4 flex-shrink-0" />
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Transition des Effectifs vers 2026
-              </h2>
-              <p className="text-gray-600">
-                Il est temps de basculer sur les effectifs 2026 et d'archiver les effectifs 2025.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h3 className="font-semibold text-blue-900 mb-2">📋 Résumé de la transition :</h3>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Les effectifs 2025 seront archivés et figés</li>
-              <li>• Tous les coureurs et staff actifs seront conservés pour 2026</li>
-              <li>• Les compteurs de jours de course seront remis à 0</li>
-              <li>• Transition automatique au 1er novembre vers la saison 2026</li>
-            </ul>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-2">Effectif 2025 (à archiver)</h4>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p>• {currentStats.totalRiders} coureurs total</p>
-                <p>• {currentStats.activeRiders} coureurs actifs</p>
-                <p>• {currentStats.totalStaff} membres du staff</p>
-                <p>• {currentStats.activeStaff} staff actif</p>
-              </div>
-            </div>
-            
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-green-900 mb-2">Effectif 2026 (nouveau)</h4>
-              <div className="space-y-1 text-sm text-green-600">
-                <p>• {currentStats.activeRiders} coureurs conservés</p>
-                <p>• {currentStats.activeStaff} staff conservé</p>
-                <p>• Compteurs remis à 0</p>
-                <p>• Prêt pour les nouveaux ajouts</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end space-x-4">
-            <button
-              onClick={handleCancelTransition}
-              disabled={isTransitioning}
-              className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={handleTransitionTo2026}
-              disabled={isTransitioning}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
-            >
-              {isTransitioning ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Transition en cours...
-                </>
-              ) : (
-                <>
-                  <DocumentDuplicateIcon className="w-4 h-4 mr-2" />
-                  Archiver 2025 et passer à 2026
-                </>
-              )}
-            </button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4">
+        <div className="flex items-start mb-6">
+          <InformationCircleIcon className="w-8 h-8 text-indigo-600 mr-3 shrink-0" />
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              Transition effectif {fromSeason} → {toSeason}
+            </h2>
+            <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">
+              {getRosterTransitionMessage(fromSeason, toSeason)}
+            </p>
           </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <UsersIcon className="w-4 h-4" /> Saison {fromSeason}
+            </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900">{currentStats.totalRiders} coureurs</p>
+            <p className="text-xs text-gray-500">{currentStats.totalStaff} staff</p>
+          </div>
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-indigo-800">
+              <DocumentDuplicateIcon className="w-4 h-4" /> Conservés pour {toSeason}
+            </div>
+            <p className="mt-2 text-2xl font-bold text-indigo-900">{activeRiders.length} coureurs</p>
+            <p className="text-xs text-indigo-700">{activeStaff.length} staff · compteurs remis à 0</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setShowTransitionModal(false)}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+            disabled={isTransitioning}
+          >
+            Plus tard
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleConfirmTransition()}
+            disabled={isTransitioning}
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {isTransitioning ? 'Archivage…' : `Archiver ${fromSeason} et passer à ${toSeason}`}
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   );
 };
 

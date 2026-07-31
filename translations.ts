@@ -60,6 +60,147 @@ export const translations = {
   loginSendLink: { fr: "Envoyer le lien", en: "Send link" },
   loginResetSuccess: { fr: "Si un compte est associé à", en: "If an account is associated with" },
   loginResetSuccess2: { fr: "un lien de réinitialisation a été envoyé.", en: "a reset link has been sent." },
+  loginResetHintSpam: {
+    fr: 'Si rien n’arrive sous 2 min (spams inclus), le compte n’existe probablement plus : réinscrivez-vous.',
+    en: 'If nothing arrives within 2 minutes (including spam), the account likely no longer exists — sign up again.',
+  },
+  loginResetUserNotFound: {
+    fr: 'Aucun compte avec cet email. Réinscrivez-vous.',
+    en: 'No account with this email. Please sign up.',
+  },
+  loginResetTooMany: {
+    fr: 'Trop de demandes. Réessayez dans quelques minutes.',
+    en: 'Too many requests. Try again in a few minutes.',
+  },
+  loginBackToHome: { fr: '← Accueil', en: '← Home' },
+
+  // Landing marketing
+  landingNavLogin: { fr: 'Connexion', en: 'Sign in' },
+  landingNavCta: { fr: 'Essai gratuit', en: 'Free trial' },
+  landingHeadline: {
+    fr: 'L’OS opérationnel des équipes cyclistes.',
+    en: 'The operating system for cycling teams.',
+  },
+  landingSubhead: {
+    fr: 'Effectif, courses, logistique, budget et performance — une plateforme pour structures, indépendants et staff.',
+    en: 'Roster, races, logistics, budget and performance — one platform for teams, independents and staff.',
+  },
+  landingCtaTrial: { fr: 'Démarrer l’essai 14 jours', en: 'Start 14-day trial' },
+  landingCtaPricing: { fr: 'Voir les tarifs', en: 'See pricing' },
+  landingTrialNote: {
+    fr: 'Essai {days} jours · carte enregistrée via Stripe · résiliable avant prélèvement',
+    en: '{days}-day trial · card saved via Stripe · cancel before first charge',
+  },
+  landingValueTitle: {
+    fr: 'Tout le cycle de course, sans tableurs.',
+    en: 'The full race cycle, without spreadsheets.',
+  },
+  landingValueSub: {
+    fr: 'LogiCycle remplace les fichiers dispersés par un espace partagé pour l’encadrement et les coureurs.',
+    en: 'LogiCycle replaces scattered files with a shared workspace for staff and riders.',
+  },
+  landingValue1Title: { fr: 'Logistique course', en: 'Race logistics' },
+  landingValue1Body: {
+    fr: 'Transport, hébergement, restauration, documents et checklists — synchronisés pour le staff et l’effectif.',
+    en: 'Transport, lodging, catering, documents and checklists — synced for staff and roster.',
+  },
+  landingValue2Title: { fr: 'Pilotage & budget', en: 'Ops & budget' },
+  landingValue2Body: {
+    fr: 'Calendrier, SEPA, justificatifs et abonnement self-serve — du club amateur à la structure élite.',
+    en: 'Calendar, SEPA, receipts and self-serve billing — from amateur clubs to elite structures.',
+  },
+  landingValue3Title: { fr: 'Indépendants & missions', en: 'Independents & missions' },
+  landingValue3Body: {
+    fr: 'Espace athlète / staff hors équipe, candidatures et marketplace de missions vacataires.',
+    en: 'Athlete / staff space without a team, applications and freelance mission marketplace.',
+  },
+  landingPricingTitle: { fr: 'Des tarifs pensés pour le cyclisme.', en: 'Pricing built for cycling.' },
+  landingPricingSub: {
+    fr: 'Du club au circuit international — essai inclus, sans engagement long à l’inscription.',
+    en: 'From club level to international racing — trial included, no long lock-in at signup.',
+  },
+  landingPerMonth: { fr: '/mois', en: '/mo' },
+  landingPricingAll: { fr: 'Comparer toutes les formules', en: 'Compare all plans' },
+
+  // FAQ / support
+  faqTitle: { fr: 'Questions fréquentes', en: 'Frequently asked questions' },
+  faqSubtitle: {
+    fr: 'Essai, abonnement, équipes et données — les réponses essentielles.',
+    en: 'Trial, billing, teams and data — the essentials.',
+  },
+  faqContactHint: { fr: 'Besoin d’aide ?', en: 'Need help?' },
+  faqSettingsTab: { fr: 'Aide', en: 'Help' },
+  faqSettingsHint: { fr: 'FAQ & support', en: 'FAQ & support' },
+  settingsAccountTab: { fr: 'Mon compte', en: 'My account' },
+  settingsAccountHint: { fr: 'Sécurité, RGPD, suppression', en: 'Security, GDPR, deletion' },
+  settingsTeamTab: { fr: 'Équipe', en: 'Team' },
+  settingsTeamHint: { fr: 'Logo, thème, niveau, profil', en: 'Logo, theme, level, profile' },
+  settingsConnectionsTab: { fr: 'Connexions', en: 'Connections' },
+  settingsConnectionsHint: { fr: 'Nolio, Garmin, TrainingPeaks…', en: 'Nolio, Garmin, TrainingPeaks…' },
+  settingsBillingTab: { fr: 'Abonnement', en: 'Subscription' },
+  settingsTitle: { fr: 'Paramètres', en: 'Settings' },
+  settingsAccountManageTitle: { fr: 'Gestion de votre compte', en: 'Manage your account' },
+  settingsAccountManageDesc: {
+    fr: 'Gérez vos données personnelles (RGPD), votre sécurité et la suppression de votre compte. Ces paramètres sont privés et ne sont visibles que par vous.',
+    en: 'Manage your personal data (GDPR), security and account deletion. These settings are private and visible only to you.',
+  },
+
+  // Legal chrome
+  legalBack: { fr: 'Retour', en: 'Back' },
+  legalEffective: { fr: 'Entrée en vigueur', en: 'Effective' },
+  legalVersion: { fr: 'Version', en: 'Version' },
+
+  // Billing errors
+  billingCheckoutError: {
+    fr: 'Impossible de lancer le paiement. Réessayez ou contactez le support.',
+    en: 'Could not start checkout. Try again or contact support.',
+  },
+  billingPortalError: {
+    fr: 'Impossible d’ouvrir le portail de facturation. Réessayez dans un instant.',
+    en: 'Could not open the billing portal. Please try again shortly.',
+  },
+  billingUnavailable: {
+    fr: 'Service de paiement temporairement indisponible. Réessayez plus tard.',
+    en: 'Payment service temporarily unavailable. Try again later.',
+  },
+
+  // Signup profile errors
+  signupProfileError: {
+    fr: 'Erreur lors de la création du profil. Veuillez contacter le support.',
+    en: 'Error creating your profile. Please contact support.',
+  },
+  signupProfilePermission: {
+    fr: 'Erreur de permissions. Contactez le support si le problème continue.',
+    en: 'Permission error. Contact support if this continues.',
+  },
+  signupProfileUnavailable: {
+    fr: 'Service indisponible. Vérifiez votre connexion et réessayez.',
+    en: 'Service unavailable. Check your connection and try again.',
+  },
+  signupProfileExists: {
+    fr: 'Un profil existe déjà pour cet utilisateur. Veuillez vous connecter.',
+    en: 'A profile already exists for this user. Please sign in.',
+  },
+  appLoadingTitle: { fr: 'Chargement de l’application…', en: 'Loading the application…' },
+  appLoadingSubtitle: { fr: 'Initialisation en cours…', en: 'Initialising…' },
+  cookiesNoticeBody: {
+    fr: 'LogiCycle n’utilise que des cookies essentiels (session, langue, sécurité paiement). Aucun cookie publicitaire.',
+    en: 'LogiCycle only uses essential cookies (session, language, payment security). No advertising cookies.',
+  },
+  cookiesNoticeLink: { fr: 'Politique cookies', en: 'Cookie policy' },
+  cookiesNoticeDismiss: { fr: 'Compris', en: 'Got it' },
+  transferRequestSent: {
+    fr: 'Demande de transfert envoyée. L’équipe destinataire doit l’approuver.',
+    en: 'Transfer request sent. The destination team must approve it.',
+  },
+  transferRequestError: {
+    fr: 'Impossible d’envoyer la demande de transfert.',
+    en: 'Could not send the transfer request.',
+  },
+  seasonArchiveError: {
+    fr: 'Impossible d’enregistrer l’archive de saison. Réessayez.',
+    en: 'Could not save the season archive. Please try again.',
+  },
 
   signupWelcome: { fr: "Créer un Compte LogiCycle", en: "Create a LogiCycle Account" },
   signupSlogan: { fr: "Rejoignez votre équipe et simplifiez votre logistique.", en: "Join your team and simplify your logistics." },
@@ -244,6 +385,15 @@ export const translations = {
     fr: "Veuillez lire et accepter toutes les conditions avant de continuer.",
     en: "Please read and accept all terms before continuing.",
   },
+  termsReadFullPack: {
+    fr: "Lire le pack légal complet (CGU · CGV · privacy · DPA)",
+    en: "Read the full legal pack (ToU · ToS · privacy · DPA)",
+  },
+  legalLinkCgu: { fr: 'CGU', en: 'Terms of Use' },
+  legalLinkCgv: { fr: 'CGV', en: 'Terms of Sale' },
+  legalLinkPrivacy: { fr: 'Confidentialité', en: 'Privacy' },
+  legalLinkDpa: { fr: 'DPA', en: 'DPA' },
+  legalLinkMentions: { fr: 'Mentions légales', en: 'Legal notice' },
   signupProfileIncomplete: {
     fr: "Inscription incomplète. Veuillez vous réinscrire.",
     en: "Incomplete signup. Please register again.",
@@ -398,8 +548,6 @@ export const translations = {
   settingsAccentColorHelp: { fr: "Utilisée pour les icônes du menu et autres éléments graphiques.", en: "Used for sidebar icons and other graphic elements." },
   settingsTeamLevel: { fr: 'Niveau de la Structure', en: 'Team Level' },
   settingsTeamLevelHelp: { fr: "Le niveau de votre équipe détermine les fonctionnalités et les calendriers accessibles, et peut être lié à votre abonnement.", en: "Your team's level determines available features and calendars, and may be linked to your subscription." },
-  settingsConnectionsTab: { fr: 'Connexions', en: 'Connections' },
-  settingsConnectionsHint: { fr: 'Nolio, Garmin, TrainingPeaks…', en: 'Nolio, Garmin, TrainingPeaks…' },
   settingsConnectionsTitle: { fr: 'Mise à jour automatique des performances', en: 'Automatic performance sync' },
   settingsTeamLevelLabel: { fr: "Niveau de votre équipe", en: "Your team's level" },
   settingsSelectLevel: { fr: '-- Sélectionner un niveau --', en: '-- Select a level --' },
@@ -677,7 +825,10 @@ export const translations = {
   gdprPrivacyTitle: { fr: 'Politique de Confidentialité', en: 'Privacy Policy' },
   gdprPrivacyVersion: { fr: 'Version', en: 'Version' },
   gdprSection1Title: { fr: '1. Responsable du traitement', en: '1. Data controller' },
-  gdprSection1Text: { fr: 'LogiCycle est responsable du traitement de vos données personnelles dans le cadre de la gestion sportive et logistique de votre équipe.', en: 'LogiCycle is the data controller for your personal data in the context of your team\'s sports and logistics management.' },
+  gdprSection1Text: {
+    fr: 'LogiCycle est responsable de traitement pour le compte, la facturation et la sécurité plateforme. Pour les données métier de votre équipe (roster, perf, logistique…), LogiCycle agit en sous-traitant : le Client (équipe) est responsable — voir DPA et /legal/privacy.',
+    en: 'LogiCycle is controller for account, billing and platform security. For your team’s operational data (roster, performance, logistics…), LogiCycle acts as processor: the Customer (team) is controller — see DPA and /legal/privacy.',
+  },
   gdprSection2Title: { fr: '2. Données collectées', en: '2. Data collected' },
   gdprDataIdentity: { fr: 'Identité : nom, prénom, email, date de naissance', en: 'Identity: name, email, date of birth' },
   gdprDataPerformance: { fr: 'Performance : profils de puissance, objectifs, résultats', en: 'Performance: power profiles, goals, results' },
@@ -1563,6 +1714,14 @@ export const translations = {
   orgCeoNoTeams: { fr: 'Aucune équipe cliente pour le moment.', en: 'No client teams yet.' },
   orgCeoDevTitle: { fr: 'Développement produit', en: 'Product development' },
   orgCeoDevDesc: { fr: 'Avancement des axes stratégiques de la plateforme.', en: 'Progress on strategic platform pillars.' },
+  orgCeoLaunchPlanTitle: {
+    fr: 'Plan PDG — pré-lancement & objectifs ARR',
+    en: 'CEO plan — pre-launch & ARR targets',
+  },
+  orgCeoLaunchPlanDesc: {
+    fr: 'Checklist J-90 (sept.–nov. 2027) et objectifs ARR Dual-Track M1–M24.',
+    en: 'D-90 checklist (Sep–Nov 2027) and Dual-Track ARR targets M1–M24.',
+  },
   orgCeoNavSuperAdmin: { fr: 'Super Admin', en: 'Super Admin' },
   orgCeoNavPricing: { fr: 'Tarifs', en: 'Pricing' },
   orgCeoNavFinancial: { fr: 'Finance', en: 'Finance' },

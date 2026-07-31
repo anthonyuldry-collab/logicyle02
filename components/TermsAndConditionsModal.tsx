@@ -49,6 +49,16 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
           {t('termsPrivacyShort')} {LEGAL_VERSIONS.PRIVACY_POLICY_VERSION} · NDA{' '}
           {LEGAL_VERSIONS.NDA_VERSION}
         </p>
+        <p className="text-xs">
+          <a
+            href="#/legal/cgu"
+            className="font-semibold text-indigo-700 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('termsReadFullPack')}
+          </a>
+        </p>
 
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <h3 className="text-lg font-bold text-red-800 mb-3">{t('termsNdaTitle')}</h3>

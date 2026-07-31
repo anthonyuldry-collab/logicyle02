@@ -4,11 +4,13 @@ import SettingsTab from '../components/riderDetailTabs/SettingsTab';
 import SettingsSection, { type SettingsSectionProps } from './SettingsSection';
 import PricingSection from './PricingSection';
 import PerformanceConnectionsPanel from '../components/PerformanceConnectionsPanel';
+import SupportFaqPanel from '../components/SupportFaqPanel';
 import { SubscriptionPlanId, TeamLevel, User, UserRole } from '../types';
 import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
 import { resolvePricingAudience } from '../constants/subscriptionPlans';
+import { useTranslations } from '../hooks/useTranslations';
 
-export type UnifiedSettingsTab = 'compte' | 'equipe' | 'connexions' | 'abonnement';
+export type UnifiedSettingsTab = 'compte' | 'equipe' | 'connexions' | 'abonnement' | 'aide';
 
 type UserSettingsSectionProps = {
   currentUser: User;
@@ -46,6 +48,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
   teamName,
   ...teamSettingsProps
 }) => {
+  const { t } = useTranslations();
   const showTeamTab = Boolean(canManageTeam && teamSettingsProps.onUpdateTeam);
   const showBillingTab = Boolean(showSubscriptionTab);
   const pricingAudience = resolvePricingAudience({
@@ -56,19 +59,20 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
 
   const abonnementHint =
     pricingAudience === 'team_admin'
-      ? 'Tarifs structure'
+      ? t('pricingEyebrow')
       : pricingAudience === 'team_member'
-        ? 'Accès via l’équipe'
+        ? t('pricingTeamMemberSubtitle')
         : pricingAudience === 'independent_staff'
-          ? 'Plan staff indépendant'
+          ? t('settingsBillingTab')
           : pricingAudience === 'independent_rider'
-            ? 'Plan coureur indépendant'
-            : 'Plans & facturation';
+            ? t('settingsBillingTab')
+            : t('settingsBillingTab');
 
   const resolveTab = (tab: UnifiedSettingsTab | undefined): UnifiedSettingsTab => {
     if (tab === 'equipe' && showTeamTab) return 'equipe';
     if (tab === 'connexions') return 'connexions';
     if (tab === 'abonnement' && showBillingTab) return 'abonnement';
+    if (tab === 'aide') return 'aide';
     return 'compte';
   };
 
@@ -87,36 +91,41 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
   const tabs: { id: UnifiedSettingsTab; label: string; hint: string }[] = [
     {
       id: 'compte',
-      label: 'Mon compte',
-      hint: 'Sécurité, RGPD, suppression',
+      label: t('settingsAccountTab'),
+      hint: t('settingsAccountHint'),
     },
     ...(showTeamTab
       ? [
           {
             id: 'equipe' as const,
-            label: 'Équipe',
-            hint: 'Logo, thème, niveau, profil',
+            label: t('settingsTeamTab'),
+            hint: t('settingsTeamHint'),
           },
         ]
       : []),
     {
       id: 'connexions',
-      label: 'Connexions',
-      hint: 'Nolio, Garmin, TrainingPeaks…',
+      label: t('settingsConnectionsTab'),
+      hint: t('settingsConnectionsHint'),
     },
     ...(showBillingTab
       ? [
           {
             id: 'abonnement' as const,
-            label: 'Abonnement',
+            label: t('settingsBillingTab'),
             hint: abonnementHint,
           },
         ]
       : []),
+    {
+      id: 'aide',
+      label: t('faqSettingsTab'),
+      hint: t('faqSettingsHint'),
+    },
   ];
 
   return (
-    <SectionWrapper title="Paramètres">
+    <SectionWrapper title={t('settingsTitle')}>
       <div className="space-y-6">
         {tabs.length > 1 && (
           <div className="flex flex-wrap gap-2">
@@ -150,11 +159,10 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
         {activeTab === 'compte' && (
           <div className="space-y-6">
             <div className="rounded-xl border border-indigo-500/30 bg-slate-900 p-4">
-              <h3 className="text-lg font-semibold text-indigo-200 mb-2">Gestion de votre compte</h3>
-              <p className="text-sm text-slate-300">
-                Gérez vos données personnelles (RGPD), votre sécurité et la suppression de votre compte.
-                Ces paramètres sont privés et ne sont visibles que par vous.
-              </p>
+              <h3 className="text-lg font-semibold text-indigo-200 mb-2">
+                {t('settingsAccountManageTitle')}
+              </h3>
+              <p className="text-sm text-slate-300">{t('settingsAccountManageDesc')}</p>
             </div>
             <SettingsTab currentUser={currentUser} isOwnAccount={true} />
           </div>
@@ -211,6 +219,12 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
             teamName={teamName}
             audience={pricingAudience}
           />
+        )}
+
+        {activeTab === 'aide' && (
+          <div className="rounded-xl border border-white/10 bg-slate-900/80 p-5 sm:p-6">
+            <SupportFaqPanel tone="dark" />
+          </div>
         )}
       </div>
     </SectionWrapper>

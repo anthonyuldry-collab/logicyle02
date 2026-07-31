@@ -15,6 +15,8 @@ interface EventDocumentsTabProps {
   eventId: string;
   appState: AppState;
   setEventDocuments: React.Dispatch<React.SetStateAction<EventRaceDocument[]>>;
+  /** Masquer le workflow UCI (ex. coureurs) */
+  hideUciWorkflow?: boolean;
 }
 
 const EventDocumentsTab: React.FC<EventDocumentsTabProps> = ({
@@ -22,6 +24,7 @@ const EventDocumentsTab: React.FC<EventDocumentsTabProps> = ({
   eventId,
   appState,
   setEventDocuments,
+  hideUciWorkflow = false,
 }) => {
   const activeTeam =
     appState.teams.find(t => t.id === appState.activeTeamId) ?? appState.teams[0];
@@ -33,12 +36,13 @@ const EventDocumentsTab: React.FC<EventDocumentsTabProps> = ({
   }, [appState.subscription, appState.teamLevel]);
 
   useEffect(() => {
+    if (hideUciWorkflow) return;
     if (!isUciCategoryEvent(event, appState.teamLevel)) return;
     const toAdd = ensureUciDocumentsForEvent(event, appState.eventDocuments, appState.teamLevel);
     if (toAdd.length > 0) {
       setEventDocuments(prev => [...prev, ...toAdd]);
     }
-  }, [event, appState.eventDocuments, setEventDocuments]);
+  }, [hideUciWorkflow, event, appState.eventDocuments, appState.teamLevel, setEventDocuments]);
 
   const handleUpdateDocument = (doc: EventRaceDocument) => {
     setEventDocuments(prev => prev.map(d => (d.id === doc.id ? doc : d)));
@@ -46,7 +50,7 @@ const EventDocumentsTab: React.FC<EventDocumentsTabProps> = ({
 
   return (
     <div className="space-y-4">
-      {isUciCategoryEvent(event, appState.teamLevel) && (
+      {!hideUciWorkflow && isUciCategoryEvent(event, appState.teamLevel) && (
         <UciFormsWorkflowPanel
           event={event}
           documents={appState.eventDocuments}

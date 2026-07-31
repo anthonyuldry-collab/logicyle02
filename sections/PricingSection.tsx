@@ -17,6 +17,7 @@ import {
 } from '../constants/subscriptionPlans';
 import { REFERRAL_LABELS } from '../constants/referralProgram';
 import { getPendingReferralCode, validateReferralCode } from '../services/referralService';
+import { LEGAL_ENTITY } from '../legal/meta';
 import { SubscriptionPlanId, TeamLevel, UserRole } from '../types';
 import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
 import ActionButton from '../components/ActionButton';
@@ -276,7 +277,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         <div className="mt-6">
           {plan.contactSales ? (
             <a
-              href="mailto:contact@logicyle.app?subject=LogiCycle%20F%C3%A9d%C3%A9ration"
+              href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('LogiCycle Fédération')}`}
               className={`block w-full text-center py-2.5 px-4 rounded-xl font-medium transition ${
                 isPublic
                   ? 'border border-white/20 text-slate-200 hover:bg-white/10'

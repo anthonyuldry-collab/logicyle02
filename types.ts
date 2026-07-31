@@ -4,7 +4,11 @@ export enum TeamLevel {
     FEDERATION = "Fédération",
     JEUNES = "Club Formateur Jeunes",
     HORS_DN = "Hors DN (Club/Comité)",
+    /** @deprecated Prefer N1 / N2 / N3 — kept for existing teams in DB */
     N1_N3 = "Équipe Nationale/N1-N3",
+    N1 = "Équipe N1",
+    N2 = "Équipe N2",
+    N3 = "Équipe N3",
     PRO = "Équipe Professionnelle",
 }
 
@@ -3274,6 +3278,8 @@ export interface TeamState {
     recruitmentOffers: TeamRecruitmentOffer[];
     recruitmentCampaigns: TeamRecruitmentCampaign[];
     performanceArchives: PerformanceArchive[];
+    staffArchives: StaffArchive[];
+    rosterArchives: RosterArchive[];
     meetingReports: MeetingReport[];
     organizerContacts: OrganizerContact[];
 }

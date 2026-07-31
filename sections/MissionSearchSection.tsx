@@ -10,6 +10,10 @@ import BriefcaseIcon from '../components/icons/BriefcaseIcon';
 import CalendarDaysIcon from '../components/icons/CalendarDaysIcon';
 import MapPinIcon from '../components/icons/MapPinIcon';
 import BanknotesIcon from '../components/icons/BanknotesIcon';
+import {
+  isMissionMarketplacePaymentsEnabled,
+  MISSION_COMMISSION_LABELS,
+} from '../constants/missionMarketplace';
 
 interface MissionSearchSectionProps {
   missions: Mission[];
@@ -104,6 +108,11 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
     
     return (
         <SectionWrapper title="Offres & Missions">
+            {!isMissionMarketplacePaymentsEnabled() && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 leading-relaxed">
+                {MISSION_COMMISSION_LABELS.matchingOnlyBanner.fr}
+              </div>
+            )}
             <p className="mb-4 text-sm text-gray-600">
               Missions vacataires ouvertes publiées par les équipes.
               Une fois accepté(e) sur un week-end, la mission apparaît automatiquement dans{' '}

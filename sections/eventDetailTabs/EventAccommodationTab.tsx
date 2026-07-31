@@ -31,6 +31,8 @@ interface EventAccommodationTabProps {
   appState: AppState;
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  /** Coureurs : consultation uniquement */
+  readOnly?: boolean;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -44,6 +46,7 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
   setEventBudgetItems,
   currentUser,
   effectivePermissions,
+  readOnly = false,
 }) => {
   const stageRace = isCompetitiveStageRace(event);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -53,6 +56,7 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
   );
 
   const canViewFinancialInfo = effectivePermissions?.financial?.includes('view') || false;
+  const allowEditing = !readOnly;
 
   const accommodationsForEvent = useMemo(() => {
     return appState.eventAccommodations.filter((acc) => acc.eventId === eventId);
@@ -108,6 +112,7 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
   };
 
   const handleSave = async () => {
+    if (!allowEditing) return;
     let savedItem: EventAccommodation;
     if (isEditing && 'id' in currentItem) {
       savedItem = {
@@ -181,12 +186,14 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
   };
 
   const openAddModal = () => {
+    if (!allowEditing) return;
     setCurrentItem(emptyEventAccommodation(eventId, ''));
     setIsEditing(false);
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: EventAccommodation) => {
+    if (!allowEditing) return;
     setCurrentItem({
       ...item,
       expenseReceiptIds: item.expenseReceiptIds || [],
@@ -198,6 +205,7 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
   };
 
   const handleDelete = async (id: string) => {
+    if (!allowEditing) return;
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cet hébergement ?')) {
       try {
         if (appState.activeTeamId) {
@@ -230,6 +238,7 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
           updateEvent={updateEvent}
           appState={appState}
           canViewFinancialInfo={canViewFinancialInfo}
+          readOnly={readOnly}
         />
       )}
 
@@ -237,9 +246,11 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
         <h3 className="text-xl font-semibold text-gray-700">
           {stageRace ? 'Hébergements complémentaires' : `Hébergement pour ${event.name}`}
         </h3>
-        <ActionButton onClick={openAddModal} icon={<PlusCircleIcon className="w-5 h-5" />}>
-          Ajouter Hébergement
-        </ActionButton>
+        {allowEditing && (
+          <ActionButton onClick={openAddModal} icon={<PlusCircleIcon className="w-5 h-5" />}>
+            Ajouter Hébergement
+          </ActionButton>
+        )}
       </div>
 
       {accommodationsForEvent.length === 0 ? (
@@ -264,18 +275,22 @@ const EventAccommodationTab: React.FC<EventAccommodationTabProps> = ({
                     </span>
                   </div>
                   <div className="flex-shrink-0 space-x-1">
-                    <ActionButton
-                      onClick={() => openEditModal(item)}
-                      variant="secondary"
-                      size="sm"
-                      icon={<PencilIcon className="w-3 h-3" />}
-                    />
-                    <ActionButton
-                      onClick={() => handleDelete(item.id)}
-                      variant="danger"
-                      size="sm"
-                      icon={<TrashIcon className="w-3 h-3" />}
-                    />
+                    {allowEditing && (
+                      <>
+                        <ActionButton
+                          onClick={() => openEditModal(item)}
+                          variant="secondary"
+                          size="sm"
+                          icon={<PencilIcon className="w-3 h-3" />}
+                        />
+                        <ActionButton
+                          onClick={() => handleDelete(item.id)}
+                          variant="danger"
+                          size="sm"
+                          icon={<TrashIcon className="w-3 h-3" />}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 text-sm text-gray-700 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">

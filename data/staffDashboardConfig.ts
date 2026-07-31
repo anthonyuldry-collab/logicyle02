@@ -35,6 +35,7 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
     quickActions: [
       { section: 'season-planning', label: 'Planning saison', description: 'Choix coureurs & dispo staff' },
       { section: 'staff', label: 'Staff & planning', description: 'Valider candidatures et effectif' },
+      { section: 'scouting', label: 'Scouting & recrutement', description: 'Campagnes et profils' },
       { section: 'events', label: 'Calendrier courses', description: 'Logistique, transports, participants' },
       { section: 'vehicles', label: 'Véhicules', description: 'Flotte et affectations' },
       { section: 'checklist', label: 'Checklists', description: 'Fiches de poste et tâches' },
@@ -93,6 +94,7 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
       { section: 'performance', label: 'Performance', description: 'PPR et analyses' },
       { section: 'roster', label: 'Effectif', description: 'Profils coureurs' },
       { section: 'season-planning', label: 'Planning saison', description: 'Calendrier cible' },
+      { section: 'scouting', label: 'Scouting & recrutement', description: 'Campagnes et profils' },
       { section: 'events', label: 'Courses', description: 'Échéances à venir' },
       ...BASE_LOGISTICS,
     ],

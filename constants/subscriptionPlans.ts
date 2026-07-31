@@ -81,7 +81,7 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     features: [
       { fr: 'Tout Compétition +', en: 'Everything in Competition +' },
       { fr: 'Réseau talents & profils indépendants', en: 'Talent network & independent profiles' },
-      { fr: 'Marketplace missions staff', en: 'Staff mission marketplace' },
+      { fr: 'Marketplace missions staff (mise en relation)', en: 'Staff mission marketplace (matching)' },
       { fr: 'Camps altitude & chaleur avancés', en: 'Advanced altitude & heat camps' },
       { fr: 'Export compta & peer review', en: 'Accounting export & peer review' },
       { fr: 'Pilote 90 jours inclus', en: '90-day pilot included' },
@@ -103,7 +103,7 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       { fr: 'Templates UCI & masse salariale', en: 'UCI templates & payroll mass' },
       { fr: 'Assistant nutrition IA', en: 'AI nutrition assistant' },
       { fr: 'Dashboard admin & support prioritaire', en: 'Admin dashboard & priority support' },
-      { fr: 'Commission marketplace réduite (10 %)', en: 'Reduced marketplace fee (10%)' },
+      { fr: 'Commission marketplace réduite (10 %) — à venir avec paiement in-app', en: 'Reduced marketplace fee (10%) — coming with in-app payments' },
     ],
   },
   {
@@ -250,6 +250,9 @@ export function getDefaultPlanForTeamLevel(level: TeamLevel): SubscriptionPlanId
   switch (level) {
     case TeamLevel.FEDERATION:
       return SubscriptionPlanId.FEDERATION;
+    case TeamLevel.N1:
+    case TeamLevel.N2:
+    case TeamLevel.N3:
     case TeamLevel.N1_N3:
       return SubscriptionPlanId.COMPETITION;
     case TeamLevel.PRO:
@@ -267,6 +270,9 @@ export function getRecommendedPlansForTeamLevel(level: TeamLevel): SubscriptionP
       return [SubscriptionPlanId.FEDERATION];
     case TeamLevel.PRO:
       return [SubscriptionPlanId.CONTINENTAL, SubscriptionPlanId.PRO];
+    case TeamLevel.N1:
+    case TeamLevel.N2:
+    case TeamLevel.N3:
     case TeamLevel.N1_N3:
       return [SubscriptionPlanId.COMPETITION, SubscriptionPlanId.CONTINENTAL];
     case TeamLevel.JEUNES:

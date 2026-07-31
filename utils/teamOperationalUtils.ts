@@ -82,6 +82,9 @@ export function resolveFicheStructure(
   switch (teamLevel) {
     case TeamLevel.PRO:
       return 'pro';
+    case TeamLevel.N1:
+    case TeamLevel.N2:
+    case TeamLevel.N3:
     case TeamLevel.N1_N3:
     case TeamLevel.FEDERATION:
       return 'competition';

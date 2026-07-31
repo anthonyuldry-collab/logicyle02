@@ -38,6 +38,8 @@ interface EventInfoTabProps {
   radioAssignments: EventRadioAssignment[];
   setRadioAssignments: React.Dispatch<React.SetStateAction<EventRadioAssignment[]>>;
   appState: AppState;
+  /** Coureurs : consultation uniquement, pas de modification */
+  readOnly?: boolean;
 }
 
 const initialAssignmentFormStateFactory = (eventId: string): Omit<EventRadioAssignment, 'id'> => ({
@@ -60,11 +62,16 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     setRadioEquipment, 
     radioAssignments, 
     setRadioAssignments,
-    appState
+    appState,
+    readOnly = false,
 }) => {
   const { t } = useTranslations();
   const [formData, setFormData] = useState<RaceEvent>(event);
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (readOnly) setIsEditing(false);
+  }, [readOnly]);
   const [activeStageTab, setActiveStageTab] = useState(0);
 
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -421,6 +428,7 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   };
 
   const handleSaveAll = async () => {
+    if (readOnly) return;
     try {
       const eventToSave = applyStageRaceSync({
         ...formData,
@@ -1082,14 +1090,14 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
             ? 'Informations du stage'
             : 'Informations Générales, Course & Radio'}
         </h3>
-        {!isEditing && (
+        {!isEditing && !readOnly && (
           <ActionButton onClick={() => { setFormData(prev => applyStageRaceSync(prev)); setIsEditing(true); }} variant="primary">
             Modifier les Informations
           </ActionButton>
         )}
       </div>
 
-      {isEditing ? (
+      {isEditing && !readOnly ? (
         <form className="space-y-4">
           <fieldset className="border p-4 rounded-md">
             <legend className="text-lg font-medium text-gray-700 px-1">Détails Événement</legend>

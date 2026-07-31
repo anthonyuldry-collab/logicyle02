@@ -4,7 +4,7 @@
  */
 
 import { Rider, StaffMember, RosterArchive, RosterTransition } from '../types';
-import { getCurrentSeasonYear } from './seasonUtils';
+import { getCurrentSeasonYear, isInSeasonTransition } from './seasonUtils';
 
 /**
  * Archive l'effectif actuel pour une saison donnée
@@ -202,17 +202,7 @@ export function getRosterStatsForSeason(
  * Transition automatique au 1er novembre vers la nouvelle saison
  */
 export function shouldTransitionToNewSeason(): boolean {
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1; // getMonth() retourne 0-11, on veut 1-12
-  const currentYear = now.getFullYear();
-  
-  // Transition automatique au 1er novembre
-  if (currentMonth >= 11) {
-    return true;
-  }
-  
-  // Pour les années futures, vérifier si on est en période de transition
-  return currentYear >= 2026;
+  return isInSeasonTransition();
 }
 
 /**

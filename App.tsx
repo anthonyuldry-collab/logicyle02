@@ -87,6 +87,8 @@ import {
   PowerProfileHistory,
   PowerProfile,
   ScoutingRequestStatus,
+  StaffArchive,
+  RosterArchive,
   ProspectLevel,
   ScoutingDataScope,
 } from "./types";
@@ -133,11 +135,20 @@ import { isSponsorshipIncome } from "./utils/financialUtils";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { translations, TranslationKey } from "./translations";
 import LoginView from "./sections/LoginView";
+import LegalView from "./sections/LegalView";
+import LandingView from "./sections/LandingView";
+import EssentialCookiesNotice from "./components/EssentialCookiesNotice";
+import { setMonitoringUser } from "./services/monitoring";
 import NoTeamView from "./sections/NoTeamView";
 import PartnerLobbyView from "./sections/PartnerLobbyView";
 import PendingApprovalView from "./sections/PendingApprovalView";
 import EmailVerificationView from "./sections/EmailVerificationView";
 import SignupView, { SignupData } from "./sections/SignupView";
+import {
+  legalHashFor,
+  parseLegalHash,
+  type LegalDocId,
+} from "./legal";
 import {
   SectionSuspense,
   LazyEventDetailView,
@@ -357,6 +368,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<
+    | "landing"
     | "login"
     | "signup"
     | "app"
@@ -366,7 +378,13 @@ const App: React.FC = () => {
     | "load_error"
     | "pricing"
     | "verify_email"
-  >("login");
+    | "legal"
+  >(() => (typeof window !== "undefined" && parseLegalHash(window.location.hash) ? "legal" : "landing"));
+  const [legalDocId, setLegalDocId] = useState<LegalDocId>(
+    () =>
+      (typeof window !== "undefined" && parseLegalHash(window.location.hash)) ||
+      "cgu"
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null);
   const pendingSignupDataRef = useRef<SignupData | null>(null);
@@ -421,6 +439,18 @@ const App: React.FC = () => {
 
   useEffect(() => {
     captureReferralFromUrl();
+  }, []);
+
+  useEffect(() => {
+    const applyLegalHash = () => {
+      const id = parseLegalHash(window.location.hash);
+      if (!id) return;
+      setLegalDocId(id);
+      setView("legal");
+    };
+    applyLegalHash();
+    window.addEventListener("hashchange", applyLegalHash);
+    return () => window.removeEventListener("hashchange", applyLegalHash);
   }, []);
 
   useEffect(() => {
@@ -806,9 +836,17 @@ const App: React.FC = () => {
                 );
 
                 // Enchaîner le checkout Stripe (carte + intervalle choisi à l'inscription)
-                // VITE_SKIP_SIGNUP_PAYMENT=true → compte + essai sans redirect Stripe (tests locaux)
+                // VITE_SKIP_SIGNUP_PAYMENT=true uniquement en DEV (jamais en build prod)
                 const skipSignupPayment =
-                  import.meta.env.VITE_SKIP_SIGNUP_PAYMENT === 'true';
+                  import.meta.env.DEV && import.meta.env.VITE_SKIP_SIGNUP_PAYMENT === 'true';
+                if (
+                  import.meta.env.PROD &&
+                  import.meta.env.VITE_SKIP_SIGNUP_PAYMENT === 'true'
+                ) {
+                  console.error(
+                    '[billing] VITE_SKIP_SIGNUP_PAYMENT ignoré en production — checkout obligatoire',
+                  );
+                }
                 const planId = signupData.planId;
                 const interval =
                   signupData.billingInterval === 'month' || signupData.billingInterval === 'year'
@@ -877,6 +915,7 @@ const App: React.FC = () => {
                     }
                   } catch (checkoutErr) {
                     console.error('Checkout post-inscription:', checkoutErr);
+                    alert(t('billingCheckoutError'));
                     // Compte créé : l'utilisateur pourra payer plus tard via Abonnement
                   }
                 }
@@ -927,21 +966,21 @@ const App: React.FC = () => {
               }
               
               // Afficher un message d'erreur plus détaillé selon le type d'erreur
-              let errorMessage = "Erreur lors de la création du profil. Veuillez contacter l'administrateur.";
+              let errorMessage = t('signupProfileError');
               
               if (profileError?.code === 'permission-denied') {
-                errorMessage = "Erreur de permissions Firestore. Les règles de sécurité ne permettent pas la création de votre profil. Veuillez contacter l'administrateur.";
+                errorMessage = t('signupProfilePermission');
               } else if (profileError?.code === 'unavailable') {
-                errorMessage = "Service Firestore indisponible. Vérifiez votre connexion internet et réessayez.";
+                errorMessage = t('signupProfileUnavailable');
               } else if (profileError?.code === 'failed-precondition') {
-                errorMessage = "Condition préalable non remplie. Veuillez réessayer ou contacter l'administrateur.";
+                errorMessage = t('signupProfileError');
               } else if (profileError?.code === 'already-exists') {
-                errorMessage = "Un profil existe déjà pour cet utilisateur. Veuillez vous connecter.";
+                errorMessage = t('signupProfileExists');
               } else if (profileError?.message) {
                 // Utiliser le message d'erreur amélioré si disponible
                 errorMessage = profileError.message.includes("Données d'inscription incomplètes") 
                   ? profileError.message
-                  : `Erreur lors de la création du profil: ${profileError.message}`;
+                  : `${t('signupProfileError')} ${profileError.message}`;
               }
               
               alert(errorMessage);
@@ -950,6 +989,7 @@ const App: React.FC = () => {
           }
 
           if (userProfile) {
+            setMonitoringUser(userProfile.id);
             if (firebaseUser.email) {
               try {
                 const activated = await processPendingInvitesOnLogin(
@@ -989,13 +1029,14 @@ const App: React.FC = () => {
           if (isStale()) return;
           setAuthFirebaseUser(null);
           setCurrentUser(null);
+          setMonitoringUser(null);
           setAppState({
             ...getInitialGlobalState(),
             ...getInitialTeamState(),
             activeEventId: null,
             activeTeamId: null,
           });
-          setView("login");
+          setView("landing");
         }
       } catch (error: unknown) {
         console.error("Erreur lors de la vérification de l'authentification:", error);
@@ -1010,7 +1051,7 @@ const App: React.FC = () => {
         }
         if (isMountedRef.current) {
           setCurrentUser(null);
-          setView("login");
+          setView("landing");
         }
       } finally {
         if (isMountedRef.current) setIsLoading(false);
@@ -3031,6 +3072,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setAuthFirebaseUser(null);
     clearPendingSignup();
+    setMonitoringUser(null);
     signOut(auth);
   };
 
@@ -3221,11 +3263,35 @@ const App: React.FC = () => {
       return (
         <div className="flex items-center justify-center h-screen bg-gray-50">
           <div className="text-center p-8 bg-white rounded-lg shadow-lg border">
-            <h3 className="text-xl font-semibold text-gray-700 mb-4">Chargement de l'application...</h3>
-            <p className="text-gray-500 mb-4">Initialisation de l'état de l'application...</p>
+            <h3 className="text-xl font-semibold text-gray-700 mb-4">{t("appLoadingTitle")}</h3>
+            <p className="text-gray-500 mb-4">{t("appLoadingSubtitle")}</p>
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           </div>
         </div>
+      );
+    }
+
+    if (view === "landing") {
+      return (
+        <>
+          <LandingView
+            onLogin={() => setView("login")}
+            onSignup={() => setView("signup")}
+            onViewPricing={() => setView("pricing")}
+            onViewLegal={(id) => {
+              setLegalDocId(id);
+              setView("legal");
+              window.location.hash = legalHashFor(id).slice(1);
+            }}
+          />
+          <EssentialCookiesNotice
+            onViewCookies={() => {
+              setLegalDocId("cookies");
+              setView("legal");
+              window.location.hash = legalHashFor("cookies").slice(1);
+            }}
+          />
+        </>
       );
     }
 
@@ -3235,6 +3301,31 @@ const App: React.FC = () => {
           onLogin={handleLogin}
           onSwitchToSignup={() => setView("signup")}
           onViewPricing={() => setView("pricing")}
+          onBackToLanding={() => setView("landing")}
+          onViewLegal={(id) => {
+            setLegalDocId(id);
+            setView("legal");
+            window.location.hash = legalHashFor(id).slice(1);
+          }}
+        />
+      );
+    }
+    if (view === "legal") {
+      return (
+        <LegalView
+          docId={legalDocId}
+          language={language}
+          onLanguageChange={setLanguage}
+          onSelectDoc={(id) => {
+            setLegalDocId(id);
+            window.location.hash = legalHashFor(id).slice(1);
+          }}
+          onBack={() => {
+            setView("landing");
+            if (window.location.hash.startsWith("#/legal") || window.location.hash.startsWith("#legal")) {
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            }
+          }}
         />
       );
     }
@@ -3255,7 +3346,14 @@ const App: React.FC = () => {
                 "repeating-linear-gradient(-18deg, transparent, transparent 22px, #fff 22px, #fff 23px)",
             }}
           />
-          <div className="absolute top-4 right-4 z-20">
+          <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setView("landing")}
+              className="text-sm font-medium text-slate-300 hover:text-white transition"
+            >
+              {t("loginBackToHome")}
+            </button>
             <select
               onChange={(e) => setLanguage(e.target.value as "fr" | "en")}
               value={language}
@@ -3286,7 +3384,7 @@ const App: React.FC = () => {
                 onClick={() => setView("login")}
                 className="px-6 py-2.5 rounded-xl border border-white/20 text-slate-200 font-medium hover:bg-white/10 transition"
               >
-                {t("loginSubmitButton")}
+                {t("landingNavLogin")}
               </button>
             </div>
           </div>
@@ -3445,12 +3543,15 @@ const App: React.FC = () => {
           if (!appState.activeTeamId) return;
           await requestPlanUpgrade(appState.activeTeamId, planId, interval, code);
         } catch (err: any) {
+          const code = err?.code || err?.customData?.code;
           const message =
-            err?.message ||
-            err?.customData?.message ||
-            (err instanceof Error ? err.message : String(err));
+            code === 'functions/unavailable' || code === 'unavailable'
+              ? t('billingUnavailable')
+              : err?.message ||
+                err?.customData?.message ||
+                (err instanceof Error ? err.message : String(err));
           console.error('Checkout error:', err);
-          alert(message || 'Impossible de lancer le paiement. Réessayez ou contactez le support.');
+          alert(message || t('billingCheckoutError'));
         }
       };
 
@@ -3464,7 +3565,9 @@ const App: React.FC = () => {
           if (!appState.activeTeamId) return;
           const { url } = await createBillingPortalSession(appState.activeTeamId);
           window.location.href = url;
-        } catch {
+        } catch (err) {
+          console.error('Billing portal error:', err);
+          alert(t('billingPortalError'));
           setCurrentSection("pricing");
         }
       };
@@ -4000,6 +4103,35 @@ const App: React.FC = () => {
                       currentUser={uiUser}
                       appState={appState}
                       effectivePermissions={effectivePermissions}
+                      staff={appState.staff}
+                      onRosterTransition={async (archive, _transition, updated) => {
+                        if (!appState.activeTeamId) return;
+                        try {
+                          const archiveDoc = { ...archive, id: `season-${archive.season}` };
+                          await firebaseService.saveData(
+                            appState.activeTeamId,
+                            "rosterArchives",
+                            archiveDoc
+                          );
+                          if (updated.staff.length) {
+                            await Promise.all(updated.staff.map((s) => onSaveStaff(s)));
+                          }
+                          setAppState((prev) => ({
+                            ...prev,
+                            rosterArchives: [
+                              ...(prev.rosterArchives || []).filter(
+                                (a) => a.season !== archive.season
+                              ),
+                              archiveDoc as RosterArchive & { id: string },
+                            ],
+                            riders: updated.riders,
+                            staff: updated.staff.length ? updated.staff : prev.staff,
+                          }));
+                        } catch (err) {
+                          console.error("Archivage roster:", err);
+                          alert(t("seasonArchiveError"));
+                        }
+                      }}
                     />
                   )}
                   {currentSection === "season-planning" && appState.riders && (
@@ -4027,8 +4159,29 @@ const App: React.FC = () => {
                       onDelete={onDeleteStaff}
                       onSaveMeetingReport={onSaveMeetingReport}
                       onDeleteMeetingReport={onDeleteMeetingReport}
-                      onStaffTransition={(archive, transition) => {
-                        // TODO: Implémenter la sauvegarde des archives et transitions
+                      onStaffTransition={async (archive, _transition, updatedStaff) => {
+                        if (!appState.activeTeamId) return;
+                        try {
+                          const archiveDoc = { ...archive, id: `season-${archive.season}` };
+                          await firebaseService.saveData(
+                            appState.activeTeamId,
+                            "staffArchives",
+                            archiveDoc
+                          );
+                          setAppState((prev) => ({
+                            ...prev,
+                            staffArchives: [
+                              ...(prev.staffArchives || []).filter(
+                                (a) => a.season !== archive.season
+                              ),
+                              archiveDoc as StaffArchive & { id: string },
+                            ],
+                            staff: updatedStaff.length ? updatedStaff : prev.staff,
+                          }));
+                        } catch (err) {
+                          console.error("Archivage staff:", err);
+                          alert(t("seasonArchiveError"));
+                        }
                       }}
                       staffEventSelections={appState.staffEventSelections || []}
                       setStaffEventSelections={createPersistedBatchSetHandler<StaffEventSelection>("staffEventSelections")}
@@ -5085,7 +5238,30 @@ const App: React.FC = () => {
                       currentTeamId={appState.activeTeamId}
                       teamMemberships={appState.teamMemberships || []}
                       onRequestTransfer={async (destinationTeamId: string) => {
-                        // TODO: Implémenter la logique de demande de transfert
+                        if (!currentUser) return;
+                        const safeRole =
+                          currentUser.userRole === UserRole.STAFF
+                            ? UserRole.STAFF
+                            : UserRole.COUREUR;
+                        try {
+                          await firebaseService.requestToJoinTeam(
+                            currentUser.id,
+                            destinationTeamId,
+                            safeRole,
+                            {
+                              firstName: currentUser.firstName,
+                              lastName: currentUser.lastName,
+                              email: currentUser.email,
+                              staffRole: currentUser.staffRole,
+                            }
+                          );
+                          alert(t("transferRequestSent"));
+                        } catch (err) {
+                          console.error("Demande de transfert:", err);
+                          alert(
+                            err instanceof Error ? err.message : t("transferRequestError")
+                          );
+                        }
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
                       onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected', grantedScopes) => {
@@ -5325,7 +5501,32 @@ const App: React.FC = () => {
                       teams={appState.teams}
                       currentTeamId={null}
                       teamMemberships={appState.teamMemberships || []}
-                      onRequestTransfer={async () => {}}
+                      onRequestTransfer={async (destinationTeamId: string) => {
+                        if (!currentUser) return;
+                        const safeRole =
+                          currentUser.userRole === UserRole.STAFF
+                            ? UserRole.STAFF
+                            : UserRole.COUREUR;
+                        try {
+                          await firebaseService.requestToJoinTeam(
+                            currentUser.id,
+                            destinationTeamId,
+                            safeRole,
+                            {
+                              firstName: currentUser.firstName,
+                              lastName: currentUser.lastName,
+                              email: currentUser.email,
+                              staffRole: currentUser.staffRole,
+                            }
+                          );
+                          alert(t("transferRequestSent"));
+                        } catch (err) {
+                          console.error("Demande de transfert:", err);
+                          alert(
+                            err instanceof Error ? err.message : t("transferRequestError")
+                          );
+                        }
+                      }}
                       scoutingRequests={appState.scoutingRequests || []}
                       onRespondToScoutingRequest={async (requestId, response, grantedScopes) => {
                         await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
@@ -5591,10 +5792,10 @@ const App: React.FC = () => {
           <p className="text-gray-600 mb-4">Chargement de l'application...</p>
           <button
             type="button"
-            onClick={() => { setView("login"); setCurrentUser(null); }}
+            onClick={() => { setView("landing"); setCurrentUser(null); }}
             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
           >
-            Retour à la connexion
+            {t("loginBackToHome")}
           </button>
         </div>
       </div>

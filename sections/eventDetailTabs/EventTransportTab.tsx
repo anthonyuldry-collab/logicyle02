@@ -76,6 +76,8 @@ interface EventTransportTabProps {
   setVehicles?: React.Dispatch<React.SetStateAction<Vehicle[]>>;
   currentUser?: User | null;
   effectivePermissions?: Partial<Record<AppSection, PermissionLevel[]>>;
+  /** Coureurs : consultation uniquement */
+  readOnly?: boolean;
 }
 
 const generateId = () =>
@@ -190,7 +192,9 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   setVehicles,
   currentUser,
   effectivePermissions,
+  readOnly = false,
 }) => {
+  const allowEditing = !readOnly;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentTransportLeg, setCurrentTransportLeg] = useState<
     Omit<EventTransportLeg, "id"> | EventTransportLeg
@@ -801,6 +805,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!allowEditing) return;
     let legData = { ...currentTransportLeg };
 
     // Ensure empty dates are undefined
@@ -946,6 +951,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
       logisticsPhase: EventTransportLogisticsPhase;
     },
   ) => {
+    if (!allowEditing) return;
     const base = {
       ...initialTransportFormStateFactory(eventId),
       ...defaults,
@@ -1099,6 +1105,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   };
 
   const openEditModal = (leg: EventTransportLeg) => {
+    if (!allowEditing) return;
     setCurrentTransportLeg(structuredClone(leg));
     if (stageRace) {
       const stageDate = leg.stageDate || leg.departureDate || leg.arrivalDate;
@@ -1132,6 +1139,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
   };
 
   const handleDelete = async (legId: string) => {
+    if (!allowEditing) return;
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce trajet ?")) {
       try {
         // Supprimer de Firebase si on a un teamId
@@ -1360,18 +1368,22 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             )}
           </div>
           <div className="flex space-x-2 shrink-0">
-            <ActionButton
-              onClick={() => openEditModal(leg)}
-              variant="secondary"
-              size="sm"
-              icon={<PencilIcon className="w-4 h-4" />}
-            />
-            <ActionButton
-              onClick={() => handleDelete(leg.id)}
-              variant="danger"
-              size="sm"
-              icon={<TrashIcon className="w-4 h-4" />}
-            />
+            {allowEditing && (
+              <>
+                <ActionButton
+                  onClick={() => openEditModal(leg)}
+                  variant="secondary"
+                  size="sm"
+                  icon={<PencilIcon className="w-4 h-4" />}
+                />
+                <ActionButton
+                  onClick={() => handleDelete(leg.id)}
+                  variant="danger"
+                  size="sm"
+                  icon={<TrashIcon className="w-4 h-4" />}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1672,6 +1684,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <p className="text-sm text-blue-800 mb-4 max-w-lg mx-auto">
             {TRANSPORT_PHASE_UI.avant.hint}
           </p>
+          {allowEditing && (
           <ActionButton
             onClick={() =>
               openAddModal(
@@ -1695,6 +1708,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           >
             Ajouter un trajet Avant — Étape {stage.stageNumber}
           </ActionButton>
+          )}
         </div>
       );
     }
@@ -1921,6 +1935,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               <div className="text-center py-10 text-gray-500 border border-dashed border-blue-200 rounded-lg bg-blue-50/40">
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">Aucun trajet « Avant » le Jour J</h3>
                 <p className="text-sm text-blue-800 mb-4 max-w-lg mx-auto">{TRANSPORT_PHASE_UI.avant.hint}</p>
+                {allowEditing && (
                 <ActionButton
                   onClick={() =>
                     openAddModal(
@@ -1938,6 +1953,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                 >
                   Ajouter un trajet Avant
                 </ActionButton>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -1946,6 +1962,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   <React.Fragment key={leg.id}>{renderTransportLegCard(leg)}</React.Fragment>
                 ))}
                 <div className="flex justify-end">
+                  {allowEditing && (
                   <ActionButton
                     size="sm"
                     icon={<PlusCircleIcon className="w-5 h-5" />}
@@ -1964,6 +1981,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                   >
                     Ajouter Avant
                   </ActionButton>
+                  )}
                 </div>
               </div>
             )}
@@ -2118,12 +2136,14 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               ? 'Ajoutez les trajets d’accueil (vols, base → première étape). Les départs vers chaque étape se gèrent dans Étape → Avant.'
               : TRANSPORT_PHASE_UI.avant.hint}
           </p>
+          {allowEditing && (
           <ActionButton
             onClick={() => openAddModal({ direction: TransportDirection.ALLER })}
             icon={<PlusCircleIcon className="w-5 h-5" />}
           >
             Ajouter un trajet Avant
           </ActionButton>
+          )}
                         </div>
       ) : (
         <div className="space-y-4">
@@ -2163,6 +2183,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <p className="text-gray-500 mb-6">
             {TRANSPORT_PHASE_UI.pendant.hint}
           </p>
+          {allowEditing && (
           <ActionButton
             onClick={() => {
               if (stageDate) {
@@ -2187,10 +2208,12 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
               ? `Ajouter Pendant — Étape ${stageNumber}`
               : 'Ajouter un transport Pendant'}
           </ActionButton>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           <div className="flex justify-end">
+            {allowEditing && (
             <ActionButton
               onClick={() => {
                 if (stageDate) {
@@ -2214,6 +2237,7 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
             >
               {stageRace && stageNumber ? `Ajouter Pendant — Étape ${stageNumber}` : 'Ajouter Pendant'}
             </ActionButton>
+            )}
           </div>
           {legs.map((leg) => (
             <div key={leg.id} className="border border-green-200 rounded-lg p-6 hover:shadow-md transition-shadow bg-white">
@@ -2312,18 +2336,22 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                 </div>
                 
                 <div className="flex space-x-2 ml-6">
-                  <ActionButton
-                    onClick={() => openEditModal(leg)}
-                    variant="secondary"
-                    size="sm"
-                    icon={<PencilIcon className="w-4 h-4" />}
-                  />
-                  <ActionButton
-                    onClick={() => handleDelete(leg.id)}
-                    variant="danger"
-                    size="sm"
-                    icon={<TrashIcon className="w-4 h-4" />}
-                  />
+                  {allowEditing && (
+                    <>
+                      <ActionButton
+                        onClick={() => openEditModal(leg)}
+                        variant="secondary"
+                        size="sm"
+                        icon={<PencilIcon className="w-4 h-4" />}
+                      />
+                      <ActionButton
+                        onClick={() => handleDelete(leg.id)}
+                        variant="danger"
+                        size="sm"
+                        icon={<TrashIcon className="w-4 h-4" />}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -2349,12 +2377,14 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           <span className="text-6xl mb-4 block">🏠</span>
           <h3 className="text-xl font-semibold text-gray-700 mb-2">{options?.emptyTitle ?? 'Aucun trajet « Après » planifié'}</h3>
           <p className="text-gray-500 mb-6">{options?.emptyDescription ?? TRANSPORT_PHASE_UI.apres.hint}</p>
-          <ActionButton
-            onClick={() => (options?.onAdd ? options.onAdd() : openAddModal({ direction: TransportDirection.RETOUR }))}
-            icon={<PlusCircleIcon className="w-5 h-5" />}
-          >
-            {options?.addButtonLabel ?? 'Ajouter un trajet Après'}
-          </ActionButton>
+          {allowEditing && (
+            <ActionButton
+              onClick={() => (options?.onAdd ? options.onAdd() : openAddModal({ direction: TransportDirection.RETOUR }))}
+              icon={<PlusCircleIcon className="w-5 h-5" />}
+            >
+              {options?.addButtonLabel ?? 'Ajouter un trajet Après'}
+            </ActionButton>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -2486,19 +2516,23 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
                                     </div>
                 
                 <div className="flex space-x-2 ml-6">
-                  <ActionButton
-                    onClick={() => openEditModal(leg)}
-                    variant="secondary"
-                    size="sm"
-                    icon={<PencilIcon className="w-4 h-4" />}
-                  />
-                  <ActionButton
-                    onClick={() => handleDelete(leg.id)}
-                    variant="danger"
-                    size="sm"
-                    icon={<TrashIcon className="w-4 h-4" />}
-                  />
-                                </div>
+                  {allowEditing && (
+                    <>
+                      <ActionButton
+                        onClick={() => openEditModal(leg)}
+                        variant="secondary"
+                        size="sm"
+                        icon={<PencilIcon className="w-4 h-4" />}
+                      />
+                      <ActionButton
+                        onClick={() => handleDelete(leg.id)}
+                        variant="danger"
+                        size="sm"
+                        icon={<TrashIcon className="w-4 h-4" />}
+                      />
+                    </>
+                  )}
+                </div>
                             </div>
                           </div>
           ))}
@@ -2574,12 +2608,14 @@ export const EventTransportTab: React.FC<EventTransportTabProps> = ({
           >
             Exporter logistique véhicules
           </ActionButton>
-          <ActionButton
-            onClick={openAddModalForActiveTab}
-            icon={<PlusCircleIcon className="w-5 h-5" />}
-          >
-            Ajouter un Trajet
-          </ActionButton>
+          {allowEditing && (
+            <ActionButton
+              onClick={openAddModalForActiveTab}
+              icon={<PlusCircleIcon className="w-5 h-5" />}
+            >
+              Ajouter un Trajet
+            </ActionButton>
+          )}
         </div>
       </div>
 

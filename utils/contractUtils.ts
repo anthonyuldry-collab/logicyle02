@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { isPlanAtLeast } from '../constants/subscriptionPlans';
 import { getActiveRidersForCurrentSeason, getActiveStaffForCurrentSeason } from './rosterArchiveUtils';
+import { isNationalDnTeamLevel } from './teamLevelUtils';
 
 export type ContractPersonType = 'rider' | 'staff';
 
@@ -92,7 +93,7 @@ export function hasAccountingExportAccess(planId: SubscriptionPlanId): boolean {
 /** Bulletins engagement UCI PDF (J-20 / J-3) — plan Pro, ou Compétition+ pour équipes N1/Pro. */
 export function hasUciPdfAccess(planId: SubscriptionPlanId, teamLevel?: TeamLevel): boolean {
   if (
-    teamLevel === TeamLevel.N1_N3 ||
+    isNationalDnTeamLevel(teamLevel) ||
     teamLevel === TeamLevel.PRO ||
     teamLevel === TeamLevel.FEDERATION
   ) {

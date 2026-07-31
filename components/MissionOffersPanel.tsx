@@ -25,6 +25,10 @@ import {
   getDemoVacataireRating,
 } from '../constants/demoVacataires';
 import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
+import {
+  isMissionMarketplacePaymentsEnabled,
+  MISSION_COMMISSION_LABELS,
+} from '../constants/missionMarketplace';
 
 interface MissionOffersPanelProps {
   teamId: string;
@@ -285,6 +289,11 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
 
   return (
     <div className="space-y-4">
+      {!isMissionMarketplacePaymentsEnabled() && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 leading-relaxed">
+          {MISSION_COMMISSION_LABELS.matchingOnlyBanner.fr}
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h4 className="text-lg font-semibold text-gray-900">Offres d&apos;emploi & vacations</h4>

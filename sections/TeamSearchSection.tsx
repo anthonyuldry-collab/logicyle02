@@ -28,6 +28,7 @@ import {
   isDemoRecruitmentTeam,
 } from '../constants/demoRecruitmentTeams';
 import { formatRecruitmentCriteriaSummary } from '../utils/recruitmentCampaignUtils';
+import { getSelectableTeamLevels } from '../utils/teamLevelUtils';
 import { getTeamGender, TEAM_GENDER_LABELS, teamMatchesGenderFilter } from '../utils/teamGenderUtils';
 
 interface TeamSearchSectionProps {
@@ -399,7 +400,7 @@ const TeamSearchSection: React.FC<TeamSearchSectionProps> = ({
                   className="input-field-sm w-full mt-1"
                 >
                   <option value="all">Tous les niveaux</option>
-                  {Object.values(TeamLevel).map((level) => (
+                  {[...getSelectableTeamLevels('men'), TeamLevel.N1_N3].map((level) => (
                     <option key={level} value={level}>
                       {level}
                     </option>

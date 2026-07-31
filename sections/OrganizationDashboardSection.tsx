@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AppSection, Organization, Team, User } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import EnterpriseRoadmapPanel from '../components/EnterpriseRoadmapPanel';
+import CeoLaunchPlanPanel from '../components/CeoLaunchPlanPanel';
 import { useTranslations } from '../hooks/useTranslations';
 import { canViewOrgDashboard, getTeamKindLabel } from '../utils/organizationUtils';
 import {
@@ -152,6 +153,10 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
           <h3 className="text-sm font-semibold text-emerald-100">{t('orgCeoMrrTitle')}</h3>
           <p className="mt-1 text-sm text-emerald-50/90">{formatEur(portfolioMrr)}</p>
           <p className="mt-2 text-xs leading-relaxed text-emerald-200/75">{t('orgCeoMrrExplain')}</p>
+        </section>
+
+        <section className="rounded-xl border border-indigo-800/40 bg-indigo-950/20 p-4">
+          <CeoLaunchPlanPanel actualMrr={portfolioMrr} />
         </section>
 
         {attentionTeams.length > 0 && (

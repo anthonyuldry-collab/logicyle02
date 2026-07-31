@@ -50,14 +50,15 @@
 
 | # | Action | Détail | Statut |
 |---|--------|--------|--------|
-| 4.1 | **CGU utilisateurs** | Équipes + indépendants · limitation responsabilité · propriété données client | ☐ |
-| 4.2 | **CGV / contrat SaaS** | Abonnements Stripe · renouvellement · résiliation · SLA par plan | ☐ |
-| 4.3 | **DPA (Data Processing Agreement)** | Art. 28 RGPD · sous-traitants (Firebase, Stripe, Google) listés | ☐ |
-| 4.4 | **Politique de confidentialité** | FR + **EN** (voie WT) · cookies · analytics | ☐ |
-| 4.5 | **Clause marketplace** | Commission 12 % · statut vacataire · Stripe Connect · litiges missions | ☐ |
-| 4.6 | **Mentions légales** | Éditeur · hébergeur · contact DPO / privacy@ | ☐ |
+| 4.1 | **CGU utilisateurs** | Équipes + indépendants · limitation responsabilité · propriété données client | ☑ brouillon `legal/cgu.ts` · v2026-07 |
+| 4.2 | **CGV / contrat SaaS** | Abonnements Stripe · renouvellement · résiliation · SLA par plan | ☑ brouillon `legal/cgv.ts` · v2026-07 |
+| 4.3 | **DPA (Data Processing Agreement)** | Art. 28 RGPD · sous-traitants (Firebase, Stripe, Google) listés | ☑ brouillon `legal/dpa.ts` · v2026-07 |
+| 4.4 | **Politique de confidentialité** | FR + **EN** (voie WT) · cookies · analytics | ☑ `legal/privacy.ts` + `legal/cookies.ts` |
+| 4.5 | **Clause marketplace** | Commission 12 % · statut vacataire · Stripe Connect · litiges missions | ☑ intégrée CGU §5 + CGV §7 |
+| 4.6 | **Mentions légales** | Éditeur · hébergeur · contact DPO / privacy@ | ☑ `legal/mentions.ts` (placeholders siège/SIREN) |
 
-**Livrable** : pages `/legal/terms`, `/legal/privacy`, `/legal/dpa` · FR + EN.
+**Livrable** : pages `#/legal/{cgu|cgv|privacy|dpa|mentions|cookies}` · FR + EN · index `juridique/legal-pack/README.md`.  
+**Reste** : relecture avocat · compléter identité post K-bis · signature DPA fournisseurs.
 
 ---
 
