@@ -75,8 +75,9 @@ export const translations = {
   loginBackToHome: { fr: '← Accueil', en: '← Home' },
 
   // Landing marketing
+  landingNavFeatures: { fr: 'Fonctions', en: 'Features' },
   landingNavLogin: { fr: 'Connexion', en: 'Sign in' },
-  landingNavCta: { fr: 'Essai gratuit', en: 'Free trial' },
+  landingNavCta: { fr: 'S’enregistrer', en: 'Sign up' },
   landingHeadline: {
     fr: 'L’OS opérationnel des équipes cyclistes.',
     en: 'The operating system for cycling teams.',
@@ -89,8 +90,8 @@ export const translations = {
   landingCtaPricing: { fr: 'Voir les tarifs', en: 'See pricing' },
   landingCtaTalk: { fr: 'Parler à l’équipe', en: 'Talk to the team' },
   landingTrialNote: {
-    fr: 'Club & Compétition : 14 j · Élite & Performance : 30 j · carte via Stripe · résiliable avant prélèvement · prix HT',
-    en: 'Club & Competition: 14 days · Elite & Performance: 30 days · card via Stripe · cancel before charge · prices excl. VAT',
+    fr: 'Essai 14 ou 30 j · carte via Stripe · résiliable avant prélèvement · prix TTC',
+    en: '14 or 30-day trial · card via Stripe · cancel before charge · prices incl. tax',
   },
   landingEarlyTitle: {
     fr: 'Early access — premières structures.',
@@ -125,12 +126,12 @@ export const translations = {
   },
   landingPricingTitle: { fr: 'Des tarifs pensés pour le cyclisme.', en: 'Pricing built for cycling.' },
   landingPricingSub: {
-    fr: 'Club dès 59 €/mois HT · Compétition 119 € · Élite 199 € · Performance 349 €. Essai 14 ou 30 j. Annuel = 2 mois offerts.',
-    en: 'Club from €59/mo excl. VAT · Competition €119 · Elite €199 · Performance €349. 14 or 30-day trial. Annual = 2 months free.',
+    fr: 'Club dès 59 €/mois TTC · Compétition 119 € · Élite 199 € · Performance 349 €. Essai 14 ou 30 j. Annuel = 2 mois offerts.',
+    en: 'Club from €59/mo all-in · Competition €119 · Elite €199 · Performance €349. 14 or 30-day trial. Annual = 2 months free.',
   },
-  landingPerMonth: { fr: '/mois HT', en: '/mo excl. VAT' },
+  landingPerMonth: { fr: '/mois TTC', en: '/mo all-in' },
   landingPricingAll: { fr: 'Comparer toutes les formules', en: 'Compare all plans' },
-  landingExclVat: { fr: 'HT', en: 'excl. VAT' },
+  landingExclVat: { fr: 'TTC', en: 'all-in' },
 
   // FAQ / support
   faqTitle: { fr: 'Questions fréquentes', en: 'Frequently asked questions' },
@@ -243,8 +244,8 @@ export const translations = {
     en: 'Please select a plan to continue.',
   },
   signupPlanTrialNote: {
-    fr: 'Essai inclus selon la formule (14 j Club/Compétition, 30 j Élite/Performance) : carte enregistrée maintenant, premier prélèvement après l’essai. Prix HT.',
-    en: 'Trial included by plan (14 days Club/Competition, 30 days Elite/Performance): card saved now, first charge after the trial. Prices excl. VAT.',
+    fr: 'Essai inclus selon la formule (14 j Club/Compétition, 30 j Élite/Performance) : carte enregistrée maintenant, premier prélèvement après l’essai. Prix TTC (montant final).',
+    en: 'Trial included by plan (14 days Club/Competition, 30 days Elite/Performance): card saved now, first charge after the trial. Prices are final (all-in).',
   },
   signupPathTeamBillingNote: {
     fr: 'L’abonnement est géré par l’équipe que vous rejoindrez.',
@@ -919,16 +920,16 @@ export const translations = {
   // Billing & Pricing
   pricingTitle: { fr: 'Tarifs LogiCycle', en: 'LogiCycle Pricing' },
   pricingSubtitle: {
-    fr: 'Grille 2026 : Club 59 € → Performance 349 €/mois HT. Annuel = 2 mois offerts. TVA selon votre statut.',
-    en: '2026 grid: Club €59 → Performance €349/mo excl. VAT. Annual = 2 months free. Tax depends on your status.',
+    fr: 'Grille 2026 : Club 59 € → Performance 349 €/mois TTC (prix final). Annuel = 2 mois offerts.',
+    en: '2026 grid: Club €59 → Performance €349/mo all-in (final price). Annual = 2 months free.',
   },
   pricingFoundingNote: {
     fr: 'Soft-launch : abonnement annuel souscrit avant juin 2027 = tarif fondateur figé 24 mois.',
     en: 'Soft launch: annual plan started before June 2027 locks founding pricing for 24 months.',
   },
   pricingExclVatNote: {
-    fr: 'Tous les prix sont hors taxes (HT).',
-    en: 'All prices are exclusive of VAT (excl. tax).',
+    fr: 'Prix TTC — c’est le montant prélevé. Idéal pour les clubs non assujettis à la TVA : pas de surprise.',
+    en: 'All-in prices — what you pay. Clear for clubs not VAT-registered: no surprise extras.',
   },
   pricingPublicStart: {
     fr: 'Démarrer avec cette formule',

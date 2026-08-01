@@ -649,7 +649,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                   {t('signupPlanIntro')}
                 </p>
 
-                <div className="inline-flex rounded-xl border border-white/15 bg-white/[0.04] p-1 gap-1">
+                <div className="inline-flex w-full sm:w-auto rounded-xl border border-white/15 bg-white/[0.04] p-1 gap-1">
                   {(['month', 'year'] as const).map((interval) => {
                     const active = (formData.billingInterval ?? 'year') === interval;
                     return (
@@ -659,7 +659,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                         onClick={() =>
                           setFormData((prev) => ({ ...prev, billingInterval: interval }))
                         }
-                        className={`rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
+                        className={`flex-1 sm:flex-none rounded-lg px-4 py-2.5 sm:py-2 text-xs font-bold uppercase tracking-wide transition-colors touch-manipulation ${
                           active
                             ? 'bg-indigo-500 text-white shadow'
                             : 'text-slate-300 hover:bg-white/10'
@@ -691,23 +691,25 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                   </p>
                 )}
 
-                <div className="flex gap-2.5 max-w-lg mx-auto w-full pt-1">
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    disabled={isLoading}
-                    className="flex-1 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-slate-200 text-sm font-semibold py-3.5 transition-colors"
-                  >
-                    {t('signupBack')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void submitRegistration()}
-                    disabled={isLoading}
-                    className="flex-[1.6] rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 disabled:text-slate-300 text-white text-sm font-bold py-3.5 shadow-lg shadow-indigo-950/50 transition-colors"
-                  >
-                    {isLoading ? t('signupCreatingButton') : t('signupPlanPayCta')}
-                  </button>
+                <div className="sticky bottom-0 -mx-3 sm:mx-0 px-3 sm:px-0 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:static sm:p-0 sm:pt-1 bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent sm:bg-none z-10">
+                  <div className="flex gap-2.5 max-w-lg mx-auto w-full">
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      disabled={isLoading}
+                      className="flex-1 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-slate-200 text-sm font-semibold py-3.5 transition-colors touch-manipulation"
+                    >
+                      {t('signupBack')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitRegistration()}
+                      disabled={isLoading}
+                      className="flex-[1.6] rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 disabled:text-slate-300 text-white text-sm font-bold py-3.5 shadow-lg shadow-indigo-950/50 transition-colors touch-manipulation"
+                    >
+                      {isLoading ? t('signupCreatingButton') : t('signupPlanPayCta')}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

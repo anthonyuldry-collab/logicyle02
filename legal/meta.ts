@@ -4,9 +4,9 @@
  * Tant que ces champs restent des placeholders, les Mentions légales affichent clairement
  * « en cours de constitution » — ne pas publier commercialement sans les remplir.
  */
-export const LEGAL_PACK_VERSION = '2026-07.1' as const;
+export const LEGAL_PACK_VERSION = '2026-08.1' as const;
 
-export const LEGAL_EFFECTIVE_DATE = '2026-07-31' as const;
+export const LEGAL_EFFECTIVE_DATE = '2026-08-01' as const;
 
 export const LEGAL_ENTITY = {
   tradeName: 'LogiCycle',

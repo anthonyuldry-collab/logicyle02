@@ -73,7 +73,7 @@ const LegalView: React.FC<LegalViewProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="text-sm font-medium text-slate-300 hover:text-white transition"
+            className="text-sm font-medium text-slate-300 hover:text-white transition py-2 pr-2 -ml-1 touch-manipulation"
           >
             ← {t('legalBack')}
           </button>
@@ -115,7 +115,7 @@ const LegalView: React.FC<LegalViewProps> = ({
                     window.location.hash = legalHashFor(id).slice(1);
                   }
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition border touch-manipulation ${
                   active
                     ? 'bg-indigo-500 border-indigo-400 text-white'
                     : 'bg-slate-900/50 border-white/10 text-slate-300 hover:bg-white/10'

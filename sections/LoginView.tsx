@@ -87,7 +87,7 @@ const LoginView: React.FC<LoginViewProps> = ({
     'w-full rounded-xl border border-white/15 bg-white/5 px-3.5 py-3 text-sm text-white placeholder:text-slate-400 outline-none focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/30 transition';
 
   return (
-    <div className="lc-login relative h-screen overflow-hidden text-white">
+    <div className="lc-login relative min-h-[100dvh] overflow-x-hidden overflow-y-auto text-white">
       <style>{`
         @keyframes lc-login-sweep {
           0% { transform: translateX(-50%) skewX(-16deg); opacity: 0; }
@@ -359,11 +359,11 @@ const LoginView: React.FC<LoginViewProps> = ({
         </select>
       </div>
 
-      {/* Contenu centré — viewport fixe, pas de scroll */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center px-4 sm:px-6 py-8 overflow-hidden">
+      {/* Contenu centré — scrollable sur mobile (clavier / petits écrans) */}
+      <div className="relative z-10 min-h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 py-16 sm:py-10">
         <div className="lc-login-rise flex flex-col items-center text-center w-full max-w-md">
           <h1
-            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-none text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.55)]"
+            className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-none text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.55)]"
             style={{ letterSpacing: '-0.045em' }}
           >
             LOGICYCLE
@@ -372,7 +372,7 @@ const LoginView: React.FC<LoginViewProps> = ({
             {t('loginSlogan')}
           </p>
 
-          <div className="mt-6 sm:mt-8 w-full rounded-3xl border border-white/12 bg-slate-900/65 backdrop-blur-xl shadow-2xl shadow-black/40 p-6 sm:p-8 text-left">
+          <div className="mt-6 sm:mt-8 w-full rounded-3xl border border-white/12 bg-slate-900/65 backdrop-blur-xl shadow-2xl shadow-black/40 p-5 sm:p-8 text-left">
             <div className="mb-5 sm:mb-6">
               <h2 className="text-xl font-bold text-white">{t('loginWelcome')}</h2>
               <p className="mt-1 text-sm text-slate-300">{t('loginSubtitle')}</p>

@@ -92,8 +92,9 @@ Tant que Live n’est pas activé : rester en TEST (`4242…`).
 
 ## TVA (décision produit soft-launch)
 
-- **Court terme (société en formation / TEST)** : prix affichés HT, pas de Stripe Tax auto.
-- **Post K-bis + assujettissement TVA** : activer **Stripe Tax** + enregistrement(s) UE dans le Dashboard, puis `automatic_tax` côté Checkout.
+- **Affichage public** : prix **TTC / final** (clubs souvent non assujettis — éviter la confusion « HT »).
+- **Court terme (société en formation / TEST)** : pas de Stripe Tax auto.
+- **Post K-bis + assujettissement TVA** : activer **Stripe Tax** + enregistrement(s) UE si besoin ; facture avec détail TVA, copy commerciale à réaligner avec l’avocat.
 - Ne pas activer `automatic_tax` sans registration Stripe Tax active (sinon 0 € de taxe collectée en silence).
 
 ---

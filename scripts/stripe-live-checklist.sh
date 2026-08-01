@@ -5,10 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENVF="$ROOT/functions/.env.logicycle01"
 
-echo "==> Stripe — alignement prix LogiCycle"
+echo "==> Stripe — alignement prix LogiCycle (TTC / prix final)"
 echo "    Offre : docs/COMMERCIAL_OFFER.md"
 echo
-echo "Montants cibles (HT) :"
+echo "Montants cibles (TTC) :"
 echo "  Club          59 €/mois ·  590 €/an"
 echo "  Compétition  119 €/mois · 1190 €/an"
 echo "  Élite        199 €/mois · 1990 €/an"

@@ -24,8 +24,8 @@ export const SUPPORT_FAQ_ITEMS: SupportFaqItem[] = [
       en: 'What are the prices?',
     },
     answer: {
-      fr: 'Équipes (HT) : Club 59 €/mois, Compétition 119 €, Élite 199 €, Performance 349 € — ou annuel avec 2 mois offerts. Indépendants : Athlète 12 €, Staff 15 €. Fédération sur devis. Soft-launch : un annuel avant juin 2027 fige le tarif fondateur 24 mois.',
-      en: 'Teams (excl. VAT): Club €59/mo, Competition €119, Elite €199, Performance €349 — or annual with 2 months free. Independents: Athlete €12, Staff €15. Federation on quote. Soft launch: annual before June 2027 locks founding pricing for 24 months.',
+      fr: 'Équipes (TTC, prix final) : Club 59 €/mois, Compétition 119 €, Élite 199 €, Performance 349 € — ou annuel avec 2 mois offerts. Indépendants : Athlète 12 €, Staff 15 €. Fédération sur devis. Soft-launch : un annuel avant juin 2027 fige le tarif fondateur 24 mois.',
+      en: 'Teams (all-in / final price): Club €59/mo, Competition €119, Elite €199, Performance €349 — or annual with 2 months free. Independents: Athlete €12, Staff €15. Federation on quote. Soft launch: annual before June 2027 locks founding pricing for 24 months.',
     },
   },
   {

@@ -1,7 +1,7 @@
 # Grille tarifaire LogiCycle — MAJ 31 juil. 2026
 
 > **Source de vérité** : [`docs/COMMERCIAL_OFFER.md`](../docs/COMMERCIAL_OFFER.md) + `constants/subscriptionPlans.ts`  
-> **M1** = décembre 2026 · Prix **HT** · Annuel = 10 mois (−16,7 %)
+> **M1** = décembre 2026 · Prix **TTC** (prix final) · Annuel = 10 mois (−16,7 %)
 
 ## Principes
 

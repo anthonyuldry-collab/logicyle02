@@ -36,12 +36,12 @@ export const CGV_DOCUMENT: LegalDocument = {
         fr: [
           'Les plans (ex. Club, Compétition, Continental, Pro, Fédération, indépendant athlète / staff) et leurs fonctionnalités sont décrits sur la page tarifs. LogiCycle peut faire évoluer le catalogue avec un préavis raisonnable pour les Clients en cours.',
           'La commande est formée lorsque le Client valide un parcours Stripe Checkout / Customer Portal ou signe un devis / contrat Enterprise.',
-          'Sauf mention contraire, les prix sont en euros, hors taxes. La TVA applicable est ajoutée selon le statut du Client (UE / hors UE) et la réglementation en vigueur.',
+          'Sauf mention contraire sur un devis Enterprise, les prix publics d’abonnement sont indiqués en euros TTC (prix final prélevé). Cela convient notamment aux structures non assujetties à la TVA. Si LogiCycle est assujetti à la TVA, la facture précise le cas échéant le détail de TVA conformément à la réglementation.',
         ],
         en: [
           'Plans (e.g. Club, Competition, Continental, Pro, Federation, independent athlete / staff) and features are described on the pricing page. LogiCycle may update the catalogue with reasonable notice for existing Customers.',
           'An order is formed when the Customer completes Stripe Checkout / Customer Portal or signs an Enterprise quote / agreement.',
-          'Unless stated otherwise, prices are in euros, exclusive of tax. Applicable VAT is added based on the Customer’s status (EU / non-EU) and current rules.',
+          'Unless otherwise stated on an Enterprise quote, public subscription prices are shown in euros as final all-in amounts charged. This suits organisations not VAT-registered. If LogiCycle is VAT-registered, invoices show VAT detail as required by law.',
         ],
       },
     },
@@ -50,13 +50,13 @@ export const CGV_DOCUMENT: LegalDocument = {
       title: { fr: '3. Essai et pilote', en: '3. Trial and pilot' },
       blocks: {
         fr: [
-          'Essai gratuit indicatif : 14 jours pour certains plans Club / Compétition / indépendants, sous réserve d’enregistrement d’un moyen de paiement via Stripe. Le premier prélèvement intervient à l’issue de l’essai sauf résiliation avant échéance.',
-          'Pilote indicatif : jusqu’à 90 jours pour certains parcours Continental / Pro, selon conditions commerciales écrites.',
+          'Essai gratuit indicatif : 14 jours pour Club / Compétition / indépendants, et 30 jours pour Élite / Performance, sous réserve d’enregistrement d’un moyen de paiement via Stripe. Le premier prélèvement intervient à l’issue de l’essai sauf résiliation avant échéance.',
+          'Toute extension d’essai au-delà de ces durées relève d’un accord commercial écrit.',
           'LogiCycle peut refuser, raccourcir ou retirer un essai en cas d’abus (multi-comptes, fraude). Les fonctionnalités d’essai peuvent être limitées.',
         ],
         en: [
-          'Indicative free trial: 14 days for certain Club / Competition / independent plans, subject to registering a payment method via Stripe. The first charge occurs when the trial ends unless cancelled beforehand.',
-          'Indicative pilot: up to 90 days for certain Continental / Pro paths, per written commercial terms.',
+          'Indicative free trial: 14 days for Club / Competition / independents, and 30 days for Elite / Performance, subject to registering a payment method via Stripe. The first charge occurs when the trial ends unless cancelled beforehand.',
+          'Any trial extension beyond these periods requires a written commercial agreement.',
           'LogiCycle may refuse, shorten or withdraw a trial in case of abuse (multi-accounts, fraud). Trial features may be limited.',
         ],
       },

@@ -1,7 +1,12 @@
 # Offre commerciale LogiCycle — source de vérité
 
-> **M1** = décembre 2026 · Prix **HT** · Annuel = **10 mois** (−16,7 %) · Version 2026-07-31  
+> **M1** = décembre 2026 · Prix **TTC** (montant final) · Annuel = **10 mois** (−16,7 %) · Version 2026-08-01  
 > Code produit : [`constants/subscriptionPlans.ts`](../constants/subscriptionPlans.ts)
+
+## Affichage TTC
+
+Les prix publics sont en **TTC / prix final** (ce qui est prélevé). Beaucoup de clubs / associations ne sont pas assujettis à la TVA : marquer « HT » créait une fausse attente de TVA en plus.  
+Si LogiCycle devient assujetti, la facture détaillera la TVA ; le montant annoncé reste le prix commercial de référence soft-launch.
 
 ## Grille publique
 

@@ -55,14 +55,126 @@ export const SignupPlanComparisonTable: React.FC<SignupPlanComparisonTableProps>
 
   const planColWidth = `${76 / Math.max(colCount, 1)}%`;
 
+  const formatPlanPrice = (plan: PlanDefinition) => {
+    if (billingInterval === 'month') {
+      return formatPriceEur(plan.monthlyPriceEur, language);
+    }
+    return formatPriceEur(plan.annualPriceEur ?? plan.monthlyPriceEur, language);
+  };
+
+  const priceSuffix =
+    billingInterval === 'month' ? t('pricingMonth') : t('pricingYear');
+
+  const renderPriceBlock = (plan: PlanDefinition, compact = false) => (
+    <>
+      <span
+        className={`mt-1 block font-black text-white tabular-nums leading-tight ${
+          compact ? 'text-lg' : 'text-base sm:text-lg'
+        }`}
+      >
+        {formatPlanPrice(plan)}
+        <span className="text-[10px] font-medium text-slate-400">/{priceSuffix}</span>
+      </span>
+      {billingInterval === 'year' && plan.monthlyPriceEur != null && (
+        <span className="mt-0.5 block text-[10px] font-normal text-slate-400">
+          {formatPriceEur(plan.monthlyPriceEur, language)}/{t('pricingMonth')}
+        </span>
+      )}
+      {billingInterval === 'month' && plan.annualPriceEur != null && (
+        <span className="mt-0.5 block text-[10px] font-normal text-slate-400">
+          {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')}
+        </span>
+      )}
+    </>
+  );
+
   return (
     <div className="space-y-3 w-full">
       {plans.length > 1 && (
-        <p className="text-[11px] text-slate-500 leading-snug">{t('signupPlanLegend')}</p>
+        <p className="hidden md:block text-[11px] text-slate-500 leading-snug">
+          {t('signupPlanLegend')}
+        </p>
       )}
 
-      <div className="w-full rounded-2xl border border-white/10 overflow-hidden">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
+      {/* Mobile : cartes empilées (table 4 colonnes illisible < ~768px) */}
+      <div className="md:hidden space-y-3">
+        {sortedPlans.map((plan) => {
+          const selected = selectedPlanId === plan.id;
+          const recommended = Boolean(plan.highlighted);
+          return (
+            <button
+              key={plan.id}
+              type="button"
+              onClick={() => onSelect(plan.id)}
+              aria-pressed={selected}
+              className={`relative w-full rounded-2xl border p-4 text-left transition-colors touch-manipulation ${
+                selected
+                  ? 'border-indigo-400/80 bg-indigo-500/20 ring-1 ring-indigo-400/50'
+                  : recommended
+                    ? 'border-sky-400/40 bg-sky-500/10'
+                    : 'border-white/10 bg-white/[0.03]'
+              }`}
+            >
+              {recommended && (
+                <span className="absolute -top-2.5 left-4 rounded-full bg-sky-400 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-950">
+                  {t('signupPlanRecommended')}
+                </span>
+              )}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <span className="block text-base font-bold text-white">{plan.name[lang]}</span>
+                  {renderPriceBlock(plan, true)}
+                  <span className="mt-1.5 block text-[11px] leading-snug text-slate-400">
+                    {plan.tagline[lang]}
+                  </span>
+                </div>
+                <span
+                  className={`shrink-0 mt-1 inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide ${
+                    selected
+                      ? 'bg-indigo-400 text-slate-950'
+                      : 'bg-white/10 text-slate-200'
+                  }`}
+                >
+                  {selected ? t('signupPlanSelected') : t('signupPlanChoose')}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-300">
+                <span>
+                  <span className="text-slate-500">{t('signupPlanUsersLabel')}: </span>
+                  <span className="font-semibold text-white tabular-nums">{plan.maxUsers}</span>
+                </span>
+                <span>
+                  <span className="text-slate-500">{t('signupPlanEventsLabel')}: </span>
+                  <span className="font-semibold text-white tabular-nums">
+                    {plan.maxEventsPerSeason == null
+                      ? t('signupPlanUnlimited')
+                      : plan.maxEventsPerSeason}
+                  </span>
+                </span>
+              </div>
+
+              <ul className="mt-3 space-y-1.5 border-t border-white/10 pt-3">
+                {plan.features.map((feature) => (
+                  <li
+                    key={`${plan.id}-${feature.fr}`}
+                    className="flex items-start gap-2 text-[12px] text-slate-300 leading-snug"
+                  >
+                    <span className="mt-0.5 text-emerald-400 shrink-0" aria-hidden>
+                      ✓
+                    </span>
+                    <span>{feature[lang]}</span>
+                  </li>
+                ))}
+              </ul>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Desktop / tablette large : tableau comparatif */}
+      <div className="hidden md:block w-full rounded-2xl border border-white/10 overflow-x-auto">
+        <table className="w-full min-w-[640px] table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col style={{ width: '24%' }} />
             {sortedPlans.map((plan) => (
@@ -88,7 +200,7 @@ export const SignupPlanComparisonTable: React.FC<SignupPlanComparisonTableProps>
                       type="button"
                       onClick={() => onSelect(plan.id)}
                       aria-pressed={selected}
-                      className={`relative w-full rounded-xl border px-2 py-3 transition-colors text-center ${
+                      className={`relative w-full rounded-xl border px-2 py-3 transition-colors text-center touch-manipulation ${
                         selected
                           ? 'border-indigo-400/80 bg-indigo-500/30 ring-1 ring-indigo-400/50'
                           : recommended
@@ -104,30 +216,7 @@ export const SignupPlanComparisonTable: React.FC<SignupPlanComparisonTableProps>
                       <span className="block text-sm sm:text-base font-bold text-white">
                         {plan.name[lang]}
                       </span>
-                      <span className="mt-1 block text-base sm:text-lg font-black text-white tabular-nums leading-tight">
-                        {billingInterval === 'month'
-                          ? formatPriceEur(plan.monthlyPriceEur, language)
-                          : formatPriceEur(
-                              plan.annualPriceEur ?? plan.monthlyPriceEur,
-                              language,
-                            )}
-                        <span className="text-[10px] font-medium text-slate-400">
-                          /
-                          {billingInterval === 'month'
-                            ? t('pricingMonth')
-                            : t('pricingYear')}
-                        </span>
-                      </span>
-                      {billingInterval === 'year' && plan.monthlyPriceEur != null && (
-                        <span className="mt-0.5 block text-[10px] font-normal text-slate-400">
-                          {formatPriceEur(plan.monthlyPriceEur, language)}/{t('pricingMonth')}
-                        </span>
-                      )}
-                      {billingInterval === 'month' && plan.annualPriceEur != null && (
-                        <span className="mt-0.5 block text-[10px] font-normal text-slate-400">
-                          {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')}
-                        </span>
-                      )}
+                      {renderPriceBlock(plan)}
                       <span className="mt-1.5 block text-[10px] font-normal leading-snug text-slate-400">
                         {plan.tagline[lang]}
                       </span>
