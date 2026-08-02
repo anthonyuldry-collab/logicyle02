@@ -101,6 +101,14 @@ Soft-launch public = flags absents. Go-live marketplace = P2 checklist + bump l�
 Smoke auto + checklist manuelle Continental : [ERP_LEAN_SMOKE.md](./ERP_LEAN_SMOKE.md)  
 `./scripts/erp-lean-smoke.sh` (vitest devis → facture → pain.001 / pain.008).
 
+**Rules prod** (2026-08-02) : `firestore.rules` + indexes + `storage.rules` déployés sur `logicycle01`  
+(`teamSepaSecretOk`, `privateConfig/sepa`). Commande :
+
+```bash
+npx firebase-tools@13 deploy --project logicycle01 \
+  --only firestore:rules,firestore:indexes,storage --non-interactive
+```
+
 ---
 
 ## TVA (décision produit soft-launch)

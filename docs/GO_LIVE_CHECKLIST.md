@@ -48,6 +48,7 @@ Checklist opérationnelle pour un lancement **payant**.
 - [x] FAQ / support in-app
 - [x] Stripe Connect **TEST** (onboarding + checkout destination + commission 12 %) — [STRIPE_CONNECT_MISSIONS_TEST.md](./STRIPE_CONNECT_MISSIONS_TEST.md) *(flags off en soft-launch)*
 - [x] ERP lean · devis / facture / SEPA smoke — [ERP_LEAN_SMOKE.md](./ERP_LEAN_SMOKE.md) · `./scripts/erp-lean-smoke.sh` + E2E P2 `./scripts/erp-lean-e2e-continental.sh`
+- [x] Rules Firestore/Storage ERP lean déployées (`teamSepaSecretOk` / `privateConfig/sepa`) — 2026-08-02
 - [ ] 2–3 clients pilotes prêts à payer
 
 ### RGPD ops
@@ -62,7 +63,7 @@ Checklist opérationnelle pour un lancement **payant**.
 
 - [ ] Stripe Connect **prod** : `VITE_MISSION_PAYMENTS=true` + `MISSION_PAYMENTS_ENABLED=true` + bump légal (`LEGAL_PACK_VERSION`)
 - [ ] Remplir `LEGAL_ENTITY` via env `VITE_LEGAL_*` / `LOGICYCLE_*` post K-bis — factures équipe sans watermark provisoire
-- [ ] Déployer rules + indexes + storage + functions missions
+- [ ] Déployer functions missions (+ flags Connect) — rules/indexes/storage ERP déjà live 2026-08-02
 - [ ] Assigner rôles **Comptable** / **Trésorier** aux users finance (permissionRole)
 - [ ] Webhook Live : events missions (`expired`, `payment_failed`, `charge.refunded`)
 - [ ] (Optionnel) `RESEND_API_KEY` + `RESEND_FROM` pour emails PDF auto

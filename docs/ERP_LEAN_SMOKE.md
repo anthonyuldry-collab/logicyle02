@@ -88,6 +88,18 @@ Salaires / NF → export XML (batch `kind=payment`) ; NF en compte **467**
 - [x] IBAN masqués (listes SEPA, staff, coureurs)
 - [x] E2E logique Continental (`./scripts/erp-lean-e2e-continental.sh`)
 - [x] Suite audit `erpLeanAuditFixes.test.ts`
+- [x] Rules Firestore/Storage déployées prod `logicycle01` (2026-08-02)
+- [x] Smoke prod front `./scripts/smoke-production.sh` vert (post-deploy Netlify)
+
+### Parcours UI manuel (fondateur — une fois connecté)
+
+À cocher en prod Continental sur une équipe de test :
+
+1. [ ] Client carnet : IBAN + BIC + UMR + date + FRST
+2. [ ] Devis → Facture (sans n°) → Émettre (n° FAC)
+3. [ ] SEPA pain.008 → lot + facture PAID ; 2ᵉ export bloqué
+4. [ ] Mandat client passé en RCUR après 1er FRST
+5. [ ] IBAN équipe masqué (reveal) ; PDF facture sans `issuerIban` public
 
 ## Références
 
