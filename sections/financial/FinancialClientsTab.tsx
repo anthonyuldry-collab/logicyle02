@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useFeedbackTimeout } from '../../hooks/useFeedbackTimeout';
-import { ClientRecord, IncomeItem } from '../../types';
+import { ClientRecord, IncomeItem, SepaMandateSequence } from '../../types';
 import { useTranslations } from '../../hooks/useTranslations';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
 import { buildClientFromIncome, getClientOutstanding, searchClients } from '../../utils/clientUtils';
 import { formatFinancialAmount } from '../../utils/financialUtils';
-import { validateIban } from '../../utils/sepaUtils';
+import { normalizeIban, validateBic, validateIban } from '../../utils/sepaUtils';
 import { generateId } from '../../utils/themeUtils';
 
 interface FinancialClientsTabProps {
@@ -74,12 +74,25 @@ const FinancialClientsTab: React.FC<FinancialClientsTabProps> = ({
       showFeedback(t('clientsErrorName'));
       return;
     }
+    if (draft.iban && !validateIban(draft.iban)) {
+      showFeedback(t('sepaInvalidIban'));
+      return;
+    }
+    if (draft.bic && !validateBic(draft.bic)) {
+      showFeedback(t('sepaInvalidBic'));
+      return;
+    }
     setSaving(true);
     try {
       await onSaveClient({
         ...draft,
         companyName: draft.companyName.trim(),
         paymentTermsDays: draft.paymentTermsDays ?? 30,
+        iban: draft.iban ? normalizeIban(draft.iban) : undefined,
+        bic: draft.bic ? draft.bic.replace(/\s+/g, '').toUpperCase() : undefined,
+        mandateReference: draft.mandateReference?.trim() || undefined,
+        mandateSignedAt: draft.mandateSignedAt?.trim() || undefined,
+        mandateSequence: draft.mandateSequence || undefined,
       });
       setModalOpen(false);
       showFeedback(t('clientsSaved'));
@@ -171,8 +184,12 @@ const FinancialClientsTab: React.FC<FinancialClientsTabProps> = ({
                     {c.paymentTermsDays ?? 30} j
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {c.iban && validateIban(c.iban) ? (
+                    {c.iban && validateIban(c.iban) && c.bic && validateBic(c.bic) && c.mandateReference && c.mandateSignedAt ? (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] text-green-800">
+                        {t('clientsSepaReady')}
+                      </span>
+                    ) : c.iban && validateIban(c.iban) ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
                         {t('clientsIbanOk')}
                       </span>
                     ) : (
@@ -271,6 +288,52 @@ const FinancialClientsTab: React.FC<FinancialClientsTabProps> = ({
             mono
             hint={t('clientsIbanHint')}
           />
+          <Field
+            label={t('clientsBic')}
+            value={draft.bic || ''}
+            onChange={(v) => setDraft({ ...draft, bic: v })}
+            mono
+            hint={t('clientsBicHint')}
+          />
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+            <p className="text-xs font-medium text-slate-700">{t('clientsMandateTitle')}</p>
+            <Field
+              label={t('clientsMandateRef')}
+              value={draft.mandateReference || ''}
+              onChange={(v) => setDraft({ ...draft, mandateReference: v })}
+              mono
+              hint={t('clientsMandateRefHint')}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{t('clientsMandateSignedAt')}</label>
+              <input
+                type="date"
+                value={draft.mandateSignedAt || ''}
+                onChange={(e) => setDraft({ ...draft, mandateSignedAt: e.target.value })}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm sm:max-w-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{t('clientsMandateSequence')}</label>
+              <select
+                value={draft.mandateSequence || 'OOFF'}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    mandateSequence: e.target.value as SepaMandateSequence,
+                  })
+                }
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm sm:max-w-xs"
+              >
+                <option value="OOFF">OOFF</option>
+                <option value="FRST">FRST</option>
+                <option value="RCUR">RCUR</option>
+                <option value="FNAL">FNAL</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">{t('clientsMandateSequenceHint')}</p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">{t('clientsSensitiveDataHint')}</p>
           <div className="flex justify-end gap-2 pt-2">
             <ActionButton variant="secondary" onClick={() => setModalOpen(false)}>
               {t('financialCancel')}

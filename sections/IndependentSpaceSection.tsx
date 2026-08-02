@@ -9,17 +9,25 @@ import {
   Sex,
   Address,
   StaffMember,
+  IndependentBusinessProfile,
+  IndependentLegalForm,
+  IndependentVatRegime,
 } from '../types';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import ScoutingRequestResponseCard from '../components/ScoutingRequestResponseCard';
+import ScoutingActiveConsentCard from '../components/ScoutingActiveConsentCard';
 import StaffCareerProfileTab from '../components/staffDetailTabs/StaffCareerProfileTab';
-import { isContactScoutingRequest } from '../utils/scoutingProspectUtils';
+import { isContactScoutingRequest, isActiveScoutingConsent } from '../utils/scoutingProspectUtils';
 import { useTranslations } from '../hooks/useTranslations';
 import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
 import { ALL_COUNTRIES } from '../constants';
 import { userToStaffProfile } from '../utils/independentUtils';
-import { getStaffRoleDisplayLabel, STAFF_ROLE_KEYS } from '../utils/staffRoleUtils';
+import {
+  getStaffRoleDisplayLabel,
+  isStaffRoleAutre,
+  STAFF_ROLE_KEYS,
+} from '../utils/staffRoleUtils';
 import {
   CvExtractError,
   extractProfileFromCv,
@@ -29,6 +37,41 @@ import {
   mergeCvExtractIntoStaff,
   summarizeCvExtract,
 } from '../utils/cvProfileMergeUtils';
+import {
+  isMissionMarketplacePaymentsEnabled,
+  MISSION_COMMISSION_LABELS,
+} from '../constants/missionMarketplace';
+import { startMissionConnectOnboarding, createMissionConnectAccount } from '../services/missionConnectService';
+
+const LEGAL_FORM_OPTIONS: { value: IndependentLegalForm; label: string }[] = [
+  { value: 'micro', label: 'Micro-entreprise' },
+  { value: 'ei', label: 'Entreprise individuelle (EI)' },
+  { value: 'eurl', label: 'EURL' },
+  { value: 'sarl', label: 'SARL' },
+  { value: 'sasu', label: 'SASU' },
+  { value: 'sas', label: 'SAS' },
+  { value: 'other', label: 'Autre forme' },
+];
+
+const VAT_REGIME_OPTIONS: { value: IndependentVatRegime; label: string }[] = [
+  { value: 'franchise_293b', label: 'Franchise en base (art. 293 B CGI)' },
+  { value: 'tva_reelle', label: 'Assujetti TVA (régime réel)' },
+  { value: 'unknown', label: 'Je ne sais pas encore' },
+];
+
+const emptyBusiness = (): IndependentBusinessProfile => ({
+  legalName: '',
+  tradeName: '',
+  legalForm: undefined,
+  siret: '',
+  vatNumber: '',
+  addressLine: '',
+  postalCode: '',
+  city: '',
+  country: 'FR',
+  vatRegime: 'unknown',
+  notes: '',
+});
 
 interface IndependentSpaceSectionProps {
   currentUser: User;
@@ -42,7 +85,9 @@ interface IndependentSpaceSectionProps {
     requestId: string,
     response: 'accepted' | 'rejected',
     grantedScopes?: ScoutingDataScope[],
+    options?: { teamName?: string; language?: 'fr' | 'en' },
   ) => Promise<void>;
+  onWithdrawScoutingConsent?: (requestId: string) => Promise<void>;
   onGoToLobby: () => void;
 }
 
@@ -55,6 +100,7 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
   onManageBilling,
   onUpdateProfile,
   onRespondToScoutingRequest,
+  onWithdrawScoutingConsent,
   onGoToLobby,
 }) => {
   const { t, language } = useTranslations();
@@ -74,6 +120,20 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
   const [careerFeedback, setCareerFeedback] = useState<string | null>(null);
   const [staffRole, setStaffRole] = useState<string>(
     currentUser.staffRole || careerForm.role || 'AUTRE',
+  );
+  const [staffRoleOtherLabel, setStaffRoleOtherLabel] = useState(
+    currentUser.staffRoleOtherLabel || '',
+  );
+  const [business, setBusiness] = useState<IndependentBusinessProfile>(() => ({
+    ...emptyBusiness(),
+    ...(currentUser.business || {}),
+  }));
+  const [businessSaving, setBusinessSaving] = useState(false);
+  const [businessFeedback, setBusinessFeedback] = useState<string | null>(null);
+  const [connectBusy, setConnectBusy] = useState(false);
+  const [connectFeedback, setConnectFeedback] = useState<string | null>(null);
+  const [payoutsEnabled, setPayoutsEnabled] = useState(
+    Boolean(currentUser.stripeConnectPayoutsEnabled),
   );
 
   const [firstName, setFirstName] = useState(currentUser.firstName || '');
@@ -100,6 +160,10 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
       r.athleteId === currentUser.id &&
       r.status === ScoutingRequestStatus.PENDING &&
       isContactScoutingRequest(r),
+  );
+
+  const myActiveConsents = scoutingRequests.filter(
+    (r) => r.athleteId === currentUser.id && isActiveScoutingConsent(r),
   );
 
   const getTeamName = (teamId: string) => teams.find((t) => t.id === teamId)?.name || teamId;
@@ -160,6 +224,11 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
     setAdminSaving(true);
     setAdminFeedback(null);
     try {
+      if (!isRider && isStaffRoleAutre(staffRole) && !staffRoleOtherLabel.trim()) {
+        setAdminFeedback('Précisez la fonction « Autre » (obligatoire).');
+        setAdminSaving(false);
+        return;
+      }
       await onUpdateProfile({
         firstName,
         lastName,
@@ -173,14 +242,49 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
         cvFileName: cvFileName || undefined,
         cvMimeType: cvMimeType || undefined,
         cvFileBase64: cvFileBase64 || undefined,
-        ...(!isRider ? { staffRole: staffRole || careerForm.role } : {}),
+        ...(!isRider
+          ? {
+              staffRole: staffRole || careerForm.role,
+              staffRoleOtherLabel: isStaffRoleAutre(staffRole)
+                ? staffRoleOtherLabel.trim() || undefined
+                : undefined,
+            }
+          : {}),
       });
       if (!isRider) {
-        setCareerForm((prev) => ({ ...prev, role: staffRole || prev.role }));
+        setCareerForm((prev) => ({
+          ...prev,
+          role: staffRole || prev.role,
+          customRole: isStaffRoleAutre(staffRole) ? staffRoleOtherLabel.trim() : undefined,
+        }));
       }
       setAdminFeedback('Informations enregistrées.');
     } finally {
       setAdminSaving(false);
+    }
+  };
+
+  const handleSaveBusiness = async () => {
+    setBusinessSaving(true);
+    setBusinessFeedback(null);
+    try {
+      const cleaned: IndependentBusinessProfile = {
+        legalName: business.legalName?.trim() || undefined,
+        tradeName: business.tradeName?.trim() || undefined,
+        legalForm: business.legalForm,
+        siret: business.siret?.replace(/\s/g, '') || undefined,
+        vatNumber: business.vatNumber?.trim() || undefined,
+        addressLine: business.addressLine?.trim() || undefined,
+        postalCode: business.postalCode?.trim() || undefined,
+        city: business.city?.trim() || undefined,
+        country: business.country?.trim() || 'FR',
+        vatRegime: business.vatRegime || 'unknown',
+        notes: business.notes?.trim() || undefined,
+      };
+      await onUpdateProfile({ business: cleaned });
+      setBusinessFeedback('Dossier société enregistré — utilisé pour vos factures missions.');
+    } finally {
+      setBusinessSaving(false);
     }
   };
 
@@ -270,6 +374,39 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
     }
   };
 
+  const handleConnectOnboarding = async () => {
+    setConnectBusy(true);
+    setConnectFeedback(null);
+    try {
+      await startMissionConnectOnboarding();
+    } catch (err) {
+      setConnectFeedback(
+        err instanceof Error ? err.message : 'Impossible de démarrer l’onboarding Stripe Connect.',
+      );
+      setConnectBusy(false);
+    }
+  };
+
+  const handleRefreshConnectStatus = async () => {
+    setConnectBusy(true);
+    setConnectFeedback(null);
+    try {
+      const { payoutsEnabled: ready } = await createMissionConnectAccount();
+      setPayoutsEnabled(ready);
+      setConnectFeedback(
+        ready
+          ? MISSION_COMMISSION_LABELS.connectReady[language]
+          : 'Onboarding incomplet — reprenez l’activation Stripe.',
+      );
+    } catch (err) {
+      setConnectFeedback(
+        err instanceof Error ? err.message : 'Impossible de vérifier le statut Connect.',
+      );
+    } finally {
+      setConnectBusy(false);
+    }
+  };
+
   return (
     <SectionWrapper title={t('independentHubTitle')}>
       <div className="space-y-6">
@@ -309,6 +446,40 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {!isRider && isMissionMarketplacePaymentsEnabled() && (
+          <div className="rounded-lg border border-emerald-500/40 bg-slate-900 p-5 text-slate-100 space-y-3">
+            <div>
+              <h3 className="font-semibold text-slate-100">
+                {MISSION_COMMISSION_LABELS.connectOnboardingCta[language]}
+              </h3>
+              <p className="text-sm text-slate-300 mt-1">
+                {MISSION_COMMISSION_LABELS.connectOnboardingDesc[language]}
+              </p>
+            </div>
+            {payoutsEnabled || currentUser.stripeConnectPayoutsEnabled ? (
+              <p className="text-sm text-emerald-300">{MISSION_COMMISSION_LABELS.connectReady[language]}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <ActionButton onClick={handleConnectOnboarding} disabled={connectBusy}>
+                  {connectBusy ? '…' : MISSION_COMMISSION_LABELS.connectOnboardingCta[language]}
+                </ActionButton>
+                {currentUser.stripeConnectAccountId && (
+                  <ActionButton
+                    onClick={handleRefreshConnectStatus}
+                    variant="secondary"
+                    disabled={connectBusy}
+                  >
+                    Vérifier le statut
+                  </ActionButton>
+                )}
+              </div>
+            )}
+            {connectFeedback && (
+              <p className="text-sm text-slate-300">{connectFeedback}</p>
+            )}
           </div>
         )}
 
@@ -391,6 +562,7 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                     const value = e.target.value;
                     setStaffRole(value);
                     setCareerForm((prev) => ({ ...prev, role: value }));
+                    if (!isStaffRoleAutre(value)) setStaffRoleOtherLabel('');
                   }}
                   className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
                 >
@@ -401,9 +573,27 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
                   ))}
                 </select>
                 <p className="mt-1 text-[11px] text-slate-400">
-                  Poste affiché aux équipes qui recrutent (DS, mécano, kiné…).
+                  Alimente le matching missions, le dashboard et les libellés facture. Choisissez la
+                  fonction la plus proche ; « Autre » si absente de la liste.
                 </p>
               </div>
+              {isStaffRoleAutre(staffRole) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Préciser la fonction *
+                  </label>
+                  <input
+                    type="text"
+                    value={staffRoleOtherLabel}
+                    onChange={(e) => setStaffRoleOtherLabel(e.target.value)}
+                    placeholder="Ex. Agent UCI, Interprète, Électricien vélo…"
+                    className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Affiché aux équipes : « Autre — {staffRoleOtherLabel.trim() || '…'} ».
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Téléphone</label>
                 <input
@@ -511,6 +701,141 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
           </div>
         )}
 
+        {!isRider && (
+          <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm space-y-4">
+            <div>
+              <h3 className="font-semibold text-slate-100">Ma société / micro</h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Préremplit vos factures missions (émetteur) et facilite vos déclarations URSSAF.
+                Visible uniquement pour la facturation — pas exposé publiquement aux équipes.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Raison sociale *</label>
+                <input
+                  type="text"
+                  value={business.legalName || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, legalName: e.target.value }))}
+                  placeholder="Nom légal ou micro"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Nom commercial</label>
+                <input
+                  type="text"
+                  value={business.tradeName || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, tradeName: e.target.value }))}
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Forme juridique</label>
+                <select
+                  value={business.legalForm || ''}
+                  onChange={(e) =>
+                    setBusiness((b) => ({
+                      ...b,
+                      legalForm: (e.target.value || undefined) as IndependentLegalForm | undefined,
+                    }))
+                  }
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                >
+                  <option value="">— Sélectionner —</option>
+                  {LEGAL_FORM_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">SIRET</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={business.siret || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, siret: e.target.value }))}
+                  placeholder="14 chiffres"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">N° TVA (si assujetti)</label>
+                <input
+                  type="text"
+                  value={business.vatNumber || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, vatNumber: e.target.value }))}
+                  placeholder="FR…"
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Régime TVA</label>
+                <select
+                  value={business.vatRegime || 'unknown'}
+                  onChange={(e) =>
+                    setBusiness((b) => ({
+                      ...b,
+                      vatRegime: e.target.value as IndependentVatRegime,
+                    }))
+                  }
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                >
+                  {VAT_REGIME_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-400 mb-1">Adresse professionnelle</label>
+                <input
+                  type="text"
+                  value={business.addressLine || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, addressLine: e.target.value }))}
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Code postal</label>
+                <input
+                  type="text"
+                  value={business.postalCode || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, postalCode: e.target.value }))}
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Ville</label>
+                <input
+                  type="text"
+                  value={business.city || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, city: e.target.value }))}
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-400 mb-1">Notes (RC pro, URSSAF…)</label>
+                <textarea
+                  value={business.notes || ''}
+                  onChange={(e) => setBusiness((b) => ({ ...b, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-md border border-white/15 bg-slate-950 text-slate-100 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {businessFeedback && <p className="text-sm text-emerald-400">{businessFeedback}</p>}
+              <ActionButton onClick={() => void handleSaveBusiness()} disabled={businessSaving}>
+                {businessSaving ? 'Enregistrement…' : 'Enregistrer ma société'}
+              </ActionButton>
+            </div>
+          </div>
+        )}
+
         {isRider ? (
           <div className="rounded-lg border border-white/10 bg-slate-900 p-5 shadow-sm">
             <h3 className="font-semibold text-slate-100 mb-4">Profil professionnel</h3>
@@ -610,20 +935,43 @@ const IndependentSpaceSection: React.FC<IndependentSpaceSectionProps> = ({
             <h3 className="font-semibold text-slate-100 mb-3">{t('independentScoutingRequests')}</h3>
             {!hasActiveSub ? (
               <p className="text-sm text-slate-400">{t('independentScoutingRequiresSub')}</p>
-            ) : myRequests.length === 0 ? (
+            ) : myRequests.length === 0 && myActiveConsents.length === 0 ? (
               <p className="text-sm text-slate-400">{t('independentNoScoutingRequests')}</p>
             ) : (
-              <ul className="space-y-3">
-                {myRequests.map((req) => (
-                  <li key={req.id}>
-                    <ScoutingRequestResponseCard
-                      request={req}
-                      teamName={getTeamName(req.requesterTeamId)}
-                      onRespond={onRespondToScoutingRequest}
-                    />
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-4">
+                {myRequests.length > 0 && (
+                  <ul className="space-y-3">
+                    {myRequests.map((req) => (
+                      <li key={req.id}>
+                        <ScoutingRequestResponseCard
+                          request={req}
+                          teamName={getTeamName(req.requesterTeamId)}
+                          currentUser={currentUser}
+                          onRespond={onRespondToScoutingRequest}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {myActiveConsents.length > 0 && onWithdrawScoutingConsent && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/90">
+                      {t('independentScoutingActiveConsents')}
+                    </p>
+                    <ul className="space-y-3">
+                      {myActiveConsents.map((req) => (
+                        <li key={req.id}>
+                          <ScoutingActiveConsentCard
+                            request={req}
+                            teamName={getTeamName(req.requesterTeamId)}
+                            onWithdraw={onWithdrawScoutingConsent}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

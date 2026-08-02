@@ -111,6 +111,10 @@ const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
       setError(t('invoiceEditErrorAmount'));
       return;
     }
+    if (!draft.clientId?.trim() || !draft.clientName?.trim()) {
+      setError(t('invoiceIssueRequiresClient'));
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -313,22 +317,28 @@ const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
           </div>
         </div>
 
-        {clients.length > 0 && (
+        {clients.length > 0 ? (
           <Field label={t('invoiceSelectClient')}>
             <select
               value={draft.clientId || ''}
               disabled={readOnly}
               onChange={(e) => applyClient(e.target.value)}
               className={inputClass}
+              required
             >
-              <option value="">{t('invoiceNoClient')}</option>
+              <option value="">{t('invoiceSelectClient')}</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.companyName}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-gray-500">{t('invoiceClientIdRequired')}</p>
           </Field>
+        ) : (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {t('quoteNoClientsHint')}
+          </p>
         )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -336,9 +346,9 @@ const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
             <input
               type="text"
               value={draft.clientName || ''}
-              disabled={readOnly}
-              onChange={(e) => setDraft({ ...draft, clientName: e.target.value })}
-              className={inputClass}
+              disabled
+              readOnly
+              className={`${inputClass} bg-gray-50`}
             />
           </Field>
           <Field label={t('invoiceClientVat')}>

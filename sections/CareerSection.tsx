@@ -12,7 +12,8 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ScoutingRequestResponseCard from '../components/ScoutingRequestResponseCard';
-import { isContactScoutingRequest } from '../utils/scoutingProspectUtils';
+import ScoutingActiveConsentCard from '../components/ScoutingActiveConsentCard';
+import { isContactScoutingRequest, isActiveScoutingConsent } from '../utils/scoutingProspectUtils';
 import XCircleIcon from '../components/icons/XCircleIcon';
 import EyeIcon from '../components/icons/EyeIcon';
 import { ResultFormModal } from '../components/riderDetailTabs/ResultsTab';
@@ -32,7 +33,9 @@ interface CareerSectionProps {
     requestId: string,
     response: 'accepted' | 'rejected',
     grantedScopes?: ScoutingDataScope[],
+    options?: { teamName?: string; language?: 'fr' | 'en' },
   ) => void;
+  onWithdrawScoutingConsent?: (requestId: string) => void | Promise<void>;
   onUpdateVisibility: (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => void;
   teamMemberships: TeamMembership[];
   onSaveIndependentProfile?: (updates: Partial<User>) => Promise<void>;
@@ -56,6 +59,7 @@ const CareerSection: React.FC<CareerSectionProps> = ({
     onRequestTransfer, 
     scoutingRequests, 
     onRespondToScoutingRequest,
+    onWithdrawScoutingConsent,
     onUpdateVisibility,
     teamMemberships,
     onSaveIndependentProfile,
@@ -158,6 +162,13 @@ const CareerSection: React.FC<CareerSectionProps> = ({
           req.athleteId === currentUser.id &&
           req.status === ScoutingRequestStatus.PENDING &&
           isContactScoutingRequest(req),
+    );
+  }, [scoutingRequests, currentUser]);
+
+  const activeScoutingConsents = useMemo(() => {
+    if (!scoutingRequests || !currentUser) return [];
+    return scoutingRequests.filter(
+      (req) => req.athleteId === currentUser.id && isActiveScoutingConsent(req),
     );
   }, [scoutingRequests, currentUser]);
 
@@ -408,7 +419,32 @@ const CareerSection: React.FC<CareerSectionProps> = ({
                               key={req.id}
                               request={req}
                               teamName={team?.name || 'Équipe inconnue'}
+                              currentUser={currentUser}
                               onRespond={onRespondToScoutingRequest}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+        )}
+
+        {activeScoutingConsents.length > 0 && onWithdrawScoutingConsent && (
+            <div className="p-4 bg-emerald-50 rounded-lg shadow-md border border-emerald-200">
+                <h3 className="text-lg font-semibold text-emerald-900 mb-2">
+                  Partages scouting actifs
+                </h3>
+                <p className="text-xs text-emerald-800 mb-3">
+                  Vous pouvez retirer votre consentement à tout moment — l’équipe perd l’accès immédiatement.
+                </p>
+                <div className="space-y-3">
+                    {activeScoutingConsents.map((req) => {
+                        const team = teams.find((t) => t.id === req.requesterTeamId);
+                        return (
+                            <ScoutingActiveConsentCard
+                              key={req.id}
+                              request={req}
+                              teamName={team?.name || 'Équipe inconnue'}
+                              onWithdraw={onWithdrawScoutingConsent}
                             />
                         );
                     })}

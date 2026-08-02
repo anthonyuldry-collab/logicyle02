@@ -32,6 +32,8 @@ interface FinancialSponsorsTabProps {
   incomeItems: IncomeItem[];
   teamName: string;
   invoiceSettings?: TeamInvoiceSettings;
+  /** IBAN SEPA privé (préféré pour conventions PDF). */
+  sepaDebtorIban?: string;
   canEdit: boolean;
   onSaveIncomeItem: (item: IncomeItem) => Promise<void>;
   onSaveInvoiceSettings: (settings: TeamInvoiceSettings) => Promise<void>;
@@ -66,6 +68,7 @@ const FinancialSponsorsTab: React.FC<FinancialSponsorsTabProps> = ({
   incomeItems,
   teamName,
   invoiceSettings,
+  sepaDebtorIban,
   canEdit,
   onSaveIncomeItem,
   onSaveInvoiceSettings,
@@ -274,7 +277,7 @@ const FinancialSponsorsTab: React.FC<FinancialSponsorsTabProps> = ({
       await onSaveInvoiceSettings(updatedSettings);
       setSettingsDraft(updatedSettings);
       await onSaveIncomeItem(updated);
-      exportPartnershipConventionPdf(updated, updatedSettings, teamName, language);
+      exportPartnershipConventionPdf(updated, updatedSettings, teamName, language, sepaDebtorIban);
       showFeedback(t('partnershipConventionGenerated'));
     } catch {
       showFeedback(t('financialSaveError'));
@@ -313,7 +316,7 @@ const FinancialSponsorsTab: React.FC<FinancialSponsorsTabProps> = ({
       await onSaveInvoiceSettings(afterCerfa);
       setSettingsDraft(afterCerfa);
       await onSaveIncomeItem(withCerfa);
-      exportPartnershipConventionPdf(withCerfa, afterCerfa, teamName, language);
+      exportPartnershipConventionPdf(withCerfa, afterCerfa, teamName, language, sepaDebtorIban);
       exportCerfaReceiptPdf(withCerfa, afterCerfa, teamName);
       showFeedback(t('partnershipDocumentsGenerated'));
     } catch {
@@ -465,7 +468,7 @@ const FinancialSponsorsTab: React.FC<FinancialSponsorsTabProps> = ({
                         <button
                           type="button"
                           onClick={() =>
-                            exportPartnershipConventionPdf(item, settingsDraft, teamName, language)
+                            exportPartnershipConventionPdf(item, settingsDraft, teamName, language, sepaDebtorIban)
                           }
                           className="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
                         >
@@ -757,6 +760,7 @@ const FinancialSponsorsTab: React.FC<FinancialSponsorsTabProps> = ({
         invoiceSettings={settingsDraft}
         teamName={teamName}
         canEdit={canEdit}
+        sepaDebtorIban={sepaDebtorIban}
       />
 
       <Modal

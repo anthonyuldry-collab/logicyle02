@@ -9,10 +9,11 @@ export function exportInvoicePdf(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
   teamName: string,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  bankIbanFallback?: string
 ): void {
   const locale = language === 'en' ? 'en-GB' : 'fr-FR';
-  const invoice = buildInvoiceFromIncome(item, settings, teamName, language);
+  const invoice = buildInvoiceFromIncome(item, settings, teamName, language, bankIbanFallback);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
   const labels = {

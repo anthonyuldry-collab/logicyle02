@@ -209,6 +209,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({
 
         {activeTab === 'abonnement' && showBillingTab && (
           <PricingSection
+            currentUser={currentUser}
             currentPlanId={currentPlanId ?? subscriptionAccess?.planId}
             teamLevel={teamLevel}
             onSelectPlan={onSelectPlan || teamSettingsProps.onUpgradePlan}

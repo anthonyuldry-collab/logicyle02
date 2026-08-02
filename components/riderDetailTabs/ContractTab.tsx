@@ -7,6 +7,7 @@ import {
   getDaysUntilContractEnd,
 } from '../../utils/contractUtils';
 import { formatFinancialAmount } from '../../utils/financialUtils';
+import { maskIbanDisplay } from '../../utils/sepaUtils';
 
 interface ContractTabProps {
   formData: Rider;
@@ -197,11 +198,18 @@ const ContractTab: React.FC<ContractTabProps> = ({
             <input
               type="text"
               name="bankDetails.iban"
-              value={formData.bankDetails?.iban || ''}
+              value={
+                canEdit
+                  ? formData.bankDetails?.iban || ''
+                  : formData.bankDetails?.iban
+                    ? maskIbanDisplay(formData.bankDetails.iban)
+                    : ''
+              }
               onChange={handleInputChange}
               className={`${fieldClass} font-mono`}
               disabled={!canEdit}
               placeholder="FR76 3000 6000 0112 3456 7890 189"
+              autoComplete="off"
             />
           </div>
           <div>

@@ -209,6 +209,69 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
       { section: 'staff', label: 'Staff', description: 'Organisation' },
     ],
   },
+  PRESIDENT: {
+    missionTitle: 'Présidence',
+    missionSummary:
+      'Représenter l’association, valider les décisions stratégiques et superviser l’ensemble des pôles (mêmes droits que le Manager).',
+    focusAreas: [
+      'Valider les décisions structurantes et les engagements',
+      'Superviser budgets, effectifs et gouvernance',
+      'Représenter le club auprès des partenaires et institutions',
+    ],
+    quickActions: [
+      { section: 'myDashboard', label: 'Tableau de bord équipe', description: 'Vue globale' },
+      { section: 'financial', label: 'Finances', description: 'Budgets & trésorerie' },
+      { section: 'staff', label: 'Staff', description: 'Organisation' },
+      { section: 'settings', label: 'Paramètres', description: 'Structure & légal' },
+    ],
+  },
+  VICE_PRESIDENT: {
+    missionTitle: 'Vice-présidence',
+    missionSummary:
+      'Seconder le président et assurer la continuité de direction (mêmes droits d’accès que le Manager).',
+    focusAreas: [
+      'Assurer l’intérim de présidence si besoin',
+      'Coordonner les pôles et le bureau',
+      'Suivre les dossiers structurants',
+    ],
+    quickActions: [
+      { section: 'myDashboard', label: 'Tableau de bord équipe', description: 'Vue globale' },
+      { section: 'financial', label: 'Finances', description: 'Budgets' },
+      { section: 'staff', label: 'Staff', description: 'Organisation' },
+    ],
+  },
+  SECRETAIRE: {
+    missionTitle: 'Secrétariat',
+    missionSummary:
+      'Assurer le suivi administratif de l’association : convocations, PV, licences, correspondance et organisation interne.',
+    focusAreas: [
+      'Gérer convocations, PV et documents associatifs',
+      'Tenir à jour effectif staff et licences',
+      'Coordonner l’agenda et la communication interne',
+    ],
+    quickActions: [
+      { section: 'staff', label: 'Staff', description: 'Effectif & organisation' },
+      { section: 'roster', label: 'Effectif', description: 'Licences & coureurs' },
+      { section: 'events', label: 'Calendrier', description: 'Événements' },
+      { section: 'checklist', label: 'Checklists', description: 'Suivi tâches' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  TRESORIER: {
+    missionTitle: 'Trésorerie',
+    missionSummary:
+      'Piloter la trésorerie et le suivi financier de l’association : budgets, justificatifs, factures et exports comptables.',
+    focusAreas: [
+      'Suivre budgets, encaissements et décaissements',
+      'Valider justificatifs et factures missions',
+      'Préparer les exports pour le comptable',
+    ],
+    quickActions: [
+      { section: 'financial', label: 'Finances', description: 'Budgets & facturation' },
+      { section: 'expenseReceipts', label: 'Justificatifs', description: 'Notes de frais' },
+      { section: 'myDashboard', label: 'Tableau de bord', description: 'Vue d’ensemble' },
+    ],
+  },
   AUTRE: {
     missionTitle: 'Staff',
     missionSummary: 'Contribuer aux missions de l\'équipe selon votre rôle et vos disponibilités.',
@@ -219,6 +282,100 @@ export const STAFF_DASHBOARD_BY_ROLE: Record<StaffRoleKeyString, StaffDashboardC
     ],
     quickActions: [
       { section: 'events', label: 'Calendrier', description: 'Événements équipe' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  SOIGNEUR: {
+    missionTitle: 'Soins / soigneur',
+    missionSummary:
+      'Assurer le confort des coureurs en course et en stage : soins, récupération, logistique quotidienne.',
+    focusAreas: [
+      'Préparer soins et matériel soigneur',
+      'Coordonner massages et récupération',
+      'Appuyer l’assistant sur le terrain',
+    ],
+    quickActions: [
+      { section: 'missionSearch', label: 'Offres & missions', description: 'Postuler' },
+      { section: 'events', label: 'Courses', description: 'Missions assignées' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  MATERIAL: {
+    missionTitle: 'Matériel',
+    missionSummary: 'Gérer stock pièces, roues et organisation atelier / camion.',
+    focusAreas: ['Inventaire pièces', 'Préparer le camion atelier', 'Coordonner avec le mécano course'],
+    quickActions: [
+      { section: 'equipment', label: 'Matériel', description: 'Stock & vélos' },
+      { section: 'vehicles', label: 'Véhicules', description: 'Camions' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  PHOTO_VIDEO: {
+    missionTitle: 'Photo / vidéo',
+    missionSummary: 'Couvrir les épreuves et produire les contenus image de l’équipe.',
+    focusAreas: ['Couverture course', 'Livraison médias partenaires', 'Archivage contenus'],
+    quickActions: [
+      { section: 'events', label: 'Calendrier', description: 'Courses à couvrir' },
+      { section: 'partnerPortal', label: 'Espace partenaire', description: 'Médias' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  OSTEOPATHE: {
+    missionTitle: 'Ostéopathie',
+    missionSummary: 'Prévenir et traiter les troubles musculo-squelettiques en stage et en compétition.',
+    focusAreas: ['Bilans ostéo', 'Soins en étape', 'Coordination médicale'],
+    quickActions: [
+      { section: 'roster', label: 'Effectif', description: 'Suivi santé' },
+      { section: 'events', label: 'Courses', description: 'Missions' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  NUTRITIONNISTE: {
+    missionTitle: 'Nutrition',
+    missionSummary: 'Piloter l’alimentation, les collations et la stratégie glucidique des athlètes.',
+    focusAreas: ['Plans nutrition', 'Collations course', 'Coordination assistant'],
+    quickActions: [
+      { section: 'events', label: 'Courses', description: 'Mission nutrition' },
+      { section: 'roster', label: 'Effectif', description: 'Régimes & allergies' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  CHAUFFEUR: {
+    missionTitle: 'Conduite',
+    missionSummary: 'Assurer les transferts coureurs / staff en sécurité selon le planning transports.',
+    focusAreas: ['Trajets planifiés', 'Véhicules affectés', 'Horaires aéroport / hôtel'],
+    quickActions: [
+      { section: 'myTrips', label: 'Mes déplacements', description: 'Trajets' },
+      { section: 'vehicles', label: 'Véhicules', description: 'Affectations' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  LOGISTICIEN: {
+    missionTitle: 'Logistique',
+    missionSummary: 'Coordonner flux matériel, stocks et organisation terrain hors mécanique pure.',
+    focusAreas: ['Flux matériel', 'Stocks course', 'Coordination staff'],
+    quickActions: [
+      { section: 'stocks', label: 'Stocks', description: 'Inventaires' },
+      { section: 'events', label: 'Courses', description: 'Logistique' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  CUISINIER: {
+    missionTitle: 'Restauration',
+    missionSummary: 'Préparer repas et collations adaptés aux besoins nutritionnels en stage / course.',
+    focusAreas: ['Menus stage', 'Allergies & régimes', 'Coordination nutritionniste'],
+    quickActions: [
+      { section: 'events', label: 'Courses / stages', description: 'Planning repas' },
+      ...BASE_LOGISTICS,
+    ],
+  },
+  HOSPITALITY: {
+    missionTitle: 'Hospitalité',
+    missionSummary: 'Accueil VIP, partenaires et organisation côté hospitalité sur les épreuves.',
+    focusAreas: ['Accueil partenaires', 'Zones VIP', 'Coordination communication'],
+    quickActions: [
+      { section: 'events', label: 'Calendrier', description: 'Épreuves' },
+      { section: 'partnerPortal', label: 'Partenaires', description: 'Hospitalité' },
       ...BASE_LOGISTICS,
     ],
   },

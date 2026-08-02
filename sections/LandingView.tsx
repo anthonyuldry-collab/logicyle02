@@ -38,12 +38,6 @@ const LandingView: React.FC<LandingViewProps> = ({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
         .lc-landing {
-          --lc-ink: #071018;
-          --lc-deep: #0b1c28;
-          --lc-mist: #9fb4c4;
-          --lc-line: #5eead4;
-          --lc-accent: #38bdf8;
-          --lc-cta: #0ea5e9;
           font-family: 'IBM Plex Sans', ui-sans-serif, sans-serif;
         }
         .lc-landing-brand,
@@ -92,26 +86,25 @@ const LandingView: React.FC<LandingViewProps> = ({
         }
       `}</style>
 
-      {/* Fond full-bleed — profondeur + atmosphère course */}
+      {/* Fond full-bleed — même base indigo / slate que login & signup */}
       <div
         className="fixed inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(ellipse 70% 50% at 75% 15%, rgba(14,165,233,0.22), transparent 55%), radial-gradient(ellipse 50% 40% at 15% 85%, rgba(45,212,191,0.12), transparent 50%), linear-gradient(165deg, var(--lc-ink) 0%, var(--lc-deep) 48%, #132532 100%)',
+            'radial-gradient(ellipse 80% 60% at 70% 10%, rgba(79,70,229,0.45), transparent 55%), radial-gradient(ellipse 55% 45% at 10% 90%, rgba(14,165,233,0.2), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)',
         }}
       />
       <div
-        className="fixed inset-0 -z-10 opacity-[0.04]"
+        className="fixed inset-0 -z-10 opacity-[0.06]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.9) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.9) 1px, transparent 1px)',
-          backgroundSize: '64px 64px',
+            'repeating-linear-gradient(-18deg, transparent, transparent 22px, #fff 22px, #fff 23px)',
         }}
       />
-      <div className="lc-landing-glow fixed -top-32 right-[-10%] -z-10 h-[75vh] w-[75vh] rounded-full bg-sky-500/15 blur-3xl" />
-      <div className="lc-landing-glow fixed bottom-[-20%] left-[-15%] -z-10 h-[55vh] w-[55vh] rounded-full bg-teal-400/10 blur-3xl" style={{ animationDelay: '-8s' }} />
+      <div className="lc-landing-glow fixed -top-24 -right-16 -z-10 h-[70vh] w-[70vh] rounded-full bg-indigo-500/20 blur-3xl" />
+      <div className="lc-landing-glow fixed bottom-[-20%] left-[-15%] -z-10 h-[50vh] w-[50vh] rounded-full bg-indigo-400/10 blur-3xl" style={{ animationDelay: '-8s' }} />
 
-      {/* Profil de parcours — ancrage cyclisme, pas décor fintech */}
+      {/* Profil de parcours — ancrage cyclisme, tons indigo du site */}
       <svg
         className="pointer-events-none fixed inset-0 -z-10 h-full w-full"
         viewBox="0 0 1440 900"
@@ -120,14 +113,14 @@ const LandingView: React.FC<LandingViewProps> = ({
       >
         <defs>
           <linearGradient id="lc-route-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0" />
-            <stop offset="35%" stopColor="#2dd4bf" stopOpacity="0.85" />
-            <stop offset="70%" stopColor="#38bdf8" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.15" />
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0" />
+            <stop offset="35%" stopColor="#818cf8" stopOpacity="0.85" />
+            <stop offset="70%" stopColor="#6366f1" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.15" />
           </linearGradient>
           <linearGradient id="lc-fill-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path
@@ -149,8 +142,8 @@ const LandingView: React.FC<LandingViewProps> = ({
           strokeWidth="2.5"
           strokeLinecap="round"
         />
-        <circle className="lc-landing-marker" cx="740" cy="580" r="4.5" fill="#5eead4" />
-        <circle className="lc-landing-marker" cx="1100" cy="390" r="5.5" fill="#38bdf8" style={{ animationDelay: '1.2s' }} />
+        <circle className="lc-landing-marker" cx="740" cy="580" r="4.5" fill="#a5b4fc" />
+        <circle className="lc-landing-marker" cx="1100" cy="390" r="5.5" fill="#818cf8" style={{ animationDelay: '1.2s' }} />
       </svg>
 
       {/* Nav */}
@@ -169,7 +162,7 @@ const LandingView: React.FC<LandingViewProps> = ({
             onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}
             value={language}
             aria-label="Select language"
-            className="rounded-lg border border-white/15 bg-slate-950/70 text-slate-200 text-xs sm:text-sm px-2 py-1.5 backdrop-blur-sm outline-none focus:ring-2 focus:ring-sky-500/40 max-w-[4.5rem] sm:max-w-none"
+            className="rounded-lg border border-white/15 bg-slate-900/70 text-slate-200 text-xs sm:text-sm px-2 py-1.5 backdrop-blur-sm outline-none focus:ring-2 focus:ring-indigo-500/40 max-w-[4.5rem] sm:max-w-none"
           >
             {LANGUAGE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value} className="bg-slate-900">
@@ -187,7 +180,7 @@ const LandingView: React.FC<LandingViewProps> = ({
           <button
             type="button"
             onClick={onSignup}
-            className="px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-500 text-slate-950 hover:bg-sky-400 transition shadow-lg shadow-sky-950/40 whitespace-nowrap touch-manipulation min-h-[36px] inline-flex items-center"
+            className="px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-indigo-500 text-white hover:bg-indigo-400 transition shadow-lg shadow-indigo-950/40 whitespace-nowrap touch-manipulation min-h-[36px] inline-flex items-center"
           >
             {t('landingNavCta')}
           </button>
@@ -216,14 +209,14 @@ const LandingView: React.FC<LandingViewProps> = ({
             <button
               type="button"
               onClick={onSignup}
-              className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-xl bg-sky-500 text-slate-950 font-semibold hover:bg-sky-400 transition shadow-xl shadow-sky-950/40 touch-manipulation"
+              className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-xl bg-indigo-500 text-white font-semibold hover:bg-indigo-400 transition shadow-xl shadow-indigo-950/50 touch-manipulation"
             >
               {t('landingCtaTrial')}
             </button>
             <button
               type="button"
               onClick={onViewPricing}
-              className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-xl border border-white/25 text-slate-100 font-medium hover:bg-white/10 transition touch-manipulation"
+              className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-xl border border-white/20 text-slate-100 font-medium hover:bg-white/10 transition touch-manipulation"
             >
               {t('landingCtaPricing')}
             </button>
@@ -231,7 +224,7 @@ const LandingView: React.FC<LandingViewProps> = ({
           <p className="lc-landing-rise lc-landing-rise-5 mt-5 text-sm">
             <a
               href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('LogiCycle — démo / early access')}`}
-              className="text-slate-400 hover:text-sky-300 underline-offset-4 hover:underline transition"
+              className="text-slate-400 hover:text-indigo-300 underline-offset-4 hover:underline transition"
             >
               {t('landingCtaTalk')}
             </a>
@@ -270,7 +263,7 @@ const LandingView: React.FC<LandingViewProps> = ({
               ] as const
             ).map(([titleKey, bodyKey]) => (
               <li key={titleKey} className="max-w-2xl">
-                <h3 className="text-lg font-semibold text-sky-200/90">{t(titleKey)}</h3>
+                <h3 className="text-lg font-semibold text-indigo-200">{t(titleKey)}</h3>
                 <p className="mt-1.5 text-sm sm:text-base text-slate-400 leading-relaxed">
                   {t(bodyKey)}
                 </p>
@@ -299,7 +292,7 @@ const LandingView: React.FC<LandingViewProps> = ({
               <p className="mt-2 text-sm text-slate-400">{entryPlan.tagline[language]}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-sky-300/80">
+              <p className="text-xs uppercase tracking-[0.2em] text-indigo-300/80">
                 {highlighted.name[language]}
               </p>
               <p className="mt-2 text-4xl font-bold text-white tabular-nums">
@@ -314,7 +307,7 @@ const LandingView: React.FC<LandingViewProps> = ({
           <button
             type="button"
             onClick={onViewPricing}
-            className="mt-10 text-sm font-semibold text-sky-300 hover:text-sky-200 underline-offset-4 hover:underline"
+            className="mt-10 text-sm font-semibold text-indigo-300 hover:text-indigo-200 underline-offset-4 hover:underline"
           >
             {t('landingPricingAll')} →
           </button>

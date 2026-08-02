@@ -12,7 +12,7 @@ interface ReferralPanelProps {
 const ReferralPanel: React.FC<ReferralPanelProps> = ({ currentUser }) => {
   const { t, language } = useTranslations();
   const [stats, setStats] = useState<ReferralStats | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -37,10 +37,21 @@ const ReferralPanel: React.FC<ReferralPanelProps> = ({ currentUser }) => {
     if (!stats) return;
     try {
       await navigator.clipboard.writeText(stats.shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied('link');
+      setTimeout(() => setCopied(null), 2000);
     } catch {
-      setCopied(false);
+      setCopied(null);
+    }
+  }, [stats]);
+
+  const copyCode = useCallback(async () => {
+    if (!stats) return;
+    try {
+      await navigator.clipboard.writeText(stats.code);
+      setCopied('code');
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      setCopied(null);
     }
   }, [stats]);
 
@@ -82,11 +93,14 @@ const ReferralPanel: React.FC<ReferralPanelProps> = ({ currentUser }) => {
           {t('referralYourCode')}
         </label>
         <div className="flex flex-wrap gap-2">
-          <code className="flex-grow rounded-lg border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100">
+          <code className="flex-grow rounded-lg border border-indigo-300/50 bg-indigo-950 px-3 py-2.5 font-mono text-base font-bold tracking-wide text-white">
             {stats.code}
           </code>
-          <ActionButton variant="secondary" size="sm" onClick={copyLink}>
-            {copied ? t('referralCopied') : t('referralCopyLink')}
+          <ActionButton variant="secondary" size="sm" className="!text-white" onClick={copyCode}>
+            {copied === 'code' ? t('referralCodeCopied') : t('referralCopyCode')}
+          </ActionButton>
+          <ActionButton variant="secondary" size="sm" className="!text-white" onClick={copyLink}>
+            {copied === 'link' ? t('referralCopied') : t('referralCopyLink')}
           </ActionButton>
         </div>
         <p className="mt-2 break-all text-xs text-slate-400">{stats.shareUrl}</p>

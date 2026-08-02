@@ -45,6 +45,8 @@ describe('invoiceUtils', () => {
       date: '2026-06-01',
       category: IncomeCategory.SUBVENTIONS,
       paymentTermsDays: 45,
+      clientId: 'c1',
+      clientName: 'Client SA',
     };
     const { item: issued, settings: updated } = issueInvoice(item, settings);
     expect(issued.invoiceNumber).toBe('FAC-2026-0005');

@@ -30,6 +30,17 @@ export function formatIbanDisplay(iban: string): string {
   return normalized.replace(/(.{4})/g, '$1 ').trim();
 }
 
+/** Masque un IBAN pour l’UI (conserve pays + 4 derniers). Exports XML/CSV restent en clair. */
+export function maskIbanDisplay(iban: string): string {
+  const normalized = normalizeIban(iban);
+  if (normalized.length < 8) return '••••';
+  const country = normalized.slice(0, 4);
+  const last4 = normalized.slice(-4);
+  const middleLen = Math.max(normalized.length - 8, 0);
+  const middle = '•'.repeat(Math.min(middleLen, 16));
+  return formatIbanDisplay(`${country}${middle}${last4}`);
+}
+
 export function validateIban(iban: string): boolean {
   const normalized = normalizeIban(iban);
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(normalized)) return false;
@@ -63,6 +74,22 @@ export function isSepaSettingsComplete(settings?: TeamSepaSettings): boolean {
       settings.debtorIban?.trim() &&
       validateIban(settings.debtorIban)
   );
+}
+
+/** Compte créancier prêt pour pain.008 (IBAN équipe + ICS FR valide). */
+export function isSepaCollectionSettingsComplete(settings?: TeamSepaSettings): boolean {
+  if (!isSepaSettingsComplete(settings)) return false;
+  return validateSepaCreditorIdentifier(settings?.creditorIdentifier);
+}
+
+/** ICS France typique : FRxxZZZ + 5–12 alphanum (souple hors FR : ISO-ish). */
+export function validateSepaCreditorIdentifier(ics?: string): boolean {
+  const normalized = (ics || '').replace(/\s+/g, '').toUpperCase();
+  if (!normalized) return false;
+  if (normalized.startsWith('FR')) {
+    return /^FR\d{2}ZZZ[A-Z0-9]{5,12}$/.test(normalized);
+  }
+  return /^[A-Z]{2}[A-Z0-9]{10,}$/.test(normalized);
 }
 
 function buildBeneficiaryName(firstName: string, lastName: string, override?: string): string {
@@ -250,6 +277,7 @@ export function buildSepaBatch(params: {
     orderIds: orders.map((o) => o.id),
     salarySourceIds: orders.filter((o) => o.type === 'salary').map((o) => o.sourceId),
     reimbursementReceiptIds: orders.filter((o) => o.type === 'reimbursement').map((o) => o.sourceId),
+    kind: 'payment',
     xmlFileName: `${ref}.xml`,
   };
 }
@@ -264,6 +292,7 @@ export function getAlreadyPaidSalaryIds(
   const paid = new Set<string>();
 
   for (const batch of batches) {
+    if (batch.kind === 'collection') continue;
     if (!batch.executionDate.startsWith(month)) continue;
     for (const id of batch.salarySourceIds) paid.add(id);
   }
@@ -281,6 +310,7 @@ export function getAlreadyPaidSalaryIds(
 export function getAlreadyPaidReceiptIds(batches: SepaBatch[]): Set<string> {
   const paid = new Set<string>();
   for (const batch of batches) {
+    if (batch.kind === 'collection') continue;
     for (const id of batch.reimbursementReceiptIds) paid.add(id);
   }
   return paid;

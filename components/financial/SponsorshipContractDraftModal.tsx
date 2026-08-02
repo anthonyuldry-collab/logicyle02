@@ -29,6 +29,8 @@ interface SponsorshipContractDraftModalProps {
   invoiceSettings: TeamInvoiceSettings;
   teamName: string;
   canEdit: boolean;
+  /** IBAN SEPA privé pour les modalités de paiement. */
+  sepaDebtorIban?: string;
   /** Onglet affiché à l'ouverture (ex. contreparties). */
   initialTab?: DraftTab;
 }
@@ -45,6 +47,7 @@ const SponsorshipContractDraftModal: React.FC<SponsorshipContractDraftModalProps
   invoiceSettings,
   teamName,
   canEdit,
+  sepaDebtorIban,
   initialTab = 'parties',
 }) => {
   const { t, language } = useTranslations();
@@ -75,10 +78,11 @@ const SponsorshipContractDraftModal: React.FC<SponsorshipContractDraftModalProps
     const data = buildPartnershipConventionData(
       { ...draft, sponsorshipContractTerms: terms },
       invoiceSettings,
-      teamName
+      teamName,
+      sepaDebtorIban
     );
     return buildConventionArticles(data, draft.category, locale);
-  }, [draft, terms, invoiceSettings, teamName, locale]);
+  }, [draft, terms, invoiceSettings, teamName, sepaDebtorIban, locale]);
 
   const checklist = useMemo(() => {
     if (!draft) return [];

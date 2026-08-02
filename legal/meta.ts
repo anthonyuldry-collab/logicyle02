@@ -1,28 +1,49 @@
 /**
  * Identité éditeur & versions légales.
  * Remplacer les crochets [À COMPLÉTER] dès le K-bis (voir juridique/04-decisions-a-trancher.md).
+ * Ou renseigner via env (sans commit de secrets) :
+ *   VITE_LEGAL_SIREN, VITE_LEGAL_SIRET, VITE_LEGAL_REGISTERED_OFFICE, VITE_LEGAL_VAT_NUMBER, VITE_LEGAL_FORM
  * Tant que ces champs restent des placeholders, les Mentions légales affichent clairement
  * « en cours de constitution » — ne pas publier commercialement sans les remplir.
  */
-export const LEGAL_PACK_VERSION = '2026-08.1' as const;
+
+export const LEGAL_PACK_VERSION = '2026-08.2' as const;
 
 export const LEGAL_EFFECTIVE_DATE = '2026-08-01' as const;
+
+function envLegal(key: string): string | undefined {
+  try {
+    const env = (import.meta as ImportMeta & { env?: Record<string, string> }).env;
+    const v = env?.[key];
+    if (typeof v === 'string' && v.trim() && !/À COMPLÉTER|A COMPLETER/i.test(v)) {
+      return v.trim();
+    }
+  } catch {
+    /* hors Vite */
+  }
+  return undefined;
+}
+
+const PLACEHOLDER_SIREN = '[SIREN À COMPLÉTER — obligatoire post immatriculation]';
+const PLACEHOLDER_SIRET = '[SIRET À COMPLÉTER — obligatoire post immatriculation]';
+const PLACEHOLDER_VAT = '[N° TVA À COMPLÉTER — si assujetti]';
+const PLACEHOLDER_OFFICE = '[Adresse du siège social À COMPLÉTER]';
 
 export const LEGAL_ENTITY = {
   tradeName: 'LogiCycle',
   legalFormPlaceholder: {
-    fr: 'SASU LogiCycle (en cours de constitution — à mettre à jour post K-bis)',
-    en: 'LogiCycle SASU (in formation — update after company registration)',
+    fr: envLegal('VITE_LEGAL_FORM') || 'SASU LogiCycle (en cours de constitution — à mettre à jour post K-bis)',
+    en: envLegal('VITE_LEGAL_FORM') || 'LogiCycle SASU (in formation — update after company registration)',
   },
   /**
    * Identifiants éditeur — BLOQUANTS go-live commercial.
    * Remplir uniquement avec des valeurs officielles (pas d’invention).
    */
-  siren: '[SIREN À COMPLÉTER — obligatoire post immatriculation]',
-  siret: '[SIRET À COMPLÉTER — obligatoire post immatriculation]',
-  vatNumber: '[N° TVA À COMPLÉTER — si assujetti]',
-  registeredOffice: '[Adresse du siège social À COMPLÉTER]',
-  publicationDirector: 'Anthony Uldry',
+  siren: envLegal('VITE_LEGAL_SIREN') || PLACEHOLDER_SIREN,
+  siret: envLegal('VITE_LEGAL_SIRET') || PLACEHOLDER_SIRET,
+  vatNumber: envLegal('VITE_LEGAL_VAT_NUMBER') || PLACEHOLDER_VAT,
+  registeredOffice: envLegal('VITE_LEGAL_REGISTERED_OFFICE') || PLACEHOLDER_OFFICE,
+  publicationDirector: envLegal('VITE_LEGAL_PUBLICATION_DIRECTOR') || 'Anthony Uldry',
   country: { fr: 'France', en: 'France' },
   privacyEmail: 'privacy@logicycle.app',
   contactEmail: 'contact@logicycle.app',
@@ -55,6 +76,7 @@ export const LEGAL_ENTITY = {
 export function isLegalEntityIncomplete(): boolean {
   return (
     LEGAL_ENTITY.siren.includes('À COMPLÉTER') ||
+    LEGAL_ENTITY.siret.includes('À COMPLÉTER') ||
     LEGAL_ENTITY.registeredOffice.includes('À COMPLÉTER') ||
     LEGAL_ENTITY.publicationDirector.includes('À COMPLÉTER')
   );

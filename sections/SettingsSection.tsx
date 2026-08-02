@@ -234,7 +234,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
               </div>
             </div>
             {(subscriptionAccess.isTrial || subscriptionAccess.isPilot) && (
-              <p className="mt-3 text-sm text-amber-700 bg-amber-50 p-3 rounded-md">{t('billingTrialNote')}</p>
+              <p className="mt-3 text-sm text-amber-100 bg-amber-900/80 border border-amber-500/40 p-3 rounded-md">{t('billingTrialNote')}</p>
             )}
           </SettingsCard>
         )}
@@ -437,8 +437,8 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
               <li>Vos autres équipes (ex. Lanester) ne sont pas modifiées</li>
             </ul>
             {presentationDemoAlreadyInstalled && (
-              <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
-                L’équipe démo existe déjà (ou contient des fiches <code className="mx-1">demo_pres_*</code>).
+              <p className="text-xs font-medium text-amber-100 bg-amber-900/80 border border-amber-500/40 rounded-md px-3 py-2 mb-3">
+                L’équipe démo existe déjà (ou contient des fiches <code className="mx-1 text-amber-50">demo_pres_*</code>).
                 Réinstaller met à jour son contenu et bascule dessus.
               </p>
             )}

@@ -19,6 +19,7 @@ import {
   isInvoiceIssuable,
   isInvoiceOverdue,
   issueInvoice,
+  canIssueInvoice,
   markInvoicePaid,
   cancelInvoice,
   createCreditNote,
@@ -37,6 +38,7 @@ interface FinancialInvoicingTabProps {
   teamName: string;
   teamId?: string;
   invoiceSettings?: TeamInvoiceSettings;
+  sepaDebtorIban?: string;
   canEdit: boolean;
   onSaveIncomeItem: (item: IncomeItem) => Promise<void>;
   onSaveInvoiceSettings: (settings: TeamInvoiceSettings) => Promise<void>;
@@ -50,6 +52,7 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
   teamName,
   teamId,
   invoiceSettings,
+  sepaDebtorIban,
   canEdit,
   onSaveIncomeItem,
   onSaveInvoiceSettings,
@@ -164,7 +167,9 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
     if (!canEdit) return;
     setSavingSettings(true);
     try {
-      await onSaveInvoiceSettings(settingsDraft);
+      const { issuerIban: _legacy, ...safeSettings } = settingsDraft;
+      await onSaveInvoiceSettings(safeSettings);
+      setSettingsDraft(safeSettings);
       setSettingsModalOpen(false);
       showFeedback(t('invoiceSettingsSaved'));
     } catch {
@@ -176,6 +181,10 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
 
   const handleIssueInvoice = async (item: IncomeItem) => {
     if (!canEdit || !isInvoiceIssuable(item)) return;
+    if (!canIssueInvoice(item)) {
+      showFeedback(t('invoiceIssueRequiresClient'));
+      return;
+    }
     setIssuingId(item.id);
     try {
       let toIssue = item;
@@ -209,7 +218,7 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
         console.error('Facture numérotée mais non persistée:', saveError);
         throw saveError;
       }
-      exportInvoicePdf(issued, updatedSettings, teamName, language);
+      exportInvoicePdf(issued, updatedSettings, teamName, language, sepaDebtorIban);
       showFeedback(t('invoiceIssuedSuccess'));
     } catch {
       showFeedback(t('financialSaveError'));
@@ -219,7 +228,7 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
   };
 
   const handleDownloadPdf = (item: IncomeItem) => {
-    exportInvoicePdf(item, settingsDraft, teamName, language);
+    exportInvoicePdf(item, settingsDraft, teamName, language, sepaDebtorIban);
   };
 
   const handleMarkPaid = async (item: IncomeItem) => {
@@ -267,7 +276,7 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
         console.error('Avoir numéroté mais non persisté:', saveError);
         throw saveError;
       }
-      exportInvoicePdf(credit, updatedSettings, teamName, language);
+      exportInvoicePdf(credit, updatedSettings, teamName, language, sepaDebtorIban);
       showFeedback(t('invoiceCreditNoteCreated'));
     } catch {
       showFeedback(t('financialSaveError'));
@@ -316,6 +325,10 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
       showFeedback(t('invoiceCreateError'));
       return;
     }
+    if (!newDraft.clientId?.trim() || !newDraft.clientName.trim()) {
+      showFeedback(t('invoiceIssueRequiresClient'));
+      return;
+    }
     setCreating(true);
     try {
       const item = enrichIncomeWithAccounting(
@@ -325,8 +338,8 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
           amount: newDraft.amount,
           date: newDraft.date,
           category: newDraft.category,
-          clientId: newDraft.clientId || undefined,
-          clientName: newDraft.clientName.trim() || undefined,
+          clientId: newDraft.clientId,
+          clientName: newDraft.clientName.trim(),
           vatRate: newDraft.vatRate,
           paymentTermsDays: newDraft.paymentTermsDays,
           dueDate: computeDueDate(newDraft.date, newDraft.paymentTermsDays),
@@ -623,32 +636,36 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
               />
             </div>
           </div>
-          {clients.length > 0 && (
+          {clients.length > 0 ? (
             <div>
               <label className="text-sm font-medium text-gray-700">{t('invoiceSelectClient')}</label>
               <select
                 value={newDraft.clientId}
                 onChange={(e) => applyNewClient(e.target.value)}
+                required
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               >
-                <option value="">{t('invoiceNoClient')}</option>
+                <option value="">{t('invoiceSelectClient')}</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.companyName}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">{t('invoiceClientIdRequired')}</p>
             </div>
+          ) : (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {t('quoteNoClientsHint')}
+            </p>
           )}
           <div>
             <label className="text-sm font-medium text-gray-700">{t('invoiceClient')}</label>
             <input
               type="text"
               value={newDraft.clientName}
-              onChange={(e) =>
-                setNewDraft((d) => ({ ...d, clientName: e.target.value, clientId: '' }))
-              }
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              readOnly
+              className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -740,13 +757,15 @@ const FinancialInvoicingTab: React.FC<FinancialInvoicingTabProps> = ({
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-gray-700">IBAN</label>
+              <label className="text-sm font-medium text-gray-700">IBAN (PDF)</label>
               <input
                 type="text"
-                value={settingsDraft.issuerIban || ''}
-                onChange={(e) => setSettingsDraft((s) => ({ ...s, issuerIban: e.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                value={sepaDebtorIban ? '•••• (SEPA)' : settingsDraft.issuerIban || ''}
+                disabled
+                readOnly
+                className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-mono"
               />
+              <p className="mt-1 text-xs text-gray-500">{t('invoiceIbanFromSepaHint')}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">{t('invoiceDefaultVat')}</label>

@@ -76,7 +76,7 @@ Checklist montants + Live : `./scripts/stripe-live-checklist.sh`
 1. Dashboard Stripe → activer / basculer **Live** (KYC société)
 2. Copier `sk_live_…` + créer webhook Live →  
    `https://europe-west1-logicycle01.cloudfunctions.net/stripeWebhook`  
-   Events : `checkout.session.completed`, `customer.subscription.*`, `invoice.*`
+   Events : `checkout.session.completed`, `checkout.session.expired`, `customer.subscription.*`, `invoice.*`, `payment_intent.payment_failed`, `charge.refunded`
 3. Secrets Firebase :
    ```bash
    firebase functions:secrets:set STRIPE_SECRET_KEY --project logicycle01
@@ -87,6 +87,19 @@ Checklist montants + Live : `./scripts/stripe-live-checklist.sh`
 6. Smoke + 1 paiement carte réelle (montant minimal, rembourser)
 
 Tant que Live n’est pas activé : rester en TEST (`4242…`).
+
+### Marketplace missions (Connect TEST)
+
+Parcours destination charges + commission 12 % : [STRIPE_CONNECT_MISSIONS_TEST.md](./STRIPE_CONNECT_MISSIONS_TEST.md)  
+Checklist : `./scripts/stripe-connect-missions-checklist.sh`
+
+Flags : `VITE_MISSION_PAYMENTS=true` (front) + `MISSION_PAYMENTS_ENABLED=true` (Functions).  
+Soft-launch public = flags absents. Go-live marketplace = P2 checklist + bump légal.
+
+### ERP lean (devis / facture / SEPA)
+
+Smoke auto + checklist manuelle Continental : [ERP_LEAN_SMOKE.md](./ERP_LEAN_SMOKE.md)  
+`./scripts/erp-lean-smoke.sh` (vitest devis → facture → pain.001 / pain.008).
 
 ---
 
@@ -103,9 +116,11 @@ Tant que Live n’est pas activé : rester en TEST (`4242…`).
 
 | Action | Où |
 |--------|----|
-| Export JSON | App → Paramètres → compte / panneau RGPD |
+| Export JSON | App → Paramètres → panneau RGPD (inclut `scoutingRequests`) |
 | Purge compte | App → demande suppression (+ Functions `purgeUserData`) |
-| Registre traitements | [RGPD_REGISTRE.md](./RGPD_REGISTRE.md) (brouillon) |
+| Registre traitements | [RGPD_REGISTRE.md](./RGPD_REGISTRE.md) |
+| Consentement scouting | [RGPD_SCOUTING_CONSENT.md](./RGPD_SCOUTING_CONSENT.md) — preuve + retrait in-app |
+| Watchlist (LIA) | [RGPD_WATCHLIST_LIA.md](./RGPD_WATCHLIST_LIA.md) |
 | Sous-traitants | Firebase/GCP, Stripe, Netlify, Sentry |
 
-Tester **une fois** sur un compte jetable avant ouverture commerciale.
+Tester **une fois** sur un compte jetable avant ouverture commerciale : export, retrait consentement scouting, purge.

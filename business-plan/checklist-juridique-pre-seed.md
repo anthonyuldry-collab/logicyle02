@@ -53,7 +53,7 @@
 | 3.2 | **CGV / contrat SaaS** | Abonnements Stripe · essai 14 j · renouvellement · résiliation · SLA | ☐ **avocat** |
 | 3.3 | **DPA (Data Processing Agreement)** | Art. 28 RGPD · Firebase, Stripe, Google | ☐ **avocat** |
 | 3.4 | **Politique de confidentialité** | **FR + EN** · cookies · analytics | ☐ **avocat** |
-| 3.5 | **Clause marketplace** | Commission 12 % · vacataires · Stripe Connect · litiges | ☐ |
+| 3.5 | **Clause marketplace** | Commission 12 % · **2 régimes** (indépendant MoR vs CDD) · chaîne factures · Stripe Connect · litiges — `docs/MARKETPLACE_MISSIONS_FISCAL_SOCIAL.md` · CGU §5 · CGV §7 | ✅ draft v2026-08.2 (relecture avocat) |
 | 3.6 | **Mentions légales** | Éditeur · hébergeur · contact privacy | ☐ |
 | 3.7 | **Pages `/legal` live** | terms · privacy · dpa · FR+EN **avant go-live** | ☐ |
 
@@ -77,8 +77,8 @@
 
 | # | Action | Détail | Statut |
 |---|--------|--------|--------|
-| 5.1 | **Registre des traitements** | Finalités · bases légales · durées · sous-traitants | ☐ |
-| 5.2 | **Scouting consent-based** | Preuve consentement · droit retrait | ☐ |
+| 5.1 | **Registre des traitements** | Finalités · bases légales · durées · sous-traitants | ✅ `docs/RGPD_REGISTRE.md` |
+| 5.2 | **Scouting consent-based** | Preuve consentement · droit retrait | ✅ `docs/RGPD_SCOUTING_CONSENT.md` + in-app |
 | 5.3 | **Export / purge** | Procédure documentée · délai 30 j | ☐ |
 | 5.4 | **AIPD si wellness/santé à scale** | Camp SpO₂ / urine — avis avocat/DPO | ☐ |
 | 5.5 | **Transferts hors UE** | Firebase US · CCT | ☐ |

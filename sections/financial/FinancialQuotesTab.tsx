@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useFeedbackTimeout } from '../../hooks/useFeedbackTimeout';
-import { ClientRecord, Quote, QuoteStatus, TeamInvoiceSettings } from '../../types';
+import { ClientRecord, IncomeCategory, Quote, QuoteStatus, TeamInvoiceSettings } from '../../types';
 import { useTranslations } from '../../hooks/useTranslations';
 import ActionButton from '../../components/ActionButton';
 import Modal from '../../components/Modal';
@@ -9,6 +9,7 @@ import {
   enrichQuote,
   formatQuoteNumber,
   convertQuoteToInvoice,
+  canConvertQuote,
   getNextQuoteSequence,
 } from '../../utils/quoteUtils';
 import { IncomeItem } from '../../types';
@@ -113,8 +114,8 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
   };
 
   const handleSave = async () => {
-    if (!draft.clientName.trim()) {
-      showFeedback(t('quoteErrorClient'));
+    if (!draft.clientId?.trim() || !draft.clientName.trim()) {
+      showFeedback(t('quoteErrorClientId'));
       return;
     }
     if (draft.amount <= 0) {
@@ -157,6 +158,10 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
   };
 
   const handleConvert = async (q: Quote) => {
+    if (!canConvertQuote(q)) {
+      showFeedback(t('quoteErrorClientId'));
+      return;
+    }
     const confirmKey =
       q.status === 'draft'
         ? 'quoteConvertDraftConfirm'
@@ -165,28 +170,14 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
           : 'quoteConvertConfirm';
     if (!window.confirm(t(confirmKey as 'quoteConvertConfirm').replace('{number}', q.quoteNumber))) return;
     try {
-      let allocatedSequence: number | undefined;
-      let baseSettings = settings;
-      if (teamId) {
-        const allocated = await allocateDocumentSequence(teamId, 'nextInvoiceNumber');
-        allocatedSequence = allocated.sequence;
-        baseSettings = { ...settings, ...allocated.invoiceSettings };
-      }
-      const { quote, income, settings: nextSettings } = convertQuoteToInvoice(
-        q,
-        baseSettings,
-        language,
-        allocatedSequence
-      );
+      const { quote, income, settings: nextSettings } = convertQuoteToInvoice(q, settings, language);
       try {
         await onConvertToInvoice(quote, income, nextSettings);
       } catch (saveError) {
-        console.error('Devis converti numéroté mais non persisté:', saveError);
+        console.error('Devis converti mais non persisté:', saveError);
         throw saveError;
       }
-      showFeedback(
-        t('quoteConvertSuccess').replace('{invoice}', income.invoiceNumber || '')
-      );
+      showFeedback(t('quoteConvertSuccessDraft'));
     } catch {
       showFeedback(t('financialSaveError'));
     }
@@ -274,9 +265,15 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
                       <button type="button" className="text-indigo-300 text-xs hover:underline" onClick={() => openEdit(q)}>
                         {t('financialEdit')}
                       </button>
-                      <button type="button" className="text-emerald-400 text-xs hover:underline" onClick={() => handleConvert(q)}>
-                        {t('quoteConvert')}
-                      </button>
+                      {canConvertQuote(q) ? (
+                        <button type="button" className="text-emerald-400 text-xs hover:underline" onClick={() => handleConvert(q)}>
+                          {t('quoteConvert')}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-amber-400" title={t('quoteErrorClientId')}>
+                          {t('quoteNeedsClient')}
+                        </span>
+                      )}
                       <button type="button" className="text-red-400 text-xs hover:underline" onClick={() => handleDelete(q)}>
                         {t('financialDelete')}
                       </button>
@@ -291,34 +288,35 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('quoteEdit') : t('quoteAdd')}>
         <div className="space-y-3">
-          {clients.length > 0 && (
+          {clients.length > 0 ? (
             <div>
               <label className="text-sm font-medium">{t('quoteSelectClient')}</label>
               <select
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"
                 value={draft.clientId || ''}
                 onChange={(e) => handleClientSelect(e.target.value)}
+                required
               >
                 <option value="">{t('quoteSelectClient')}</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>{c.companyName}</option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">{t('quoteClientIdRequired')}</p>
             </div>
+          ) : (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {t('quoteNoClientsHint')}
+            </p>
           )}
           <div>
             <label className="text-sm font-medium">{t('quoteClient')}</label>
             <input
-              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              className="mt-1 w-full rounded border px-3 py-2 text-sm bg-gray-50"
               value={draft.clientName}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, clientName: e.target.value, clientId: undefined }))
-              }
+              readOnly
               placeholder={t('quoteClientPlaceholder')}
             />
-            {clients.length === 0 && (
-              <p className="mt-1 text-xs text-amber-300">{t('quoteNoClientsHint')}</p>
-            )}
           </div>
           <div>
             <label className="text-sm font-medium">{t('quoteDescription')}</label>
@@ -350,6 +348,22 @@ const FinancialQuotesTab: React.FC<FinancialQuotesTabProps> = ({
                 onChange={(e) => setDraft({ ...draft, vatRate: Number(e.target.value) })}
               />
             </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium">{t('quoteCategory')}</label>
+            <select
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={draft.category || IncomeCategory.SPONSORING}
+              onChange={(e) =>
+                setDraft({ ...draft, category: e.target.value as IncomeCategory })
+              }
+            >
+              {Object.values(IncomeCategory).map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
           </div>
           <p className="text-xs text-gray-500">
             {t('quoteAmountHT')}: {formatFinancialAmount(draftAmountHT, locale)}

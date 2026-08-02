@@ -31,8 +31,9 @@ export const REFERRAL_LABELS = {
 
 export function formatReferralCode(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  if (cleaned.startsWith('LC')) return cleaned.slice(0, 8);
-  return `${REFERRAL_PROGRAM.codePrefix}-${cleaned.slice(0, 6)}`;
+  const body = cleaned.startsWith('LC') ? cleaned.slice(2, 8) : cleaned.slice(0, 6);
+  if (!body) return '';
+  return `${REFERRAL_PROGRAM.codePrefix}-${body}`;
 }
 
 export function applyRefereeDiscount(amountEur: number): number {

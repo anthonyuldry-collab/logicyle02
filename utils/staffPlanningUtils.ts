@@ -6,7 +6,7 @@
 import type { SetStateAction } from 'react';
 import { StaffMember, RaceEvent, StaffEventSelection, StaffEventStatus, StaffEventPreference, StaffAvailability, TeamRole, User, UserRole } from '../types';
 import { isFutureEvent, getEventYear, formatEventDate } from './dateUtils';
-import { getStaffRoleKey } from './staffRoleUtils';
+import { getStaffRoleKey, isManagerEquivalentStaffRole } from './staffRoleUtils';
 import { getStaffMemberForUser } from './staffMemberUtils';
 import { isSuperAdminUser } from './superAdminUtils';
 
@@ -373,7 +373,9 @@ export function isStaffPlanningValidator(user: User, staff: StaffMember[]): bool
   const member = getStaffMemberForUser(user, staff);
   const staffKey = member ? getStaffRoleKey(member.role) : null;
   const hasStaffValidatorRole =
-    staffKey === 'DS' || staffKey === 'MANAGER' || staffKey === 'RESP_PERF';
+    staffKey === 'DS' ||
+    staffKey === 'RESP_PERF' ||
+    isManagerEquivalentStaffRole(member?.role);
 
   if (isSuperAdminUser(user)) {
     return hasStaffValidatorRole;

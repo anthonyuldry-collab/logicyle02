@@ -285,6 +285,9 @@ const TalentProfilePreviewModal: React.FC<TalentProfilePreviewModalProps> = ({
                 </span>
               </label>
             ))}
+            <p className="text-[11px] text-gray-500">
+              Les données de santé, allergies et informations médicales ne sont jamais demandées ni partagées via le scouting.
+            </p>
             <div className="flex justify-end gap-2">
               <ActionButton variant="secondary" size="sm" onClick={() => setShowContactForm(false)}>
                 Annuler

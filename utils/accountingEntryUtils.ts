@@ -22,9 +22,17 @@ export function buildAccountingEntries(params: {
   budgetItems: EventBudgetItem[];
   supplierInvoices: SupplierInvoice[];
   sepaBatches: SepaBatch[];
+  missions?: import('../types').Mission[];
   language?: 'fr' | 'en';
 }): AccountingEntry[] {
-  const { incomeItems, budgetItems, supplierInvoices, sepaBatches, language = 'fr' } = params;
+  const {
+    incomeItems,
+    budgetItems,
+    supplierInvoices,
+    sepaBatches,
+    missions = [],
+    language = 'fr',
+  } = params;
   const entries: AccountingEntry[] = [];
 
   for (const income of incomeItems) {
@@ -81,6 +89,9 @@ export function buildAccountingEntries(params: {
       });
     }
     if (income.invoiceStatus === InvoiceStatus.PAID && income.paidAt) {
+      // Déjà comptabilisé via lot pain.008 (évite double 411/512).
+      if (income.sepaCollectionBatchId) continue;
+
       entries.push({
         id: entryId(),
         date: income.paidAt,
@@ -221,6 +232,75 @@ export function buildAccountingEntries(params: {
   }
 
   for (const batch of sepaBatches) {
+    if (batch.kind === 'collection') {
+      // Prélèvement client : 411 Clients / 512 Banque
+      entries.push({
+        id: entryId(),
+        date: batch.executionDate,
+        journal: 'BQ',
+        accountCode: '411000',
+        accountLabel: 'Clients',
+        pieceRef: batch.batchReference,
+        label: `Prélèvement SEPA ${batch.batchReference}`,
+        debit: 0,
+        credit: batch.totalAmount,
+        sourceType: 'sepa',
+        sourceId: batch.id,
+      });
+      entries.push({
+        id: entryId(),
+        date: batch.executionDate,
+        journal: 'BQ',
+        accountCode: '512000',
+        accountLabel: 'Banque',
+        pieceRef: batch.batchReference,
+        label: `Prélèvement SEPA ${batch.batchReference}`,
+        debit: batch.totalAmount,
+        credit: 0,
+        sourceType: 'sepa',
+        sourceId: batch.id,
+      });
+      continue;
+    }
+
+    const salaryTotal = batch.totalAmount; // défaut legacy
+    const hasSplit =
+      (batch.salarySourceIds?.length || 0) > 0 ||
+      (batch.reimbursementReceiptIds?.length || 0) > 0;
+
+    if (hasSplit && batch.reimbursementReceiptIds?.length && !batch.salarySourceIds?.length) {
+      // Uniquement remboursements NF → 467 / 512
+      entries.push({
+        id: entryId(),
+        date: batch.executionDate,
+        journal: 'BQ',
+        accountCode: '467000',
+        accountLabel: 'Autres comptes débiteurs ou créditeurs',
+        pieceRef: batch.batchReference,
+        label: `Remboursements SEPA ${batch.batchReference}`,
+        debit: batch.totalAmount,
+        credit: 0,
+        sourceType: 'sepa',
+        sourceId: batch.id,
+      });
+      entries.push({
+        id: entryId(),
+        date: batch.executionDate,
+        journal: 'BQ',
+        accountCode: '512000',
+        accountLabel: 'Banque',
+        pieceRef: batch.batchReference,
+        label: `Remboursements SEPA ${batch.batchReference}`,
+        debit: 0,
+        credit: batch.totalAmount,
+        sourceType: 'sepa',
+        sourceId: batch.id,
+      });
+      continue;
+    }
+
+    // Salaires (ou lot mixte / legacy) → 421 / 512
+    void salaryTotal;
     entries.push({
       id: entryId(),
       date: batch.executionDate,
@@ -247,6 +327,107 @@ export function buildAccountingEntries(params: {
       sourceType: 'sepa',
       sourceId: batch.id,
     });
+  }
+
+  // Missions marketplace payées (charge équipe = GMV facture LogiCycle).
+  for (const mission of missions) {
+    const payment = mission.payment;
+    if (!payment || (payment.status !== 'paid' && payment.status !== 'refunded')) continue;
+    const gmv =
+      typeof payment.gmvCents === 'number' ? Math.round(payment.gmvCents) / 100 : 0;
+    if (!(gmv > 0)) continue;
+    const date = (payment.paidAt || mission.endDate || '').slice(0, 10);
+    if (!date) continue;
+    const piece = payment.teamInvoiceNumber || mission.id;
+    const label =
+      language === 'en'
+        ? `Mission marketplace — ${mission.title}`
+        : `Mission marketplace — ${mission.title}`;
+
+    if (payment.status === 'paid') {
+      entries.push({
+        id: entryId(),
+        date,
+        journal: 'AC',
+        accountCode: '604000',
+        accountLabel: language === 'en' ? 'External services' : 'Achats de prestations',
+        pieceRef: piece,
+        label,
+        debit: gmv,
+        credit: 0,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+      entries.push({
+        id: entryId(),
+        date,
+        journal: 'AC',
+        accountCode: '401000',
+        accountLabel: language === 'en' ? 'Suppliers' : 'Fournisseurs',
+        pieceRef: piece,
+        label,
+        debit: 0,
+        credit: gmv,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+      entries.push({
+        id: entryId(),
+        date,
+        journal: 'BQ',
+        accountCode: '401000',
+        accountLabel: language === 'en' ? 'Suppliers' : 'Fournisseurs',
+        pieceRef: piece,
+        label: `${label} — paiement`,
+        debit: gmv,
+        credit: 0,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+      entries.push({
+        id: entryId(),
+        date,
+        journal: 'BQ',
+        accountCode: '512000',
+        accountLabel: 'Banque',
+        pieceRef: piece,
+        label: `${label} — paiement`,
+        debit: 0,
+        credit: gmv,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+    }
+
+    if (payment.status === 'refunded' && payment.creditNoteNumber) {
+      const creditDate = (payment.refundedAt || date).slice(0, 10);
+      entries.push({
+        id: entryId(),
+        date: creditDate,
+        journal: 'AC',
+        accountCode: '401000',
+        accountLabel: language === 'en' ? 'Suppliers' : 'Fournisseurs',
+        pieceRef: payment.creditNoteNumber,
+        label: `${label} — avoir`,
+        debit: gmv,
+        credit: 0,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+      entries.push({
+        id: entryId(),
+        date: creditDate,
+        journal: 'AC',
+        accountCode: '604000',
+        accountLabel: language === 'en' ? 'External services' : 'Achats de prestations',
+        pieceRef: payment.creditNoteNumber,
+        label: `${label} — avoir`,
+        debit: 0,
+        credit: gmv,
+        sourceType: 'mission_payment',
+        sourceId: mission.id,
+      });
+    }
   }
 
   return entries.sort((a, b) => a.date.localeCompare(b.date));

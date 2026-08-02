@@ -44,6 +44,7 @@ import {
 } from '../utils/staffRosterUtils';
 import { saveData } from '../services/firebaseService';
 import { StaffTransitionManager, StaffArchiveViewer, StaffArchiveDetailModal, StaffSeasonPlanning } from '../components';
+import { isProMissionCommissionPlan } from '../constants/missionMarketplace';
 import StaffSearchTab from '../components/StaffSearchTab';
 import { getGlobalRecruitableStaff } from '../utils/independentUtils';
 import { isPresentationDemoTeam } from '../utils/presentationDemoAccess';
@@ -2103,6 +2104,7 @@ export default function StaffSection({
              }
              onIntegrateAcceptedStaff={handleIntegrateAcceptedMissionStaff}
              includeDemoExamples={includeDemoExamples}
+             isProTeam={isProMissionCommissionPlan(team?.subscription?.planId)}
            />
          ) :
          activeTab === 'meetings' ? <MeetingReportsTab /> :

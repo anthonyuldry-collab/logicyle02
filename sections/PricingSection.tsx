@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from '../hooks/useTranslations';
 import {
   SUBSCRIPTION_PLANS,
@@ -16,15 +16,20 @@ import {
   PlanDefinition,
 } from '../constants/subscriptionPlans';
 import { REFERRAL_LABELS } from '../constants/referralProgram';
-import { getPendingReferralCode, validateReferralCode } from '../services/referralService';
+import {
+  getPendingReferralCode,
+  getReferralStats,
+  validateReferralCode,
+} from '../services/referralService';
 import { LEGAL_ENTITY } from '../legal/meta';
-import { SubscriptionPlanId, TeamLevel, UserRole } from '../types';
+import { SubscriptionPlanId, TeamLevel, User, UserRole } from '../types';
 import { SubscriptionAccess } from '../utils/subscriptionEntitlements';
 import ActionButton from '../components/ActionButton';
 
 export type BillingInterval = 'month' | 'year';
 
 interface PricingSectionProps {
+  currentUser?: User | null;
   currentPlanId?: SubscriptionPlanId;
   teamLevel?: TeamLevel;
   onSelectPlan?: (
@@ -48,6 +53,7 @@ function periodToInterval(period: BillingPeriod): BillingInterval {
 }
 
 const PricingSection: React.FC<PricingSectionProps> = ({
+  currentUser,
   currentPlanId,
   teamLevel,
   onSelectPlan,
@@ -64,6 +70,10 @@ const PricingSection: React.FC<PricingSectionProps> = ({
   const [referralInput, setReferralInput] = useState('');
   const [referralValid, setReferralValid] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('annual');
+  const [myReferralCode, setMyReferralCode] = useState<string | null>(null);
+  const [myShareUrl, setMyShareUrl] = useState<string | null>(null);
+  const [myCodeLoading, setMyCodeLoading] = useState(false);
+  const [copiedKind, setCopiedKind] = useState<'code' | 'link' | null>(null);
 
   const audience = useMemo(
     () =>
@@ -104,6 +114,49 @@ const PricingSection: React.FC<PricingSectionProps> = ({
     }
   }, []);
 
+  useEffect(() => {
+    if (!currentUser || isPublic) {
+      setMyReferralCode(null);
+      setMyShareUrl(null);
+      return;
+    }
+    let cancelled = false;
+    setMyCodeLoading(true);
+    getReferralStats(currentUser)
+      .then((stats) => {
+        if (cancelled) return;
+        setMyReferralCode(stats.code);
+        setMyShareUrl(stats.shareUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMyReferralCode(null);
+          setMyShareUrl(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMyCodeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.id, isPublic]);
+
+  const copyMyReferral = useCallback(
+    async (kind: 'code' | 'link') => {
+      const value = kind === 'code' ? myReferralCode : myShareUrl;
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        setCopiedKind(kind);
+        setTimeout(() => setCopiedKind(null), 2000);
+      } catch {
+        setCopiedKind(null);
+      }
+    },
+    [myReferralCode, myShareUrl]
+  );
+
   const handleReferralBlur = async () => {
     if (!referralInput.trim()) {
       setReferralValid(null);
@@ -135,9 +188,8 @@ const PricingSection: React.FC<PricingSectionProps> = ({
             ? t('pricingIndependentStaffSubtitle')
             : t('pricingSubtitle');
 
-  const shellClass = isPublic
-    ? 'lc-pricing relative text-white'
-    : 'lc-pricing relative text-slate-900';
+  // L’app et la page publique sont toutes deux sur fond sombre.
+  const shellClass = 'lc-pricing relative text-white';
 
   const renderPlanCard = (plan: PlanDefinition, opts?: { independent?: boolean }) => {
     const isIndependentPlan = Boolean(opts?.independent) || audience.startsWith('independent');
@@ -151,23 +203,15 @@ const PricingSection: React.FC<PricingSectionProps> = ({
       <div
         key={plan.id}
         className={`lc-pricing-rise relative flex flex-col rounded-3xl border p-6 backdrop-blur-xl transition duration-300 ${
-          isPublic
-            ? plan.highlighted
-              ? 'border-indigo-400/50 bg-indigo-500/15 shadow-2xl shadow-indigo-950/40 ring-1 ring-indigo-400/30'
-              : 'border-white/12 bg-white/[0.06] shadow-xl shadow-black/20 hover:border-white/25'
-            : plan.highlighted
-              ? 'border-indigo-500 bg-white shadow-xl ring-2 ring-indigo-200'
-              : 'border-slate-200 bg-white shadow-lg hover:border-indigo-200'
-        } ${isCurrent ? (isPublic ? 'ring-2 ring-emerald-400/60' : 'ring-2 ring-emerald-400') : ''}`}
+          plan.highlighted
+            ? 'border-indigo-400/50 bg-indigo-500/15 shadow-2xl shadow-indigo-950/40 ring-1 ring-indigo-400/30'
+            : 'border-white/12 bg-slate-900 shadow-xl shadow-black/20 hover:border-white/25'
+        } ${isCurrent ? 'ring-2 ring-emerald-400/60' : ''}`}
       >
         {(plan.highlighted || isRecommended || isCurrent) && (
           <div className="mb-3 flex flex-wrap justify-center gap-2">
             {plan.highlighted && (
-              <span
-                className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                  isPublic ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'
-                }`}
-              >
+              <span className="text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-500 text-white">
                 {t('pricingPopular')}
               </span>
             )}
@@ -184,39 +228,31 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           </div>
         )}
 
-        <h3
-          className={`text-xl font-bold tracking-tight ${
-            isPublic ? 'text-white' : 'text-slate-900'
-          }`}
-        >
+        <h3 className="text-xl font-bold tracking-tight text-white">
           {plan.name[language]}
         </h3>
-        <p className={`text-sm mt-1.5 leading-snug ${isPublic ? 'text-slate-400' : 'text-slate-500'}`}>
+        <p className="text-sm mt-1.5 leading-snug text-slate-400">
           {plan.tagline[language]}
         </p>
 
         <div className="mt-5 mb-5">
           {plan.contactSales ? (
-            <p className={`text-2xl font-bold ${isPublic ? 'text-white' : 'text-slate-900'}`}>
+            <p className="text-2xl font-bold text-white">
               {t('pricingContactSales')}
             </p>
           ) : (
             <>
-              <p className={`text-4xl font-black tracking-tight ${isPublic ? 'text-white' : 'text-slate-900'}`}>
+              <p className="text-4xl font-black tracking-tight text-white">
                 {formatPriceEur(
                   showAnnual ? Math.round((plan.annualPriceEur ?? 0) / 12) : plan.monthlyPriceEur,
                   language,
                 )}
-                <span
-                  className={`text-base font-normal ml-1 ${
-                    isPublic ? 'text-slate-400' : 'text-slate-500'
-                  }`}
-                >
+                <span className="text-base font-normal ml-1 text-slate-400">
                   /{t('pricingMonth')}
                 </span>
               </p>
               {showAnnual ? (
-                <p className={`text-sm mt-1 ${isPublic ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className="text-sm mt-1 text-slate-400">
                   {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')}
                   {savings > 0 && (
                     <span className="text-emerald-400 font-medium ml-1.5">
@@ -225,12 +261,12 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                   )}
                 </p>
               ) : (
-                <p className={`text-sm mt-1 ${isPublic ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className="text-sm mt-1 text-slate-400">
                   {t('pricingBilledMonthly')}
                   {plan.annualPriceEur != null && savings > 0 && (
                     <>
                       {' · '}
-                      <span className="text-emerald-500 font-medium">
+                      <span className="text-emerald-400 font-medium">
                         {formatPriceEur(plan.annualPriceEur, language)}/{t('pricingYear')} ({t('pricingTwoMonthsFree')})
                       </span>
                     </>
@@ -247,21 +283,15 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           )}
         </div>
 
-        <ul className={`space-y-2.5 flex-grow text-sm ${isPublic ? 'text-slate-300' : 'text-slate-700'}`}>
+        <ul className="space-y-2.5 flex-grow text-sm text-slate-300">
           {plan.features.map((f, i) => (
             <li key={i} className="flex items-start gap-2.5">
-              <span className={`mt-0.5 shrink-0 ${isPublic ? 'text-indigo-300' : 'text-emerald-500'}`}>
-                ✓
-              </span>
+              <span className="mt-0.5 shrink-0 text-indigo-300">✓</span>
               <span>{f[language]}</span>
             </li>
           ))}
           {!isIndependentPlan && (
-            <li
-              className={`flex items-start gap-2.5 pt-1 border-t ${
-                isPublic ? 'border-white/10 text-slate-400' : 'border-slate-100 text-slate-500'
-              }`}
-            >
+            <li className="flex items-start gap-2.5 pt-1 border-t border-white/10 text-slate-400">
               <span className="mt-0.5">·</span>
               <span>
                 {plan.maxEventsPerSeason === null
@@ -278,11 +308,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           {plan.contactSales ? (
             <a
               href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('LogiCycle Fédération')}`}
-              className={`block w-full text-center py-2.5 px-4 rounded-xl font-medium transition ${
-                isPublic
-                  ? 'border border-white/20 text-slate-200 hover:bg-white/10'
-                  : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
-              }`}
+              className="block w-full text-center py-2.5 px-4 rounded-xl font-medium transition border border-white/20 text-slate-200 hover:bg-white/10"
             >
               {t('pricingContactUs')}
             </a>
@@ -298,7 +324,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                 )
               }
               variant={plan.highlighted ? 'primary' : 'secondary'}
-              className="w-full"
+              className="w-full !text-white"
               disabled={isCurrent}
             >
               {isCurrent
@@ -320,11 +346,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
   };
 
   const periodToggle = (
-    <div
-      className={`inline-flex rounded-full p-1 ${
-        isPublic ? 'bg-white/10 border border-white/10' : 'bg-slate-100 border border-slate-200'
-      }`}
-    >
+    <div className="inline-flex rounded-full p-1 bg-white/10 border border-white/10">
       {(['monthly', 'annual'] as BillingPeriod[]).map((period) => (
         <button
           key={period}
@@ -332,12 +354,8 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           onClick={() => setBillingPeriod(period)}
           className={`px-4 py-1.5 text-sm font-medium rounded-full transition ${
             billingPeriod === period
-              ? isPublic
-                ? 'bg-indigo-500 text-white shadow'
-                : 'bg-white text-slate-900 shadow'
-              : isPublic
-                ? 'text-slate-400 hover:text-white'
-                : 'text-slate-500 hover:text-slate-800'
+              ? 'bg-indigo-500 text-white shadow'
+              : 'text-slate-400 hover:text-white'
           }`}
         >
           {period === 'monthly' ? t('pricingBillingMonthly') : t('pricingBillingAnnual')}
@@ -349,35 +367,35 @@ const PricingSection: React.FC<PricingSectionProps> = ({
   if (audience === 'team_member') {
     const plan = currentPlanId ? getPlanById(currentPlanId) : null;
     return (
-      <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="space-y-6 max-w-2xl mx-auto text-white">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-slate-900">{title}</h2>
-          <p className="mt-2 text-slate-600 text-sm">{subtitle}</p>
+          <h2 className="text-2xl font-bold text-white">{title}</h2>
+          <p className="mt-2 text-slate-400 text-sm">{subtitle}</p>
         </div>
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-6 space-y-3">
-          <p className="text-sm font-semibold text-sky-900">
+        <div className="rounded-2xl border border-sky-400/35 bg-sky-950/60 p-6 space-y-3">
+          <p className="text-sm font-semibold text-sky-200">
             {teamName
               ? t('pricingTeamMemberCoveredNamed').replace('{team}', teamName)
               : t('pricingTeamMemberCovered')}
           </p>
           {plan && (
-            <div className="bg-white rounded-xl border border-sky-100 p-4">
+            <div className="bg-slate-900 rounded-xl border border-sky-400/25 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
                 {t('billingCurrentPlan')}
               </p>
-              <p className="text-lg font-bold text-slate-900 mt-1">{plan.name[language]}</p>
+              <p className="text-lg font-bold text-white mt-1">{plan.name[language]}</p>
               {subscriptionAccess && (
-                <p className="text-sm text-slate-600 mt-1">
+                <p className="text-sm text-slate-300 mt-1">
                   {subscriptionAccess.statusLabel[language]}
                 </p>
               )}
-              <p className="text-xs text-slate-500 mt-2">{plan.tagline[language]}</p>
+              <p className="text-xs text-slate-400 mt-2">{plan.tagline[language]}</p>
             </div>
           )}
-          <p className="text-xs text-sky-800/80">{t('pricingTeamMemberHint')}</p>
+          <p className="text-xs text-sky-300/90">{t('pricingTeamMemberHint')}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          <p className="font-medium text-slate-800 mb-1">{t('pricingTeamMemberIndependentTitle')}</p>
+        <div className="rounded-xl border border-white/15 bg-slate-900 p-4 text-sm text-slate-300">
+          <p className="font-medium text-white mb-1">{t('pricingTeamMemberIndependentTitle')}</p>
           <p>{t('pricingTeamMemberIndependentNote')}</p>
         </div>
       </div>
@@ -411,18 +429,12 @@ const PricingSection: React.FC<PricingSectionProps> = ({
             </div>
           )}
           <h2
-            className={`font-black tracking-tight ${
-              isPublic ? 'text-4xl sm:text-5xl text-white' : 'text-3xl text-slate-900'
-            }`}
-            style={isPublic ? { letterSpacing: '-0.03em' } : undefined}
+            className="font-black tracking-tight text-4xl sm:text-5xl text-white"
+            style={{ letterSpacing: '-0.03em' }}
           >
             {title}
           </h2>
-          <p
-            className={`mt-4 leading-relaxed ${
-              isPublic ? 'text-base sm:text-lg text-slate-300' : 'text-slate-600'
-            }`}
-          >
+          <p className="mt-4 leading-relaxed text-base sm:text-lg text-slate-300">
             {subtitle}
           </p>
           {isPublic && (
@@ -453,23 +465,63 @@ const PricingSection: React.FC<PricingSectionProps> = ({
               </div>
             </div>
             {!isPublic && (
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-slate-200">
-                  {t('referralCodeCheckout')}
-                </label>
-                <input
-                  type="text"
-                  value={referralInput}
-                  onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                  onBlur={handleReferralBlur}
-                  placeholder="LC-XXXXXX"
-                  className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500"
-                />
-                {referralValid && (
-                  <p className="mt-1.5 text-sm text-emerald-300">
-                    {t('referralValidPrefix')} {referralValid}
-                  </p>
-                )}
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-200">
+                    {t('referralYourCode')}
+                  </label>
+                  {myCodeLoading ? (
+                    <p className="text-sm text-slate-400">{t('referralLoading')}</p>
+                  ) : myReferralCode ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="rounded-xl border border-indigo-300/50 bg-indigo-950 px-3 py-2.5 font-mono text-base font-bold tracking-wide text-white">
+                          {myReferralCode}
+                        </code>
+                        <ActionButton
+                          variant="secondary"
+                          size="sm"
+                          className="!text-white"
+                          onClick={() => copyMyReferral('code')}
+                        >
+                          {copiedKind === 'code' ? t('referralCodeCopied') : t('referralCopyCode')}
+                        </ActionButton>
+                        {myShareUrl && (
+                          <ActionButton
+                            variant="secondary"
+                            size="sm"
+                            className="!text-white"
+                            onClick={() => copyMyReferral('link')}
+                          >
+                            {copiedKind === 'link' ? t('referralCopied') : t('referralCopyLink')}
+                          </ActionButton>
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-400">{t('referralShareHint')}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-rose-300">{t('referralLoadError')}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-200">
+                    {t('referralCodeCheckout')}
+                  </label>
+                  <input
+                    type="text"
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                    onBlur={handleReferralBlur}
+                    placeholder="LC-XXXXXX"
+                    className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500"
+                  />
+                  {referralValid && (
+                    <p className="mt-1.5 text-sm text-emerald-300">
+                      {t('referralValidPrefix')} {referralValid}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -478,7 +530,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         {showTeamPlans && (
           <>
             {audience === 'team_admin' && (
-              <p className="text-center text-sm font-medium text-slate-600">
+              <p className="text-center text-sm font-medium text-slate-300">
                 {t('pricingTeamPlansLabel')}
               </p>
             )}
@@ -504,18 +556,10 @@ const PricingSection: React.FC<PricingSectionProps> = ({
 
         {showIndependentCatalog && (
           <div className="max-w-4xl mx-auto">
-            <h3
-              className={`text-lg font-bold text-center mb-2 ${
-                isPublic ? 'text-white' : 'text-slate-900'
-              }`}
-            >
+            <h3 className="text-lg font-bold text-center mb-2 text-white">
               {t('pricingIndependentSectionTitle')}
             </h3>
-            <p
-              className={`text-sm text-center mb-6 ${
-                isPublic ? 'text-slate-400' : 'text-slate-600'
-              }`}
-            >
+            <p className="text-sm text-center mb-6 text-slate-400">
               {t('pricingIndependentPaidNote')}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

@@ -9,6 +9,7 @@ import {
   countIndependentPortfolio,
   countSubscriptionsByStatus,
   estimatePortfolioMrr,
+  filterCommercialClientTeams,
   planLabelFr,
   teamsNeedingAttention,
 } from '../utils/holdingCeoDashboardUtils';
@@ -51,25 +52,29 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
     [teams, organization.teamIds]
   );
 
+  /** Portefeuille commercial uniquement (exclut sandboxes fondateur / démos). */
+  const clientTeams = useMemo(() => filterCommercialClientTeams(orgTeams), [orgTeams]);
+  const internalTeamCount = orgTeams.length - clientTeams.length;
+
   const teamsByKind = useMemo(() => {
-    return orgTeams.reduce<Record<string, number>>((acc, team) => {
+    return clientTeams.reduce<Record<string, number>>((acc, team) => {
       const kind = team.teamKind || 'standard';
       acc[kind] = (acc[kind] || 0) + 1;
       return acc;
     }, {});
-  }, [orgTeams]);
+  }, [clientTeams]);
 
-  const portfolioMrr = useMemo(() => estimatePortfolioMrr(orgTeams, users), [orgTeams, users]);
-  const subCounts = useMemo(() => countSubscriptionsByStatus(orgTeams), [orgTeams]);
+  const portfolioMrr = useMemo(() => estimatePortfolioMrr(clientTeams, users), [clientTeams, users]);
+  const subCounts = useMemo(() => countSubscriptionsByStatus(clientTeams), [clientTeams]);
   const independents = useMemo(() => countIndependentPortfolio(users), [users]);
-  const attentionTeams = useMemo(() => teamsNeedingAttention(orgTeams), [orgTeams]);
+  const attentionTeams = useMemo(() => teamsNeedingAttention(clientTeams), [clientTeams]);
   const liveSubscriptions =
     subCounts.active + subCounts.trialing + subCounts.pilot + subCounts.past_due;
 
   const sortedTeams = useMemo(
     () =>
-      [...orgTeams].sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || '', 'fr')),
-    [orgTeams]
+      [...clientTeams].sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || '', 'fr')),
+    [clientTeams]
   );
 
   const todayLabel = new Date().toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -126,7 +131,7 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <CeoKpi
             label={t('orgCeoKpiTeams')}
-            value={String(orgTeams.length)}
+            value={String(clientTeams.length)}
             hint={`${liveSubscriptions} ${t('orgCeoKpiWithSub')}`}
           />
           <CeoKpi
@@ -148,6 +153,12 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
             accent={attentionTeams.length > 0 ? 'amber' : 'default'}
           />
         </div>
+
+        {internalTeamCount > 0 && (
+          <p className="text-xs text-slate-500">
+            {t('orgCeoInternalExcluded').replace('{count}', String(internalTeamCount))}
+          </p>
+        )}
 
         <section className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-4">
           <h3 className="text-sm font-semibold text-emerald-100">{t('orgCeoMrrTitle')}</h3>

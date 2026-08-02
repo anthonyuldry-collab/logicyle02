@@ -74,6 +74,7 @@ import {
   TeamRecruitmentOffer,
   TeamRecruitmentOfferStatus,
   TeamInvoiceSettings,
+  TeamSepaSettings,
 } from '../types';
 import { SignupData } from '../sections/SignupView';
 import {
@@ -100,7 +101,7 @@ import { getStaffMemberForUser } from '../utils/staffMemberUtils';
 import { getDefaultPlanForTeamLevel, PILOT_DAYS } from '../constants/subscriptionPlans';
 import { buildInitialIndependentSubscription, buildInitialSubscription } from './billingService';
 import { buildDefaultRider, buildDefaultStaffMember } from '../utils/defaultTeamMemberProfiles';
-import { resolveStaffRole, resolveStaffRoleOrDefault } from '../utils/staffRoleUtils';
+import { resolveStaffRole, resolveStaffRoleOrDefault, getStaffRoleKey, isManagerEquivalentStaffRole } from '../utils/staffRoleUtils';
 import {
   canRiderApplyToTeam,
   canTeamScoutRider,
@@ -108,6 +109,8 @@ import {
   getTeamMarketContext,
   resolveRiderMarketSegmentFromUser,
 } from '../utils/riderTeamMarketSegment';
+import { buildScoutingConsentProof, canAthleteConsentToScouting } from '../utils/scoutingProspectUtils';
+import { writeGdprAuditLog } from './gdprService';
 import { purgeUserPersonalDataSecure, deleteTeamAndAllDataSecure } from './gdprCloudService';
 import { GdprConsent } from '../types';
 // Accès marketplace missions : tout compte staff (équipe ou vacataire).
@@ -751,6 +754,46 @@ export async function loadGpsWebhookKey(teamId: string): Promise<string | undefi
     return undefined;
 }
 
+/** Paramètres SEPA (IBAN / ICS) hors doc équipe public — managers + finance readers. */
+export async function saveSepaSettings(teamId: string, settings: TeamSepaSettings): Promise<void> {
+    const sepaRef = doc(db, 'teams', teamId, 'privateConfig', 'sepa');
+    await setDoc(
+        sepaRef,
+        cleanDataForFirebase({
+            ...settings,
+            updatedAt: new Date().toISOString(),
+        }),
+        { merge: true },
+    );
+    // Retirer les secrets bancaires du doc équipe lisible par tous les membres.
+    await updateDoc(doc(db, 'teams', teamId), { sepaSettings: deleteField() }).catch(async () => {
+        await setDoc(doc(db, 'teams', teamId), { sepaSettings: deleteField() }, { merge: true });
+    });
+}
+
+export async function loadSepaSettings(teamId: string): Promise<TeamSepaSettings | undefined> {
+    try {
+        const sepaSnap = await getDoc(doc(db, 'teams', teamId, 'privateConfig', 'sepa'));
+        if (sepaSnap.exists()) {
+            const data = sepaSnap.data();
+            if (data && typeof data.debtorIban === 'string') {
+                const { updatedAt: _u, ...rest } = data;
+                return rest as TeamSepaSettings;
+            }
+        }
+        // Migration : ancienne copie sur le doc équipe
+        const teamSnap = await getDoc(doc(db, 'teams', teamId));
+        const legacy = teamSnap.data()?.sepaSettings as TeamSepaSettings | undefined;
+        if (legacy?.debtorIban) {
+            await saveSepaSettings(teamId, legacy);
+            return legacy;
+        }
+    } catch (error) {
+        console.warn('Lecture paramètres SEPA refusée ou indisponible:', error);
+    }
+    return undefined;
+}
+
 export interface DriverGpsContext {
     eventId?: string;
     transportLegId?: string;
@@ -828,10 +871,16 @@ async function loadPermissionsBundle(): Promise<{
         ]);
         const permissionsDoc = permissionsSnap.empty ? undefined : permissionsSnap.docs[0];
         const fallbackPermissionRoles = getInitialGlobalState().permissionRoles;
-        const permissionRoles =
+        const loadedRoles =
             permissionRolesSnap.size > 0
                 ? permissionRolesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PermissionRole))
                 : fallbackPermissionRoles;
+        // Assure Comptable / Trésorier (et autres rôles seed) même sur équipes déjà configurées.
+        const roleById = new Map(loadedRoles.map((r) => [r.id, r]));
+        for (const seed of fallbackPermissionRoles) {
+            if (!roleById.has(seed.id)) roleById.set(seed.id, seed);
+        }
+        const permissionRoles = Array.from(roleById.values());
         return {
             permissions: mergeConfiguredPermissions(
                 permissionsDoc ? (permissionsDoc.data() as AppPermissions) : {},
@@ -1132,6 +1181,24 @@ export const getOpenMissionsGlobal = async (): Promise<Mission[]> => {
     }
 };
 
+/** Missions où l’utilisateur figure dans applicants (candidatures + factures post-paiement). */
+export const getMyAppliedMissionsGlobal = async (userId: string): Promise<Mission[]> => {
+    if (!userId) return [];
+    try {
+        const missionsSnap = await getDocs(
+            query(collectionGroup(db, 'missions'), where('applicants', 'array-contains', userId))
+        );
+        return missionsSnap.docs.map((d) => {
+            const data = d.data() as Mission;
+            const teamId = d.ref.parent.parent?.id || data.teamId;
+            return { ...data, id: d.id, teamId } as Mission;
+        });
+    } catch (error) {
+        console.warn('getMyAppliedMissionsGlobal:', error);
+        return [];
+    }
+};
+
 /** Offres coureur ouvertes (toutes équipes). */
 export const getOpenRecruitmentOffersGlobal = async (): Promise<TeamRecruitmentOffer[]> => {
     try {
@@ -1246,17 +1313,102 @@ export const respondToScoutingRequest = async (
     requestId: string,
     response: 'accepted' | 'rejected',
     grantedScopes?: ScoutingDataScope[],
+    options?: { teamName?: string; language?: 'fr' | 'en' },
 ): Promise<void> => {
+    const requestRef = doc(db, 'scoutingRequests', requestId);
+    const requestSnap = await getDoc(requestRef);
+    if (!requestSnap.exists()) {
+        throw new Error('Demande de scouting introuvable.');
+    }
+    const requestData = requestSnap.data() as ScoutingRequest;
+    const athleteId = requestData.athleteId;
+
+    const athleteSnap = await getDoc(doc(db, 'users', athleteId));
+    if (!athleteSnap.exists()) {
+        throw new Error('Profil athlète introuvable.');
+    }
+    const athlete = { id: athleteId, ...athleteSnap.data() } as User;
+
+    if (response === 'accepted') {
+        const capacity = canAthleteConsentToScouting(athlete);
+        if (!capacity.ok) {
+            throw new Error(
+                capacity.reason === 'minor_no_parental'
+                    ? 'Un mineur ne peut accepter un partage scouting sans autorisation parentale enregistrée. Contactez privacy@logicycle.app.'
+                    : 'Date de naissance manquante : impossible de valider la capacité à consentir. Complétez votre profil ou contactez privacy@logicycle.app.',
+            );
+        }
+        if (!grantedScopes?.length) {
+            throw new Error('Sélectionnez au moins un périmètre à partager.');
+        }
+    }
+
+    let teamName = options?.teamName;
+    if (!teamName) {
+        const teamSnap = await getDoc(doc(db, 'teams', requestData.requesterTeamId));
+        teamName = teamSnap.exists()
+            ? ((teamSnap.data() as Team).name || 'Équipe')
+            : 'Équipe';
+    }
+    const language = options?.language ?? 'fr';
+    const now = new Date().toISOString();
     const status =
         response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED;
     const payload: Record<string, unknown> = {
         status,
-        responseDate: new Date().toISOString(),
+        responseDate: now,
+        updatedAt: now,
     };
     if (response === 'accepted' && grantedScopes?.length) {
-        payload.grantedScopes = grantedScopes;
+        Object.assign(
+            payload,
+            buildScoutingConsentProof({
+                grantedScopes,
+                teamName,
+                language,
+            }),
+        );
     }
-    await updateDoc(doc(db, 'scoutingRequests', requestId), cleanDataForFirebase(payload));
+    await updateDoc(requestRef, cleanDataForFirebase(payload));
+
+    await writeGdprAuditLog({
+        action: response === 'accepted' ? 'scouting_consent_accepted' : 'scouting_consent_rejected',
+        targetId: athleteId,
+        performedBy: athleteId,
+        method: 'client',
+        metadata: {
+            requestId,
+            requesterTeamId: requestData.requesterTeamId,
+            grantedScopes: grantedScopes ?? [],
+            privacyVersion: LEGAL_VERSIONS.PRIVACY_POLICY_VERSION,
+        },
+    });
+};
+
+/** Retrait du consentement scouting (art. 7.3) — coupe l'accès, conserve la preuve. */
+export const withdrawScoutingConsent = async (
+    requestId: string,
+    athleteUserId: string,
+): Promise<void> => {
+    const now = new Date().toISOString();
+    await updateDoc(
+        doc(db, 'scoutingRequests', requestId),
+        cleanDataForFirebase({
+            status: ScoutingRequestStatus.WITHDRAWN,
+            grantedScopes: [],
+            consentWithdrawnAt: now,
+            consentWithdrawnBy: athleteUserId,
+            responseDate: now,
+            updatedAt: now,
+        }),
+    );
+    await writeGdprAuditLog({
+        action: 'scouting_consent_withdrawn',
+        targetId: athleteUserId,
+        performedBy: athleteUserId,
+        method: 'client',
+        metadata: { requestId },
+    });
 };
 
 export const getIndependentPermissions = (
@@ -1300,10 +1452,7 @@ export const getEffectivePermissions = (
     staff: StaffMember[] = [],
     options?: { skipSuperAdminBypass?: boolean }
 ): Partial<Record<AppSection, PermissionLevel[]>> => {
-    if (user.signupMode === SignupMode.INDEPENDENT || user.isIndependentProfile) {
-        return getIndependentPermissions(user);
-    }
-
+    // Super Admin plateforme : toujours avant le profil indépendant (sinon l’espace SA disparaît).
     if (!options?.skipSuperAdminBypass && isSuperAdminUser(user)) {
         const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
         SECTIONS.forEach((section) => {
@@ -1312,6 +1461,10 @@ export const getEffectivePermissions = (
             allPermissions[id] = ['view', 'edit'];
         });
         return allPermissions;
+    }
+
+    if (user.signupMode === SignupMode.INDEPENDENT || user.isIndependentProfile) {
+        return getIndependentPermissions(user);
     }
 
     if (user.userRole === UserRole.COUREUR) {
@@ -1325,7 +1478,13 @@ export const getEffectivePermissions = (
         };
     }
 
-    if (user.permissionRole === TeamRole.ADMIN || user.userRole === UserRole.MANAGER) {
+    const staffMemberEarly = getStaffMemberForUser(user, staff);
+    const isManagerLevelAccess =
+        user.permissionRole === TeamRole.ADMIN ||
+        user.userRole === UserRole.MANAGER ||
+        isManagerEquivalentStaffRole(staffMemberEarly?.role);
+
+    if (isManagerLevelAccess) {
         const allPermissions: Partial<Record<AppSection, PermissionLevel[]>> = {};
         SECTIONS.forEach((section) => {
             const id = section.id as AppSection;
@@ -1334,8 +1493,8 @@ export const getEffectivePermissions = (
             if (id === 'superAdmin') return;
             allPermissions[id] = ['view', 'edit'];
         });
-        // Les managers / admins présents dans l’effectif staff gardent leur dossier perso.
-        const staffMember = getStaffMemberForUser(user, staff);
+        // Les managers / admins / présidence présents dans l’effectif staff gardent leur dossier perso.
+        const staffMember = staffMemberEarly;
         Object.assign(allPermissions, getStaffMemberSectionGrants(staffMember));
         if (staffMember || user.userRole === UserRole.STAFF) {
             allPermissions.myProfile = ['view', 'edit'];
@@ -1353,14 +1512,23 @@ export const getEffectivePermissions = (
 
     MY_SPACE_SECTIONS.forEach((section) => delete effectivePerms[section]);
 
-    const staffMember = getStaffMemberForUser(user, staff);
+    const staffMember = staffMemberEarly;
     Object.assign(
       effectivePerms,
       mergeSectionGrants(effectivePerms, getStaffMemberSectionGrants(staffMember)),
     );
 
     if (user.userRole === UserRole.STAFF) {
-        delete effectivePerms.financial;
+        const staffRoleKey = getStaffRoleKey(staffMember?.role);
+        const permRole = String(user.permissionRole || '');
+        const keepFinancial =
+            permRole === 'comptable' ||
+            permRole === 'tresorier' ||
+            staffRoleKey === 'TRESORIER' ||
+            Boolean(user.customPermissions?.financial?.length);
+        if (!keepFinancial) {
+            delete effectivePerms.financial;
+        }
         effectivePerms.myProfile = effectivePerms.myProfile || ['view', 'edit'];
         delete effectivePerms.adminDossier;
     }
@@ -1467,7 +1635,7 @@ export const getTeamData = async (
                     language: teamData.language,
                     teamLogoUrl: teamData.teamLogoUrl,
                     categoryBudgets: teamData.categoryBudgets,
-                    sepaSettings: teamData.sepaSettings,
+                    // sepaSettings chargé depuis privateConfig (pas le doc public)
                     invoiceSettings: teamData.invoiceSettings,
                     // gpsWebhookKey chargé séparément (privateConfig) — pas depuis le doc public
                 });
@@ -1484,6 +1652,17 @@ export const getTeamData = async (
     } else if (!viewer) {
         // Appels internes sans viewer : tenter lecture (échouera silencieusement si non manager)
         teamState.gpsWebhookKey = await loadGpsWebhookKey(teamId);
+    }
+
+    // SEPA : managers + finance readers (rules privateConfig/sepa)
+    const canLoadSepa =
+        !viewer ||
+        viewer.userRole === UserRole.MANAGER ||
+        viewer.permissionRole === TeamRole.ADMIN ||
+        viewer.permissionRole === 'comptable' ||
+        viewer.permissionRole === 'tresorier';
+    if (canLoadSepa) {
+        teamState.sepaSettings = await loadSepaSettings(teamId);
     }
 
     // Charger les modèles de checklist depuis la sous-collection et grouper par rôle

@@ -143,6 +143,7 @@ const MobileShell: React.FC<MobileShellProps> = ({
       realUser={realUser}
       superAdminPreview={superAdminPreview}
       onSuperAdminPreviewChange={onSuperAdminPreviewChange}
+      onExitSuperAdminPreview={onExitSuperAdminPreview}
       riders={riders}
       incomeItems={incomeItems}
     />

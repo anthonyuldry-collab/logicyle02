@@ -29,6 +29,10 @@ const StaffArchiveDetailModal: React.FC<StaffArchiveDetailModalProps> = ({
   const getRoleColor = (role: string) => {
     const colors: Record<string, string> = {
       'MANAGER': 'bg-purple-100 text-purple-800',
+      'PRESIDENT': 'bg-red-100 text-red-900',
+      'VICE_PRESIDENT': 'bg-red-50 text-red-800',
+      'SECRETAIRE': 'bg-blue-100 text-blue-900',
+      'TRESORIER': 'bg-emerald-100 text-emerald-900',
       'DS': 'bg-blue-100 text-blue-800',
       'ASSISTANT': 'bg-green-100 text-green-800',
       'MECANO': 'bg-orange-100 text-orange-800',

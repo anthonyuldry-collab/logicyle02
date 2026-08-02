@@ -27,8 +27,18 @@ import {
 import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 import {
   isMissionMarketplacePaymentsEnabled,
+  isMissionConnectPaymentEligible,
+  formatMissionMarketplaceBanner,
+  MISSION_COMMISSION,
   MISSION_COMMISSION_LABELS,
+  computeMissionCommissionEur,
+  estimateMissionGmvEur,
 } from '../constants/missionMarketplace';
+import { requestMissionPayment } from '../services/missionConnectService';
+import {
+  exportTeamMissionInvoicePdf,
+  exportVacataireDraftMissionInvoicePdf,
+} from '../utils/missionInvoicePdfExport';
 
 interface MissionOffersPanelProps {
   teamId: string;
@@ -46,6 +56,8 @@ interface MissionOffersPanelProps {
   }) => void;
   /** Missions / candidatures fictives — Horizon Atlantique uniquement. */
   includeDemoExamples?: boolean;
+  /** Plan Performance / Pro → commission 10 % */
+  isProTeam?: boolean;
 }
 
 const emptyForm = {
@@ -106,12 +118,14 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
   raceEvents = [],
   onIntegrateAcceptedStaff,
   includeDemoExamples = false,
+  isProTeam = false,
 }) => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [trackingMissionId, setTrackingMissionId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [profileApp, setProfileApp] = useState<MissionApplication | null>(null);
+  const [payBusyMissionId, setPayBusyMissionId] = useState<string | null>(null);
 
   const demoVacatairesById = useMemo(() => {
     const map = new Map<string, StaffMember>();
@@ -274,6 +288,27 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
     updateApplicationStatus(mission, appId, next);
   };
 
+  const handlePayMission = async (mission: Mission) => {
+    if (isDemoMission(mission.id)) {
+      setActionFeedback('Les missions démo ne peuvent pas être payées via Stripe.');
+      return;
+    }
+    if (!isMissionConnectPaymentEligible(mission.compensationType)) {
+      setActionFeedback(MISSION_COMMISSION_LABELS.employmentExcluded.fr);
+      return;
+    }
+    setPayBusyMissionId(mission.id);
+    setActionFeedback(null);
+    try {
+      await requestMissionPayment(teamId, mission.id);
+    } catch (err) {
+      setActionFeedback(
+        err instanceof Error ? err.message : 'Échec du paiement mission (Stripe Connect).',
+      );
+      setPayBusyMissionId(null);
+    }
+  };
+
   const statusChip = (status: MissionStatus) => {
     if (status === MissionStatus.OPEN) return 'bg-emerald-100 text-emerald-800';
     if (status === MissionStatus.FILLED) return 'bg-blue-100 text-blue-800';
@@ -289,11 +324,15 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
 
   return (
     <div className="space-y-4">
-      {!isMissionMarketplacePaymentsEnabled() && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 leading-relaxed">
-          {MISSION_COMMISSION_LABELS.matchingOnlyBanner.fr}
-        </div>
-      )}
+      <div
+        className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
+          isMissionMarketplacePaymentsEnabled()
+            ? 'border border-emerald-500/40 bg-emerald-950/70 text-emerald-100'
+            : 'border border-amber-500/40 bg-amber-950/80 text-amber-100'
+        }`}
+      >
+        {formatMissionMarketplaceBanner('fr')}
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h4 className="text-lg font-semibold text-gray-900">Offres d&apos;emploi & vacations</h4>
@@ -614,11 +653,110 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
             </div>
 
             {trackingMission.status === MissionStatus.FILLED && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
-                Offre pourvue
-                {applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)
-                  ? ` — ${applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)!.firstName} ${applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)!.lastName}`
-                  : ''}
+              <div className="space-y-2">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+                  Offre pourvue
+                  {applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)
+                    ? ` — ${applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)!.firstName} ${applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED)!.lastName}`
+                    : ''}
+                </div>
+                {isMissionMarketplacePaymentsEnabled() && canEdit && !isDemoMission(trackingMission.id) && (
+                  <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-3 text-sm text-indigo-950 space-y-2">
+                    {!isMissionConnectPaymentEligible(trackingMission.compensationType) ? (
+                      <p>{MISSION_COMMISSION_LABELS.employmentExcluded.fr}</p>
+                    ) : trackingMission.payment?.status === 'paid' ? (
+                      <div className="space-y-2">
+                        <p className="font-medium text-emerald-800">
+                          {MISSION_COMMISSION_LABELS.paymentPaid.fr}
+                          {trackingMission.payment.paidAt
+                            ? ` · ${new Date(trackingMission.payment.paidAt).toLocaleString('fr-FR')}`
+                            : ''}
+                          {trackingMission.payment.teamInvoiceNumber
+                            ? ` · ${trackingMission.payment.teamInvoiceNumber}`
+                            : ''}
+                        </p>
+                        <p className="text-xs text-indigo-800/80">
+                          {MISSION_COMMISSION_LABELS.invoiceChainHint.fr}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <ActionButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const acceptedApp = applications.find(
+                                (a) => a.status === MissionApplicationStatus.ACCEPTED,
+                              );
+                              exportTeamMissionInvoicePdf({
+                                mission: trackingMission,
+                                payment: trackingMission.payment!,
+                                teamName,
+                                accepted: acceptedApp,
+                                isProTeam,
+                              });
+                            }}
+                          >
+                            {MISSION_COMMISSION_LABELS.downloadTeamInvoice.fr}
+                          </ActionButton>
+                          {applications.find((a) => a.status === MissionApplicationStatus.ACCEPTED) && (
+                            <ActionButton
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                const acceptedApp = applications.find(
+                                  (a) => a.status === MissionApplicationStatus.ACCEPTED,
+                                )!;
+                                exportVacataireDraftMissionInvoicePdf({
+                                  mission: trackingMission,
+                                  payment: trackingMission.payment!,
+                                  teamName,
+                                  accepted: acceptedApp,
+                                  isProTeam,
+                                });
+                              }}
+                            >
+                              {MISSION_COMMISSION_LABELS.downloadVacataireDraft.fr}
+                            </ActionButton>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {(() => {
+                          const gmv = estimateMissionGmvEur(trackingMission);
+                          const fee = computeMissionCommissionEur(gmv, { isProTeam });
+                          const rate = isProTeam
+                            ? MISSION_COMMISSION.proTakeRatePercent
+                            : MISSION_COMMISSION.standardTakeRatePercent;
+                          return (
+                            <p>
+                              {gmv > 0
+                                ? `GMV estimé ${gmv.toFixed(2)} € · commission LogiCycle ${fee.toFixed(2)} € (${rate} %).`
+                                : 'Renseignez un tarif journalier pour estimer le paiement.'}
+                            </p>
+                          );
+                        })()}
+                        <p className="text-xs text-indigo-800/80">
+                          {MISSION_COMMISSION_LABELS.invoiceChainHint.fr}
+                        </p>
+                        {trackingMission.payment?.status === 'checkout_pending' && (
+                          <p className="text-indigo-700">{MISSION_COMMISSION_LABELS.paymentPending.fr}</p>
+                        )}
+                        <ActionButton
+                          onClick={() => handlePayMission(trackingMission)}
+                          size="sm"
+                          disabled={
+                            payBusyMissionId === trackingMission.id ||
+                            estimateMissionGmvEur(trackingMission) <= 0
+                          }
+                        >
+                          {payBusyMissionId === trackingMission.id
+                            ? '…'
+                            : MISSION_COMMISSION_LABELS.payMissionCta.fr}
+                        </ActionButton>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

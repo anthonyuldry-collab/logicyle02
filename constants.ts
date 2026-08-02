@@ -382,11 +382,14 @@ export const INDEPENDENT_STAFF_ONLY_SECTIONS: AppSection[] = [
 export const INDEPENDENT_SHARED_PLANNING_SECTIONS: AppSection[] = ['myCalendar'];
 
 export const LEGAL_VERSIONS = {
-  TERMS_VERSION: '2026-07.1',
-  PRIVACY_POLICY_VERSION: '2026-07.1',
-  NDA_VERSION: '2026-07.1',
+  /** Aligné sur legal/meta.ts LEGAL_PACK_VERSION — preuve consentement scouting / signup */
+  TERMS_VERSION: '2026-08.1',
+  PRIVACY_POLICY_VERSION: '2026-08.1',
+  NDA_VERSION: '2026-08.1',
   /** Pack public CGU·CGV·privacy·DPA·mentions·cookies — aligné legal/meta.ts */
-  PACK_VERSION: '2026-07.1',
+  PACK_VERSION: '2026-08.1',
+  /** Version du texte d’information scouting (art. 7 — preuve snapshot) */
+  SCOUTING_CONSENT_NOTICE_VERSION: '2026-08.1-scouting',
 } as const;
 
 /** Unique compte plateforme avec accès Super Admin (maintenance globale). */
@@ -504,6 +507,9 @@ export const getInitialGlobalState = (): GlobalState => ({
     { id: TeamRole.EDITOR, name: 'Editeur', isDeletable: false },
     { id: TeamRole.MEMBER, name: 'Membre', isDeletable: false },
     { id: TeamRole.VIEWER, name: 'Athlète', isDeletable: false },
+    { id: 'comptable', name: 'Comptable', isDeletable: true },
+    { id: 'tresorier', name: 'Trésorier', isDeletable: true },
+    { id: 'secretaire', name: 'Secrétaire', isDeletable: true },
   ],
   scoutingRequests: [],
   organizations: [],
@@ -720,16 +726,29 @@ export const TRANSPORT_STOP_TYPE_COLORS: Record<TransportStopType, string> = {
 
 export const STAFF_ROLE_COLORS: Record<StaffRole, string> = {
   [StaffRole.MANAGER]: 'bg-red-200 text-red-800',
+  [StaffRole.PRESIDENT]: 'bg-red-300 text-red-900',
+  [StaffRole.VICE_PRESIDENT]: 'bg-red-100 text-red-800',
+  [StaffRole.SECRETAIRE]: 'bg-blue-100 text-blue-900',
+  [StaffRole.TRESORIER]: 'bg-emerald-200 text-emerald-900',
   [StaffRole.DS]: 'bg-blue-200 text-blue-800',
   [StaffRole.ASSISTANT]: 'bg-green-200 text-green-800',
+  [StaffRole.SOIGNEUR]: 'bg-lime-200 text-lime-900',
   [StaffRole.MECANO]: 'bg-yellow-200 text-yellow-800',
+  [StaffRole.MATERIAL]: 'bg-amber-200 text-amber-900',
   [StaffRole.COMMUNICATION]: 'bg-purple-200 text-purple-800',
+  [StaffRole.PHOTO_VIDEO]: 'bg-fuchsia-200 text-fuchsia-900',
   [StaffRole.MEDECIN]: 'bg-pink-200 text-pink-800',
   [StaffRole.KINE]: 'bg-teal-200 text-teal-800',
+  [StaffRole.OSTEOPATHE]: 'bg-emerald-200 text-emerald-900',
+  [StaffRole.NUTRITIONNISTE]: 'bg-green-100 text-green-900',
   [StaffRole.RESP_PERF]: 'bg-indigo-200 text-indigo-800',
   [StaffRole.ENTRAINEUR]: 'bg-cyan-200 text-cyan-800',
   [StaffRole.DATA_ANALYST]: 'bg-gray-300 text-gray-800',
   [StaffRole.PREPA_PHYSIQUE]: 'bg-orange-200 text-orange-800',
+  [StaffRole.CHAUFFEUR]: 'bg-sky-200 text-sky-900',
+  [StaffRole.LOGISTICIEN]: 'bg-slate-200 text-slate-800',
+  [StaffRole.CUISINIER]: 'bg-rose-100 text-rose-900',
+  [StaffRole.HOSPITALITY]: 'bg-violet-100 text-violet-900',
   [StaffRole.AUTRE]: 'bg-gray-200 text-gray-700',
 };
 

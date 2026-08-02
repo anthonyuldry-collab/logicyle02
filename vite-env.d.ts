@@ -29,4 +29,6 @@ interface ImportMetaEnv {
   readonly VITE_APP_VERSION?: string
   /** true = skip Stripe checkout after signup (local testing only) */
   readonly VITE_SKIP_SIGNUP_PAYMENT?: string
+  /** true = active paiement marketplace missions (Stripe Connect TEST) */
+  readonly VITE_MISSION_PAYMENTS?: string
 }

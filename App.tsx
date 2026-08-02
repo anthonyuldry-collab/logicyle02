@@ -92,6 +92,7 @@ import {
   ProspectLevel,
   ScoutingDataScope,
 } from "./types";
+import { buildScoutingConsentProof } from "./utils/scoutingProspectUtils";
 
 // Firebase imports
 import {
@@ -697,8 +698,15 @@ const App: React.FC = () => {
       ) {
         setView("pending");
       } else if (isIndependentUser(activeUser)) {
-        const globalMissions = await firebaseService.getOpenMissionsGlobal();
-        teamData = { ...getInitialTeamState(), missions: globalMissions };
+        const [globalMissions, appliedMissions] = await Promise.all([
+          firebaseService.getOpenMissionsGlobal(),
+          firebaseService.getMyAppliedMissionsGlobal(activeUser.id),
+        ]);
+        const byId = new Map<string, Mission>();
+        for (const m of [...globalMissions, ...appliedMissions]) {
+          byId.set(m.id, m);
+        }
+        teamData = { ...getInitialTeamState(), missions: Array.from(byId.values()) };
         if (!isMountedRef.current) return;
         setView("app");
         const independentAccess = getIndependentSubscriptionAccess(activeUser);
@@ -2478,7 +2486,7 @@ const App: React.FC = () => {
   const onSaveSepaSettings = useCallback(async (settings: TeamSepaSettings) => {
     if (!appState.activeTeamId) return;
     try {
-      await firebaseService.saveTeamSettings(appState.activeTeamId, { sepaSettings: settings });
+      await firebaseService.saveSepaSettings(appState.activeTeamId, settings);
       setAppState((prev: AppState) => ({ ...prev, sepaSettings: settings }));
     } catch (error) {
       console.error('Erreur lors de la sauvegarde des paramètres SEPA:', error);
@@ -2914,6 +2922,72 @@ const App: React.FC = () => {
       throw error;
     }
   };
+
+  const handleRespondToScoutingRequest = useCallback(
+    async (
+      requestId: string,
+      response: "accepted" | "rejected",
+      grantedScopes?: ScoutingDataScope[],
+      options?: { teamName?: string; language?: "fr" | "en" },
+    ) => {
+      await firebaseService.respondToScoutingRequest(
+        requestId,
+        response,
+        grantedScopes,
+        options,
+      );
+      const proof =
+        response === "accepted" && grantedScopes?.length
+          ? buildScoutingConsentProof({
+              grantedScopes,
+              teamName: options?.teamName || "Équipe",
+              language: options?.language || "fr",
+            })
+          : null;
+      const now = new Date().toISOString();
+      setAppState((prev) => ({
+        ...prev,
+        scoutingRequests: (prev.scoutingRequests || []).map((r) =>
+          r.id === requestId
+            ? {
+                ...r,
+                status:
+                  response === "accepted"
+                    ? ScoutingRequestStatus.ACCEPTED
+                    : ScoutingRequestStatus.REJECTED,
+                responseDate: now,
+                ...(proof || {}),
+              }
+            : r,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const handleWithdrawScoutingConsent = useCallback(
+    async (requestId: string) => {
+      if (!currentUser) return;
+      await firebaseService.withdrawScoutingConsent(requestId, currentUser.id);
+      const now = new Date().toISOString();
+      setAppState((prev) => ({
+        ...prev,
+        scoutingRequests: (prev.scoutingRequests || []).map((r) =>
+          r.id === requestId
+            ? {
+                ...r,
+                status: ScoutingRequestStatus.WITHDRAWN,
+                grantedScopes: [],
+                consentWithdrawnAt: now,
+                consentWithdrawnBy: currentUser.id,
+                responseDate: now,
+              }
+            : r,
+        ),
+      }));
+    },
+    [currentUser],
+  );
 
   const onSaveIndependentRider = useCallback(
     async (rider: Rider) => {
@@ -3511,8 +3585,12 @@ const App: React.FC = () => {
 
     if (view === "app" && currentUser && (appState.activeTeamId || isIndependentUser(currentUser) || isSuperAdminUser(currentUser))) {
       const uiUser = displayUser ?? currentUser;
-      const userIsIndependent = isIndependentUser(uiUser);
       const userIsSuperAdmin = isSuperAdminUser(currentUser);
+      // En mode Super Admin complet, ne jamais forcer la nav « indépendant »
+      // (sinon l’espace plateforme disparaît si le doc user a isIndependentProfile).
+      const userIsIndependent =
+        isIndependentUser(uiUser) &&
+        !(userIsSuperAdmin && superAdminPreview.mode === 'full');
       const activeTeam = (appState.teams || []).find((t) => t.id === appState.activeTeamId);
       const isDemoTeamContext = isPresentationDemoTeam(activeTeam);
       const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
@@ -4494,6 +4572,7 @@ const App: React.FC = () => {
                       onSaveQuote={onSaveQuote}
                       onDeleteQuote={onDeleteQuote}
                       onConvertQuote={onConvertQuote}
+                      missions={appState.missions || []}
                     />
                   )}
                   {currentSection === "expenseReceipts" && currentUser && (
@@ -5220,24 +5299,8 @@ const App: React.FC = () => {
                       }
                       onManageBilling={handleBillingPortal}
                       onUpdateProfile={handleSaveIndependentProfile}
-                      onRespondToScoutingRequest={async (requestId, response, grantedScopes) => {
-                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
-                        setAppState((prev) => ({
-                          ...prev,
-                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
-                            r.id === requestId
-                              ? {
-                                  ...r,
-                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
-                                  responseDate: new Date().toISOString(),
-                                  ...(response === 'accepted' && grantedScopes?.length
-                                    ? { grantedScopes }
-                                    : {}),
-                                }
-                              : r
-                          ),
-                        }));
-                      }}
+                      onRespondToScoutingRequest={handleRespondToScoutingRequest}
+                      onWithdrawScoutingConsent={handleWithdrawScoutingConsent}
                       onGoToLobby={() => setView("no_team")}
                     />
                   )}
@@ -5278,24 +5341,8 @@ const App: React.FC = () => {
                         }
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
-                      onRespondToScoutingRequest={async (requestId: string, response: 'accepted' | 'rejected', grantedScopes) => {
-                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
-                        setAppState((prev) => ({
-                          ...prev,
-                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
-                            r.id === requestId
-                              ? {
-                                  ...r,
-                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
-                                  responseDate: new Date().toISOString(),
-                                  ...(response === 'accepted' && grantedScopes?.length
-                                    ? { grantedScopes }
-                                    : {}),
-                                }
-                              : r
-                          ),
-                        }));
-                      }}
+                      onRespondToScoutingRequest={handleRespondToScoutingRequest}
+                      onWithdrawScoutingConsent={handleWithdrawScoutingConsent}
                       onSaveIndependentProfile={userIsIndependent ? handleSaveIndependentProfile : undefined}
                       onUpdateVisibility={async (updates: { isSearchable?: boolean; openToMissions?: boolean; }) => {
                         try {
@@ -5542,24 +5589,8 @@ const App: React.FC = () => {
                         }
                       }}
                       scoutingRequests={appState.scoutingRequests || []}
-                      onRespondToScoutingRequest={async (requestId, response, grantedScopes) => {
-                        await firebaseService.respondToScoutingRequest(requestId, response, grantedScopes);
-                        setAppState((prev) => ({
-                          ...prev,
-                          scoutingRequests: (prev.scoutingRequests || []).map((r) =>
-                            r.id === requestId
-                              ? {
-                                  ...r,
-                                  status: response === 'accepted' ? ScoutingRequestStatus.ACCEPTED : ScoutingRequestStatus.REJECTED,
-                                  responseDate: new Date().toISOString(),
-                                  ...(response === 'accepted' && grantedScopes?.length
-                                    ? { grantedScopes }
-                                    : {}),
-                                }
-                              : r
-                          ),
-                        }));
-                      }}
+                      onRespondToScoutingRequest={handleRespondToScoutingRequest}
+                      onWithdrawScoutingConsent={handleWithdrawScoutingConsent}
                       onUpdateVisibility={async (updates) => {
                         await handleSaveIndependentProfile({
                           ...(updates.isSearchable !== undefined ? { isSearchable: updates.isSearchable } : {}),

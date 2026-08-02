@@ -44,6 +44,8 @@ interface StaffSearchTabProps {
   }) => void;
   /** Vacataires / offres fictives — Horizon Atlantique uniquement. */
   includeDemoExamples?: boolean;
+  /** Plan Pro / Performance → commission 10 % */
+  isProTeam?: boolean;
 }
 
 type VacataireResult = StaffMember & {
@@ -84,6 +86,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({
   canEditOffers = true,
   onIntegrateAcceptedStaff,
   includeDemoExamples = false,
+  isProTeam = false,
 }) => {
   const [hubTab, setHubTab] = useState<'search' | 'offers'>('search');
   const [searchLocation, setSearchLocation] = useState<'teamBase' | string>('teamBase');
@@ -330,6 +333,7 @@ const StaffSearchTab: React.FC<StaffSearchTabProps> = ({
             raceEvents={raceEvents}
             onIntegrateAcceptedStaff={onIntegrateAcceptedStaff}
             includeDemoExamples={includeDemoExamples}
+            isProTeam={isProTeam}
           />
         ) : (
           <p className="text-sm text-gray-500 py-8 text-center">

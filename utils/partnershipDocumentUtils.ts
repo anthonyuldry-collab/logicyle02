@@ -297,7 +297,9 @@ export function formatImageRightsClause(
 export function buildPartnershipConventionData(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
-  teamName: string
+  teamName: string,
+  /** IBAN depuis privateConfig/sepa (préféré à issuerIban public). */
+  bankIbanFallback?: string
 ): PartnershipConventionData {
   const partnerName =
     item.sponsorCompanyName || item.clientName || item.sponsorshipContactName || 'Partenaire';
@@ -305,11 +307,8 @@ export function buildPartnershipConventionData(
     ...getDefaultSponsorshipContractTerms(),
     ...item.sponsorshipContractTerms,
   };
-  const paymentTerms =
-    item.sponsorshipContractTerms?.customPaymentTerms?.trim() &&
-    item.sponsorshipContractTerms?.paymentSchedule === 'custom'
-      ? formatSponsorshipPaymentTerms(contractTerms, settings.issuerIban)
-      : formatSponsorshipPaymentTerms(contractTerms, settings.issuerIban);
+  const iban = bankIbanFallback || settings.issuerIban;
+  const paymentTerms = formatSponsorshipPaymentTerms(contractTerms, iban);
 
   return {
     conventionNumber: item.conventionNumber || 'BROUILLON',

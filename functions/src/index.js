@@ -37,6 +37,16 @@ function logStructured(level, message, fields = {}) {
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
+const {
+  completeMissionPayment,
+  markMissionPaymentFailed,
+  markMissionPaymentRefunded,
+} = require('./missionPaymentHandlers');
+const { assertLegalReadyForMissionPayments, getLogicycleLegalEntity } = require('./logicycleLegal');
+const {
+  buildVacataireInvoicePdfBuffer,
+} = require('./missionInvoicePdf');
+
 const TEAM_STATE_COLLECTIONS = [
   'riders', 'staff', 'vehicles', 'equipment', 'raceEvents', 'eventTransportLegs',
   'eventAccommodations', 'eventDocuments', 'eventRadioEquipments', 'eventRadioAssignments',
@@ -558,20 +568,27 @@ async function assertTeamManager(uid, teamId) {
   }
 }
 
-async function updateTeamSubscription(teamId, subscriptionPatch) {
+async function updateTeamSubscription(teamId, subscriptionPatch, options = {}) {
   const teamRef = db.collection('teams').doc(teamId);
   const updates = {};
   for (const [key, value] of Object.entries(subscriptionPatch)) {
     updates[`subscription.${key}`] = value;
   }
+  // Uniquement Checkout Live → entre dans le portefeuille Pilotage PDG.
+  if (options.markCommercialClient === true) {
+    updates.commercialClient = true;
+  }
   await teamRef.set(updates, { merge: true });
 }
 
-async function updateUserSubscription(userId, subscriptionPatch) {
+async function updateUserSubscription(userId, subscriptionPatch, options = {}) {
   const userRef = db.collection('users').doc(userId);
   const updates = {};
   for (const [key, value] of Object.entries(subscriptionPatch)) {
     updates[`subscription.${key}`] = value;
+  }
+  if (options.markCommercialClient === true) {
+    updates.commercialClient = true;
   }
   updates.updatedAt = new Date().toISOString();
   await userRef.set(updates, { merge: true });
@@ -633,6 +650,83 @@ function resolveAppOrigin(request) {
   const allowed = fromEnv.length ? fromEnv : defaults;
   if (raw && allowed.includes(raw)) return raw;
   return allowed[0] || 'https://logicycle.app';
+}
+
+function assertMissionPaymentsEnabled() {
+  if (process.env.MISSION_PAYMENTS_ENABLED !== 'true') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Paiements marketplace missions désactivés (MISSION_PAYMENTS_ENABLED).'
+    );
+  }
+}
+
+const MISSION_COMMISSION_STANDARD_PCT = 12;
+const MISSION_COMMISSION_PRO_PCT = 10;
+const MISSION_COMMISSION_MIN_EUR = 15;
+const MISSION_COMMISSION_MAX_EUR = 450;
+
+function isProMissionPlan(planId) {
+  const id = String(planId || '').toLowerCase();
+  return id === 'pro' || id === 'performance';
+}
+
+function missionDayCount(startDate, endDate) {
+  if (!startDate || !endDate) return 1;
+  const start = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 1;
+  return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function estimateMissionGmvEur(mission) {
+  const days = missionDayCount(mission.startDate, mission.endDate);
+  if (typeof mission.dailyRate === 'number' && mission.dailyRate > 0) {
+    return Math.round(mission.dailyRate * days * 100) / 100;
+  }
+  const raw = String(mission.compensation || '');
+  const match = raw.replace(/\s/g, '').match(/(\d+(?:[.,]\d+)?)/);
+  if (match) {
+    const n = Number(match[1].replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) {
+      if (/\/\s*j/i.test(raw) || /jour/i.test(raw)) {
+        return Math.round(n * days * 100) / 100;
+      }
+      return Math.round(n * 100) / 100;
+    }
+  }
+  return 0;
+}
+
+function computeMissionCommissionEur(gmvEur, isProTeam) {
+  if (!(gmvEur > 0)) return 0;
+  const rate = isProTeam ? MISSION_COMMISSION_PRO_PCT : MISSION_COMMISSION_STANDARD_PCT;
+  const raw = gmvEur * (rate / 100);
+  return Math.min(
+    MISSION_COMMISSION_MAX_EUR,
+    Math.max(MISSION_COMMISSION_MIN_EUR, Math.round(raw * 100) / 100)
+  );
+}
+
+function eurToCents(amountEur) {
+  return Math.round(amountEur * 100);
+}
+
+async function getRecipientTransfersActive(stripeClient, accountId) {
+  try {
+    const account = await stripeClient.v2.core.accounts.retrieve(accountId, {
+      include: ['configuration.recipient'],
+    });
+    const status =
+      account?.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
+    return status === 'active';
+  } catch (err) {
+    logStructured('WARNING', 'connect_account_retrieve_failed', {
+      accountId,
+      error: String(err && err.message || err),
+    });
+    return false;
+  }
 }
 
 exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: '256MiB' }, async (request) => {
@@ -795,7 +889,448 @@ exports.createStripePortal = onCall({ secrets: SECRET_STRIPE, memory: '256MiB' }
   return { url: portal.url };
 });
 
-exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory: '256MiB' }, async (req, res) => {
+/** Stripe Connect — Accounts v2 recipient (vacataire marketplace missions). */
+exports.createMissionConnectAccount = onCall(
+  { secrets: SECRET_STRIPE_BILLING, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentification requise.');
+    }
+    assertMissionPaymentsEnabled();
+    const stripeClient = getStripe();
+    if (!stripeClient) {
+      throw new HttpsError('failed-precondition', 'Stripe non configuré.');
+    }
+
+    const userData = await assertIndependentUser(request.auth.uid);
+    const userRef = db.collection('users').doc(request.auth.uid);
+
+    if (userData.stripeConnectAccountId) {
+      const payoutsEnabled = await getRecipientTransfersActive(
+        stripeClient,
+        userData.stripeConnectAccountId
+      );
+      if (payoutsEnabled !== Boolean(userData.stripeConnectPayoutsEnabled)) {
+        await userRef.set(
+          { stripeConnectPayoutsEnabled: payoutsEnabled, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      }
+      return {
+        accountId: userData.stripeConnectAccountId,
+        payoutsEnabled,
+      };
+    }
+
+    const displayName =
+      `${userData.firstName || ''} ${userData.lastName || ''}`.trim() ||
+      userData.email ||
+      'Vacataire LogiCycle';
+
+    let account;
+    try {
+      account = await stripeClient.v2.core.accounts.create({
+        contact_email: userData.email || undefined,
+        display_name: displayName,
+        identity: {
+          country: 'fr',
+          entity_type: 'individual',
+        },
+        configuration: {
+          recipient: {
+            capabilities: {
+              stripe_balance: {
+                stripe_transfers: { requested: true },
+              },
+            },
+          },
+        },
+        defaults: {
+          responsibilities: {
+            fees_collector: 'application',
+            losses_collector: 'application',
+          },
+        },
+        dashboard: 'express',
+        metadata: {
+          firebaseUid: request.auth.uid,
+          kind: 'mission_vacataire',
+        },
+        include: ['configuration.recipient', 'requirements'],
+      });
+    } catch (err) {
+      logStructured('ERROR', 'connect_account_create_failed', {
+        uid: request.auth.uid,
+        error: String(err && err.message || err),
+      });
+      throw new HttpsError(
+        'internal',
+        `Stripe Connect: ${err && err.message ? err.message : 'échec création compte'}`
+      );
+    }
+
+    await userRef.set(
+      {
+        stripeConnectAccountId: account.id,
+        stripeConnectPayoutsEnabled: false,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    return { accountId: account.id, payoutsEnabled: false };
+  }
+);
+
+exports.createMissionConnectAccountLink = onCall(
+  { secrets: SECRET_STRIPE_BILLING, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentification requise.');
+    }
+    assertMissionPaymentsEnabled();
+    const stripeClient = getStripe();
+    if (!stripeClient) {
+      throw new HttpsError('failed-precondition', 'Stripe non configuré.');
+    }
+
+    const userData = await assertIndependentUser(request.auth.uid);
+    let accountId = userData.stripeConnectAccountId;
+    if (!accountId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Compte Connect manquant. Appelez d’abord createMissionConnectAccount.'
+      );
+    }
+
+    const origin = resolveAppOrigin(request);
+    try {
+      const accountLink = await stripeClient.v2.core.accountLinks.create({
+        account: accountId,
+        use_case: {
+          type: 'account_onboarding',
+          account_onboarding: {
+            configurations: ['recipient'],
+            refresh_url: `${origin}/?connect=refresh`,
+            return_url: `${origin}/?connect=return`,
+          },
+        },
+      });
+      return { url: accountLink.url, accountId };
+    } catch (err) {
+      logStructured('ERROR', 'connect_account_link_failed', {
+        uid: request.auth.uid,
+        accountId,
+        error: String(err && err.message || err),
+      });
+      throw new HttpsError(
+        'internal',
+        `Stripe Connect: ${err && err.message ? err.message : 'échec Account Link'}`
+      );
+    }
+  }
+);
+
+/** Checkout destination charge — équipe paie vacataire + commission LogiCycle. */
+exports.createMissionPaymentCheckout = onCall(
+  { secrets: SECRET_STRIPE_BILLING, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentification requise.');
+    }
+    assertMissionPaymentsEnabled();
+    const stripeClient = getStripe();
+    if (!stripeClient) {
+      throw new HttpsError('failed-precondition', 'Stripe non configuré.');
+    }
+
+    const key = process.env.STRIPE_SECRET_KEY || '';
+    const isLiveKey = key.startsWith('sk_live');
+    try {
+      assertLegalReadyForMissionPayments(isLiveKey);
+    } catch (err) {
+      if (err && err.code === 'legal_entity_incomplete') {
+        throw new HttpsError('failed-precondition', err.message);
+      }
+      throw err;
+    }
+
+    const { teamId, missionId } = request.data || {};
+    if (!teamId || !missionId) {
+      throw new HttpsError('invalid-argument', 'teamId et missionId requis.');
+    }
+    await assertTeamManager(request.auth.uid, teamId);
+
+    const missionRef = db.collection('teams').doc(teamId).collection('missions').doc(missionId);
+    const missionSnap = await missionRef.get();
+    if (!missionSnap.exists) {
+      throw new HttpsError('not-found', 'Mission introuvable.');
+    }
+    const mission = { id: missionSnap.id, ...missionSnap.data() };
+    if (String(mission.status) !== 'Pourvu') {
+      throw new HttpsError('failed-precondition', 'La mission doit être pourvue avant paiement.');
+    }
+    if (mission.payment?.status === 'paid') {
+      throw new HttpsError('failed-precondition', 'Cette mission est déjà payée.');
+    }
+
+    // Régime B (emploi) exclu — Aligné docs/MARKETPLACE_MISSIONS_FISCAL_SOCIAL.md
+    const compensationType = String(mission.compensationType || '');
+    const connectEligible =
+      compensationType === 'Vacataire (Facture)' ||
+      compensationType === 'Montant Fixe';
+    if (!connectEligible) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Paiement Connect réservé aux missions en prestation indépendante (Vacataire / Montant fixe). CDD et salariat : contrat + paie hors Connect.'
+      );
+    }
+
+    const applications = Array.isArray(mission.applications) ? mission.applications : [];
+    const accepted = applications.find((a) => String(a.status) === 'Accepté(e)');
+    if (!accepted?.userId) {
+      throw new HttpsError('failed-precondition', 'Aucun candidat accepté sur cette mission.');
+    }
+
+    const vacataireSnap = await db.collection('users').doc(accepted.userId).get();
+    const vacataire = vacataireSnap.data() || {};
+    const connectedAccountId = vacataire.stripeConnectAccountId;
+    if (!connectedAccountId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Le vacataire n’a pas encore activé Stripe Connect.'
+      );
+    }
+
+    const transfersActive = await getRecipientTransfersActive(stripeClient, connectedAccountId);
+    await db.collection('users').doc(accepted.userId).set(
+      {
+        stripeConnectPayoutsEnabled: transfersActive,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    if (!transfersActive) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Le compte Stripe du vacataire n’est pas prêt (onboarding incomplet).'
+      );
+    }
+
+    const teamSnap = await db.collection('teams').doc(teamId).get();
+    const teamData = teamSnap.data() || {};
+    const isProTeam = isProMissionPlan(teamData.subscription?.planId);
+    const gmvEur = estimateMissionGmvEur(mission);
+    if (!(gmvEur > 0)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Montant mission invalide (renseignez un tarif journalier ou un montant).'
+      );
+    }
+    const commissionEur = computeMissionCommissionEur(gmvEur, isProTeam);
+    const gmvCents = eurToCents(gmvEur);
+    const commissionCents = eurToCents(commissionEur);
+    if (commissionCents >= gmvCents) {
+      throw new HttpsError('failed-precondition', 'Commission incohérente vs GMV.');
+    }
+
+    const origin = resolveAppOrigin(request);
+    const vacataireName =
+      `${accepted.firstName || ''} ${accepted.lastName || ''}`.trim() || 'Vacataire';
+
+    let session;
+    try {
+      session = await stripeClient.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'eur',
+              unit_amount: gmvCents,
+              product_data: {
+                name: `Mission : ${mission.title || missionId}`,
+                description: `Règlement vacataire ${vacataireName} · commission LogiCycle ${commissionEur} €`,
+              },
+            },
+          },
+        ],
+        success_url: `${origin}/?missionPayment=success&missionId=${encodeURIComponent(missionId)}`,
+        cancel_url: `${origin}/?missionPayment=cancel&missionId=${encodeURIComponent(missionId)}`,
+        metadata: {
+          kind: 'mission_payment',
+          teamId,
+          missionId,
+          vacataireUserId: accepted.userId,
+          connectedAccountId,
+          gmvCents: String(gmvCents),
+          commissionCents: String(commissionCents),
+        },
+        payment_intent_data: {
+          application_fee_amount: commissionCents,
+          transfer_data: {
+            destination: connectedAccountId,
+          },
+          metadata: {
+            kind: 'mission_payment',
+            teamId,
+            missionId,
+            vacataireUserId: accepted.userId,
+          },
+        },
+      });
+    } catch (err) {
+      logStructured('ERROR', 'mission_checkout_create_failed', {
+        teamId,
+        missionId,
+        error: String(err && err.message || err),
+      });
+      throw new HttpsError(
+        'internal',
+        `Stripe: ${err && err.message ? err.message : 'échec checkout mission'}`
+      );
+    }
+
+    await missionRef.set(
+      {
+        payment: {
+          status: 'checkout_pending',
+          gmvCents,
+          commissionCents,
+          checkoutSessionId: session.id,
+          connectedAccountId,
+        },
+      },
+      { merge: true }
+    );
+
+    return {
+      url: session.url,
+      sessionId: session.id,
+      gmvEur,
+      commissionEur,
+    };
+  }
+);
+
+/** Vacataire : finalise le modèle → facture émise (n° définitif + archive). */
+exports.finalizeVacataireMissionInvoice = onCall(
+  { memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentification requise.');
+    }
+    const { teamId, missionId } = request.data || {};
+    if (!teamId || !missionId) {
+      throw new HttpsError('invalid-argument', 'teamId et missionId requis.');
+    }
+
+    const missionRef = db.collection('teams').doc(teamId).collection('missions').doc(missionId);
+    const missionSnap = await missionRef.get();
+    if (!missionSnap.exists) {
+      throw new HttpsError('not-found', 'Mission introuvable.');
+    }
+    const mission = missionSnap.data() || {};
+    const payment = mission.payment || {};
+    if (payment.status !== 'paid' && payment.status !== 'refunded') {
+      throw new HttpsError('failed-precondition', 'La mission doit être payée.');
+    }
+
+    const applications = Array.isArray(mission.applications) ? mission.applications : [];
+    const accepted = applications.find((a) => String(a.status) === 'Accepté(e)');
+    if (!accepted || accepted.userId !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'Réservé au vacataire accepté.');
+    }
+
+    if (payment.vacataireInvoiceStatus === 'issued' && payment.vacataireInvoiceNumber) {
+      return {
+        invoiceNumber: payment.vacataireInvoiceNumber,
+        alreadyIssued: true,
+      };
+    }
+
+    const userSnap = await db.collection('users').doc(request.auth.uid).get();
+    const business = userSnap.data()?.business || payment.vacataireBusinessSnapshot || null;
+    if (!business?.siret || String(business.siret).includes('À COMPLÉTER')) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Complétez votre SIRET dans Espace indépendant → Ma société avant d’émettre.'
+      );
+    }
+
+    const paidAt = payment.paidAt || new Date().toISOString();
+    const ymd = paidAt.slice(0, 10).replace(/-/g, '');
+    const short = String(missionId).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || 'XXXXXX';
+    const vacataireInvoiceNumber = `V-${ymd}-${short}`;
+    const issuedAt = new Date().toISOString();
+    const archivePath = `teams/${teamId}/missionInvoices/${vacataireInvoiceNumber}.json`;
+    const pdfPath = `teams/${teamId}/missionInvoices/${vacataireInvoiceNumber}.pdf`;
+
+    const gmvEur = Math.round((Number(payment.gmvCents) || 0)) / 100;
+    const commissionEur = Math.round((Number(payment.commissionCents) || 0)) / 100;
+    const netEur = Math.max(0, Math.round((gmvEur - commissionEur) * 100) / 100);
+
+    const archivePayload = {
+      kind: 'vacataire_mission_invoice_issued',
+      invoiceNumber: vacataireInvoiceNumber,
+      draftNumber: payment.vacataireInvoiceDraftNumber,
+      issuedAt,
+      issueDate: issuedAt.slice(0, 10),
+      netEur,
+      commissionEur,
+      teamId,
+      missionId,
+      missionTitle: mission.title,
+      issuer: business,
+      acceptedName: `${accepted.firstName || ''} ${accepted.lastName || ''}`.trim(),
+      paymentIntentId: payment.paymentIntentId || null,
+    };
+
+    await bucket.file(archivePath).save(JSON.stringify(archivePayload, null, 2), {
+      contentType: 'application/json; charset=utf-8',
+    });
+    await bucket.file(pdfPath).save(buildVacataireInvoicePdfBuffer(archivePayload), {
+      contentType: 'application/pdf',
+    });
+
+    await missionRef.set(
+      {
+        payment: {
+          ...payment,
+          vacataireInvoiceStatus: 'issued',
+          vacataireInvoiceNumber,
+          vacataireInvoiceIssuedAt: issuedAt,
+          vacataireBusinessSnapshot: business,
+          vacataireInvoiceArchivePath: archivePath,
+          vacataireInvoicePdfPath: pdfPath,
+        },
+      },
+      { merge: true }
+    );
+
+    await db.collection('userNotifications').add({
+      userId: request.auth.uid,
+      title: 'Facture vacataire émise',
+      body: `Facture ${vacataireInvoiceNumber} enregistrée.`,
+      teamId,
+      eventId: missionId,
+      type: 'MISSION_INVOICE',
+      createdAt: issuedAt,
+      read: false,
+    });
+
+    logStructured('INFO', 'vacataire_invoice_issued', {
+      teamId,
+      missionId,
+      vacataireInvoiceNumber,
+      uid: request.auth.uid,
+    });
+
+    return { invoiceNumber: vacataireInvoiceNumber, alreadyIssued: false };
+  }
+);
+
+exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory: '512MiB' }, async (req, res) => {
   const stripeClient = getStripe();
   if (!stripeClient) {
     res.status(503).send('Stripe non configuré');
@@ -823,10 +1358,17 @@ exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory:
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
+
+        if (session.metadata?.kind === 'mission_payment') {
+          await completeMissionPayment(db, bucket, logStructured, session);
+          break;
+        }
+
         const teamId = session.metadata?.teamId;
         const userId = session.metadata?.userId;
         const planId = session.metadata?.planId;
         const referrerUserId = session.metadata?.referrerUserId;
+        const markCommercial = event.livemode === true;
         const subscriptionPatch = {
           planId,
           status: 'active',
@@ -839,7 +1381,9 @@ exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory:
         };
 
         if (userId && session.metadata?.scope === 'user') {
-          await updateUserSubscription(userId, subscriptionPatch);
+          await updateUserSubscription(userId, subscriptionPatch, {
+            markCommercialClient: markCommercial,
+          });
           if (referrerUserId) {
             await creditReferrer(referrerUserId);
             await db.collection('referrals').add({
@@ -851,7 +1395,9 @@ exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory:
             });
           }
         } else if (teamId && planId) {
-          await updateTeamSubscription(teamId, subscriptionPatch);
+          await updateTeamSubscription(teamId, subscriptionPatch, {
+            markCommercialClient: markCommercial,
+          });
           if (referrerUserId) {
             await creditReferrer(referrerUserId);
             await db.collection('referrals').add({
@@ -896,6 +1442,44 @@ exports.stripeWebhook = onRequest({ cors: false, secrets: SECRET_STRIPE, memory:
           } else {
             await updateUserSubscription(owner.id, { status: 'canceled' });
           }
+        }
+        break;
+      }
+      case 'checkout.session.expired': {
+        const session = event.data.object;
+        if (session.metadata?.kind === 'mission_payment') {
+          await markMissionPaymentFailed(db, logStructured, {
+            sessionId: session.id,
+            paymentIntentId:
+              typeof session.payment_intent === 'string'
+                ? session.payment_intent
+                : session.payment_intent?.id,
+            reason: 'checkout_expired',
+            status: 'expired',
+          });
+        }
+        break;
+      }
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object;
+        if (pi.metadata?.kind === 'mission_payment') {
+          await markMissionPaymentFailed(db, logStructured, {
+            paymentIntentId: pi.id,
+            sessionId: null,
+            reason: pi.last_payment_error?.message || 'payment_failed',
+            status: 'failed',
+          });
+        }
+        break;
+      }
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        const paymentIntentId =
+          typeof charge.payment_intent === 'string'
+            ? charge.payment_intent
+            : charge.payment_intent?.id;
+        if (paymentIntentId) {
+          await markMissionPaymentRefunded(db, bucket, logStructured, paymentIntentId);
         }
         break;
       }

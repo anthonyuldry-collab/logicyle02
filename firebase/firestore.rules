@@ -47,6 +47,30 @@ service cloud.firestore {
       );
     }
 
+    /** Comptable / trésorier (ou admin) — lecture pack finance / missions payées. */
+    function isTeamFinanceReader(teamId) {
+      return isTeamMember(teamId) && (
+        userData().permissionRole == 'Administrateur' ||
+        userData().permissionRole == 'comptable' ||
+        userData().permissionRole == 'tresorier' ||
+        userData().userRole == 'Manager'
+      );
+    }
+
+    function isFinanceSubcollection(subcollection) {
+      return subcollection in [
+        'incomeItems',
+        'sepaBatches',
+        'bankTransactions',
+        'quotes',
+        'clientRecords',
+        'supplierInvoices',
+        'missions',
+        'eventBudgetItems',
+        'expenseReceipts'
+      ];
+    }
+
     function subscriptionUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
     }
@@ -63,7 +87,10 @@ service cloud.firestore {
         'isActive',
         'isIndependentProfile',
         'signupMode',
-        'isSuperAdmin'
+        'isSuperAdmin',
+        'stripeConnectAccountId',
+        'stripeConnectPayoutsEnabled',
+        'commercialClient'
       ]);
     }
 
@@ -102,7 +129,10 @@ service cloud.firestore {
           'customPermissions',
           'isActive',
           'isIndependentProfile',
-          'signupMode'
+          'signupMode',
+          'stripeConnectAccountId',
+          'stripeConnectPayoutsEnabled',
+          'commercialClient'
         ]);
     }
 
@@ -231,6 +261,12 @@ service cloud.firestore {
         || !('gpsWebhookKey' in request.resource.data);
     }
 
+    /** Interdit d’écrire sepaSettings sur le doc équipe (privé → privateConfig/sepa). */
+    function teamSepaSecretOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['sepaSettings'])
+        || !('sepaSettings' in request.resource.data);
+    }
+
     match /teams/{teamId} {
       allow read: if canReadTeam(teamId)
         || (isSignedIn() && isOpenForApplications());
@@ -238,17 +274,22 @@ service cloud.firestore {
       allow create: if false;
       allow update: if (isTeamManager(teamId) || isSuperAdmin())
         && subscriptionUnchanged()
-        && teamGpsSecretOk();
+        && teamGpsSecretOk()
+        && teamSepaSecretOk();
       allow delete: if isTeamManager(teamId) || isSuperAdmin();
 
-      // Secret GPS / config privée — managers uniquement.
+      // Secret GPS / SEPA — managers ; SEPA aussi lisible par finance (comptable / trésorier).
       match /privateConfig/{docId} {
-        allow read, write: if isTeamManager(teamId) || isSuperAdmin();
+        allow read: if isTeamManager(teamId) || isSuperAdmin()
+          || (docId == 'sepa' && isTeamFinanceReader(teamId));
+        allow write: if isTeamManager(teamId) || isSuperAdmin();
       }
 
       match /{subcollection}/{docId} {
-        // Managers : lecture complète. Membres/coureurs : blacklist financière/RH + scope riders.
+        // Managers : lecture complète. Finance (comptable/trésorier) : pack finance.
+        // Membres/coureurs : blacklist financière/RH + scope riders.
         allow read: if isTeamManager(teamId)
+          || (isTeamFinanceReader(teamId) && isFinanceSubcollection(subcollection))
           || (
             isTeamMember(teamId)
             && canCoureurReadCollection(subcollection)
@@ -267,6 +308,38 @@ service cloud.firestore {
           || (subcollection == 'expenseReceipts'
               && isTeamMember(teamId)
               && request.resource.data.submittedByUserId == request.auth.uid);
+      }
+
+      /**
+       * Marketplace missions :
+       * - lecture ouverte (status Ouvert) pour candidats connectés
+       * - candidats (applicants) lisent leur mission même après pourvoi (factures)
+       * - finance + managers : lecture complète
+       * - candidature : update limité (self) sur mission Ouverte
+       */
+      match /missions/{missionId} {
+        allow read: if isTeamManager(teamId)
+          || (isTeamFinanceReader(teamId))
+          || isSuperAdmin()
+          || (isSignedIn() && resource.data.status == 'Ouvert')
+          || (
+            isSignedIn()
+            && 'applicants' in resource.data
+            && request.auth.uid in resource.data.applicants
+          );
+
+        allow create, delete: if isTeamManager(teamId) || isSuperAdmin();
+
+        allow update: if isTeamManager(teamId)
+          || isSuperAdmin()
+          || (
+            isSignedIn()
+            && resource.data.status == 'Ouvert'
+            && request.resource.data.status == 'Ouvert'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['applicants', 'applications', 'updatedAt'])
+            && request.auth.uid in request.resource.data.applicants
+          );
       }
 
       match /expenseReceipts/{receiptId} {
@@ -372,7 +445,22 @@ service cloud.firestore {
         resource.data.targetId == request.auth.uid ||
         isSuperAdmin()
       );
-      allow create: if false;
+      // Journal client limité : export perso + événements consentement scouting (preuve art. 7).
+      // Purges : cloud functions uniquement.
+      allow create: if isSignedIn()
+        && request.resource.data.performedBy == request.auth.uid
+        && request.resource.data.method == 'client'
+        && request.resource.data.action in [
+          'user_export',
+          'scouting_consent_accepted',
+          'scouting_consent_rejected',
+          'scouting_consent_withdrawn',
+          'mission_invoice_downloaded',
+          'mission_invoice_issued'
+        ]
+        && request.resource.data.keys().hasAll([
+          'action', 'targetId', 'performedBy', 'method', 'performedAt'
+        ]);
       allow update, delete: if false;
     }
 
@@ -384,7 +472,7 @@ service cloud.firestore {
       );
       allow create: if isSignedIn()
         && isTeamManager(request.resource.data.requesterTeamId);
-      // Athlète : uniquement statut / réponse / scopes accordés.
+      // Athlète : réponse (scopes + preuve consent) ou retrait du consentement.
       allow update: if isSignedIn() && (
         isTeamManager(resource.data.requesterTeamId)
         || isSuperAdmin()
@@ -393,7 +481,21 @@ service cloud.firestore {
           && request.resource.data.athleteId == resource.data.athleteId
           && request.resource.data.requesterTeamId == resource.data.requesterTeamId
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['status', 'responseDate', 'grantedScopes', 'updatedAt'])
+              .hasOnly([
+                'status',
+                'responseDate',
+                'grantedScopes',
+                'updatedAt',
+                'consentRecordedAt',
+                'consentPrivacyVersion',
+                'consentNoticeVersion',
+                'consentNoticeSnapshot',
+                'consentLocale',
+                'consentMethod',
+                'consentNoticeAcknowledged',
+                'consentWithdrawnAt',
+                'consentWithdrawnBy',
+              ])
         )
       );
       allow delete: if isTeamManager(resource.data.requesterTeamId) || isSuperAdmin();

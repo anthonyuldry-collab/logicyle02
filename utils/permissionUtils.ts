@@ -177,6 +177,28 @@ export const DEFAULT_ROLE_PERMISSIONS: AppPermissions = {
     partnerPortal: ['view', 'edit'],
     userSettings: ['view', 'edit'],
   },
+  comptable: {
+    financial: ['view', 'edit'],
+    expenseReceipts: ['view'],
+    myDashboard: ['view'],
+    userSettings: ['view', 'edit'],
+  },
+  tresorier: {
+    financial: ['view', 'edit'],
+    expenseReceipts: ['view', 'edit'],
+    myDashboard: ['view'],
+    userSettings: ['view', 'edit'],
+  },
+  secretaire: {
+    events: ['view', 'edit'],
+    staff: ['view', 'edit'],
+    roster: ['view', 'edit'],
+    checklist: ['view', 'edit'],
+    partnerPortal: ['view', 'edit'],
+    expenseReceipts: ['view', 'edit'],
+    myDashboard: ['view'],
+    userSettings: ['view', 'edit'],
+  },
 };
 
 function fullAccess(excludeMySpace = true): Partial<Record<AppSection, PermissionLevel[]>> {

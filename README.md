@@ -43,15 +43,29 @@ Voir `.env.example`. Points sensibles :
 |----------|------|
 | `VITE_FIREBASE_*` | Client Firebase (obligatoire) |
 | `VITE_SKIP_SIGNUP_PAYMENT` | **DEV only** — ignoré en build prod |
+| `VITE_MISSION_PAYMENTS` | **TEST Connect** — active paiement marketplace missions |
 | `VITE_SENTRY_DSN` | Sentry (prod uniquement) |
 | `VITE_APP_VERSION` | Release Sentry / cache-bust |
 | Secrets Functions | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, Price IDs |
 
 ## Marketplace missions
 
-Mode actuel : **matching only** (`MISSION_MARKETPLACE_MODE.paymentsEnabled = false`).
+Mode soft-launch : **matching only** (paiement in-app off tant que `VITE_MISSION_PAYMENTS` n’est pas `true`).
 
-Publier / postuler / accepter fonctionne. Paiement & commission Stripe Connect : **non activés** (textes légaux alignés).
+Publier / postuler / accepter fonctionne.  
+Stripe Connect TEST (destination + commission 12 %) : doc [`docs/STRIPE_CONNECT_MISSIONS_TEST.md`](docs/STRIPE_CONNECT_MISSIONS_TEST.md) · cadre fiscal/social [`docs/MARKETPLACE_MISSIONS_FISCAL_SOCIAL.md`](docs/MARKETPLACE_MISSIONS_FISCAL_SOCIAL.md) · `./scripts/stripe-connect-missions-checklist.sh`.
+
+Connect = **prestataires indépendants uniquement** (pas CDD / paie).
+
+| Variable | Rôle |
+|----------|------|
+| `VITE_MISSION_PAYMENTS` | Front — active UI paiement / onboarding Connect |
+| `MISSION_PAYMENTS_ENABLED` | Functions — autorise les callables Connect |
+
+## ERP lean (devis / facture / SEPA)
+
+Smoke + E2E P2 : `./scripts/erp-lean-smoke.sh` · `./scripts/erp-lean-e2e-continental.sh`  
+Doc [`docs/ERP_LEAN_SMOKE.md`](docs/ERP_LEAN_SMOKE.md) — `clientId` obligatoire, pain.008 bancable, SEPA en `privateConfig`.
 
 ## Déploiement
 

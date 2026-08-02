@@ -11,6 +11,7 @@ interface FinancialAccountingTabProps {
   budgetItems: EventBudgetItem[];
   supplierInvoices: SupplierInvoice[];
   sepaBatches: SepaBatch[];
+  missions?: import('../../types').Mission[];
   issuerSiret?: string;
   canExport: boolean;
 }
@@ -22,6 +23,7 @@ const FinancialAccountingTab: React.FC<FinancialAccountingTabProps> = ({
   budgetItems,
   supplierInvoices,
   sepaBatches,
+  missions = [],
   issuerSiret,
   canExport,
 }) => {
@@ -35,9 +37,10 @@ const FinancialAccountingTab: React.FC<FinancialAccountingTabProps> = ({
         budgetItems,
         supplierInvoices,
         sepaBatches,
+        missions,
         language,
       }),
-    [incomeItems, budgetItems, supplierInvoices, sepaBatches, language]
+    [incomeItems, budgetItems, supplierInvoices, sepaBatches, missions, language]
   );
 
   const summary = useMemo(() => summarizeAccountingEntries(entries), [entries]);
@@ -49,6 +52,7 @@ const FinancialAccountingTab: React.FC<FinancialAccountingTabProps> = ({
       budgetItems,
       supplierInvoices,
       sepaBatches,
+      missions,
       siren,
       fiscalYearEnd: new Date().toISOString().slice(0, 10),
       language,

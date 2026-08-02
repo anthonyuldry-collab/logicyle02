@@ -119,8 +119,8 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     category: 'legal',
     titleFr: 'Registre RGPD + scouting consent documenté',
     titleEn: 'GDPR register + documented scouting consent',
-    detailFr: 'Sous-traitants Firebase/Stripe · procédure export/purge.',
-    detailEn: 'Firebase/Stripe processors · export/purge procedure.',
+    detailFr: 'Registre art. 30 · preuve scopes scouting · retrait in-app · docs/RGPD_*.md.',
+    detailEn: 'Art. 30 register · scouting scope proof · in-app withdrawal · docs/RGPD_*.md.',
     priority: 'P0',
   },
   {
@@ -139,8 +139,8 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     category: 'produit',
     titleFr: 'Marketplace missions · Stripe Connect test',
     titleEn: 'Mission marketplace · Stripe Connect test',
-    detailFr: 'Flux publication → matching → paiement test · commission 12 %.',
-    detailEn: 'Publish → match → test payout · 12% take rate.',
+    detailFr: 'Connect TEST · 2 régimes (indépendant MoR vs CDD) · chaîne factures · gate freelance · docs fiscal/social. Soft-launch = matching only.',
+    detailEn: 'Connect TEST · 2 regimes (independent MoR vs employment) · invoice chain · freelance gate · tax/labour docs. Soft-launch = matching only.',
     priority: 'P1',
   },
   {
@@ -149,8 +149,8 @@ export const CEO_PRELAUNCH_CHECKLIST: CeoChecklistItem[] = [
     category: 'produit',
     titleFr: 'ERP lean · devis / facture / SEPA smoke test',
     titleEn: 'Lean ERP · quote / invoice / SEPA smoke test',
-    detailFr: 'Parcours Continental démo sans bug bloquant.',
-    detailEn: 'Continental demo path without blockers.',
+    detailFr: 'P2 OK — clientId strict bout-en-bout · E2E Continental · mandat/BIC/ICS · anti-doublon · privateConfig SEPA · docs/ERP_LEAN_SMOKE.md · ./scripts/erp-lean-e2e-continental.sh.',
+    detailEn: 'P2 OK — strict clientId end-to-end · Continental E2E · mandate/BIC/ICS · anti-dupe · SEPA privateConfig · docs/ERP_LEAN_SMOKE.md · ./scripts/erp-lean-e2e-continental.sh.',
     priority: 'P1',
   },
   {

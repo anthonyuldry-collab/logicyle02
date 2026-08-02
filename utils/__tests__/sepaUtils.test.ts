@@ -3,6 +3,7 @@ import {
   normalizeIban,
   validateIban,
   validateBic,
+  maskIbanDisplay,
   buildSepaPaymentOrders,
   summarizeSepaOrders,
 } from '../sepaUtils';
@@ -24,6 +25,13 @@ describe('sepaUtils', () => {
     expect(validateBic('BNPAFRPP')).toBe(true);
     expect(validateBic('BNPAFRPPXXX')).toBe(true);
     expect(validateBic('INVALID')).toBe(false);
+  });
+
+  it('masque un IBAN pour l’affichage UI', () => {
+    const masked = maskIbanDisplay('FR76 3000 6000 0112 3456 7890 189');
+    expect(masked.startsWith('FR76')).toBe(true);
+    expect(masked.endsWith('0189') || masked.includes('0189')).toBe(true);
+    expect(masked).not.toMatch(/30006000/);
   });
 
   it('construit des ordres de paiement salaires et remboursements', () => {

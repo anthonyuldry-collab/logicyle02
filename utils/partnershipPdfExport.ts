@@ -238,9 +238,10 @@ export function exportPartnershipConventionPdf(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
   teamName: string,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  bankIbanFallback?: string
 ): void {
-  const data = buildPartnershipConventionData(item, settings, teamName);
+  const data = buildPartnershipConventionData(item, settings, teamName, bankIbanFallback);
   const locale = language === 'en' ? 'en-GB' : 'fr-FR';
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const title = getConventionTitle(item.category, language);
@@ -351,10 +352,11 @@ export function exportPartnershipDocumentsBundle(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
   teamName: string,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  bankIbanFallback?: string
 ): void {
   if (item.category === IncomeCategory.MECENAT) {
     exportCerfaReceiptPdf(item, settings, teamName);
   }
-  exportPartnershipConventionPdf(item, settings, teamName, language);
+  exportPartnershipConventionPdf(item, settings, teamName, language, bankIbanFallback);
 }

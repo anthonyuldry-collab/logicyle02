@@ -15,19 +15,28 @@ import {
 import { useTranslations } from '../../hooks/useTranslations';
 import ActionButton from '../../components/ActionButton';
 import {
-  buildSepaPaymentOrders,
-  buildSepaBatch,
-  formatIbanDisplay,
-  getAlreadyPaidReceiptIds,
-  getAlreadyPaidSalaryIds,
+  buildClientCollectionOrders,
+  buildSepaCollectionBatch,
+  getAlreadyCollectedIncomeIds,
+  normalizeCollectionSequencesForBatch,
+  summarizeCollectionOrders,
+} from '../../utils/sepaCollectionUtils';
+import { formatFinancialAmount } from '../../utils/financialUtils';
+import {
+  isSepaCollectionSettingsComplete,
   isSepaSettingsComplete,
-  summarizeSepaOrders,
+  maskIbanDisplay,
+  formatIbanDisplay,
+  validateSepaCreditorIdentifier,
   validateBic,
   validateIban,
+  buildSepaPaymentOrders,
+  buildSepaBatch,
+  getAlreadyPaidReceiptIds,
+  getAlreadyPaidSalaryIds,
+  summarizeSepaOrders,
 } from '../../utils/sepaUtils';
 import { exportSepaCsv, exportSepaPain001Xml, exportSepaPain008Xml } from '../../utils/sepaExport';
-import { buildClientCollectionOrders, summarizeCollectionOrders } from '../../utils/sepaCollectionUtils';
-import { formatFinancialAmount } from '../../utils/financialUtils';
 
 interface FinancialSepaTabProps {
   riders: Rider[];
@@ -44,6 +53,11 @@ interface FinancialSepaTabProps {
   onMarkReceiptsPaid?: (receiptIds: string[]) => Promise<void>;
   onSaveSepaBatch?: (batch: SepaBatch) => Promise<void>;
   onMarkSalariesPaid?: (sourceIds: string[]) => Promise<void>;
+  onMarkIncomesCollected?: (
+    incomeIds: string[],
+    batchId: string,
+    exportedOrders: import('../../utils/sepaCollectionUtils').SepaCollectionOrder[]
+  ) => Promise<void>;
   incomeItems?: IncomeItem[];
   clientRecords?: ClientRecord[];
 }
@@ -72,6 +86,7 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
   onMarkReceiptsPaid,
   onSaveSepaBatch,
   onMarkSalariesPaid,
+  onMarkIncomesCollected,
   incomeItems = [],
   clientRecords = [],
 }) => {
@@ -88,6 +103,8 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
   const [executionDate, setExecutionDate] = useState(new Date().toISOString().slice(0, 10));
   const { feedback, showFeedback } = useFeedbackTimeout(4000);
   const [saving, setSaving] = useState(false);
+  const [exportingCollection, setExportingCollection] = useState(false);
+  const [revealTeamIban, setRevealTeamIban] = useState(false);
 
   useEffect(() => {
     if (sepaSettings) setSettingsDraft(sepaSettings);
@@ -123,10 +140,14 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
 
   const summary = useMemo(() => summarizeSepaOrders(allOrders), [allOrders]);
 
-  const collectionSummary = useMemo(
-    () => summarizeCollectionOrders(buildClientCollectionOrders(incomeItems, clientRecords)),
-    [incomeItems, clientRecords]
-  );
+  const collectionSummary = useMemo(() => {
+    const already = getAlreadyCollectedIncomeIds(sepaBatches);
+    return summarizeCollectionOrders(
+      buildClientCollectionOrders(incomeItems, clientRecords, already)
+    );
+  }, [incomeItems, clientRecords, sepaBatches]);
+
+  const collectionSettingsReady = isSepaCollectionSettingsComplete(settingsDraft);
 
   const selectedOrders = useMemo(() => {
     if (selectAllReady) return summary.readyOrders;
@@ -148,15 +169,21 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
     settingsDraft.debtorIban && !validateIban(settingsDraft.debtorIban) ? t('sepaInvalidIban') : null;
   const bicError =
     settingsDraft.debtorBic && !validateBic(settingsDraft.debtorBic) ? t('sepaInvalidBic') : null;
+  const icsError =
+    settingsDraft.creditorIdentifier &&
+    !validateSepaCreditorIdentifier(settingsDraft.creditorIdentifier)
+      ? t('sepaInvalidIcs')
+      : null;
 
   const handleSaveSettings = async () => {
-    if (!canEdit || !settingsValid || ibanError || bicError) return;
+    if (!canEdit || !settingsValid || ibanError || bicError || icsError) return;
     setSaving(true);
     try {
       await onSaveSepaSettings({
         ...settingsDraft,
         debtorIban: settingsDraft.debtorIban.replace(/\s+/g, '').toUpperCase(),
         debtorBic: settingsDraft.debtorBic?.replace(/\s+/g, '').toUpperCase(),
+        creditorIdentifier: settingsDraft.creditorIdentifier?.replace(/\s+/g, '').toUpperCase(),
       });
       showFeedback(t('sepaSettingsSaved'));
     } catch {
@@ -239,10 +266,38 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
     }
   };
 
-  const handleExportPain008 = () => {
-    if (!canExport || !settingsValid || !settingsDraft.creditorIdentifier || selectedCollectionOrders.length === 0) return;
-    exportSepaPain008Xml(teamName, settingsDraft, selectedCollectionOrders, executionDate);
-    showFeedback(t('sepaExportSuccess'));
+  const handleExportPain008 = async () => {
+    if (!canExport || !collectionSettingsReady || selectedCollectionOrders.length === 0) return;
+    const normalized = normalizeCollectionSequencesForBatch(
+      selectedCollectionOrders.filter((o) => o.isExportReady)
+    );
+    if (normalized.length === 0) {
+      showFeedback(t('sepaCollectionsNotReady'));
+      return;
+    }
+    setExportingCollection(true);
+    try {
+      // Claim anti-doublon / avance mandat AVANT le téléchargement (atomique métier).
+      const batch = buildSepaCollectionBatch({
+        orders: normalized,
+        executionDate,
+      });
+      if (onSaveSepaBatch) await onSaveSepaBatch(batch);
+      if (onMarkIncomesCollected && batch.incomeItemIds?.length) {
+        await onMarkIncomesCollected(batch.incomeItemIds, batch.id, normalized);
+      }
+      try {
+        exportSepaPain008Xml(teamName, settingsDraft, normalized, executionDate);
+        showFeedback(t('sepaCollectionExportSuccess'));
+      } catch {
+        // Lot déjà claimé : ne pas laisser croire à un échec total.
+        showFeedback(t('sepaCollectionExportClaimedDownloadFailed'));
+      }
+    } catch {
+      showFeedback(t('financialSaveError'));
+    } finally {
+      setExportingCollection(false);
+    }
   };
 
   return (
@@ -284,17 +339,35 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">{t('sepaDebtorIban')}</label>
-            <input
-              type="text"
-              value={settingsDraft.debtorIban}
-              onChange={(e) => setSettingsDraft((s) => ({ ...s, debtorIban: e.target.value }))}
-              disabled={!canEdit}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none"
-              placeholder="FR76 3000 6000 0112 3456 7890 189"
-            />
+            <div className="mt-1 flex gap-2">
+              <input
+                type="text"
+                value={
+                  canEdit || revealTeamIban
+                    ? settingsDraft.debtorIban
+                    : settingsDraft.debtorIban
+                      ? maskIbanDisplay(settingsDraft.debtorIban)
+                      : ''
+                }
+                onChange={(e) => setSettingsDraft((s) => ({ ...s, debtorIban: e.target.value }))}
+                disabled={!canEdit}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none"
+                placeholder="FR76 3000 6000 0112 3456 7890 189"
+                autoComplete="off"
+              />
+              {settingsDraft.debtorIban && !canEdit && (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-md border border-gray-300 px-2 text-xs text-gray-600 hover:bg-gray-50"
+                  onClick={() => setRevealTeamIban((v) => !v)}
+                >
+                  {revealTeamIban ? t('sepaHideIban') : t('sepaRevealIban')}
+                </button>
+              )}
+            </div>
             {ibanError && <p className="mt-1 text-xs text-red-600">{ibanError}</p>}
-            {settingsDraft.debtorIban && validateIban(settingsDraft.debtorIban) && (
-              <p className="mt-1 text-xs text-gray-500">{formatIbanDisplay(settingsDraft.debtorIban)}</p>
+            {canEdit && settingsDraft.debtorIban && validateIban(settingsDraft.debtorIban) && (
+              <p className="mt-1 text-xs text-gray-500">{maskIbanDisplay(settingsDraft.debtorIban)}</p>
             )}
           </div>
           <div>
@@ -317,14 +390,23 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
               onChange={(e) => setSettingsDraft((s) => ({ ...s, creditorIdentifier: e.target.value }))}
               disabled={!canEdit}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none"
-              placeholder="FR00ZZZ123456"
+              placeholder="FR12ZZZ123456"
             />
             <p className="mt-1 text-xs text-gray-500">{t('sepaCreditorIdHint')}</p>
+            {icsError && <p className="mt-1 text-xs text-red-600">{icsError}</p>}
+            {!collectionSettingsReady && settingsValid && !icsError && (
+              <p className="mt-1 text-xs text-amber-700">{t('sepaIcsRequiredForCollections')}</p>
+            )}
           </div>
         </div>
+        <p className="mt-3 text-xs text-gray-500">{t('sepaSensitiveDataHint')}</p>
         {canEdit && (
           <div className="mt-4">
-            <ActionButton size="sm" onClick={handleSaveSettings} disabled={saving || !settingsValid || !!ibanError || !!bicError}>
+            <ActionButton
+              size="sm"
+              onClick={handleSaveSettings}
+              disabled={saving || !settingsValid || !!ibanError || !!bicError || !!icsError}
+            >
               {t('sepaSaveSettings')}
             </ActionButton>
           </div>
@@ -463,20 +545,37 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
               variant="secondary"
               size="sm"
               onClick={handleExportPain008}
-              disabled={!settingsValid || !settingsDraft.creditorIdentifier || selectedCollectionOrders.length === 0}
+              disabled={
+                exportingCollection ||
+                !collectionSettingsReady ||
+                selectedCollectionOrders.length === 0
+              }
             >
-              {t('sepaExportPain008')}
+              {exportingCollection ? '…' : t('sepaExportPain008')}
             </ActionButton>
           )}
         </div>
+
+        {collectionSummary.alreadyExportedCount > 0 && (
+          <p className="text-xs text-gray-500">
+            {t('sepaCollectionsAlreadyExported').replace(
+              '{count}',
+              String(collectionSummary.alreadyExportedCount)
+            )}
+          </p>
+        )}
 
         {collectionSummary.orders.length === 0 ? (
           <p className="text-sm text-gray-500">{t('sepaCollectionsEmpty')}</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <SummaryCard label={t('sepaCollectionsReady')} value={String(collectionSummary.readyOrders.length)} tone="green" />
               <SummaryCard label={t('sepaCollectionsMissingIban')} value={String(collectionSummary.invalidCount)} tone="amber" />
+              <SummaryCard
+                label={t('sepaCollectionsAlreadyExportedLabel')}
+                value={String(collectionSummary.alreadyExportedCount)}
+              />
               <SummaryCard
                 label={t('sepaSelectedAmount')}
                 value={formatFinancialAmount(
@@ -491,9 +590,23 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 <p className="font-medium">{t('sepaCollectionsMissingIbanHint')}</p>
                 <ul className="mt-1 space-y-0.5 text-xs">
-                  {collectionSummary.orders.filter((o) => !o.hasValidIban).slice(0, 5).map((o) => (
-                    <li key={o.id}>{o.clientName}</li>
-                  ))}
+                  {collectionSummary.orders
+                    .filter((o) => !o.isExportReady && o.blockingReason !== 'already_exported')
+                    .slice(0, 8)
+                    .map((o) => (
+                      <li key={o.id}>
+                        {o.clientName}
+                        {o.blockingReason === 'bic'
+                          ? ` — ${t('sepaMissingBic')}`
+                          : o.blockingReason === 'mandate'
+                            ? ` — ${t('sepaMissingMandate')}`
+                            : o.blockingReason === 'no_client'
+                              ? ` — ${t('sepaMissingClient')}`
+                              : o.blockingReason === 'credited'
+                                ? ` — ${t('sepaCreditedInvoice')}`
+                                : ` — ${t('sepaMissingIban')}`}
+                      </li>
+                    ))}
                 </ul>
               </div>
             )}
@@ -517,10 +630,16 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {collectionSummary.orders.map((order) => (
-                    <tr key={order.id} className={!order.hasValidIban ? 'bg-amber-50/40' : undefined}>
+                  {collectionSummary.orders
+                    .filter(
+                      (o) =>
+                        o.blockingReason !== 'already_exported' &&
+                        o.blockingReason !== 'credited'
+                    )
+                    .map((order) => (
+                    <tr key={order.id} className={!order.isExportReady ? 'bg-amber-50/40' : undefined}>
                       <td className="px-3 py-2">
-                        {order.hasValidIban && (
+                        {order.isExportReady && (
                           <input
                             type="checkbox"
                             checked={selectAllCollections || collectionSelectedIds.has(order.id)}
@@ -530,7 +649,7 @@ const FinancialSepaTab: React.FC<FinancialSepaTabProps> = ({
                       </td>
                       <td className="px-3 py-2">{order.clientName}</td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {order.hasValidIban ? formatIbanDisplay(order.beneficiaryIban) : (
+                        {order.hasValidIban ? maskIbanDisplay(order.beneficiaryIban) : (
                           <span className="text-amber-700">{t('sepaMissingIban')}</span>
                         )}
                       </td>
@@ -617,7 +736,7 @@ function SepaOrderRow({
         {order.type === 'salary' ? salaryLabel : reimbursementLabel}
       </td>
       <td className="px-4 py-2 font-mono text-xs text-gray-600">
-        {order.hasValidIban ? formatIbanDisplay(order.beneficiaryIban) : (
+        {order.hasValidIban ? maskIbanDisplay(order.beneficiaryIban) : (
           <span className="text-amber-700">{missingIbanLabel}</span>
         )}
       </td>

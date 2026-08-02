@@ -58,7 +58,15 @@ export function getStaffMemberAudiences(member: StaffMember): MeetingReportAudie
   const audiences: MeetingReportAudience[] = [];
   const roleKey = getStaffRoleKey(member.role);
 
-  if (roleKey === 'MANAGER') audiences.push(MeetingReportAudience.COMITE_DIRECTEUR);
+  if (
+    roleKey === 'MANAGER' ||
+    roleKey === 'PRESIDENT' ||
+    roleKey === 'VICE_PRESIDENT' ||
+    roleKey === 'SECRETAIRE' ||
+    roleKey === 'TRESORIER'
+  ) {
+    audiences.push(MeetingReportAudience.COMITE_DIRECTEUR);
+  }
   if (roleKey === 'DS' || roleKey === 'ASSISTANT') {
     audiences.push(MeetingReportAudience.DIRECTION_SPORTIVE);
   }

@@ -32,6 +32,10 @@ const EVENT_ROLE_KEYS: StaffRoleKey[] = [
 
 const STAFF_ROLE_TO_EVENT_KEY: Partial<Record<StaffRole, StaffRoleKey>> = {
   [StaffRole.MANAGER]: 'managerId',
+  [StaffRole.PRESIDENT]: 'managerId',
+  [StaffRole.VICE_PRESIDENT]: 'managerId',
+  [StaffRole.SECRETAIRE]: 'assistantId',
+  [StaffRole.TRESORIER]: 'assistantId',
   [StaffRole.DS]: 'directeurSportifId',
   [StaffRole.ASSISTANT]: 'assistantId',
   [StaffRole.MECANO]: 'mecanoId',
@@ -47,6 +51,10 @@ const STAFF_ROLE_TO_EVENT_KEY: Partial<Record<StaffRole, StaffRoleKey>> = {
 /** Rôle stocké en base peut être la clé enum ("DS", "ENTRAINEUR") ou la valeur ("Directeur Sportif", "Entraîneur"). */
 const STAFF_ROLE_KEY_TO_EVENT_KEY: Record<string, StaffRoleKey> = {
   MANAGER: 'managerId',
+  PRESIDENT: 'managerId',
+  VICE_PRESIDENT: 'managerId',
+  SECRETAIRE: 'assistantId',
+  TRESORIER: 'assistantId',
   DS: 'directeurSportifId',
   ASSISTANT: 'assistantId',
   MECANO: 'mecanoId',

@@ -84,6 +84,7 @@ export function exportFecCsv(params: {
   budgetItems: EventBudgetItem[];
   supplierInvoices: SupplierInvoice[];
   sepaBatches: SepaBatch[];
+  missions?: import('../types').Mission[];
   siren: string;
   fiscalYearEnd: string;
   language?: 'fr' | 'en';
@@ -93,6 +94,7 @@ export function exportFecCsv(params: {
     budgetItems: params.budgetItems,
     supplierInvoices: params.supplierInvoices,
     sepaBatches: params.sepaBatches,
+    missions: params.missions,
     language: params.language,
   });
 

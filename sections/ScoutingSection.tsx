@@ -26,6 +26,7 @@ import { isPresentationDemoTeam } from '../utils/presentationDemoAccess';
 import { demoUserToScoutingProfile, isDemoPreviewScoutingProfile, isDemoTalentUser } from '../constants/demoTalentProfiles';
 import {
   buildContactRequestMessage,
+  buildPublicScoutingProfileFromUser,
   buildWatchlistProfileFromUser,
   getProspectLevelLabel,
   isAthleteOnWatchlist,
@@ -555,62 +556,22 @@ const ScoutingSection: React.FC<ScoutingSectionProps> = ({ scoutingProfiles, rid
             return;
           }
 
-          const newScoutProfile = {
-            id: `scout_${generateId()}`,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            birthDate: user.signupInfo?.birthDate,
-            sex: user.signupInfo?.sex,
-            nationality: user.signupInfo?.nationality,
-            heightCm: user.signupInfo?.heightCm,
-            weightKg: user.signupInfo?.weightKg,
-            qualitativeProfile: user.qualitativeProfile || RiderQualitativeProfile.AUTRE,
-            categories: user.categories || [],
-            forme: user.forme || 'BONNE',
-            moral: user.moral || 'BON',
-            healthCondition: user.healthCondition || 'BONNE',
-            potentialRating: 3,
-            status: 'TO_WATCH',
-            prospectLevel: ProspectLevel.CONTACT_REQUEST,
-            linkedAthleteUserId: user.id,
-            discipline: user.disciplines?.[0] || DisciplinePracticed.ROUTE,
-            powerProfile: user.powerProfile || {},
-            characteristics: user.characteristics || {},
-            notes: '',
-            lastContactDate: new Date().toISOString().split('T')[0],
-            nextContactDate: '',
-            teamInterest: false,
-            riderInterest: false,
-            contractOffered: false,
-            contractSigned: false,
-            salaryOffered: 0,
-            contractStartDate: '',
-            scoutingSource: 'TALENT_SEARCH',
-            scoutingNotes: 'Profil trouvé via recherche de talents',
-            performanceData: user.performanceData || {},
-            resultsHistory: user.resultsHistory || [],
-            favoriteRaces: user.favoriteRaces || [],
-            teamsHistory: user.teamsHistory || [],
-            address: user.address,
-            phone: user.phone,
-            emergencyContactName: user.emergencyContactName,
-            emergencyContactPhone: user.emergencyContactPhone,
-            socialSecurityNumber: user.socialSecurityNumber,
-            licenseNumber: user.licenseNumber,
-            uciId: user.uciId,
-            photoUrl: user.photoUrl,
-            licenseImageUrl: user.licenseImageUrl,
-            licenseImageBase64: user.licenseImageBase64,
-            licenseImageMimeType: user.licenseImageMimeType,
-            teamName: user.teamName,
-            isSearchable: user.isSearchable,
-            salary: user.salary,
-            contractEndDate: user.contractEndDate,
-            nextSeasonTeam: user.nextSeasonTeam,
-            allergies: [],
-          } as ScoutingProfile;
-          
+          const newScoutProfile = buildPublicScoutingProfileFromUser(
+            user,
+            appState?.riders ?? riders ?? [],
+            {
+              id: `scout_${generateId()}`,
+              prospectLevel: ProspectLevel.CONTACT_REQUEST,
+              status: ScoutingStatus.TO_WATCH,
+              potentialRating: 3,
+              qualitativeProfile:
+                (user.characteristics as RiderQualitativeProfile) ||
+                RiderQualitativeProfile.AUTRE,
+              internalWatchNotes:
+                'Profil issu recherche talents — sans données santé / admin sensibles (RGPD art. 9)',
+            },
+          );
+
           onSaveScoutingProfile(newScoutProfile);
           setActiveTab('profiles'); // Basculer vers l'onglet profils
         }} 

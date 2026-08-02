@@ -28,13 +28,13 @@ const ActionButton: React.FC<ActionButtonProps> = ({
         backgroundColor: 'var(--theme-primary-bg)',
         color: 'var(--theme-primary-text)',
       };
-      // Tailwind focus ring remains for accessibility, color will be default blue
-      // We can't easily make focus ring color dynamic without more complex setup
-      variantStyleClasses = "focus:ring-blue-500"; 
+      // text-* !important évite qu’un parent sombre / remap CSS n’écrase le contraste
+      variantStyleClasses =
+        'focus:ring-blue-500 ![color:var(--theme-primary-text)]';
       break;
     case 'secondary':
       variantStyleClasses =
-        'bg-slate-700 hover:bg-slate-600 disabled:hover:bg-slate-700 text-white border border-slate-500 focus:ring-indigo-400/40 shadow-none';
+        'bg-slate-600 hover:bg-slate-500 disabled:hover:bg-slate-700 !text-white border border-slate-400 focus:ring-indigo-400/40 shadow-none';
       break;
     case 'danger':
       variantStyleClasses = "bg-red-500 hover:bg-red-600 disabled:hover:bg-slate-700 text-white focus:ring-red-400";

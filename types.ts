@@ -48,17 +48,63 @@ export enum Sex {
 
 export enum StaffRole {
   MANAGER = "Manager",
+  /** Bureau association — mêmes droits d’accès que Manager */
+  PRESIDENT = "Président",
+  VICE_PRESIDENT = "Vice-président",
+  SECRETAIRE = "Secrétaire",
+  TRESORIER = "Trésorier",
   DS = "Directeur Sportif",
   ASSISTANT = "Assistant(e)",
+  /** Soigneur course / stage (distinct de l’assistant logistique) */
+  SOIGNEUR = "Soigneur / Soigneuse",
   MECANO = "Mécanicien",
+  /** Stock pièces, roues, camion atelier — souvent distinct du mécano course */
+  MATERIAL = "Responsable matériel",
   COMMUNICATION = "Communication",
+  /** Photo / vidéo / contents terrain */
+  PHOTO_VIDEO = "Photographe / Vidéaste",
   MEDECIN = "Médecin",
   KINE = "Kinésithérapeute",
+  OSTEOPATHE = "Ostéopathe",
+  NUTRITIONNISTE = "Nutritionniste",
   RESP_PERF = "Responsable Performance",
   ENTRAINEUR = "Entraîneur",
   DATA_ANALYST = "Data Analyste",
   PREPA_PHYSIQUE = "Préparateur Physique",
+  CHAUFFEUR = "Chauffeur",
+  LOGISTICIEN = "Logisticien",
+  CUISINIER = "Cuisinier / Restauration",
+  HOSPITALITY = "Hospitalité / Accueil",
+  /** Toujours préciser via staffRoleOtherLabel / customRole */
   AUTRE = "Autre",
+}
+
+/** Infos société / micro du vacataire indépendant (factures + URSSAF). */
+export type IndependentLegalForm =
+  | 'micro'
+  | 'ei'
+  | 'eurl'
+  | 'sarl'
+  | 'sasu'
+  | 'sas'
+  | 'other';
+
+export type IndependentVatRegime = 'franchise_293b' | 'tva_reelle' | 'unknown';
+
+export interface IndependentBusinessProfile {
+  /** Raison sociale ou nom commercial */
+  legalName?: string;
+  tradeName?: string;
+  legalForm?: IndependentLegalForm;
+  siret?: string;
+  vatNumber?: string;
+  addressLine?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+  vatRegime?: IndependentVatRegime;
+  /** Notes libres (assurance RC pro, n° URSSAF…) */
+  notes?: string;
 }
 
 export enum ChecklistRole {
@@ -1998,6 +2044,10 @@ export interface IncomeItem {
     creditNoteForInvoiceId?: string;
     /** URL archivage PDF facture */
     invoicePdfUrl?: string;
+    /** Lot pain.008 ayant présenté cette facture (anti double prélèvement). */
+    sepaCollectionBatchId?: string;
+    /** Horodatage export prélèvement SEPA. */
+    sepaCollectionExportedAt?: string;
 }
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
@@ -2012,12 +2062,17 @@ export interface Quote {
     amount: number;
     vatRate: number;
     amountHT: number;
+    /** Catégorie de revenu à la conversion facture (PCG). */
+    category?: IncomeCategory;
     status: QuoteStatus;
     validUntil: string;
     createdAt: string;
     convertedInvoiceId?: string;
     notes?: string;
 }
+
+/** Séquence mandat SEPA pain.008 (ISO 20022). */
+export type SepaMandateSequence = 'OOFF' | 'FRST' | 'RCUR' | 'FNAL';
 
 export interface ClientRecord {
     id: string;
@@ -2028,7 +2083,16 @@ export interface ClientRecord {
     address?: string;
     siret?: string;
     vatNumber?: string;
+    /** IBAN débiteur (prélèvement) — donnée sensible. */
     iban?: string;
+    /** BIC banque du client (DbtrAgt pain.008). */
+    bic?: string;
+    /** Référence unique de mandat (UMR). */
+    mandateReference?: string;
+    /** Date de signature du mandat (YYYY-MM-DD). */
+    mandateSignedAt?: string;
+    /** Type de séquence SEPA pour le prochain prélèvement. */
+    mandateSequence?: SepaMandateSequence;
     paymentTermsDays?: number;
     notes?: string;
     createdAt: string;
@@ -2057,6 +2121,8 @@ export interface SupplierInvoice {
     attachmentUrl?: string;
 }
 
+export type SepaBatchKind = 'payment' | 'collection';
+
 export interface SepaBatch {
     id: string;
     batchReference: string;
@@ -2069,6 +2135,10 @@ export interface SepaBatch {
     orderIds: string[];
     salarySourceIds: string[];
     reimbursementReceiptIds: string[];
+    /** Défaut historique : virement (pain.001). */
+    kind?: SepaBatchKind;
+    /** Factures présentées en prélèvement (pain.008). */
+    incomeItemIds?: string[];
     xmlFileName?: string;
 }
 
@@ -2101,7 +2171,7 @@ export interface AccountingEntry {
     label: string;
     debit: number;
     credit: number;
-    sourceType: 'income' | 'expense' | 'supplier' | 'sepa' | 'bank';
+    sourceType: 'income' | 'expense' | 'supplier' | 'sepa' | 'bank' | 'mission_payment';
     sourceId: string;
 }
 
@@ -2604,7 +2674,12 @@ export enum ScoutingRequestStatus {
     PENDING = "En attente",
     ACCEPTED = "Accepté",
     REJECTED = "Refusé",
+    /** Consentement retiré par l'athlète — preuve conservée, accès coupé */
+    WITHDRAWN = "Retiré",
 }
+
+/** Méthode d'enregistrement du consentement scouting (preuve art. 7 RGPD) */
+export type ScoutingConsentMethod = 'in_app_scope_selection';
 
 export interface ScoutingRequest {
     id: string;
@@ -2619,6 +2694,22 @@ export interface ScoutingRequest {
     requestedScopes?: ScoutingDataScope[];
     /** Périmètres accordés par l'athlète à l'acceptation */
     grantedScopes?: ScoutingDataScope[];
+    /** Preuve consentement — horodatage ISO à l'acceptation */
+    consentRecordedAt?: string;
+    /** Version privacy pack au moment du consentement */
+    consentPrivacyVersion?: string;
+    /** Version du texte d'information scouting affiché */
+    consentNoticeVersion?: string;
+    /** Snapshot du texte d'information + scopes (preuve art. 7.1) */
+    consentNoticeSnapshot?: string;
+    consentLocale?: 'fr' | 'en';
+    consentMethod?: ScoutingConsentMethod;
+    /** Confirmation explicite de la notice (checkbox) */
+    consentNoticeAcknowledged?: boolean;
+    /** Retrait — horodatage ISO */
+    consentWithdrawnAt?: string;
+    /** UID athlète ayant retiré */
+    consentWithdrawnBy?: string;
 }
 
 
@@ -2737,6 +2828,13 @@ export interface User {
     signupMode?: SignupMode | string;
     isIndependentProfile?: boolean;
     independentActivatedAt?: string;
+    /**
+     * Indépendant client payant (Pilotage PDG).
+     * Opt-in — posé par webhook Stripe Checkout.
+     */
+    commercialClient?: boolean;
+    /** Compte interne / fondateur — exclu du MRR plateforme. */
+    isPlatformInternal?: boolean;
     /** Profil sportif / pro sur le document User (mode indépendant) */
     professionalSummary?: string;
     skills?: string[];
@@ -2745,6 +2843,14 @@ export interface User {
     defaultApplicationMessage?: string;
     /** Fonction / poste (staff indépendant) — DS, mécano, kiné… */
     staffRole?: StaffRole | string;
+    /**
+     * Précision obligatoire si staffRole = Autre
+     * (ex. « Agent UCI », « Électricien vélo », « Interprète »…).
+     * Aligné StaffMember.customRole.
+     */
+    staffRoleOtherLabel?: string;
+    /** Dossier entreprise / micro pour facturation missions */
+    business?: IndependentBusinessProfile;
     experienceYears?: number;
     certifications?: string[];
     workHistory?: WorkExperience[];
@@ -2775,6 +2881,13 @@ export interface User {
     pendingPlanId?: SubscriptionPlanId;
     /** Intervalle choisi à l’inscription (mensuel / annuel) — pour enchaîner le checkout */
     pendingBillingInterval?: 'month' | 'year';
+    /**
+     * Stripe Connect (Accounts v2 recipient) — écrit uniquement via Cloud Functions.
+     * Permet de recevoir les règlements marketplace missions.
+     */
+    stripeConnectAccountId?: string;
+    /** true quand stripe_transfers (recipient) est actif */
+    stripeConnectPayoutsEnabled?: boolean;
 }
 
 export enum UserNotificationType {
@@ -3089,6 +3202,14 @@ export interface Team {
     operationalSettings?: TeamOperationalSettings;
     /** Pack démo « Horizon Atlantique » — accès produit débloqué. */
     isPresentationDemo?: boolean;
+    /**
+     * Équipe cliente payante comptée dans Pilotage PDG (MRR / KPI).
+     * Opt-in : les sandboxes fondateur restent hors portefeuille commercial.
+     * Posé automatiquement par le webhook Stripe Checkout (clients réels).
+     */
+    commercialClient?: boolean;
+    /** Sandbox / équipe interne plateforme — jamais comptée dans le MRR. */
+    isPlatformInternal?: boolean;
 }
 
 export interface TeamMembership {
@@ -3119,6 +3240,58 @@ export interface TeamMembership {
     staffRole?: StaffRole | string;
 }
 
+export type MissionPaymentStatus =
+    | 'unpaid'
+    | 'checkout_pending'
+    | 'paid'
+    | 'failed'
+    | 'expired'
+    | 'refunded';
+
+export type MissionVacataireInvoiceStatus = 'draft' | 'issued';
+
+/** Snapshot légal figé au paiement (immuable pour PDF / FEC). */
+export interface MissionBillingPartySnapshot {
+    name: string;
+    address?: string;
+    siret?: string;
+    vatNumber?: string;
+    email?: string;
+}
+
+/** Paiement Stripe Connect (destination + application_fee) — écrit via webhook Functions. */
+export interface MissionPayment {
+    status: MissionPaymentStatus;
+    gmvCents?: number;
+    commissionCents?: number;
+    checkoutSessionId?: string;
+    paymentIntentId?: string;
+    connectedAccountId?: string;
+    paidAt?: string;
+    /** Facture LogiCycle → équipe (GMV) */
+    teamInvoiceNumber?: string;
+    /** Modèle facture vacataire → LogiCycle (net) */
+    vacataireInvoiceDraftNumber?: string;
+    /** N° facture vacataire définitive (après finalisation) */
+    vacataireInvoiceNumber?: string;
+    vacataireInvoiceStatus?: MissionVacataireInvoiceStatus;
+    vacataireInvoiceIssuedAt?: string;
+    /** Snapshot profil entreprise vacataire au paiement */
+    vacataireBusinessSnapshot?: IndependentBusinessProfile;
+    /** Snapshot facturation équipe au paiement */
+    teamBillingSnapshot?: MissionBillingPartySnapshot;
+    /** Chemins Storage archives JSON (rétention comptable) */
+    teamInvoiceArchivePath?: string;
+    vacataireInvoiceArchivePath?: string;
+    teamInvoicePdfPath?: string;
+    vacataireInvoicePdfPath?: string;
+    creditNoteArchivePath?: string;
+    creditNotePdfPath?: string;
+    refundedAt?: string;
+    creditNoteNumber?: string;
+    failureReason?: string;
+}
+
 export interface Mission {
     id: string;
     teamId: string;
@@ -3139,6 +3312,8 @@ export interface Mission {
     applicants?: string[];
     /** Candidatures avec suivi de statut */
     applications?: MissionApplication[];
+    /** Règlement in-app (flag VITE_MISSION_PAYMENTS) */
+    payment?: MissionPayment;
 }
 
 // --- APP STATE ---

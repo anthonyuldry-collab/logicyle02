@@ -1,5 +1,5 @@
 import { Quote, TeamInvoiceSettings, IncomeItem, IncomeCategory, InvoiceStatus } from '../types';
-import { computeInvoiceAmounts, enrichIncomeWithAccounting, formatInvoiceNumber } from './invoiceUtils';
+import { computeInvoiceAmounts, enrichIncomeWithAccounting } from './invoiceUtils';
 import { generateId } from './themeUtils';
 
 export function getNextQuoteSequence(settings: TeamInvoiceSettings, quotes: Quote[]): number {
@@ -25,18 +25,27 @@ export function enrichQuote(quote: Quote, vatRate = 20): Quote {
   return { ...quote, amountHT, vatRate: quote.vatRate ?? vatRate };
 }
 
+/**
+ * Convertit un devis en facture brouillon **sans** consommer de numéro définitif.
+ * Le n° FAC est alloué à l’émission (`issueInvoice`).
+ * P2 : `clientId` obligatoire (évite IBAN / SEPA fantômes).
+ */
+export function canConvertQuote(quote: Quote): boolean {
+  return Boolean(quote.clientId?.trim() && quote.clientName?.trim() && quote.amount > 0);
+}
+
 export function convertQuoteToInvoice(
   quote: Quote,
   settings: TeamInvoiceSettings,
   language: 'fr' | 'en' = 'fr',
-  allocatedSequence?: number
+  _allocatedSequence?: number
 ): { quote: Quote; income: IncomeItem; settings: TeamInvoiceSettings } {
   if (quote.status === 'converted') {
     throw new Error('Quote already converted');
   }
-  const year = new Date().getFullYear();
-  const sequence = allocatedSequence ?? settings.nextInvoiceNumber ?? 1;
-  const invoiceNumber = formatInvoiceNumber(settings, sequence, year);
+  if (!canConvertQuote(quote)) {
+    throw new Error('Cannot convert quote: clientId is required');
+  }
 
   const income = enrichIncomeWithAccounting(
     {
@@ -44,21 +53,16 @@ export function convertQuoteToInvoice(
       description: quote.description,
       amount: quote.amount,
       date: new Date().toISOString().slice(0, 10),
-      category: IncomeCategory.SPONSORING,
+      category: quote.category || IncomeCategory.SPONSORING,
       clientName: quote.clientName,
+      clientAddress: quote.clientAddress,
       clientId: quote.clientId,
-      invoiceNumber,
       invoiceStatus: InvoiceStatus.DRAFT,
       quoteId: quote.id,
     },
     language,
     quote.vatRate
   );
-
-  const nextSettings =
-    allocatedSequence != null
-      ? settings
-      : { ...settings, nextInvoiceNumber: sequence + 1 };
 
   return {
     quote: {
@@ -67,6 +71,6 @@ export function convertQuoteToInvoice(
       convertedInvoiceId: income.id,
     },
     income,
-    settings: nextSettings,
+    settings,
   };
 }

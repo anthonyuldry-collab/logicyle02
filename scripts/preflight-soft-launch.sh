@@ -69,11 +69,13 @@ if [[ -f .env ]] && grep -q 'VITE_SKIP_SIGNUP_PAYMENT=true' .env; then
   warn "Local .env : SKIP_SIGNUP=true (OK en DEV, ignoré en PROD build)"
 fi
 
-# 4) Marketplace matching-only
-if grep -q 'paymentsEnabled: false' constants/missionMarketplace.ts; then
-  ok "Marketplace matching-only (paymentsEnabled=false)"
+# 4) Marketplace matching-only (soft-launch)
+if [[ -f .env.production ]] && grep -qE '^VITE_MISSION_PAYMENTS=true' .env.production; then
+  warn "PROD : VITE_MISSION_PAYMENTS=true — paiement Connect actif (vérifier intention + légal)"
+elif [[ -f .env ]] && grep -qE '^VITE_MISSION_PAYMENTS=true' .env; then
+  warn "Local .env : VITE_MISSION_PAYMENTS=true (OK pour TEST Connect)"
 else
-  warn "Marketplace paymentsEnabled ≠ false — vérifier intention"
+  ok "Marketplace matching-only (VITE_MISSION_PAYMENTS non activé)"
 fi
 
 # 5) Legal placeholders

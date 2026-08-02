@@ -27,13 +27,28 @@ service firebase.storage {
         );
     }
 
+    function isTeamFinanceReader(teamId) {
+      return isTeamMember(teamId) && (
+        userDoc().permissionRole == 'Administrateur'
+        || userDoc().permissionRole == 'comptable'
+        || userDoc().permissionRole == 'tresorier'
+        || userDoc().userRole == 'Manager'
+      );
+    }
+
     match /teams/{teamId}/{allPaths=**} {
-      allow read: if isTeamMember(teamId);
+      allow read: if isTeamMember(teamId) || isTeamFinanceReader(teamId);
       allow write, delete: if isTeamManager(teamId)
         || (isTeamMember(teamId) && allPaths.matches('riders/' + request.auth.uid + '/.*'))
         || (isTeamMember(teamId) && allPaths.matches('staff/' + request.auth.uid + '/.*'))
         || (isTeamMember(teamId) && allPaths.matches('expenseReceipts/' + request.auth.uid + '/.*'))
         || (isTeamManager(teamId) && allPaths.matches('equipment/.*'));
+    }
+
+    /** Archives factures missions — lecture membres / finance ; écriture Functions (Admin SDK). */
+    match /teams/{teamId}/missionInvoices/{fileName} {
+      allow read: if isTeamMember(teamId) || isTeamFinanceReader(teamId);
+      allow write: if false;
     }
 
     match /users/{userId}/{allPaths=**} {

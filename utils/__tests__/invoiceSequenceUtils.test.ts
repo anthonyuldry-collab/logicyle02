@@ -40,6 +40,8 @@ describe('issueInvoice with allocatedSequence', () => {
     date: '2026-06-01',
     category: IncomeCategory.SUBVENTIONS,
     paymentTermsDays: 45,
+    clientId: 'c1',
+    clientName: 'Client SA',
   };
 
   it('uses pre-allocated sequence without bumping settings again', () => {
@@ -88,8 +90,8 @@ describe('createCreditNote with allocatedSequence', () => {
   });
 });
 
-describe('convertQuoteToInvoice with allocatedSequence', () => {
-  it('consumes allocated invoice sequence without re-bump', () => {
+describe('convertQuoteToInvoice defers invoice number', () => {
+  it('creates draft without consuming invoice sequence', () => {
     const quote: Quote = {
       id: 'q1',
       quoteNumber: 'DEV-2026-0003',
@@ -109,7 +111,8 @@ describe('convertQuoteToInvoice with allocatedSequence', () => {
       nextInvoiceNumber: 20,
     };
     const { income, settings: next } = convertQuoteToInvoice(quote, settings, 'fr', 12);
-    expect(income.invoiceNumber).toBe('FAC-2026-0012');
+    expect(income.invoiceNumber).toBeUndefined();
+    expect(income.invoiceStatus).toBe(InvoiceStatus.DRAFT);
     expect(next.nextInvoiceNumber).toBe(20);
   });
 });

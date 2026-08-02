@@ -13,17 +13,30 @@ import {
 } from '../types';
 import { getStaffMemberForUser } from './staffMemberUtils';
 import { generateId } from './themeUtils';
+import { isManagerEquivalentStaffRole } from './staffRoleUtils';
 
 const RECEIPT_SCAN_ROLES = new Set<string>([
   StaffRole.DS,
   StaffRole.ASSISTANT,
   StaffRole.MANAGER,
+  StaffRole.PRESIDENT,
+  StaffRole.VICE_PRESIDENT,
+  StaffRole.TRESORIER,
+  StaffRole.SECRETAIRE,
   'DS',
   'Directeur Sportif',
   'ASSISTANT',
   'Assistant(e)',
   'MANAGER',
   'Manager',
+  'PRESIDENT',
+  'Président',
+  'VICE_PRESIDENT',
+  'Vice-président',
+  'TRESORIER',
+  'Trésorier',
+  'SECRETAIRE',
+  'Secrétaire',
 ]);
 
 export function findStaffMemberForUser(user: User, staff: StaffMember[]): StaffMember | undefined {
@@ -34,6 +47,7 @@ export function canScanExpenseReceipts(user: User, staff: StaffMember[]): boolea
   if (user.userRole === UserRole.MANAGER) return true;
   const member = findStaffMemberForUser(user, staff);
   if (!member) return false;
+  if (isManagerEquivalentStaffRole(member.role)) return true;
   return RECEIPT_SCAN_ROLES.has(String(member.role));
 }
 

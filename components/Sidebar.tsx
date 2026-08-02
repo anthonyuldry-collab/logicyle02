@@ -74,6 +74,7 @@ interface SidebarProps {
   realUser?: User;
   superAdminPreview?: SuperAdminPreviewConfig;
   onSuperAdminPreviewChange?: (config: SuperAdminPreviewConfig) => void;
+  onExitSuperAdminPreview?: () => void;
   riders?: Rider[];
   incomeItems?: IncomeItem[];
 }
@@ -123,12 +124,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   realUser,
   superAdminPreview,
   onSuperAdminPreviewChange,
+  onExitSuperAdminPreview,
   riders = [],
   incomeItems = [],
 }) => {
   const { t, language } = useTranslations();
-  
 
+  const isRealSuperAdmin = isSuperAdminUser(realUser || currentUser);
+  const previewMode = superAdminPreview?.mode ?? 'full';
+  const inRolePreview = isRealSuperAdmin && previewMode !== 'full';
   
   const groupedSections = useMemo(() => {
     const source = isIndependent ? INDEPENDENT_SECTIONS : SECTIONS;
@@ -170,8 +174,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     return SIDEBAR_GROUP_ORDER.map((key) => getSidebarGroupLabel(key, language));
   }, [isIndependent, language, currentUser?.userRole]);
 
-  const previewMode = superAdminPreview?.mode ?? 'full';
-
   const canShowHoldingView = canAccessHoldingDashboard(realUser || currentUser, {
     realUser,
     previewMode,
@@ -179,11 +181,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const isCoureurView =
     isCoureurUser(currentUser) &&
-    !(isSuperAdminUser(realUser || currentUser) && previewMode === 'full');
+    !(isRealSuperAdmin && previewMode === 'full');
 
   const isPartnerView =
     isPartnerUser(currentUser) &&
-    !(isSuperAdminUser(realUser || currentUser) && previewMode === 'full');
+    !(isRealSuperAdmin && previewMode === 'full');
 
   const sponsorshipIncomeItems = useMemo(
     () => getSponsorshipIncomeItems(incomeItems),
@@ -224,7 +226,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     ) {
       return getSuperAdminPreviewLabel(superAdminPreview, riders, staff, incomeItems);
     }
-    if (isSuperAdminUser(realUser || currentUser) && !currentTeamId && previewMode === 'full') {
+    if (isRealSuperAdmin && !currentTeamId && previewMode === 'full') {
       return language === 'fr' ? 'Super Administrateur' : 'Super Administrator';
     }
     if (isIndependent) {
@@ -236,13 +238,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
     const role = permissionRoles.find(r => r.id === currentUser.permissionRole);
     return role?.name || 'Role inconnu';
-  }, [currentUser, currentTeamId, isIndependent, language, permissionRoles, previewMode, realUser, superAdminPreview, riders, staff, incomeItems]);
+  }, [currentUser, currentTeamId, isIndependent, language, permissionRoles, previewMode, realUser, superAdminPreview, riders, staff, incomeItems, isRealSuperAdmin]);
 
+  // Visible avec une équipe OU déjà en aperçu (évite le piège « indépendant » sans retour).
   const showSuperAdminPreviewControls =
     !!realUser &&
     isSuperAdminUser(realUser) &&
     !!onSuperAdminPreviewChange &&
-    !!currentTeamId;
+    (Boolean(currentTeamId) || inRolePreview);
 
   const sidebarClasses = isMobile
     ? `lc-sidebar w-72 h-screen flex flex-col fixed top-0 left-0 overflow-y-auto z-50 bg-slate-950 transition-transform duration-300 ease-in-out ${
@@ -263,7 +266,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
         )}
         
-        {!isIndependent && (userTeams.length > 0 || (isSuperAdminUser(realUser || currentUser) && previewMode === 'full')) && (
+        {((!isIndependent || inRolePreview) &&
+          (userTeams.length > 0 || (isRealSuperAdmin && previewMode === 'full'))) && (
             <div>
                 <label htmlFor="team-switcher" className="block text-xs font-medium mb-2" style={{ color: 'var(--theme-primary-text)', opacity: 0.8 }}>
                     {t('sidebarContext')}
@@ -271,10 +275,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <select
                     id="team-switcher"
                     value={currentTeamId || ''}
-                    onChange={(e) => onTeamSwitch(e.target.value)}
+                    onChange={(e) => {
+                      const nextTeamId = e.target.value;
+                      if (!nextTeamId && inRolePreview && onExitSuperAdminPreview) {
+                        onExitSuperAdminPreview();
+                        return;
+                      }
+                      if (inRolePreview && onSuperAdminPreviewChange) {
+                        onSuperAdminPreviewChange({ mode: 'full' });
+                      }
+                      onTeamSwitch(nextTeamId);
+                    }}
                     className="w-full px-3 py-2 text-sm rounded-lg border-0 bg-white/10 text-white placeholder-white/70 focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
                 >
-                    {isSuperAdminUser(realUser || currentUser) && previewMode === 'full' && (
+                    {isRealSuperAdmin && (
                       <option value="" style={{ backgroundColor: 'var(--theme-primary-bg)' }}>
                         Super Administrateur
                       </option>
@@ -288,10 +302,20 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
         )}
 
-        {isSuperAdminUser(realUser || currentUser) && previewMode === 'full' && !currentTeamId && (
+        {isRealSuperAdmin && previewMode === 'full' && !currentTeamId && (
             <p className="mt-3 text-[11px] uppercase tracking-wide text-emerald-400/90">
               Super Administrateur · plateforme
             </p>
+        )}
+
+        {inRolePreview && onExitSuperAdminPreview && (
+            <button
+              type="button"
+              onClick={onExitSuperAdminPreview}
+              className="mt-3 w-full rounded-lg bg-amber-500/90 px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-400"
+            >
+              Revenir au mode Super Admin
+            </button>
         )}
 
         {showSuperAdminPreviewControls && (

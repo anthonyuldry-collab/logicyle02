@@ -177,7 +177,8 @@
   .lc-app-shell .main-content .bg-amber-50,
   .lc-app-shell .main-content .bg-yellow-50,
   .lc-modal .bg-amber-50 {
-    background-color: #451a03 !important;
+    background-color: #78350f !important;
+    color: #fef3c7 !important;
   }
 
   .lc-app-shell .main-content .bg-red-50,
@@ -194,7 +195,8 @@
 
   .lc-app-shell .main-content .bg-orange-50,
   .lc-app-shell .main-content .bg-orange-50\/40 {
-    background-color: #431407 !important;
+    background-color: #9a3412 !important;
+    color: #ffedd5 !important;
   }
 
   .lc-app-shell .main-content .bg-pink-50,

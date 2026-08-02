@@ -27,12 +27,17 @@ import {
   PartnershipMatchRequest,
   PartnershipMatchStatus,
   Quote,
+  Mission,
+  InvoiceStatus,
 } from '../types';
 import { useFeedbackTimeout } from '../hooks/useFeedbackTimeout';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
 import { useTranslations } from '../hooks/useTranslations';
+import {
+  clientsToAdvanceMandateAfterCollection,
+} from '../utils/sepaCollectionUtils';
 import {
   PlusCircleIcon,
   PencilIcon,
@@ -58,13 +63,15 @@ import FinancialClientsTab from './financial/FinancialClientsTab';
 import FinancialSupplierInvoicesTab from './financial/FinancialSupplierInvoicesTab';
 import FinancialBankReconciliationTab from './financial/FinancialBankReconciliationTab';
 import FinancialQuotesTab from './financial/FinancialQuotesTab';
+import FinancialMissionInvoicesTab from './financial/FinancialMissionInvoicesTab';
 import SubNavBar from '../components/SubNavBar';
 import FinancialOverviewDashboard from '../components/financial/FinancialOverviewDashboard';
 import { FinancialPeriod } from '../utils/financialChartUtils';
 import { hasProPayrollAccess, hasSepaExportAccess, hasAccountingExportAccess } from '../utils/contractUtils';
 import { getSubscriptionAccess } from '../utils/subscriptionEntitlements';
+import { isProMissionCommissionPlan } from '../constants/missionMarketplace';
 
-type FinancialTab = 'overview' | 'income' | 'expenses' | 'contracts' | 'payroll' | 'receipts' | 'invoicing' | 'quotes' | 'sponsors' | 'sepa' | 'accounting' | 'clients' | 'suppliers' | 'bank';
+type FinancialTab = 'overview' | 'income' | 'expenses' | 'contracts' | 'payroll' | 'receipts' | 'invoicing' | 'quotes' | 'sponsors' | 'sepa' | 'accounting' | 'clients' | 'suppliers' | 'bank' | 'missionInvoices';
 
 interface FinancialSectionProps {
   incomeItems: IncomeItem[];
@@ -123,6 +130,7 @@ interface FinancialSectionProps {
   onSaveQuote?: (quote: Quote) => Promise<void>;
   onDeleteQuote?: (quote: Quote) => Promise<void>;
   onConvertQuote?: (quote: Quote, income: IncomeItem, settings: TeamInvoiceSettings) => Promise<void>;
+  missions?: Mission[];
 }
 
 const LOCALE_MAP: Record<string, string> = { fr: 'fr-FR', en: 'en-GB' };
@@ -180,6 +188,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
   partnershipMatchRequests = [],
   onSaveTeamSponsorshipNeed,
   onRespondPartnershipMatchRequest,
+  missions = [],
 }) => {
   const { t, language } = useTranslations();
   const locale = LOCALE_MAP[language] || 'fr-FR';
@@ -188,6 +197,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
     () => getSubscriptionAccess(subscription, fallbackPlanId),
     [subscription, fallbackPlanId]
   );
+  const isProTeam = isProMissionCommissionPlan(subscriptionAccess.planId);
   const canExportPayroll =
     hasProPayrollAccess(subscriptionAccess.planId) || hasProPayrollAccess(fallbackPlanId);
   const canExportSepa =
@@ -357,6 +367,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
       tabs: [
         { id: 'invoicing', label: t('financialTabInvoicing') },
         { id: 'quotes', label: t('financialTabQuotes') },
+        { id: 'missionInvoices', label: t('financialTabMissionInvoices') },
         { id: 'clients', label: t('financialTabClients') },
         { id: 'receipts', label: t('financialTabReceipts') },
       ],
@@ -638,6 +649,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             teamName={teamName}
             teamId={teamId}
             invoiceSettings={invoiceSettings}
+            sepaDebtorIban={sepaSettings?.debtorIban}
             canEdit={canEdit}
             onSaveIncomeItem={onSaveIncomeItem}
             onSaveInvoiceSettings={onSaveInvoiceSettings}
@@ -688,8 +700,41 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             }
             onSaveSepaBatch={onSaveSepaBatch}
             onMarkSalariesPaid={onMarkSalariesPaid}
+            onMarkIncomesCollected={async (incomeIds, batchId, exportedOrders) => {
+              const exportedAt = new Date().toISOString();
+              await Promise.all(
+                incomeIds.map(async (id) => {
+                  const item = incomeItems.find((i) => i.id === id);
+                  if (!item) return;
+                  await onSaveIncomeItem({
+                    ...item,
+                    sepaCollectionBatchId: batchId,
+                    sepaCollectionExportedAt: exportedAt,
+                    invoiceStatus: InvoiceStatus.PAID,
+                    paidAt: exportedAt,
+                  });
+                })
+              );
+              if (onSaveClientRecord && exportedOrders?.length) {
+                const toAdvance = clientsToAdvanceMandateAfterCollection(
+                  clientRecords,
+                  exportedOrders
+                );
+                await Promise.all(toAdvance.map((c) => onSaveClientRecord(c)));
+              }
+            }}
             incomeItems={incomeItems}
             clientRecords={clientRecords}
+          />
+        )}
+
+        {activeTab === 'missionInvoices' && (
+          <FinancialMissionInvoicesTab
+            missions={missions}
+            teamName={teamName}
+            isProTeam={isProTeam}
+            invoiceSettings={invoiceSettings}
+            currentUserId={currentUser?.id}
           />
         )}
 
@@ -718,6 +763,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             budgetItems={budgetItems}
             supplierInvoices={supplierInvoices}
             sepaBatches={sepaBatches}
+            missions={missions}
             issuerSiret={invoiceSettings?.issuerSiret}
             canExport={canView && canExportAccounting}
           />
@@ -740,6 +786,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({
             incomeItems={incomeItems}
             teamName={teamName}
             invoiceSettings={invoiceSettings}
+            sepaDebtorIban={sepaSettings?.debtorIban}
             canEdit={canEdit}
             onSaveIncomeItem={onSaveIncomeItem}
             onSaveInvoiceSettings={onSaveInvoiceSettings}

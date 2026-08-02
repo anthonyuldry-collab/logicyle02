@@ -1,8 +1,8 @@
 
 
-import React, { useState, useMemo } from 'react';
-import { Mission, MissionStatus, StaffRole, Team, User } from '../types';
-import { isDemoMission } from '../constants/demoMissions';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Mission, MissionApplicationStatus, MissionStatus, StaffRole, Team, User } from '../types';
+import { getMissionApplications, isDemoMission } from '../constants/demoMissions';
 import SectionWrapper from '../components/SectionWrapper';
 import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
@@ -12,8 +12,13 @@ import MapPinIcon from '../components/icons/MapPinIcon';
 import BanknotesIcon from '../components/icons/BanknotesIcon';
 import {
   isMissionMarketplacePaymentsEnabled,
+  formatMissionMarketplaceBanner,
   MISSION_COMMISSION_LABELS,
 } from '../constants/missionMarketplace';
+import { exportVacataireDraftMissionInvoicePdf } from '../utils/missionInvoicePdfExport';
+import { finalizeVacataireMissionInvoice } from '../services/missionConnectService';
+import { getMyAppliedMissionsGlobal } from '../services/firebaseService';
+import { useTranslations } from '../hooks/useTranslations';
 
 interface MissionSearchSectionProps {
   missions: Mission[];
@@ -51,13 +56,63 @@ const MissionCard: React.FC<{ mission: Mission; teamName: string; onApply: () =>
 
 
 const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, teams, currentUser, setMissions, onApplyToMission }) => {
+    const { t } = useTranslations();
     const [roleFilter, setRoleFilter] = useState<StaffRole | 'all'>('all');
     const [startDateFilter, setStartDateFilter] = useState('');
-    
     const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
+    const [finalizeBusyId, setFinalizeBusyId] = useState<string | null>(null);
+    const userId = currentUser?.id;
 
-    // Protection contre currentUser undefined
-    if (!currentUser || !currentUser.id) {
+    useEffect(() => {
+      if (!userId || !isMissionMarketplacePaymentsEnabled()) return;
+      let cancelled = false;
+      (async () => {
+        const applied = await getMyAppliedMissionsGlobal(userId);
+        if (cancelled || !applied.length) return;
+        setMissions((prev) => {
+          const byId = new Map(prev.map((m) => [m.id, m]));
+          for (const m of applied) byId.set(m.id, m);
+          return Array.from(byId.values());
+        });
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [userId, setMissions]);
+
+    const allMissions = useMemo(() => {
+        return (missions || []).filter((m) => !isDemoMission(m.id));
+    }, [missions]);
+
+    const myApplications = useMemo(() => {
+        if (!allMissions.length || !userId) return new Set<string>();
+        return new Set(allMissions.filter(m => m.applicants?.includes(userId)).map(m => m.id));
+    }, [allMissions, userId]);
+
+    const filteredMissions = useMemo(() => {
+        if (!allMissions.length) return [];
+        return allMissions.filter(mission => {
+            if (mission.status !== MissionStatus.OPEN) return false;
+            if (roleFilter !== 'all' && mission.role !== roleFilter) return false;
+            if (startDateFilter && new Date(mission.startDate) < new Date(startDateFilter)) return false;
+            return true;
+        }).sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+    }, [allMissions, roleFilter, startDateFilter]);
+
+    const myPaidMissions = useMemo(() => {
+        if (!allMissions.length || !userId) return [];
+        return allMissions.filter((m) => {
+            if (m.payment?.status !== 'paid') return false;
+            const apps = getMissionApplications(m);
+            return apps.some(
+                (a) =>
+                    a.userId === userId &&
+                    a.status === MissionApplicationStatus.ACCEPTED,
+            );
+        });
+    }, [allMissions, userId]);
+
+    if (!currentUser || !userId) {
         return (
             <SectionWrapper title="Offres & Missions">
                 <div className="text-center p-8 bg-gray-50 rounded-lg border">
@@ -71,35 +126,15 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
     const getTeamName = (teamId: string) =>
         teams.find(t => t.id === teamId)?.name || 'Équipe partenaire';
 
-    const allMissions = useMemo(() => {
-        // Pas de missions fictives hors contexte présentation (Horizon Atlantique).
-        return (missions || []).filter((m) => !isDemoMission(m.id));
-    }, [missions]);
-
-    const myApplications = useMemo(() => {
-        if (!allMissions.length || !currentUser?.id) return new Set<string>();
-        return new Set(allMissions.filter(m => m.applicants?.includes(currentUser.id)).map(m => m.id));
-    }, [allMissions, currentUser?.id]);
-
-    const filteredMissions = useMemo(() => {
-        if (!allMissions.length) return [];
-        return allMissions.filter(mission => {
-            if (mission.status !== MissionStatus.OPEN) return false;
-            if (roleFilter !== 'all' && mission.role !== roleFilter) return false;
-            if (startDateFilter && new Date(mission.startDate) < new Date(startDateFilter)) return false;
-            return true;
-        }).sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-    }, [allMissions, roleFilter, startDateFilter]);
-
     const handleApply = async (missionToApply: Mission) => {
-        if (!currentUser?.id) return;
+        if (!userId) return;
         if (onApplyToMission) {
             await onApplyToMission(missionToApply);
         }
         setMissions(prevMissions =>
             prevMissions.map(m =>
                 m.id === missionToApply.id
-                    ? { ...m, applicants: [...(m.applicants || []), currentUser.id] }
+                    ? { ...m, applicants: [...(m.applicants || []), userId] }
                     : m
             )
         );
@@ -108,16 +143,112 @@ const MissionSearchSection: React.FC<MissionSearchSectionProps> = ({ missions, t
     
     return (
         <SectionWrapper title="Offres & Missions">
-            {!isMissionMarketplacePaymentsEnabled() && (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 leading-relaxed">
-                {MISSION_COMMISSION_LABELS.matchingOnlyBanner.fr}
-              </div>
-            )}
+            <div
+              className={`mb-4 rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                isMissionMarketplacePaymentsEnabled()
+                  ? 'border border-emerald-500/40 bg-emerald-950/70 text-emerald-100'
+                  : 'border border-amber-500/40 bg-amber-950/80 text-amber-100'
+              }`}
+            >
+              {formatMissionMarketplaceBanner('fr')}
+            </div>
             <p className="mb-4 text-sm text-gray-600">
               Missions vacataires ouvertes publiées par les équipes.
               Une fois accepté(e) sur un week-end, la mission apparaît automatiquement dans{' '}
               <strong>Mon Calendrier</strong>.
             </p>
+
+            {isMissionMarketplacePaymentsEnabled() && myPaidMissions.length > 0 && (
+              <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-3">
+                <p className="text-sm font-medium text-emerald-900">
+                  Missions payées — modèles de facture (net → LogiCycle)
+                </p>
+                <ul className="space-y-2">
+                  {myPaidMissions.map((m) => {
+                    const accepted = getMissionApplications(m).find(
+                      (a) =>
+                        a.userId === currentUser.id &&
+                        a.status === MissionApplicationStatus.ACCEPTED,
+                    );
+                    if (!accepted || !m.payment) return null;
+                    const issued = m.payment.vacataireInvoiceStatus === 'issued';
+                    return (
+                      <li
+                        key={m.id}
+                        className="flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-950"
+                      >
+                        <span>
+                          {m.title} · {getTeamName(m.teamId)}
+                          {issued && m.payment.vacataireInvoiceNumber
+                            ? ` · ${m.payment.vacataireInvoiceNumber}`
+                            : m.payment.vacataireInvoiceDraftNumber
+                              ? ` · ${m.payment.vacataireInvoiceDraftNumber}`
+                              : ''}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          <ActionButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              exportVacataireDraftMissionInvoicePdf({
+                                mission: m,
+                                payment: m.payment!,
+                                teamName: getTeamName(m.teamId),
+                                accepted,
+                                business: currentUser.business,
+                              })
+                            }
+                          >
+                            {MISSION_COMMISSION_LABELS.downloadVacataireDraft.fr}
+                          </ActionButton>
+                          {!issued && (
+                            <ActionButton
+                              size="sm"
+                              variant="primary"
+                              disabled={finalizeBusyId === m.id}
+                              onClick={async () => {
+                                setFinalizeBusyId(m.id);
+                                try {
+                                  const res = await finalizeVacataireMissionInvoice(m.teamId, m.id);
+                                  setMissions((prev) =>
+                                    prev.map((x) =>
+                                      x.id === m.id && x.payment
+                                        ? {
+                                            ...x,
+                                            payment: {
+                                              ...x.payment,
+                                              vacataireInvoiceStatus: 'issued',
+                                              vacataireInvoiceNumber: res.invoiceNumber,
+                                              vacataireInvoiceIssuedAt: new Date().toISOString(),
+                                            },
+                                          }
+                                        : x,
+                                    ),
+                                  );
+                                } catch (err) {
+                                  console.error(err);
+                                  alert(t('missionInvoicesFinalizeError'));
+                                } finally {
+                                  setFinalizeBusyId(null);
+                                }
+                              }}
+                            >
+                              {finalizeBusyId === m.id ? '…' : t('missionInvoicesFinalize')}
+                            </ActionButton>
+                          )}
+                          {issued && (
+                            <span className="text-xs font-medium text-emerald-800 self-center">
+                              {t('missionInvoicesFinalizeDone')}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
             <div className="mb-6 p-4 bg-gray-50 rounded-lg shadow-sm border">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                     <div>

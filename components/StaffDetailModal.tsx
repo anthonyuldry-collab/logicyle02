@@ -16,6 +16,7 @@ import {
   CvExtractedProfile,
   mergeCvExtractIntoStaff,
 } from '../utils/cvProfileMergeUtils';
+import { maskIbanDisplay } from '../utils/sepaUtils';
 
 interface StaffDetailModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   performanceEntries,
   daysAssigned,
 }) => {
+  const [revealStaffIban, setRevealStaffIban] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'career' | 'calendar' | 'availability' | 'admin'>('general');
   const [formData, setFormData] = useState<Omit<StaffMember, 'id'> | StaffMember>(
     staffMember ? structuredClone(staffMember) : { ...globalInitialStaffFormState }
@@ -375,7 +377,33 @@ const handleRemoveListItem = (listName: 'workHistory' | 'education' | 'languages
                          {(formData.status === StaffStatus.VACATAIRE) && <div className="flex items-center"><input type="checkbox" name="openToExternalMissions" checked={(formData as StaffMember).openToExternalMissions} onChange={handleInputChange} className={checkboxField} id="openToMissionsCheckbox"/><label htmlFor="openToMissionsCheckbox" className="ml-2 text-sm">Profil visible pour missions externes</label></div>}
                          <div className="grid grid-cols-1 gap-2 p-2 border border-slate-700 rounded">
                             <div className="text-sm font-medium text-slate-300">Coordonnées bancaires (SEPA)</div>
-                            <div><label className="text-sm">IBAN bénéficiaire</label><input type="text" name="bankDetails.iban" value={(formData as StaffMember).bankDetails?.iban || ''} onChange={handleInputChange} className={`${inputFieldSm} font-mono`} placeholder="FR76 3000 6000 0112 3456 7890 189"/></div>
+                            <div>
+                              <label className="text-sm">IBAN bénéficiaire</label>
+                              <input
+                                type="text"
+                                name="bankDetails.iban"
+                                value={
+                                  revealStaffIban || !(formData as StaffMember).bankDetails?.iban
+                                    ? (formData as StaffMember).bankDetails?.iban || ''
+                                    : maskIbanDisplay((formData as StaffMember).bankDetails!.iban!)
+                                }
+                                onChange={handleInputChange}
+                                onFocus={() => setRevealStaffIban(true)}
+                                readOnly={!revealStaffIban && !!(formData as StaffMember).bankDetails?.iban}
+                                className={`${inputFieldSm} font-mono`}
+                                placeholder="FR76 3000 6000 0112 3456 7890 189"
+                                autoComplete="off"
+                              />
+                              {(formData as StaffMember).bankDetails?.iban && (
+                                <button
+                                  type="button"
+                                  className="mt-1 text-[10px] text-slate-400 underline"
+                                  onClick={() => setRevealStaffIban((v) => !v)}
+                                >
+                                  {revealStaffIban ? 'Masquer' : 'Afficher'}
+                                </button>
+                              )}
+                            </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div><label className="text-sm">BIC</label><input type="text" name="bankDetails.bic" value={(formData as StaffMember).bankDetails?.bic || ''} onChange={handleInputChange} className={`${inputFieldSm} font-mono`} placeholder="BNPAFRPP"/></div>
                                 <div><label className="text-sm">Titulaire (si différent)</label><input type="text" name="bankDetails.accountHolderName" value={(formData as StaffMember).bankDetails?.accountHolderName || ''} onChange={handleInputChange} className={inputFieldSm}/></div>

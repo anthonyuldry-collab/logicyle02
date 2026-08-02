@@ -46,19 +46,27 @@ Checklist opérationnelle pour un lancement **payant**.
 ### Produit / vente
 - [x] Landing FR/EN + FAQ + matching-only marketplace (déployé)
 - [x] FAQ / support in-app
+- [x] Stripe Connect **TEST** (onboarding + checkout destination + commission 12 %) — [STRIPE_CONNECT_MISSIONS_TEST.md](./STRIPE_CONNECT_MISSIONS_TEST.md) *(flags off en soft-launch)*
+- [x] ERP lean · devis / facture / SEPA smoke — [ERP_LEAN_SMOKE.md](./ERP_LEAN_SMOKE.md) · `./scripts/erp-lean-smoke.sh` + E2E P2 `./scripts/erp-lean-e2e-continental.sh`
 - [ ] 2–3 clients pilotes prêts à payer
 
 ### RGPD ops
-- [x] Registre des traitements brouillon — [RGPD_REGISTRE.md](./RGPD_REGISTRE.md)
+- [x] Registre des traitements — [RGPD_REGISTRE.md](./RGPD_REGISTRE.md) (v2026-08-01, finalité scouting + Connect missions)
+- [x] Consent scouting documenté — [RGPD_SCOUTING_CONSENT.md](./RGPD_SCOUTING_CONSENT.md) (preuve Firestore + retrait in-app)
 - [ ] Test export + purge compte sur un user de test
-- [ ] Consent scouting documenté
 
 ### TVA
 - [x] Décision soft-launch documentée : **pas de Stripe Tax** tant que société / registrations non prêtes ; activer Stripe Tax post K-bis — [OPS_RUNBOOK.md](./OPS_RUNBOOK.md)
 
 ## P2 — Post-lancement
 
-- [ ] Stripe Connect + `MISSION_MARKETPLACE_MODE.paymentsEnabled = true` + bump légal
+- [ ] Stripe Connect **prod** : `VITE_MISSION_PAYMENTS=true` + `MISSION_PAYMENTS_ENABLED=true` + bump légal (`LEGAL_PACK_VERSION`)
+- [ ] Remplir `LEGAL_ENTITY` via env `VITE_LEGAL_*` / `LOGICYCLE_*` post K-bis — factures équipe sans watermark provisoire
+- [ ] Déployer rules + indexes + storage + functions missions
+- [ ] Assigner rôles **Comptable** / **Trésorier** aux users finance (permissionRole)
+- [ ] Webhook Live : events missions (`expired`, `payment_failed`, `charge.refunded`)
+- [ ] (Optionnel) `RESEND_API_KEY` + `RESEND_FROM` pour emails PDF auto
+- [ ] `./scripts/check-mission-invoices-ready.sh`
 - [ ] Stores iOS / Android (Capacitor)
 - [ ] Staging Firebase séparé
 - [ ] Bandeau analytics (si outil d’audience ajouté)
@@ -68,6 +76,7 @@ Checklist opérationnelle pour un lancement **payant**.
 ```bash
 ./scripts/preflight-soft-launch.sh
 ./scripts/smoke-production.sh https://logicycle.app
+./scripts/erp-lean-smoke.sh
 ```
 
 Test paiement TEST : `4242 4242 4242 4242`.
@@ -80,8 +89,13 @@ Test paiement TEST : `4242 4242 4242 4242`.
 | `docs/COMMERCIAL_OFFER.md` | Grille, tunnel CA, fondateurs, Stripe prices |
 | `docs/OPS_RUNBOOK.md` | Backup, rollback, Stripe Live, TVA |
 | `docs/EMAIL_FORWARDING.md` | Mails @logicycle.app |
-| `docs/RGPD_REGISTRE.md` | Registre traitements (brouillon) |
-| `constants/missionMarketplace.ts` | Flag paiement missions |
+| `docs/RGPD_REGISTRE.md` | Registre traitements |
+| `docs/RGPD_SCOUTING_CONSENT.md` | Preuve & retrait consentement scouting |
+| `docs/RGPD_WATCHLIST_LIA.md` | Balancing test watchlist (art. 6.1.f) |
+| `docs/STRIPE_CONNECT_MISSIONS_TEST.md` | Connect TEST marketplace missions |
+| `docs/ERP_LEAN_SMOKE.md` | Smoke devis → facture → SEPA (pain.001 / 008) |
+| `docs/MARKETPLACE_MISSIONS_FISCAL_SOCIAL.md` | Cadre fiscal / social (indépendant vs CDD) |
+| `constants/missionMarketplace.ts` | Flag / commission / éligibilité Connect |
 | `constants/subscriptionPlans.ts` | Prix & caps plans |
 | `scripts/preflight-soft-launch.sh` | Préflight local |
 | `scripts/complete-production-deploy.sh` | Déploiement + rappels |

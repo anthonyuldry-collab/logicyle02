@@ -7,15 +7,14 @@ import {
   UserRole,
 } from '../types';
 import { getStaffMemberAudiences } from '../constants/meetingReportAudiences';
-import { getStaffRoleKey } from './staffRoleUtils';
+import { getStaffRoleKey, isManagerEquivalentStaffRole } from './staffRoleUtils';
 
 export function canManageMeetingReports(user: User, staff: StaffMember[]): boolean {
   if (user.userRole === UserRole.MANAGER) return true;
   if (user.permissionRole === TeamRole.ADMIN || user.permissionRole === TeamRole.EDITOR) return true;
   const member = staff.find(s => s.email === user.email);
   if (!member) return false;
-  const key = getStaffRoleKey(member.role);
-  return key === 'DS' || key === 'MANAGER';
+  return getStaffRoleKey(member.role) === 'DS' || isManagerEquivalentStaffRole(member.role);
 }
 
 export function canViewMeetingReport(

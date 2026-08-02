@@ -149,7 +149,15 @@ export async function purgeUserPersonalData(userId: string, performedBy?: string
 }
 
 export async function writeGdprAuditLog(entry: {
-  action: 'user_purge' | 'team_purge' | 'user_export';
+  action:
+    | 'user_purge'
+    | 'team_purge'
+    | 'user_export'
+    | 'scouting_consent_accepted'
+    | 'scouting_consent_rejected'
+    | 'scouting_consent_withdrawn'
+    | 'mission_invoice_downloaded'
+    | 'mission_invoice_issued';
   targetId: string;
   performedBy: string;
   method: 'client' | 'cloud_function';
@@ -161,7 +169,7 @@ export async function writeGdprAuditLog(entry: {
       performedAt: new Date().toISOString(),
     });
   } catch {
-    // Ne pas bloquer la suppression si le journal échoue
+    // Ne pas bloquer le flux métier si le journal échoue
   }
 }
 
@@ -218,6 +226,10 @@ export async function exportUserPersonalData(userId: string): Promise<Record<str
       }
     : null;
 
+  const scoutingSnap = await getDocs(
+    query(collection(db, 'scoutingRequests'), where('athleteId', '==', userId))
+  );
+
   return {
     exportedAt: new Date().toISOString(),
     format: 'LogiCycle-RGPD-Export-v1',
@@ -225,6 +237,8 @@ export async function exportUserPersonalData(userId: string): Promise<Record<str
     user: sanitizedUser,
     memberships: membershipsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     teamProfiles,
+    /** Preuves de consentement scouting (art. 7) — voir docs/RGPD_SCOUTING_CONSENT.md */
+    scoutingRequests: scoutingSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
   };
 }
 

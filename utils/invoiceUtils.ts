@@ -50,6 +50,19 @@ export function isInvoiceLocked(item: IncomeItem): boolean {
   );
 }
 
+/** Préconditions d’émission : client lié obligatoire (IBAN / SEPA / relances). */
+export function getInvoiceIssueBlockers(item: IncomeItem): string[] {
+  const blockers: string[] = [];
+  if (!item.clientId?.trim()) blockers.push('clientId');
+  if (!item.clientName?.trim()) blockers.push('clientName');
+  if (!(item.amount > 0)) blockers.push('amount');
+  return blockers;
+}
+
+export function canIssueInvoice(item: IncomeItem): boolean {
+  return getInvoiceIssueBlockers(item).length === 0;
+}
+
 /**
  * Met à jour une facture en recalculant HT/TVA et en préservant le cycle de vie.
  * Les factures payées / annulées ne sont pas modifiables.
@@ -124,6 +137,11 @@ export function issueInvoice(
   language: 'fr' | 'en' = 'fr',
   allocatedSequence?: number
 ): { item: IncomeItem; settings: TeamInvoiceSettings } {
+  const blockers = getInvoiceIssueBlockers(item);
+  if (blockers.length > 0) {
+    throw new Error(`Cannot issue invoice: missing ${blockers.join(', ')}`);
+  }
+
   const year = item.date ? new Date(item.date + 'T12:00:00').getFullYear() : new Date().getFullYear();
   const sequence =
     allocatedSequence ?? settings.nextInvoiceNumber ?? 1;
@@ -231,7 +249,9 @@ export function buildInvoiceFromIncome(
   item: IncomeItem,
   settings: TeamInvoiceSettings,
   teamName: string,
-  language: 'fr' | 'en' = 'fr'
+  language: 'fr' | 'en' = 'fr',
+  /** IBAN depuis privateConfig/sepa (préféré à issuerIban public). */
+  bankIbanFallback?: string
 ) {
   const enriched = enrichIncomeWithAccounting(item, language, settings.defaultVatRate);
   const { amountHT, vatAmount } = computeInvoiceAmounts(enriched.amount, enriched.vatRate ?? 0);
@@ -247,7 +267,7 @@ export function buildInvoiceFromIncome(
       address: settings.issuerAddress,
       siret: settings.issuerSiret,
       vatNumber: settings.issuerVatNumber,
-      iban: settings.issuerIban,
+      iban: bankIbanFallback || settings.issuerIban,
     },
     client: {
       name: enriched.clientName || enriched.sponsorshipContactName || '—',
@@ -285,8 +305,11 @@ export function isInvoiceIssuable(item: IncomeItem): boolean {
   return (
     item.amount > 0 &&
     Boolean(item.description?.trim()) &&
+    Boolean(item.clientId?.trim()) &&
+    Boolean(item.clientName?.trim()) &&
     item.invoiceStatus !== InvoiceStatus.PAID &&
-    item.invoiceStatus !== InvoiceStatus.CANCELLED
+    item.invoiceStatus !== InvoiceStatus.CANCELLED &&
+    item.invoiceStatus !== InvoiceStatus.ISSUED
   );
 }
 
