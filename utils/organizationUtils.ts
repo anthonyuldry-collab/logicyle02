@@ -115,7 +115,7 @@ export function resolveOrganizationForUser(params: {
   if (isHoldingSuperAdmin) {
     return {
       id: 'holding-super-admin',
-      name: 'LogiCycle — Pilotage PDG',
+      name: 'Rovik — Pilotage PDG',
       country: teams.find((t) => t.id === activeTeamId)?.country || teams[0]?.country || 'FR',
       teamIds: teams.map((t) => t.id),
       adminUserIds: [currentUser.id],

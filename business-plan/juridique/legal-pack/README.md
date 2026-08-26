@@ -1,4 +1,4 @@
-# Pack legal SaaS LogiCycle — FR + EN
+# Pack legal SaaS rovik — FR + EN
 
 > **Version pack** : `2026-07` · **Entrée en vigueur** : 2026-07-31  
 > **Source produit** : modules TypeScript `legal/*.ts` (affichés via `#/legal/{cgu|cgv|privacy|dpa|mentions|cookies}`)  
@@ -34,7 +34,7 @@ Voir `legal/meta.ts` et `juridique/04-decisions-a-trancher.md` :
 
 ## Points juridiques clés retenus
 
-1. **Double rôle RGPD** : LogiCycle = responsable (compte, billing, sécurité) · sous-traitant (données métier Équipe) → DPA obligatoire.  
+1. **Double rôle RGPD** : Rovik = responsable (compte, billing, sécurité) · sous-traitant (données métier Équipe) → DPA obligatoire.  
 2. **Marketplace** : intermédiaire · vacataire = indépendant · commission **12 %** (10 % Pro) · Équipe = donneur d’ordre.  
 3. **Essai** : 14 j (Club/Compétition/indépendants) · pilote jusqu’à 90 j (Continental/Pro) · Stripe.  
 4. **Plafond responsabilité** : 12 mois de redevances (ou 100 € si pas d’abo propre).  
@@ -54,9 +54,10 @@ Voir `legal/meta.ts` et `juridique/04-decisions-a-trancher.md` :
 
 ## Fichiers associés
 
+- `lancement/` — dossier unique avant go-live
 - `business-plan/checklist-juridique-pre-seed.md` — Priorité 4  
 - `data/ceoLaunchPlan.ts` — item `sept-legal-pack`  
 - `constants.ts` — `LEGAL_VERSIONS`  
 - `sections/LegalView.tsx` — UI publique  
 
-*LogiCycle — juil. 2026.*
+*rovik — août 2026.*

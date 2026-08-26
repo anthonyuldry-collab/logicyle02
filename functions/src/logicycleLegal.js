@@ -23,11 +23,11 @@ function getLogicycleLegalEntity() {
   const legalForm = pick(
     process.env.LOGICYCLE_LEGAL_FORM,
     process.env.VITE_LEGAL_FORM,
-    'SASU LogiCycle',
+    'SASU Rovik',
   );
 
   return {
-    tradeName: 'LogiCycle',
+    tradeName: 'Rovik',
     legalForm,
     siren,
     siret,
@@ -47,7 +47,7 @@ function assertLegalReadyForMissionPayments(stripeLivemode) {
 
   if (requireLegal && entity.incomplete) {
     const err = new Error(
-      'Identité légale LogiCycle incomplète (LOGICYCLE_SIRET / SIREN / siège). Remplir post K-bis avant paiements live.',
+      'Identité légale Rovik incomplète (LOGICYCLE_SIRET / SIREN / siège). Remplir post K-bis avant paiements live.',
     );
     err.code = 'legal_entity_incomplete';
     throw err;

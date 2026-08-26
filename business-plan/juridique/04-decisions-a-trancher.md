@@ -8,10 +8,10 @@
 
 | # | Question | Votre décision | Date |
 |---|----------|----------------|------|
-| A1 | Dénomination exacte : **LogiCycle** / LogiCycle SAS / autre orthographe (Logyclie) ? | **LogiCycle** (SASU) | 2026-07-31 |
-| A2 | Sigle / nom commercial distinct ? | Non — LogiCycle | 2026-07-31 |
-| A3 | Domaine principal retenu ? | **logicycle.app** (live) | 2026-07-31 |
-| A4 | Logo finalisé pour dépôt marque ? | Oui / Non | |
+| A1 | Dénomination exacte | **Rovik** (SASU) — rebrand 26/08/2026 | 2026-08-26 |
+| A2 | Nom commercial | **rovik** (casse logo) | 2026-08-26 |
+| A3 | Domaine principal actuel | **logicycle.app** (live) · cible **rovik.app** | 2026-07-31 |
+| A4 | Logo finalisé pour dépôt marque ? | Oui — lockup + monogramme R (`public/icons/rovik-*`) | 2026-08-26 |
 
 ---
 

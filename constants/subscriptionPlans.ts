@@ -33,17 +33,18 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     id: SubscriptionPlanId.CLUB,
     name: { fr: 'Club', en: 'Club' },
     tagline: {
-      fr: 'Clubs, comités & structures jeunes',
-      en: 'Clubs, committees & youth structures',
+      fr: 'Remplacez Excel — effectif & logistique de course',
+      en: 'Replace spreadsheets — roster & race logistics',
     },
-    monthlyPriceEur: 59,
-    annualPriceEur: 590,
+    monthlyPriceEur: 99,
+    annualPriceEur: 990,
     maxUsers: 30,
     maxEventsPerSeason: 35,
     features: [
       { fr: 'Effectif, calendrier & invitations', en: 'Roster, calendar & invites' },
-      { fr: 'Logistique course (6 modules)', en: 'Race logistics (6 modules)' },
+      { fr: 'Logistique course (transport, hébergement, checklists)', en: 'Race logistics (transport, lodging, checklists)' },
       { fr: 'App mobile coureurs & staff', en: 'Mobile app for riders & staff' },
+      { fr: 'Aperçu performance · analyse dès Compétition', en: 'Performance teaser · full analytics from Competition' },
       { fr: 'RGPD natif · essai 14 jours', en: 'Native GDPR · 14-day trial' },
     ],
   },
@@ -51,19 +52,20 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     id: SubscriptionPlanId.COMPETITION,
     name: { fr: 'Compétition', en: 'Competition' },
     tagline: {
-      fr: 'Équipes fédérales & élite nationale — camp & perf',
-      en: 'National federation & elite teams — camp & perf',
+      fr: 'La prochaine course sans Excel — logistique + performance',
+      en: 'Your next race without spreadsheets — logistics + performance',
     },
-    monthlyPriceEur: 119,
-    annualPriceEur: 1190,
+    monthlyPriceEur: 249,
+    annualPriceEur: 2490,
     maxUsers: 50,
     maxEventsPerSeason: 100,
+    highlighted: true,
     features: [
+      { fr: 'Tout Club +', en: 'Everything in Club +' },
       { fr: 'Logistique course complète (12 onglets)', en: 'Full race logistics (12 tabs)' },
-      { fr: 'Performance, nutrition & bike fit', en: 'Performance, nutrition & bike fit' },
-      { fr: 'Suivi stage : wellness, chaleur, tests', en: 'Camp monitoring: wellness, heat, tests' },
-      { fr: 'Budgets, justificatifs OCR & SEPA', en: 'Budgets, OCR receipts & SEPA' },
-      { fr: 'Bulletins UCI J-20 / J-3 (équipes N1+)', en: 'UCI entry forms J-20 / J-3 (N1+ teams)' },
+      { fr: 'Performance : profils puissance, CP/FTP, durabilité', en: 'Performance: power profiles, CP/FTP, durability' },
+      { fr: 'Nutrition course, bike fit & suivi stage', en: 'Race nutrition, bike fit & camp monitoring' },
+      { fr: 'Budgets course, justificatifs OCR & SEPA', en: 'Race budgets, OCR receipts & SEPA' },
       { fr: 'Essai 14 jours inclus', en: '14-day trial included' },
     ],
   },
@@ -71,18 +73,17 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     id: SubscriptionPlanId.CONTINENTAL,
     name: { fr: 'Élite', en: 'Elite' },
     tagline: {
-      fr: 'Circuits internationaux — scouting & missions',
-      en: 'International circuits — scouting & missions',
+      fr: 'Circuits internationaux — scouting & missions (matching)',
+      en: 'International circuits — scouting & missions (matching)',
     },
-    monthlyPriceEur: 199,
-    annualPriceEur: 1990,
+    monthlyPriceEur: 399,
+    annualPriceEur: 3990,
     maxUsers: 80,
     maxEventsPerSeason: null,
-    highlighted: true,
     features: [
       { fr: 'Tout Compétition +', en: 'Everything in Competition +' },
       { fr: 'Réseau talents & profils indépendants', en: 'Talent network & independent profiles' },
-      { fr: 'Marketplace missions staff (mise en relation)', en: 'Staff mission marketplace (matching)' },
+      { fr: 'Missions staff : mise en relation (paiements plus tard)', en: 'Staff missions: matching (payments later)' },
       { fr: 'Camps altitude & chaleur avancés', en: 'Advanced altitude & heat camps' },
       { fr: 'Export compta & peer review', en: 'Accounting export & peer review' },
       { fr: 'Essai 30 jours inclus', en: '30-day trial included' },
@@ -95,8 +96,8 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       fr: 'Wedge Pro / WT — support prioritaire, essai 30 j',
       en: 'Pro / WT wedge — priority support, 30-day trial',
     },
-    monthlyPriceEur: 349,
-    annualPriceEur: 3490,
+    monthlyPriceEur: 790,
+    annualPriceEur: 7900,
     maxUsers: 150,
     maxEventsPerSeason: null,
     features: [
@@ -125,9 +126,21 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
       { fr: 'Stats réseau anonymisées', en: 'Anonymized network stats' },
       { fr: 'SLA, SSO & API dédiées', en: 'Dedicated SLA, SSO & API' },
       { fr: 'Centres altitude & white-label', en: 'Altitude centres & white-label' },
-      { fr: 'Sur devis — dès 499 €/mois', en: 'Custom quote — from €499/mo' },
+      { fr: 'Sur devis — dès 990 €/mois', en: 'Custom quote — from €990/mo' },
     ],
   },
+];
+
+/** Page tarifs publique M1 : wedge visible. Le reste = « autres formules ». */
+export const PUBLIC_PRIMARY_PLAN_IDS: SubscriptionPlanId[] = [
+  SubscriptionPlanId.COMPETITION,
+  SubscriptionPlanId.CLUB,
+];
+
+export const PUBLIC_SECONDARY_PLAN_IDS: SubscriptionPlanId[] = [
+  SubscriptionPlanId.CONTINENTAL,
+  SubscriptionPlanId.PRO,
+  SubscriptionPlanId.FEDERATION,
 ];
 
 /**
@@ -244,7 +257,11 @@ export function getTrialDaysForPlan(planId: SubscriptionPlanId): number {
 
 export const REFERRAL_DISCOUNT_PERCENT = REFERRAL_PROGRAM.refereeDiscountPercent;
 
-/** Sections nécessitant un plan minimum */
+/**
+ * Sections nécessitant un plan minimum.
+ * Wedge lancement : Club = ops course ; Compétition = + perf ;
+ * Élite = + réseau / missions (matching) ; Fédération = API/SSO.
+ */
 export const SECTION_MIN_PLAN: Partial<Record<AppSection, SubscriptionPlanId>> = {
   performance: SubscriptionPlanId.COMPETITION,
   'season-planning': SubscriptionPlanId.COMPETITION,
@@ -252,8 +269,11 @@ export const SECTION_MIN_PLAN: Partial<Record<AppSection, SubscriptionPlanId>> =
   expenseReceipts: SubscriptionPlanId.COMPETITION,
   stocks: SubscriptionPlanId.COMPETITION,
   accommodationHistory: SubscriptionPlanId.COMPETITION,
-  scouting: SubscriptionPlanId.COMPETITION,
+  scouting: SubscriptionPlanId.CONTINENTAL,
+  missionSearch: SubscriptionPlanId.CONTINENTAL,
   talentAvailability: SubscriptionPlanId.CONTINENTAL,
+  talentSearch: SubscriptionPlanId.CONTINENTAL,
+  partnerPortal: SubscriptionPlanId.CONTINENTAL,
   // adminDashboard / userSettings / myDashboard : toujours accessibles aux managers (pas de gating plan)
 };
 

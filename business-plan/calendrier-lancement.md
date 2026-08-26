@@ -61,4 +61,4 @@ python3 business-plan/generate_projections.py
 ```
 
 Fichiers : `calendrier-lancement.csv` · colonne `date_calendrier` dans les projections CSV  
-Legal : `dossier-avocat-marque-logicycle.md` · `checklist-juridique-pre-seed.md`
+Legal : `lancement/` · `dossier-avocat-marque-logicycle.md` (historique LogiCycle) · `checklist-juridique-pre-seed.md`

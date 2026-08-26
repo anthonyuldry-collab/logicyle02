@@ -3,6 +3,7 @@ import {
   Rider,
   StaffMember,
   Team,
+  TeamLevel,
   User,
   UserRole,
   SubscriptionPlanId,
@@ -26,6 +27,8 @@ import { getStaffRoleDisplayLabel } from '../utils/staffRoleUtils';
 import { isSuperAdminUser } from '../utils/superAdminUtils';
 import { getPlanById } from '../constants/subscriptionPlans';
 import { isIndependentUser } from '../utils/independentUtils';
+import { getSelectableTeamLevels } from '../utils/teamLevelUtils';
+import { isPlatformInternalTeam } from '../utils/platformInternalTeam';
 
 interface SuperAdminSectionProps {
   riders: Rider[];
@@ -34,6 +37,13 @@ interface SuperAdminSectionProps {
   onDeleteRider: (rider: Rider) => void;
   onDeleteStaff: (staff: StaffMember) => void;
   onDeleteTeam?: (teamId: string) => Promise<void> | void;
+  onCreateInternalTeam?: (teamData: {
+    name: string;
+    level: TeamLevel;
+    country: string;
+  }) => Promise<void> | void;
+  onGrantInternalAccess?: (teamId: string) => Promise<void> | void;
+  onOpenTeam?: (teamId: string) => Promise<void> | void;
   appState: {
     activeTeamId?: string | null;
     teams?: Team[];
@@ -90,6 +100,9 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
   onDeleteRider,
   onDeleteStaff,
   onDeleteTeam,
+  onCreateInternalTeam,
+  onGrantInternalAccess,
+  onOpenTeam,
   appState,
 }) => {
   const [selectedRiders, setSelectedRiders] = useState<Set<string>>(new Set());
@@ -110,6 +123,10 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [orphanBusy, setOrphanBusy] = useState(false);
   const [orphanReport, setOrphanReport] = useState<string>('');
+  const [internalName, setInternalName] = useState('Rovik — équipe de travail');
+  const [internalLevel, setInternalLevel] = useState<TeamLevel>(TeamLevel.HORS_DN);
+  const [internalBusy, setInternalBusy] = useState(false);
+  const [grantingTeamId, setGrantingTeamId] = useState<string | null>(null);
 
   const isSuperAdmin = isSuperAdminUser(currentUser);
   const teams = appState.teams || [];
@@ -350,12 +367,95 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
     }
   };
 
+  const handleCreateInternal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreateInternalTeam) return;
+    const name = internalName.trim();
+    if (name.length < 2) {
+      alert('Nom d’équipe requis (2 caractères minimum).');
+      return;
+    }
+    setInternalBusy(true);
+    try {
+      await onCreateInternalTeam({
+        name,
+        level: internalLevel,
+        country: 'FR',
+      });
+    } catch (error) {
+      console.error('Création équipe interne:', error);
+      alert(error instanceof Error ? error.message : 'Impossible de créer l’équipe interne.');
+    } finally {
+      setInternalBusy(false);
+    }
+  };
+
+  const handleGrantInternal = async (team: Team) => {
+    if (!onGrantInternalAccess) return;
+    if (
+      !window.confirm(
+        `Passer « ${team.name} » en équipe interne ?\nSans Stripe, hors MRR, accès Performance 5 ans. Les personnes que tu invites pourront travailler dessus sans payer.`
+      )
+    ) {
+      return;
+    }
+    setGrantingTeamId(team.id);
+    try {
+      await onGrantInternalAccess(team.id);
+    } catch (error) {
+      console.error('Accès interne équipe:', error);
+      alert(error instanceof Error ? error.message : 'Impossible d’activer l’accès interne.');
+    } finally {
+      setGrantingTeamId(null);
+    }
+  };
+
   return (
     <SectionWrapper title="Super Administrateur — Pilotage plateforme">
       <div className="space-y-6">
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
           Accès unique à ton compte. Aucune équipe ni nouvel utilisateur ne peut être promu Super Admin.
         </div>
+
+        {onCreateInternalTeam && (
+          <form
+            onSubmit={handleCreateInternal}
+            className="rounded-lg border border-emerald-700/40 bg-emerald-950/25 px-4 py-4 space-y-3"
+          >
+            <div>
+              <p className="font-semibold text-emerald-100">Équipe interne — sans paiement</p>
+              <p className="text-xs text-emerald-200/80 mt-1">
+                Pour bosser toi-même (et y faire entrer staff / coureurs). Hors Stripe, hors MRR,
+                plan Performance débloqué 5 ans.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={internalName}
+                onChange={(e) => setInternalName(e.target.value)}
+                placeholder="Nom de l’équipe"
+                className="input-field-sm flex-1"
+                disabled={internalBusy}
+              />
+              <select
+                value={internalLevel}
+                onChange={(e) => setInternalLevel(e.target.value as TeamLevel)}
+                className="input-field-sm sm:w-56"
+                disabled={internalBusy}
+              >
+                {getSelectableTeamLevels().map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+              <ActionButton type="submit" disabled={internalBusy}>
+                {internalBusy ? 'Création…' : 'Créer et ouvrir'}
+              </ActionButton>
+            </div>
+          </form>
+        )}
 
         <div className="rounded-lg border border-sky-700/40 bg-sky-950/30 px-4 py-3 space-y-3">
           <div>
@@ -487,7 +587,14 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
                               isCleanupTarget ? 'bg-rose-950/20' : ''
                             }`}
                           >
-                            <td className="py-2.5 pr-3 font-medium">{team.name || team.id}</td>
+                            <td className="py-2.5 pr-3 font-medium">
+                              {team.name || team.id}
+                              {isPlatformInternalTeam(team) && (
+                                <span className="ml-2 inline-flex rounded-md bg-sky-950/70 border border-sky-700/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                                  Interne
+                                </span>
+                              )}
+                            </td>
                             <td className="py-2.5 pr-3 font-mono text-[11px] text-slate-500">{team.id}</td>
                             <td className="py-2.5 pr-3 text-slate-400">{team.level || '—'}</td>
                             <td className="py-2.5 pr-3">
@@ -498,16 +605,37 @@ const SuperAdminSection: React.FC<SuperAdminSectionProps> = ({
                             <td className="py-2.5 pr-3 text-slate-300">{sub.status}</td>
                             <td className="py-2.5 pr-3 text-slate-400 text-xs">{sub.detail || '—'}</td>
                             <td className="py-2.5 text-right">
-                              {onDeleteTeam && (
-                                <button
-                                  type="button"
-                                  disabled={deletingTeamId === team.id}
-                                  onClick={() => setTeamToDelete(team)}
-                                  className="text-xs font-medium text-rose-300 hover:text-rose-200 disabled:opacity-50"
-                                >
-                                  {deletingTeamId === team.id ? '…' : 'Supprimer'}
-                                </button>
-                              )}
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {onOpenTeam && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void onOpenTeam(team.id)}
+                                    className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
+                                  >
+                                    Ouvrir
+                                  </button>
+                                )}
+                                {onGrantInternalAccess && !isPlatformInternalTeam(team) && (
+                                  <button
+                                    type="button"
+                                    disabled={grantingTeamId === team.id}
+                                    onClick={() => void handleGrantInternal(team)}
+                                    className="text-xs font-medium text-sky-300 hover:text-sky-200 disabled:opacity-50"
+                                  >
+                                    {grantingTeamId === team.id ? '…' : 'Sans paiement'}
+                                  </button>
+                                )}
+                                {onDeleteTeam && (
+                                  <button
+                                    type="button"
+                                    disabled={deletingTeamId === team.id}
+                                    onClick={() => setTeamToDelete(team)}
+                                    className="text-xs font-medium text-rose-300 hover:text-rose-200 disabled:opacity-50"
+                                  >
+                                    {deletingTeamId === team.id ? '…' : 'Supprimer'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

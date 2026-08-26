@@ -21,10 +21,10 @@
 
 | # | Action | Détail | Statut |
 |---|--------|--------|--------|
-| 1.1 | **Recherche d'antériorité** | « LogiCycle » · classes **9 / 42 / 35** · **Logiscycle (Hansen)** · **LOGICYCLE (DE/WIPO)** · Ippogee | ☐ |
+| 1.1 | **Recherche d'antériorité** | « **rovik** » · classes **9 / 42 / 35** · voir `lancement/02-marque-et-domaines.md` | ☐ |
 | 1.1b | **Brief avocat marque** | Dossier + annexe TMview | ☐ envoyer |
 | 1.2 | **Dépôt marque France** (si avis OK) | INPI · nom + logo · avant go-live déc. 2026 | ☐ |
-| 1.3 | **Nom de domaine verrouillé** | logicycle.com / .fr / .eu · variantes | ☐ |
+| 1.3 | **Nom de domaine verrouillé** | **rovik.app / .com / .fr / .eu** + garder logicycle.app · `lancement/templates/domaines-a-acheter.csv` | ☐ |
 | 1.4 | **Charte « pas de confusion »** | vs Ippogee · vs Logiscycle Hansen | ☐ |
 
 **Livrable** : avis écrit + certificat INPI si dépôt.

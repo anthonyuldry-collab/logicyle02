@@ -131,7 +131,7 @@ export function exportInvoicePdf(
   }
 
   const safeNumber = invoice.invoiceNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
-  doc.save(`LogiCycle_Facture_${safeNumber}.pdf`);
+  doc.save(`Rovik_Facture_${safeNumber}.pdf`);
 }
 
 export function exportInvoicesSummaryPdf(
@@ -187,5 +187,5 @@ export function exportInvoicesSummaryPdf(
     y
   );
 
-  doc.save(`LogiCycle_Factures_${teamName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`Rovik_Factures_${teamName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
 }

@@ -91,7 +91,7 @@ const LegalView: React.FC<LegalViewProps> = ({
           </select>
         </div>
 
-        <p className="text-xs uppercase tracking-[0.2em] text-indigo-300/80 mb-2">LogiCycle Legal</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80 mb-2">rovik Legal</p>
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white mb-3">
           {doc.title[locale]}
         </h1>
@@ -150,7 +150,7 @@ const LegalView: React.FC<LegalViewProps> = ({
         </article>
 
         <p className="mt-8 text-center text-xs text-slate-500">
-          © {new Date().getFullYear()} LogiCycle · {LEGAL_ENTITY.privacyEmail}
+          © {new Date().getFullYear()} {LEGAL_ENTITY.tradeName} · {LEGAL_ENTITY.privacyEmail}
         </p>
       </div>
     </div>

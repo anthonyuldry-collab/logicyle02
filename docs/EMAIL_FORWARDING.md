@@ -2,6 +2,8 @@
 
 Objectif soft-launch : recevoir `support@`, `contact@`, `privacy@` sans boîte mail payante.
 
+Fiche lancement : [`lancement/04-emails-et-dns.md`](../lancement/04-emails-et-dns.md). Quand `rovik.app` est acheté, dupliquer les 3 alias.
+
 ## Étapes (≈ 10 min)
 
 1. Compte gratuit sur [https://improvmx.com](https://improvmx.com)

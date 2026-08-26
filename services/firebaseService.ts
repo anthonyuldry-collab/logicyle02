@@ -607,6 +607,7 @@ export const createTeamForUser = async (
     userId: string,
     teamData: { name: string; level: TeamLevel; country: string; planId?: import('../types').SubscriptionPlanId; },
     _userRole: UserRole,
+    options?: { internal?: boolean },
 ) => {
     try {
         // Création privilégiée côté serveur (membership ACTIVE + élévation Manager).
@@ -614,7 +615,7 @@ export const createTeamForUser = async (
         const { FIREBASE_FUNCTIONS_REGION } = await import('../constants/firebaseRegions');
         const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
         const fn = httpsCallable<
-            { name: string; level: string; country: string; planId?: string },
+            { name: string; level: string; country: string; planId?: string; internal?: boolean },
             { teamId: string }
         >(functions, 'createTeamForUser');
         const result = await fn({
@@ -622,6 +623,7 @@ export const createTeamForUser = async (
             level: teamData.level,
             country: teamData.country,
             planId: teamData.planId,
+            ...(options?.internal ? { internal: true } : {}),
         });
         const teamId = result.data?.teamId;
         if (!teamId) {
@@ -638,6 +640,18 @@ export const createTeamForUser = async (
                 : 'Erreur inconnue';
         throw new Error(`Échec de la création de l'équipe: ${message}`);
     }
+};
+
+export const grantInternalTeamAccess = async (teamId: string) => {
+    const { getFunctions, httpsCallable } = await import('firebase/functions');
+    const { FIREBASE_FUNCTIONS_REGION } = await import('../constants/firebaseRegions');
+    const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
+    const fn = httpsCallable<{ teamId: string }, { ok: boolean; teamId: string }>(
+        functions,
+        'grantInternalTeamAccess',
+    );
+    const result = await fn({ teamId });
+    return result.data;
 };
 
 async function safeLoadGlobalCollection<T>(collName: string): Promise<T[]> {

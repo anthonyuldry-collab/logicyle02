@@ -68,8 +68,8 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
             </p>
             <p>
               {isFr
-                ? "L'utilisateur s'engage à ne pas divulguer, reproduire ou exploiter commercialement les concepts, interfaces, algorithmes et données confidentielles de LogiCycle."
-                : 'The user agrees not to disclose, reproduce or commercially exploit LogiCycle concepts, interfaces, algorithms and confidential data.'}
+                ? "L'utilisateur s'engage à ne pas divulguer, reproduire ou exploiter commercialement les concepts, interfaces, algorithmes et données confidentielles de Rovik."
+                : 'The user agrees not to disclose, reproduce or commercially exploit Rovik concepts, interfaces, algorithms and confidential data.'}
             </p>
             <p>
               {isFr
@@ -84,8 +84,8 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
           <div className="text-green-700 space-y-2">
             <p>
               {isFr
-                ? 'Conformément au RGPD, LogiCycle traite vos données pour gérer votre compte, votre équipe, la logistique sportive et le suivi de performance que vous fournissez.'
-                : 'Under GDPR, LogiCycle processes your data to manage your account, team, sports logistics and performance tracking you provide.'}
+                ? 'Conformément au RGPD, Rovik traite vos données pour gérer votre compte, votre équipe, la logistique sportive et le suivi de performance que vous fournissez.'
+                : 'Under GDPR, Rovik processes your data to manage your account, team, sports logistics and performance tracking you provide.'}
             </p>
             <p>
               {isFr
@@ -105,8 +105,8 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
               <h4 className="font-semibold mb-2">1. {t('termsServiceTitle')}</h4>
               <p>
                 {isFr
-                  ? 'LogiCycle est un service professionnel de gestion d’équipes cyclistes. L’accès est conditionné à un compte valide et, selon le parcours, à un abonnement ou à l’appartenance à une équipe abonnée.'
-                  : 'LogiCycle is a professional cycling-team management service. Access requires a valid account and, depending on the path, a subscription or membership in a subscribed team.'}
+                  ? 'Rovik est un service professionnel de gestion d’équipes cyclistes. L’accès est conditionné à un compte valide et, selon le parcours, à un abonnement ou à l’appartenance à une équipe abonnée.'
+                  : 'Rovik is a professional cycling-team management service. Access requires a valid account and, depending on the path, a subscription or membership in a subscribed team.'}
               </p>
             </div>
             <div className="bg-white p-3 rounded border border-blue-300">
@@ -129,16 +129,16 @@ export const TermsAndConditionsModal: React.FC<TermsAndConditionsModalProps> = (
               <h4 className="font-semibold mb-2">4. {t('termsIpTitle')}</h4>
               <p>
                 {isFr
-                  ? 'Tous les droits de propriété intellectuelle sur LogiCycle appartiennent à ses éditeurs.'
-                  : 'All intellectual property rights in LogiCycle belong to its publishers.'}
+                  ? 'Tous les droits de propriété intellectuelle sur Rovik appartiennent à ses éditeurs.'
+                  : 'All intellectual property rights in Rovik belong to its publishers.'}
               </p>
             </div>
             <div className="bg-white p-3 rounded border border-blue-300">
               <h4 className="font-semibold mb-2">5. {t('termsLiabilityTitle')}</h4>
               <p>
                 {isFr
-                  ? 'Dans les limites autorisées par la loi, LogiCycle ne peut être tenu responsable des pertes de données, interruptions ou dommages indirects liés à l’usage du service.'
-                  : 'To the extent permitted by law, LogiCycle is not liable for data loss, interruptions or indirect damages arising from use of the service.'}
+                  ? 'Dans les limites autorisées par la loi, Rovik ne peut être tenu responsable des pertes de données, interruptions ou dommages indirects liés à l’usage du service.'
+                  : 'To the extent permitted by law, Rovik is not liable for data loss, interruptions or indirect damages arising from use of the service.'}
               </p>
             </div>
           </div>

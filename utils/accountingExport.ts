@@ -101,7 +101,7 @@ export function exportAccountingCsv(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `LogiCycle_Compta_${teamName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `Rovik_Compta_${teamName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   a.remove();
   URL.revokeObjectURL(url);

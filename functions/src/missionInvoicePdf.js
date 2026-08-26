@@ -60,7 +60,7 @@ function buildTeamInvoicePdfBuffer(archive) {
     `Date: ${archive.issueDate || ''}`,
     `Payee le: ${(archive.paidAt || '').slice(0, 10)}`,
     '',
-    `Emetteur: ${archive.issuerName || 'LogiCycle'}`,
+    `Emetteur: ${archive.issuerName || 'Rovik'}`,
     `SIRET: ${archive.issuerSiret || 'n/a'}`,
     `Adresse: ${archive.issuerAddress || 'n/a'}`,
     '',
@@ -77,7 +77,7 @@ function buildTeamInvoicePdfBuffer(archive) {
     '',
     archive.vatMention || 'TVA non applicable art. 293 B CGI (franchise) — a maj post assujettissement.',
     '',
-    'LogiCycle — intermediaire de paiement (merchant of record). Conservez ce document.',
+    'Rovik — intermediaire de paiement (merchant of record). Conservez ce document.',
   ];
   return buildSimpleInvoicePdf(lines);
 }
@@ -93,7 +93,7 @@ function buildVacataireInvoicePdfBuffer(archive) {
     `SIRET: ${archive.issuer?.siret || 'A COMPLETER'}`,
     `Adresse: ${[archive.issuer?.addressLine, archive.issuer?.postalCode, archive.issuer?.city].filter(Boolean).join(' ') || 'A COMPLETER'}`,
     '',
-    'Client: LogiCycle',
+    'Client: Rovik',
     '',
     `Mission: ${archive.missionTitle || ''}`,
     `Montant net: ${formatEur(archive.netEur)}`,
@@ -102,8 +102,8 @@ function buildVacataireInvoicePdfBuffer(archive) {
     `Ref paiement: ${archive.paymentIntentId || ''}`,
     '',
     draft
-      ? 'Finalisez SIRET puis emettez via LogiCycle. Ce n est pas un bulletin de paie.'
-      : 'Facture emise a LogiCycle. Ce n est pas un bulletin de paie.',
+      ? 'Finalisez SIRET puis emettez via Rovik. Ce n est pas un bulletin de paie.'
+      : 'Facture emise a Rovik. Ce n est pas un bulletin de paie.',
   ];
   return buildSimpleInvoicePdf(lines);
 }

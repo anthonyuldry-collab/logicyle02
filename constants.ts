@@ -383,11 +383,11 @@ export const INDEPENDENT_SHARED_PLANNING_SECTIONS: AppSection[] = ['myCalendar']
 
 export const LEGAL_VERSIONS = {
   /** Aligné sur legal/meta.ts LEGAL_PACK_VERSION — preuve consentement scouting / signup */
-  TERMS_VERSION: '2026-08.1',
+  TERMS_VERSION: '2026-08.3',
   PRIVACY_POLICY_VERSION: '2026-08.1',
   NDA_VERSION: '2026-08.1',
   /** Pack public CGU·CGV·privacy·DPA·mentions·cookies — aligné legal/meta.ts */
-  PACK_VERSION: '2026-08.1',
+  PACK_VERSION: '2026-08.3',
   /** Version du texte d’information scouting (art. 7 — preuve snapshot) */
   SCOUTING_CONSENT_NOTICE_VERSION: '2026-08.1-scouting',
 } as const;

@@ -37,6 +37,24 @@ function logStructured(level, message, fields = {}) {
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
+const FOUNDER_SUPER_ADMIN_EMAIL = 'anthony.uldry@hotmail.fr';
+
+function isFounderSuperAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === FOUNDER_SUPER_ADMIN_EMAIL;
+}
+
+/** Abonnement Performance 5 ans, hors Stripe — équipes internes / démo fondateur. */
+function complimentaryProSubscription() {
+  const periodEnd = new Date();
+  periodEnd.setFullYear(periodEnd.getFullYear() + 5);
+  return {
+    planId: 'pro',
+    status: 'active',
+    billingInterval: 'year',
+    currentPeriodEnd: periodEnd.toISOString(),
+  };
+}
+
 const {
   completeMissionPayment,
   markMissionPaymentFailed,
@@ -240,7 +258,18 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
   }
 
   const uid = request.auth.uid;
-  const { name, level, country, planId } = request.data || {};
+  const authEmail = (request.auth.token.email || '').toLowerCase();
+  const { name, level, country, planId, internal } = request.data || {};
+  const wantInternal = Boolean(internal);
+  const isFounder = isFounderSuperAdminEmail(authEmail);
+  if (wantInternal && !isFounder) {
+    throw new HttpsError(
+      'permission-denied',
+      'Seule la direction plateforme peut créer une équipe interne sans paiement.'
+    );
+  }
+  const isFounderInternal = wantInternal && isFounder;
+
   if (!name || typeof name !== 'string' || name.trim().length < 2) {
     throw new HttpsError('invalid-argument', 'Nom d\'équipe requis.');
   }
@@ -257,11 +286,11 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
     throw new HttpsError('failed-precondition', 'Profil utilisateur introuvable.');
   }
   const userData = userSnap.data() || {};
-  if (userData.teamId) {
+  if (!isFounderInternal && userData.teamId) {
     throw new HttpsError('already-exists', 'Vous appartenez déjà à une équipe.');
   }
 
-  if (userData.userRole !== 'Manager') {
+  if (!isFounderInternal && userData.userRole !== 'Manager') {
     throw new HttpsError(
       'permission-denied',
       'Inscrivez-vous avec le parcours Manager pour créer une équipe.'
@@ -276,9 +305,11 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
   const pilotEnds = new Date(now);
   pilotEnds.setDate(pilotEnds.getDate() + 30);
 
-  const subscription = isHigh
-    ? { planId: planId || 'pro', status: 'pilot', pilotEndsAt: pilotEnds.toISOString() }
-    : { planId: planId || 'club', status: 'trialing', trialEndsAt: trialEnds.toISOString() };
+  const subscription = isFounderInternal
+    ? complimentaryProSubscription()
+    : isHigh
+      ? { planId: planId || 'pro', status: 'pilot', pilotEndsAt: pilotEnds.toISOString() }
+      : { planId: planId || 'club', status: 'trialing', trialEndsAt: trialEnds.toISOString() };
 
   const teamRef = db.collection('teams').doc();
   const membershipRef = db.collection('teamMemberships').doc();
@@ -289,6 +320,8 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
     level,
     country: country.trim(),
     subscription,
+    isPlatformInternal: isFounderInternal,
+    commercialClient: false,
     operationalSettings: {
       acceptRiderApplications: false,
       acceptStaffApplications: false,
@@ -301,20 +334,31 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
     teamId: teamRef.id,
     status: 'Actif',
     userRole: 'Manager',
-    source: 'team_create',
+    source: isFounderInternal ? 'internal_team_create' : 'team_create',
     startDate: now.toISOString().split('T')[0],
   });
-  batch.set(
-    userRef,
-    {
-      teamId: teamRef.id,
-      userRole: 'Manager',
-      permissionRole: 'Administrateur',
-      isIndependentProfile: false,
-      updatedAt: now.toISOString(),
-    },
-    { merge: true }
-  );
+  if (isFounderInternal) {
+    batch.set(
+      userRef,
+      {
+        isPlatformInternal: true,
+        updatedAt: now.toISOString(),
+      },
+      { merge: true }
+    );
+  } else {
+    batch.set(
+      userRef,
+      {
+        teamId: teamRef.id,
+        userRole: 'Manager',
+        permissionRole: 'Administrateur',
+        isIndependentProfile: false,
+        updatedAt: now.toISOString(),
+      },
+      { merge: true }
+    );
+  }
 
   // Init légère des sous-collections critiques
   const initCols = ['riders', 'staff', 'vehicles', 'raceEvents', 'incomeItems'];
@@ -324,6 +368,66 @@ exports.createTeamForUser = onCall({ memory: '256MiB' }, async (request) => {
 
   await batch.commit();
   return { teamId: teamRef.id };
+});
+
+/**
+ * Super Admin : convertit une équipe existante en sandbox interne
+ * (abo Performance 5 ans, hors Stripe / hors MRR).
+ */
+exports.grantInternalTeamAccess = onCall({ memory: '256MiB' }, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Authentification requise.');
+  }
+  const authEmail = (request.auth.token.email || '').toLowerCase();
+  if (!isFounderSuperAdminEmail(authEmail)) {
+    throw new HttpsError(
+      'permission-denied',
+      'Réservé à la direction plateforme.'
+    );
+  }
+  const teamId = request.data?.teamId;
+  if (!teamId || typeof teamId !== 'string') {
+    throw new HttpsError('invalid-argument', 'teamId requis.');
+  }
+  const teamRef = db.collection('teams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists) {
+    throw new HttpsError('not-found', 'Équipe introuvable.');
+  }
+  const now = new Date();
+  await teamRef.set(
+    {
+      isPlatformInternal: true,
+      commercialClient: false,
+      subscription: complimentaryProSubscription(),
+      updatedAt: now.toISOString(),
+    },
+    { merge: true }
+  );
+
+  const uid = request.auth.uid;
+  const existing = await db
+    .collection('teamMemberships')
+    .where('teamId', '==', teamId)
+    .where('userId', '==', uid)
+    .limit(1)
+    .get();
+  if (existing.empty) {
+    await db.collection('teamMemberships').add({
+      userId: uid,
+      teamId,
+      status: 'Actif',
+      userRole: 'Manager',
+      source: 'internal_team_grant',
+      startDate: now.toISOString().split('T')[0],
+    });
+  }
+
+  await db.collection('users').doc(uid).set(
+    { isPlatformInternal: true, updatedAt: now.toISOString() },
+    { merge: true }
+  );
+  return { ok: true, teamId };
 });
 
 exports.gdprPurgeUser = onCall({ memory: '512MiB', timeoutSeconds: 300 }, async (request) => {
@@ -738,7 +842,8 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     throw new HttpsError('failed-precondition', 'Stripe non configuré. Contactez le support.');
   }
 
-  const { teamId, planId, interval = 'year', referralCode, scope, trialPeriodDays } = request.data || {};
+  const { teamId, planId, interval = 'year', referralCode, scope, trialPeriodDays, applyFounderDiscount } =
+    request.data || {};
   if (!planId) {
     throw new HttpsError('invalid-argument', 'planId requis.');
   }
@@ -783,7 +888,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     if (!customerId) {
       const customer = await stripeClient.customers.create({
         metadata: { userId: request.auth.uid, scope: 'user', firebaseUid: request.auth.uid },
-        name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'LogiCycle Indépendant',
+        name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'Rovik Indépendant',
         email: userData.email || undefined,
       });
       customerId = customer.id;
@@ -801,7 +906,7 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     if (!customerId) {
       const customer = await stripeClient.customers.create({
         metadata: { teamId, firebaseUid: request.auth.uid },
-        name: teamData.name || 'LogiCycle Team',
+        name: teamData.name || 'Rovik Team',
       });
       customerId = customer.id;
       await teamRef.set({ subscription: { ...teamData.subscription, stripeCustomerId: customerId } }, { merge: true });
@@ -830,6 +935,15 @@ exports.createStripeCheckout = onCall({ secrets: SECRET_STRIPE_BILLING, memory: 
     sessionParams.discounts = [{ coupon: process.env.STRIPE_COUPON_REFERRAL_REFEREE }];
     sessionParams.metadata.referralCode = normalizedReferralCode;
     sessionParams.metadata.referrerUserId = referrerUserId;
+  } else if (
+    applyFounderDiscount === true &&
+    interval === 'year' &&
+    !isUserScope &&
+    process.env.STRIPE_COUPON_FOUNDER
+  ) {
+    // Cohorte fondateurs : −20 % an 1 (coupon repeating 12 mois). Pas cumulable avec parrainage.
+    sessionParams.discounts = [{ coupon: process.env.STRIPE_COUPON_FOUNDER }];
+    sessionParams.metadata.founderOffer = 'year1_20';
   }
 
   let session;
@@ -925,7 +1039,7 @@ exports.createMissionConnectAccount = onCall(
     const displayName =
       `${userData.firstName || ''} ${userData.lastName || ''}`.trim() ||
       userData.email ||
-      'Vacataire LogiCycle';
+      'Vacataire Rovik';
 
     let account;
     try {
@@ -1031,7 +1145,7 @@ exports.createMissionConnectAccountLink = onCall(
   }
 );
 
-/** Checkout destination charge — équipe paie vacataire + commission LogiCycle. */
+/** Checkout destination charge — équipe paie vacataire + commission Rovik. */
 exports.createMissionPaymentCheckout = onCall(
   { secrets: SECRET_STRIPE_BILLING, memory: '256MiB' },
   async (request) => {
@@ -1150,7 +1264,7 @@ exports.createMissionPaymentCheckout = onCall(
               unit_amount: gmvCents,
               product_data: {
                 name: `Mission : ${mission.title || missionId}`,
-                description: `Règlement vacataire ${vacataireName} · commission LogiCycle ${commissionEur} €`,
+                description: `Règlement vacataire ${vacataireName} · commission Rovik ${commissionEur} €`,
               },
             },
           },
@@ -1962,7 +2076,7 @@ exports.onUserNotificationCreated = onDocumentCreated(
     if (tokens.length === 0) return;
 
     const message = {
-      notification: { title: data.title || 'LogiCycle', body: data.body || '' },
+      notification: { title: data.title || 'Rovik', body: data.body || '' },
       data: {
         eventId: data.eventId || '',
         teamId: data.teamId || '',

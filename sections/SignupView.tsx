@@ -11,6 +11,7 @@ import {
   getIndependentPlanIdForRole,
 } from '../constants/subscriptionPlans';
 import { consumePendingSignupPlan } from '../utils/pendingSignupPlan';
+import BrandMark from '../components/BrandMark';
 
 export interface SignupData {
   email: string;
@@ -43,18 +44,33 @@ interface SignupViewProps {
 
 type StepId = 'role' | 'path' | 'plan' | 'account';
 
-const ROLE_OPTIONS: {
+const PRIMARY_ROLE_OPTIONS: {
   role: UserRole;
   titleKey: 'signupRoleAthlete' | 'signupRoleStaff' | 'signupTabCreate' | 'signupRolePartner';
   descKey: 'signupRoleAthleteDesc' | 'signupRoleStaffDesc' | 'signupRoleManagerDesc' | 'signupRolePartnerDesc';
 }[] = [
-  { role: UserRole.COUREUR, titleKey: 'signupRoleAthlete', descKey: 'signupRoleAthleteDesc' },
-  { role: UserRole.STAFF, titleKey: 'signupRoleStaff', descKey: 'signupRoleStaffDesc' },
-  { role: UserRole.PARTNER, titleKey: 'signupRolePartner', descKey: 'signupRolePartnerDesc' },
   { role: UserRole.MANAGER, titleKey: 'signupTabCreate', descKey: 'signupRoleManagerDesc' },
 ];
 
-const TEAM_PLAN_OPTIONS = SUBSCRIPTION_PLANS.filter((p) => !p.contactSales);
+const SECONDARY_ROLE_OPTIONS: typeof PRIMARY_ROLE_OPTIONS = [
+  { role: UserRole.COUREUR, titleKey: 'signupRoleAthlete', descKey: 'signupRoleAthleteDesc' },
+  { role: UserRole.STAFF, titleKey: 'signupRoleStaff', descKey: 'signupRoleStaffDesc' },
+  { role: UserRole.PARTNER, titleKey: 'signupRolePartner', descKey: 'signupRolePartnerDesc' },
+];
+
+/** Signup public M1 : Club + Compétition d’abord. */
+const TEAM_PLAN_OPTIONS = SUBSCRIPTION_PLANS.filter(
+  (p) =>
+    !p.contactSales &&
+    (p.id === SubscriptionPlanId.CLUB || p.id === SubscriptionPlanId.COMPETITION),
+);
+
+const TEAM_PLAN_OPTIONS_MORE = SUBSCRIPTION_PLANS.filter(
+  (p) =>
+    !p.contactSales &&
+    p.id !== SubscriptionPlanId.CLUB &&
+    p.id !== SubscriptionPlanId.COMPETITION,
+);
 
 function initialSignupFromPending(): SignupData {
   const pending = consumePendingSignupPlan();
@@ -63,7 +79,7 @@ function initialSignupFromPending(): SignupData {
     firstName: '',
     lastName: '',
     password: '',
-    userRole: UserRole.COUREUR,
+    userRole: UserRole.MANAGER,
     birthDate: '',
     sex: undefined,
     teamName: '',
@@ -79,7 +95,10 @@ function initialSignupFromPending(): SignupData {
   if (pending.planId === SubscriptionPlanId.INDEPENDENT_STAFF) {
     return { ...base, userRole: UserRole.STAFF, signupMode: SignupMode.INDEPENDENT };
   }
-  if (pending.planId && TEAM_PLAN_OPTIONS.some((p) => p.id === pending.planId)) {
+  if (
+    pending.planId &&
+    [...TEAM_PLAN_OPTIONS, ...TEAM_PLAN_OPTIONS_MORE].some((p) => p.id === pending.planId)
+  ) {
     return { ...base, userRole: UserRole.MANAGER, signupMode: SignupMode.TEAM };
   }
   return base;
@@ -98,6 +117,12 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
   const [isLoading, setIsLoading] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
+  const [showOtherRoles, setShowOtherRoles] = useState(
+    () => SECONDARY_ROLE_OPTIONS.some((o) => o.role === formData.userRole),
+  );
+  const [showMoreTeamPlans, setShowMoreTeamPlans] = useState(() =>
+    Boolean(formData.planId && TEAM_PLAN_OPTIONS_MORE.some((p) => p.id === formData.planId)),
+  );
   const { t, language, setLanguage } = useTranslations();
 
   const needsPathChoice =
@@ -118,13 +143,17 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
   const totalSteps = steps.length;
 
   const availablePlans = useMemo(() => {
-    if (isManager) return TEAM_PLAN_OPTIONS;
+    if (isManager) {
+      return showMoreTeamPlans
+        ? [...TEAM_PLAN_OPTIONS, ...TEAM_PLAN_OPTIONS_MORE]
+        : TEAM_PLAN_OPTIONS;
+    }
     if (isIndependentPath) {
       const id = getIndependentPlanIdForRole(formData.userRole);
       return INDEPENDENT_PLANS.filter((p) => p.id === id);
     }
     return [];
-  }, [isManager, isIndependentPath, formData.userRole]);
+  }, [isManager, isIndependentPath, formData.userRole, showMoreTeamPlans]);
 
   const handleRoleSelect = (role: UserRole) => {
     setFormData((prev) => ({
@@ -199,7 +228,10 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
       const expected = getIndependentPlanIdForRole(formData.userRole);
       if (formData.planId !== expected) return t('signupPlanRequired');
     }
-    if (isManager && !TEAM_PLAN_OPTIONS.some((p) => p.id === formData.planId)) {
+    if (
+      isManager &&
+      ![...TEAM_PLAN_OPTIONS, ...TEAM_PLAN_OPTIONS_MORE].some((p) => p.id === formData.planId)
+    ) {
       return t('signupPlanRequired');
     }
     return null;
@@ -328,6 +360,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
       }`}
     >
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
         @keyframes lc-signup-rise {
           from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }
@@ -427,7 +460,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 55% 50% at 18% 70%, rgba(79,70,229,0.28), transparent 55%), radial-gradient(ellipse 50% 45% at 82% 35%, rgba(79,70,229,0.32), transparent 55%), radial-gradient(ellipse 40% 35% at 70% 80%, rgba(14,165,233,0.12), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)',
+            'radial-gradient(ellipse 55% 50% at 18% 70%, rgba(37,99,235,0.28), transparent 55%), radial-gradient(ellipse 50% 45% at 82% 35%, rgba(34,211,238,0.18), transparent 55%), radial-gradient(ellipse 40% 35% at 70% 80%, rgba(30,58,138,0.22), transparent 50%), linear-gradient(155deg, #05070a 0%, #0b0d10 42%, #12151c 100%)',
         }}
       />
       <div
@@ -459,7 +492,7 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
             );
           })}
         </svg>
-        <img src="/icons/logicycle-logo-display.webp" alt="" className="lc-signup-mark-logo" />
+        <img src="/icons/rovik-mark.png" alt="" className="lc-signup-mark-logo" />
       </div>
 
       <div className="lc-signup-right" aria-hidden>
@@ -505,11 +538,8 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
         >
           {!(stepId === 'plan' && needsPlanChoice && availablePlans.length > 1) && (
             <>
-              <h1
-                className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight leading-none text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.55)]"
-                style={{ letterSpacing: '-0.045em' }}
-              >
-                LOGICYCLE
+              <h1 className="flex justify-center">
+                <BrandMark variant="lockup" size="hero" />
               </h1>
               <p className="mt-3 text-sm sm:text-base text-slate-300 max-w-md leading-relaxed">
                 {t('signupSlogan')}
@@ -547,15 +577,15 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
             {/* Étape — Rôle */}
             {stepId === 'role' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {ROLE_OPTIONS.map(({ role, titleKey, descKey }) => {
+                <div className="grid grid-cols-1 gap-2.5">
+                  {PRIMARY_ROLE_OPTIONS.map(({ role, titleKey, descKey }) => {
                     const selected = formData.userRole === role;
                     return (
                       <button
                         key={role}
                         type="button"
                         onClick={() => handleRoleSelect(role)}
-                        className={`text-left rounded-2xl border p-3.5 transition-colors ${
+                        className={`text-left rounded-2xl border p-4 transition-colors ${
                           selected
                             ? 'border-indigo-400/60 bg-indigo-500/15 ring-1 ring-indigo-400/35'
                             : 'border-white/10 bg-white/[0.03] hover:border-white/25'
@@ -567,6 +597,44 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                     );
                   })}
                 </div>
+
+                {!showOtherRoles ? (
+                  <p className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowOtherRoles(true)}
+                      className="text-xs text-slate-500 hover:text-slate-300 underline-offset-4 hover:underline transition"
+                    >
+                      {t('signupOtherRolesTeaser')}
+                    </button>
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500 text-center">
+                      {t('signupOtherRolesTitle')}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {SECONDARY_ROLE_OPTIONS.map(({ role, titleKey, descKey }) => {
+                        const selected = formData.userRole === role;
+                        return (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => handleRoleSelect(role)}
+                            className={`text-left rounded-2xl border p-3.5 transition-colors ${
+                              selected
+                                ? 'border-indigo-400/60 bg-indigo-500/15 ring-1 ring-indigo-400/35'
+                                : 'border-white/10 bg-white/[0.03] hover:border-white/25'
+                            }`}
+                          >
+                            <span className="block font-semibold text-slate-100 text-sm">{t(titleKey)}</span>
+                            <span className="block text-xs text-slate-400 mt-1 leading-snug">{t(descKey)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   type="button"
@@ -601,6 +669,8 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                     <span className="block text-xs text-slate-400 mt-1">{t('signupPathTeamDesc')}</span>
                     <span className="block text-xs text-indigo-300/90 mt-2">{t('signupPathTeamBillingNote')}</span>
                   </button>
+                </div>
+                <p className="text-center">
                   <button
                     type="button"
                     onClick={() => {
@@ -611,17 +681,20 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                         planId: autoPlan,
                       }));
                     }}
-                    className={`text-left rounded-2xl border p-4 transition-colors ${
+                    className={`text-xs underline-offset-4 hover:underline transition ${
                       formData.signupMode === SignupMode.INDEPENDENT
-                        ? 'border-sky-400/55 bg-sky-500/12 ring-1 ring-sky-400/30'
-                        : 'border-white/10 bg-white/[0.03] hover:border-white/25'
+                        ? 'text-sky-300'
+                        : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
-                    <span className="block font-semibold text-slate-100">{t('signupPathIndependent')}</span>
-                    <span className="block text-xs text-slate-400 mt-1">{t('signupPathIndependentDesc')}</span>
-                    <span className="block text-xs text-sky-300/90 mt-2">{t('signupPathIndependentBillingNote')}</span>
+                    {t('signupPathIndependentTeaser')}
                   </button>
-                </div>
+                </p>
+                {formData.signupMode === SignupMode.INDEPENDENT && (
+                  <p className="text-xs text-center text-slate-500 leading-relaxed px-2">
+                    {t('signupPathIndependentDesc')}
+                  </p>
+                )}
 
                 <div className="flex gap-2.5">
                   <button
@@ -681,6 +754,18 @@ const SignupView: React.FC<SignupViewProps> = ({ onRegister, onSwitchToLogin }) 
                   language={language === 'en' ? 'en' : 'fr'}
                   t={t}
                 />
+
+                {isManager && !showMoreTeamPlans && TEAM_PLAN_OPTIONS_MORE.length > 0 && (
+                  <p className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreTeamPlans(true)}
+                      className="text-xs text-slate-500 hover:text-slate-300 underline-offset-4 hover:underline transition"
+                    >
+                      {t('pricingSecondaryTeaser')}
+                    </button>
+                  </p>
+                )}
 
                 <p className="text-xs text-slate-400">{t('signupPlanTrialNote')}</p>
                 <p className="text-xs text-slate-400">{t('signupPlanCardNote')}</p>

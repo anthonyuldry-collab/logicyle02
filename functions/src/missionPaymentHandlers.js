@@ -246,7 +246,7 @@ async function completeMissionPayment(db, bucket, logStructured, session) {
     provisional: legal.incomplete,
     vatMention: legal.incomplete
       ? 'TVA non applicable art. 293 B CGI — document provisoire (identite editeur incomplete).'
-      : 'TVA selon regime LogiCycle (franchise 293 B tant que non assujetti).',
+      : 'TVA selon regime Rovik (franchise 293 B tant que non assujetti).',
     paymentIntentId,
     checkoutSessionId: session.id,
     archivedAt: new Date().toISOString(),
@@ -368,7 +368,7 @@ async function completeMissionPayment(db, bucket, logStructured, session) {
         subject: `Facture mission ${result.teamInvoiceNumber}`,
         html: missionInvoiceEmailHtml({
           title: 'Facture marketplace missions',
-          intro: 'Votre facture LogiCycle (GMV) est disponible.',
+          intro: 'Votre facture Rovik (GMV) est disponible.',
           rows: [
             ['N°', result.teamInvoiceNumber],
             ['Mission', result.mission.title || missionId],
@@ -389,7 +389,7 @@ async function completeMissionPayment(db, bucket, logStructured, session) {
         subject: `Modèle facture mission ${result.vacataireInvoiceDraftNumber}`,
         html: missionInvoiceEmailHtml({
           title: 'Modèle de facture vacataire',
-          intro: 'Votre mission a été payée. Joignez / finalisez ce modèle (SIRET) puis émettez-le via LogiCycle.',
+          intro: 'Votre mission a été payée. Joignez / finalisez ce modèle (SIRET) puis émettez-le via Rovik.',
           rows: [
             ['N° modèle', result.vacataireInvoiceDraftNumber],
             ['Net', `${netEur.toFixed(2)} €`],

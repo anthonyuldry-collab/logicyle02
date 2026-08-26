@@ -1,3 +1,4 @@
+import { getLaunchModeExtraLockedSections } from '../constants/launchMode';
 import { SECTION_MIN_PLAN, getIndependentPlanIdForRole, getPlanById, isPlanAtLeast, PILOT_DAYS } from '../constants/subscriptionPlans';
 import { AppSection, SubscriptionPlanId, TeamSubscription, User, UserRole } from '../types';
 
@@ -105,6 +106,9 @@ export function canAccessSection(
   const access = getSubscriptionAccess(subscription, fallbackPlan);
   if (!access.isActive) return false;
 
+  const launchLocked = getLaunchModeExtraLockedSections(access.planId);
+  if (launchLocked.includes(section)) return false;
+
   const required = SECTION_MIN_PLAN[section];
   if (!required) return true;
 
@@ -136,9 +140,12 @@ export function getLockedSections(
   subscription: TeamSubscription | undefined,
   fallbackPlan: SubscriptionPlanId
 ): AppSection[] {
-  return (Object.keys(SECTION_MIN_PLAN) as AppSection[]).filter(
+  const access = getSubscriptionAccess(subscription, fallbackPlan);
+  const fromPlan = (Object.keys(SECTION_MIN_PLAN) as AppSection[]).filter(
     (section) => !canAccessSection(section, subscription, fallbackPlan)
   );
+  const fromLaunch = getLaunchModeExtraLockedSections(access.planId);
+  return Array.from(new Set([...fromPlan, ...fromLaunch]));
 }
 
 export function normalizeIndependentSubscription(

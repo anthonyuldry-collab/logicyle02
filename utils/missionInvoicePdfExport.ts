@@ -229,7 +229,7 @@ export function exportTeamMissionInvoicePdf(input: {
     commissionEur,
     language: 'fr',
   });
-  saveMissionInvoice(invoice, 'LogiCycle_Facture_Mission');
+  saveMissionInvoice(invoice, 'Rovik_Facture_Mission');
 }
 
 export function exportVacataireDraftMissionInvoicePdf(input: {

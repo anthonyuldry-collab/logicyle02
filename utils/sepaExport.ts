@@ -128,7 +128,7 @@ export function exportSepaPain001Xml(
   const execDate = executionDate || new Date().toISOString().slice(0, 10);
   const safeTeamName = teamName.replace(/\s+/g, '_');
   downloadFile(
-    `LogiCycle_SEPA_${safeTeamName}_${execDate}.xml`,
+    `Rovik_SEPA_${safeTeamName}_${execDate}.xml`,
     xml,
     'application/xml;charset=utf-8'
   );
@@ -158,7 +158,7 @@ export function exportSepaCsv(teamName: string, orders: SepaPaymentOrder[]): voi
   const safeTeamName = teamName.replace(/\s+/g, '_');
   const date = new Date().toISOString().slice(0, 10);
   downloadFile(
-    `LogiCycle_SEPA_${safeTeamName}_${date}.csv`,
+    `Rovik_SEPA_${safeTeamName}_${date}.csv`,
     '\uFEFF' + lines.join('\n'),
     'text/csv;charset=utf-8'
   );
@@ -271,7 +271,7 @@ export function exportSepaPain008Xml(
   const execDate = executionDate || new Date().toISOString().slice(0, 10);
   const safeTeamName = teamName.replace(/\s+/g, '_');
   downloadFile(
-    `LogiCycle_SEPA_COL_${safeTeamName}_${execDate}.xml`,
+    `Rovik_SEPA_COL_${safeTeamName}_${execDate}.xml`,
     xml,
     'application/xml;charset=utf-8'
   );

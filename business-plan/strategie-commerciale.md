@@ -28,7 +28,7 @@
 
 | Principe | Application LogiCycle |
 |----------|----------------------|
-| **Premium, pas discount** | Grille 59→349 · parrainage -10 % max · pas de POC &gt;30 j systématiques |
+| **Premium, pas discount** | Grille 99→790 · héros Compétition 2 490 €/an · parrainage -10 % max · pas de POC &gt;30 j |
 | **Rareté & qualité réseau** | Indépendants payants · publication missions **Élite+** |
 | **Double voie dès M1** | **FR + EN en parallèle** · l'anglais = langue WorldTour · pas séquentiel |
 | **Patrimoine > salaire** | Dividendes PFU · salaire min 2–5 K€ · holding M24 · **15 K net M45** |
@@ -52,18 +52,18 @@
 
 | Segment | Plan | CAC cible | Argument #1 |
 |---------|------|-----------|---------------|
-| Continental / ProSeries FR | Élite **199 €** | 400–800 € | ERP + scouting à ~1/10 Ippogee |
-| DN N1–N3 | Compétition **119 €** | 300–600 € | Camp + logistique 12 onglets |
-| Clubs structurés | Club **59 €** | 150–400 € | PWA + RGPD + entrée ladder |
+| Continental / ProSeries FR | Élite **399 €** | 400–800 € | ERP + scouting (pas « 1/10 Ippogee ») |
+| DN N1–N3 | Compétition **249 €** | 300–600 € | Pack saison + perf |
+| Clubs structurés | Club **99 €** | 150–400 € | Rampe ops · hors landing |
 | Staff vacataire FR | Indép. **15 €/mois** | ~0 (viral) | Marketplace missions |
 
 ### Voie EN — cibler (parallèle M1)
 
 | Segment | Plan | CAC cible | Argument #1 |
 |---------|------|-----------|---------------|
-| **WorldTour / ProTeams** | **Performance 349 €** / Fédération | 2–5 K€ | **UI EN · wedge PPR/scouting** vs Ippogee |
-| Continental EU anglophone | Élite **199 €** | 400–800 € | First mover EN · staff international |
-| UK / US / AU équipes | Élite **199 €** | 400–1 200 € | Marketplace + scouting cross-border |
+| **WorldTour / ProTeams** | **Performance 790 €** / Fédération | 2–5 K€ | **UI EN · wedge PPR/scouting** |
+| Continental EU anglophone | Élite **399 €** | 400–800 € | First mover EN · staff international |
+| UK / US / AU équipes | Élite **399 €** | 400–1 200 € | Marketplace + scouting cross-border |
 | Staff vacataire EN | Indép. **15 €/mois** | ~0 | Visible par WT + Élite |
 
 ### Anti-cibles (12 mois)
@@ -89,18 +89,18 @@ Voir tableau complet : **`docs/COMMERCIAL_OFFER.md`**.
 
 **Règle Bourbon** : fin d’essai → **paiement annuel** (2 mois offerts) ou churn.  
 **Règle Arnault** : ne jamais négocier -30 % ; proposer **+1 mois offert** ou parrainage.  
-**Fondateurs** : annuel M1–M6 → prix figé 24 mois.
+**Fondateurs** : annuel M1–M6 → **−20 % an 1**, grille publique an 2 (pas de lock 24 mois).
 
 ---
 
 ## 4. Playbook de vente (cycle 6 semaines)
 
 ```
-Semaine 1–2  : Outbound DS / manager · démo 30 min · battlecard Ippogee
+Semaine 1–2  : Outbound DS / manager · démo 30 min (course live, pas sidebar)
 Semaine 3–4  : Essai 14 j (Club/Compétition) ou 30 j (Élite/Performance) · 1 course test
-Semaine 4–5  : Activation marketplace (1 mission publiée) si plan Élite+
-Semaine 5–6  : ROI call · export PDF / scouting
-Semaine 6    : Closing annuel · code parrain si applicable
+Semaine 4–5  : Activation (1 course complète) · upsell Élite si besoin missions
+Semaine 5–6  : ROI call · coût week-end raté (jamais « moins cher qu’Ippogee »)
+Semaine 6    : Closing annuel Compétition 2 490 € · fondateur −20 % si cohorte ouverte
 ```
 
 **Critère succès essai** : 1 mission vacataire pourvue **OU** 3 profils scouting contactés **OU** 1 course complète logée dans LogiCycle.

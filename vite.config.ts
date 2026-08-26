@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
   const missingFirebase = REQUIRED_FIREBASE_ENV.filter((key) => !env[key]?.trim());
   if (missingFirebase.length > 0) {
     throw new Error(
-      `[LogiCycle] Variables Firebase manquantes pour mode "${mode}".\n` +
+      `[rovik] Variables Firebase manquantes pour mode "${mode}".\n` +
         `Ajoute-les dans .env (local) ou dans les variables d’environnement Netlify/CI :\n` +
         `  ${missingFirebase.join(', ')}\n` +
         `Puis relance \`npm run dev\` ou \`npm run build\`.`
@@ -121,10 +121,10 @@ export default defineConfig(({ mode }) => {
       },
       includeAssets: ['icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'LogiCycle — Logistique Équipe Cycliste',
-        short_name: 'LogiCycle',
-        description: 'Gestion sportive et logistique pour équipes cyclistes',
-        theme_color: '#1e293b',
+        name: 'rovik — Cycling Performance Systems',
+        short_name: 'rovik',
+        description: 'Systèmes de performance cycliste — effectif, logistique et performance d’équipe',
+        theme_color: '#0B0D10',
         background_color: '#f3f4f6',
         display: 'standalone',
         orientation: 'any',

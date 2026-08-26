@@ -810,7 +810,7 @@ const exportPlanningToPdf = (
         doc.setFontSize(7);
         doc.setTextColor(...colorTextMuted);
         doc.setFont('helvetica', 'normal');
-        doc.text('Timing du déplacement — Logicycle', pageW / 2, pageH - margin + 1, { align: 'center' });
+        doc.text('Timing du déplacement — Rovik', pageW / 2, pageH - margin + 1, { align: 'center' });
     };
 
     const drawDayCard = (

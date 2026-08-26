@@ -5,6 +5,7 @@ import ActionButton from '../components/ActionButton';
 import Modal from '../components/Modal';
 import { useTranslations } from '../hooks/useTranslations';
 import { LANGUAGE_OPTIONS } from '../constants';
+import BrandMark from '../components/BrandMark';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
@@ -89,6 +90,7 @@ const LoginView: React.FC<LoginViewProps> = ({
   return (
     <div className="lc-login relative min-h-[100dvh] overflow-x-hidden overflow-y-auto text-white">
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
         @keyframes lc-login-sweep {
           0% { transform: translateX(-50%) skewX(-16deg); opacity: 0; }
           25% { opacity: 0.5; }
@@ -248,7 +250,7 @@ const LoginView: React.FC<LoginViewProps> = ({
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 55% 50% at 18% 70%, rgba(79,70,229,0.28), transparent 55%), radial-gradient(ellipse 50% 45% at 82% 35%, rgba(79,70,229,0.32), transparent 55%), radial-gradient(ellipse 40% 35% at 70% 80%, rgba(14,165,233,0.12), transparent 50%), linear-gradient(155deg, #020617 0%, #0f172a 42%, #1e293b 100%)',
+            'radial-gradient(ellipse 55% 50% at 18% 70%, rgba(37,99,235,0.28), transparent 55%), radial-gradient(ellipse 50% 45% at 82% 35%, rgba(34,211,238,0.18), transparent 55%), radial-gradient(ellipse 40% 35% at 70% 80%, rgba(30,58,138,0.22), transparent 50%), linear-gradient(155deg, #05070a 0%, #0b0d10 42%, #12151c 100%)',
         }}
       />
       <div
@@ -300,7 +302,7 @@ const LoginView: React.FC<LoginViewProps> = ({
           })}
         </svg>
         <img
-          src="/icons/logicycle-logo-display.webp"
+          src="/icons/rovik-mark.png"
           alt=""
           className="lc-login-mark-logo"
         />
@@ -362,11 +364,8 @@ const LoginView: React.FC<LoginViewProps> = ({
       {/* Contenu centré — scrollable sur mobile (clavier / petits écrans) */}
       <div className="relative z-10 min-h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 py-16 sm:py-10">
         <div className="lc-login-rise flex flex-col items-center text-center w-full max-w-md">
-          <h1
-            className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-none text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.55)]"
-            style={{ letterSpacing: '-0.045em' }}
-          >
-            LOGICYCLE
+          <h1 className="flex justify-center">
+            <BrandMark variant="lockup" size="hero" />
           </h1>
           <p className="mt-3 sm:mt-4 text-sm sm:text-base text-slate-300 max-w-sm leading-relaxed">
             {t('loginSlogan')}

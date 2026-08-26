@@ -245,7 +245,7 @@ const EventChecklistTab: React.FC<EventChecklistTabProps> = ({
                 emailBody += `  - ${task.itemName} (Statut: ${task.status})\n`;
                 if(task.notes) emailBody += `    Notes: ${task.notes}\n`;
             });
-            emailBody += "\nMerci de vérifier et compléter ces tâches.\n\nCordialement,\nLogiCycle System";
+            emailBody += "\nMerci de vérifier et compléter ces tâches.\n\nCordialement,\nRovik System";
             
             console.log(`EMAIL À: ${staffMember.email}\nSUJET: Checklist pour ${event.name}\n\n${emailBody}\n----------------------------------`);
             messages.push(`Email (simulé) préparé pour ${staffMember.firstName} ${staffMember.lastName} (${staffMember.email}) avec ${tasksForStaff.length} tâche(s).`);

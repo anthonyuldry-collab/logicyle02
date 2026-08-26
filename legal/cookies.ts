@@ -11,8 +11,8 @@ export const COOKIES_DOCUMENT: LegalDocument = {
   },
   shortTitle: { fr: 'Cookies', en: 'Cookies' },
   summary: {
-    fr: 'Cookies et traceurs utilisés sur LogiCycle — essentiels vs optionnels.',
-    en: 'Cookies and similar technologies on LogiCycle — essential vs optional.',
+    fr: 'Cookies et traceurs utilisés sur Rovik — essentiels vs optionnels.',
+    en: 'Cookies and similar technologies on Rovik — essential vs optional.',
   },
   sections: [
     {
@@ -44,12 +44,12 @@ export const COOKIES_DOCUMENT: LegalDocument = {
       title: { fr: '3. Cookies optionnels', en: '3. Optional cookies' },
       blocks: {
         fr: [
-          'Mesure d’audience, marketing ou cookies tiers non essentiels : uniquement après consentement, s’ils sont activés. À ce jour, LogiCycle n’active aucun cookie publicitaire ni outil d’audience.',
+          'Mesure d’audience, marketing ou cookies tiers non essentiels : uniquement après consentement, s’ils sont activés. À ce jour, Rovik n’active aucun cookie publicitaire ni outil d’audience.',
           'Observabilité technique (Sentry, erreurs application) : activée uniquement si configurée côté serveur/build, sans finalité marketing ; elle ne remplace pas un bandeau de consentement analytics.',
           'Un avis de transparence « cookies essentiels » peut s’afficher à la première visite. Tout ajout de cookies non essentiels sera reflété ici et via un bandeau de consentement dédié.',
         ],
         en: [
-          'Analytics, marketing or non-essential third-party cookies: only after consent, if enabled. LogiCycle currently runs no advertising or audience cookies.',
+          'Analytics, marketing or non-essential third-party cookies: only after consent, if enabled. Rovik currently runs no advertising or audience cookies.',
           'Technical observability (Sentry, application errors): only if configured at build/server level, not for marketing; it does not replace an analytics consent banner.',
           'A transparency notice about essential cookies may appear on first visit. Any non-essential cookies will be reflected here and via a dedicated consent banner.',
         ],

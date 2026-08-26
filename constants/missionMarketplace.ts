@@ -15,7 +15,7 @@ export const MISSION_MARKETPLACE_MODE = {
   paymentsEnabled: false,
 } as const;
 
-/** Commission LogiCycle sur le montant vacataire (HT) — applicable quand paymentsEnabled. */
+/** Commission Rovik sur le montant vacataire (HT) — applicable quand paymentsEnabled. */
 export const MISSION_COMMISSION = {
   /** Taux standard Compétition / Élite / Continental */
   standardTakeRatePercent: 12,
@@ -35,7 +35,7 @@ export const MISSION_MARKET_ASSUMPTIONS = {
   avgGmvPerMissionEur: 825,
   /** Missions vacataires payantes / an / équipe Continental+ à maturité */
   missionsPerEligibleTeamYear: 6,
-  /** Part des missions réglées via LogiCycle (vs direct) */
+  /** Part des missions réglées via Rovik (vs direct) */
   platformSharePercent: 75,
   /** Stripe Connect ~2,9 % + 0,25 € / transaction (charge COGS marketplace) */
   paymentProcessingPercent: 3.2,
@@ -47,12 +47,12 @@ export const MISSION_COMMISSION_LABELS = {
     en: 'Soft-launch: matching only. In-app Stripe Connect payouts are built but not enabled here — settlement remains off-platform (freelancer / fixed amount).',
   },
   paymentsEnabledBanner: {
-    fr: 'Paiement in-app actif (Stripe Connect) : l’équipe paie via LogiCycle ; commission {rate} % (min. {min} €). CDD / CDI / stage restent hors Connect.',
-    en: 'In-app payment on (Stripe Connect): the team pays via LogiCycle; {rate}% fee (min. €{min}). Employment contracts stay outside Connect.',
+    fr: 'Paiement in-app actif (Stripe Connect) : l’équipe paie via Rovik ; commission {rate} % (min. {min} €). CDD / CDI / stage restent hors Connect.',
+    en: 'In-app payment on (Stripe Connect): the team pays via Rovik; {rate}% fee (min. €{min}). Employment contracts stay outside Connect.',
   },
   feeExplanation: {
-    fr: 'Commission LogiCycle : {rate} % sur le montant vacataire (min. {min} €). Paiement sécurisé via Stripe Connect.',
-    en: 'LogiCycle fee: {rate}% on freelancer amount (min. €{min}). Secure payment via Stripe Connect.',
+    fr: 'Commission Rovik : {rate} % sur le montant vacataire (min. {min} €). Paiement sécurisé via Stripe Connect.',
+    en: 'Rovik fee: {rate}% on freelancer amount (min. €{min}). Secure payment via Stripe Connect.',
   },
   proDiscount: {
     fr: 'Plan Performance : commission réduite à {rate} %',
@@ -63,12 +63,12 @@ export const MISSION_COMMISSION_LABELS = {
     en: 'Enable mission payouts (Stripe)',
   },
   connectOnboardingDesc: {
-    fr: 'Créez votre compte destinataire Stripe Express pour recevoir le règlement des missions en prestation indépendante. Vous resterez responsable de votre facture vers LogiCycle (net) et de vos déclarations URSSAF.',
-    en: 'Create your Stripe Express recipient account to receive payouts for independent-contractor missions. You remain responsible for invoicing LogiCycle (net) and your social/tax filings.',
+    fr: 'Créez votre compte destinataire Stripe Express pour recevoir le règlement des missions en prestation indépendante. Vous resterez responsable de votre facture vers Rovik (net) et de vos déclarations URSSAF.',
+    en: 'Create your Stripe Express recipient account to receive payouts for independent-contractor missions. You remain responsible for invoicing Rovik (net) and your social/tax filings.',
   },
   connectReady: {
-    fr: 'Paiements missions activés — vous pouvez recevoir des règlements via LogiCycle (régime indépendant).',
-    en: 'Mission payouts enabled — you can receive payments via LogiCycle (independent-contractor regime).',
+    fr: 'Paiements missions activés — vous pouvez recevoir des règlements via Rovik (régime indépendant).',
+    en: 'Mission payouts enabled — you can receive payments via Rovik (independent-contractor regime).',
   },
   payMissionCta: {
     fr: 'Payer la mission',

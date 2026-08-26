@@ -329,7 +329,7 @@ export function buildAccountingEntries(params: {
     });
   }
 
-  // Missions marketplace payées (charge équipe = GMV facture LogiCycle).
+  // Missions marketplace payées (charge équipe = GMV facture Rovik).
   for (const mission of missions) {
     const payment = mission.payment;
     if (!payment || (payment.status !== 'paid' && payment.status !== 'refunded')) continue;

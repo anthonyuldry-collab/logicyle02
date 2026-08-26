@@ -332,3 +332,29 @@ export const formatStageDateLabel = (date: string): string =>
     month: 'long',
     year: 'numeric',
   });
+
+/**
+ * Signature des champs éditables d’un événement (logistique / infos).
+ * Sert à éviter d’écraser un brouillon local quand le parent re-rend
+ * avec un nouvel objet mais le même contenu.
+ */
+export function eventEditSignature(event: RaceEvent): string {
+  return JSON.stringify({
+    id: event.id,
+    name: event.name,
+    date: event.date,
+    endDate: event.endDate,
+    location: event.location,
+    discipline: event.discipline,
+    eventType: event.eventType,
+    eligibleCategory: event.eligibleCategory,
+    minRiders: event.minRiders,
+    maxRiders: event.maxRiders,
+    selectedRiderIds: event.selectedRiderIds,
+    raceInfo: event.raceInfo,
+    organizerContact: event.organizerContact,
+    altitudeCampMeta: event.altitudeCampMeta,
+    campAthleteAltitudeRefs: event.campAthleteAltitudeRefs,
+    campProgrammeDays: event.campProgrammeDays,
+  });
+}

@@ -4,6 +4,7 @@ import { saveData } from '../../services/firebaseService';
 import {
   createEmptyTransferVehicle,
   ensureStageRaceLogistics,
+  eventEditSignature,
   formatStageDateLabel,
   isStageRace,
 } from '../../utils/stageRaceUtils';
@@ -39,9 +40,21 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
   const [formData, setFormData] = useState<RaceEvent>(() => ensureStageRaceLogistics(event));
   const [activeTab, setActiveTab] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const formDataRef = React.useRef(formData);
+  formDataRef.current = formData;
+  const skipNextSyncRef = React.useRef(false);
+  const dirtyRef = React.useRef(false);
 
   useEffect(() => {
-    setFormData(ensureStageRaceLogistics(event));
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      dirtyRef.current = false;
+      return;
+    }
+    if (dirtyRef.current) return;
+    const next = ensureStageRaceLogistics(event);
+    if (eventEditSignature(next) === eventEditSignature(formDataRef.current)) return;
+    setFormData(next);
   }, [event]);
 
   const transfers = formData.raceInfo?.transfers ?? [];
@@ -89,6 +102,7 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
     transferId: string,
     vehicles: StageTransferVehicle[],
   ) => {
+    dirtyRef.current = true;
     setFormData((prev) => ({
       ...prev,
       raceInfo: {
@@ -105,6 +119,7 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
     field: keyof StageTransferLogistics,
     value: string | number | undefined,
   ) => {
+    dirtyRef.current = true;
     setFormData(prev => ({
       ...prev,
       raceInfo: {
@@ -123,6 +138,7 @@ const StageTransferEditor: React.FC<StageTransferEditorProps> = ({
       if (appState.activeTeamId) {
         await saveData(appState.activeTeamId, 'raceEvents', toSave);
       }
+      skipNextSyncRef.current = true;
       updateEvent(toSave);
       setFormData(toSave);
     } catch (e) {

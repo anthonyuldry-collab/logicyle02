@@ -77,7 +77,7 @@ const SupportFaqPanel: React.FC<SupportFaqPanelProps> = ({ tone = 'dark', classN
         <span>{t('faqContactHint')}</span>
         <a
           href={`mailto:${LEGAL_ENTITY.supportEmail}?subject=${encodeURIComponent(
-            language === 'fr' ? 'Support LogiCycle' : 'LogiCycle support',
+            language === 'fr' ? 'Support Rovik' : 'Rovik support',
           )}`}
           className={`font-semibold underline-offset-2 hover:underline ${
             isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-600 hover:text-indigo-700'

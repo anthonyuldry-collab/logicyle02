@@ -1,6 +1,6 @@
 {
   "name": "logicyle-functions",
-  "description": "Cloud Functions LogiCycle — RGPD purge sécurisée",
+  "description": "Cloud Functions rovik — RGPD purge sécurisée",
   "engines": {
     "node": "20"
   },

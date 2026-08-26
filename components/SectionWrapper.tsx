@@ -35,7 +35,7 @@ const SectionWrapper: React.FC<SectionWrapperProps> = ({
       >
         <div className="min-w-0 w-full sm:w-auto">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-300/90">
-            LogiCycle
+            Rovik
           </p>
           <h2
             className={

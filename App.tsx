@@ -217,6 +217,11 @@ import {
   isPresentationDemoTeam,
 } from "./utils/presentationDemoAccess";
 import {
+  getUnlockedInternalSubscription,
+  isComplimentaryAccessTeam,
+  isSuperAdminSwitcherTeam,
+} from "./utils/platformInternalTeam";
+import {
   buildDemoPresentationPack,
   DEMO_PRES_LEVEL,
   DEMO_PRES_TEAM_NAME,
@@ -249,6 +254,12 @@ import {
 } from "./utils/organizerContactUtils";
 import { mergeDemoOrganizerContacts } from "./constants/demoOrganizerContacts";
 import SubscriptionBanner from "./components/SubscriptionBanner";
+import FirstRunWizard from "./components/FirstRunWizard";
+import {
+  dismissFirstRun,
+  resolveFirstRunStep,
+  shouldShowFirstRunWizard,
+} from "./utils/firstRunWizard";
 import { getDefaultPlanForTeamLevel, getIndependentPlanIdForRole } from "./constants/subscriptionPlans";
 import {
   canAccessSection,
@@ -391,6 +402,7 @@ const App: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSignupData, setPendingSignupData] = useState<SignupData | null>(null);
   const pendingSignupDataRef = useRef<SignupData | null>(null);
+  const [firstRunEpoch, setFirstRunEpoch] = useState(0);
   const [authFirebaseUser, setAuthFirebaseUser] = useState<FirebaseAuthUser | null>(null);
   const isMountedRef = useRef(true);
   const authEpochRef = useRef(0);
@@ -2407,8 +2419,8 @@ const App: React.FC = () => {
           mode: 'priority',
         });
         const teamMeta = (appState.teams || []).find((t) => t.id === teamId);
-        const unlocked = isPresentationDemoTeam(teamMeta)
-          ? getUnlockedPresentationSubscription()
+        const unlocked = isComplimentaryAccessTeam(teamMeta)
+          ? getUnlockedInternalSubscription()
           : null;
         persistActiveTeamId(teamId);
         setAppState((prev: AppState) => ({
@@ -2419,14 +2431,12 @@ const App: React.FC = () => {
             ? {
                 subscription: unlocked,
                 teams: (prev.teams || []).map((t) =>
-                  t.id === teamId
-                    ? { ...t, isPresentationDemo: true, subscription: unlocked }
-                    : t
+                  t.id === teamId ? { ...t, subscription: unlocked } : t
                 ),
               }
             : {}),
         }));
-        if (unlocked) {
+        if (unlocked && isPresentationDemoTeam(teamMeta)) {
           void firebaseService.saveTeamSettings(teamId, {
             isPresentationDemo: true,
             subscription: unlocked,
@@ -2458,6 +2468,72 @@ const App: React.FC = () => {
       }
     },
     [currentUser, appState.activeTeamId, appState.teams]
+  );
+
+  const handleCreateInternalTeam = useCallback(
+    async (teamData: { name: string; level: TeamLevel; country: string }) => {
+      if (!currentUser || !isSuperAdminUser(currentUser)) return;
+      setIsLoading(true);
+      try {
+        const created = await firebaseService.createTeamForUser(
+          currentUser.id,
+          { ...teamData, planId: SubscriptionPlanId.PRO },
+          UserRole.MANAGER,
+          { internal: true },
+        );
+        const globalData = await firebaseService.getGlobalData(currentUser);
+        const teamDataLoaded = await firebaseService.getTeamData(created.teamId, currentUser, {
+          mode: 'priority',
+        });
+        const unlocked = getUnlockedInternalSubscription();
+        persistActiveTeamId(created.teamId);
+        setAppState((prev) => ({
+          ...prev,
+          ...globalData,
+          ...teamDataLoaded,
+          activeTeamId: created.teamId,
+          activeEventId: null,
+          subscription: unlocked,
+        }));
+        setCurrentSection('myDashboard');
+      } catch (error) {
+        console.error('Création équipe interne:', error);
+        alert(
+          error instanceof Error
+            ? error.message
+            : 'Impossible de créer l’équipe interne sans paiement.',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentUser],
+  );
+
+  const handleGrantInternalTeamAccess = useCallback(
+    async (teamId: string) => {
+      if (!currentUser || !isSuperAdminUser(currentUser)) return;
+      await firebaseService.grantInternalTeamAccess(teamId);
+      const globalData = await firebaseService.getGlobalData(currentUser);
+      const unlocked = getUnlockedInternalSubscription();
+      const nextTeams = (globalData.teams || []).map((t) =>
+        t.id === teamId
+          ? {
+              ...t,
+              isPlatformInternal: true,
+              commercialClient: false,
+              subscription: unlocked,
+            }
+          : t,
+      );
+      setAppState((prev) => ({
+        ...prev,
+        teams: nextTeams.length ? nextTeams : prev.teams,
+        teamMemberships: globalData.teamMemberships ?? prev.teamMemberships,
+        ...(prev.activeTeamId === teamId ? { subscription: unlocked } : {}),
+      }));
+    },
+    [currentUser],
   );
 
   const onSaveExpenseReceipt = useCallback(async (receipt: ExpenseReceipt) => {
@@ -3235,7 +3311,7 @@ const App: React.FC = () => {
       const bypassPlanGate =
         isSuperAdminUser(currentUser) ||
         alwaysAllowed.includes(section) ||
-        isPresentationDemoTeam(
+        isComplimentaryAccessTeam(
           (appState.teams || []).find((t) => t.id === appState.activeTeamId)
         );
       if (!bypassPlanGate) {
@@ -3352,7 +3428,10 @@ const App: React.FC = () => {
         <>
           <LandingView
             onLogin={() => setView("login")}
-            onSignup={() => setView("signup")}
+            onSignup={() => {
+              setPendingSignupPlan(SubscriptionPlanId.COMPETITION, "year");
+              setView("signup");
+            }}
             onViewPricing={() => setView("pricing")}
             onViewLegal={(id) => {
               setLegalDocId(id);
@@ -3462,7 +3541,7 @@ const App: React.FC = () => {
                 {t("loginSignUpLink")}
               </button>
               <a
-                href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent("LogiCycle — démo / early access")}`}
+                href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent("Rovik — faire tourner notre prochaine course (90 min)")}`}
                 className="px-6 py-2.5 rounded-xl border border-white/20 text-slate-200 font-medium hover:bg-white/10 transition"
               >
                 {t("landingCtaTalk")}
@@ -3592,10 +3671,10 @@ const App: React.FC = () => {
         isIndependentUser(uiUser) &&
         !(userIsSuperAdmin && superAdminPreview.mode === 'full');
       const activeTeam = (appState.teams || []).find((t) => t.id === appState.activeTeamId);
-      const isDemoTeamContext = isPresentationDemoTeam(activeTeam);
+      const isDemoTeamContext = isComplimentaryAccessTeam(activeTeam);
       const fallbackPlan = getDefaultPlanForTeamLevel(appState.teamLevel ?? TeamLevel.HORS_DN);
       const effectiveTeamSubscription = isDemoTeamContext
-        ? getUnlockedPresentationSubscription()
+        ? getUnlockedInternalSubscription()
         : appState.subscription;
       const subscriptionAccess = userIsIndependent
         ? getIndependentSubscriptionAccess(uiUser)
@@ -3783,8 +3862,8 @@ const App: React.FC = () => {
         : null;
       const userTeams =
         userIsSuperAdmin && superAdminPreview.mode === 'full'
-          ? (appState.teams || []).filter(
-              (t) => isPresentationDemoTeam(t) || t.id === appState.activeTeamId
+          ? (appState.teams || []).filter((t) =>
+              isSuperAdminSwitcherTeam(t, appState.activeTeamId)
             )
           : userIsSuperAdmin
             ? appState.teams
@@ -3888,6 +3967,8 @@ const App: React.FC = () => {
                   access={subscriptionAccess}
                   onManageBilling={() => setCurrentSection("pricing")}
                   onViewPricing={() => setCurrentSection("pricing")}
+                  onCompleteFirstRace={() => navigateTo("events")}
+                  hasCompletedFirstRace={(appState.raceEvents || []).length > 0}
                 />
               ) : null
             }
@@ -3900,6 +3981,36 @@ const App: React.FC = () => {
                     : "myDashboard"
                 )}
               >
+              {!userIsIndependent &&
+                !isSuperAdminPlatformMode(currentUser, appState.activeTeamId, superAdminPreview.mode) &&
+                appState.activeTeamId &&
+                firstRunEpoch >= 0 &&
+                shouldShowFirstRunWizard({
+                  teamId: appState.activeTeamId,
+                  isIndependent: userIsIndependent,
+                  isSuperAdminPlatform: false,
+                  riderCount: (appState.riders || []).length,
+                  eventCount: (appState.raceEvents || []).length,
+                  isTrialOrPilot: Boolean(
+                    subscriptionAccess?.isTrial || subscriptionAccess?.isPilot
+                  ),
+                }) && (
+                  <FirstRunWizard
+                    teamId={appState.activeTeamId}
+                    step={resolveFirstRunStep(
+                      (appState.riders || []).length,
+                      (appState.raceEvents || []).length
+                    )}
+                    riderCount={(appState.riders || []).length}
+                    eventCount={(appState.raceEvents || []).length}
+                    onGoRoster={() => navigateTo("roster")}
+                    onGoEvents={() => navigateTo("events")}
+                    onDismiss={() => {
+                      dismissFirstRun(appState.activeTeamId!);
+                      setFirstRunEpoch((n) => n + 1);
+                    }}
+                  />
+                )}
               {activeEvent ? (
                 <SectionSuspense>
                 <LazyEventDetailView
@@ -5668,6 +5779,9 @@ const App: React.FC = () => {
                           })),
                         }));
                       }}
+                      onCreateInternalTeam={handleCreateInternalTeam}
+                      onGrantInternalAccess={handleGrantInternalTeamAccess}
+                      onOpenTeam={handleTeamSwitch}
                       appState={appState}
                     />
                   )}

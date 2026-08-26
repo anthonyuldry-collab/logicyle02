@@ -178,6 +178,6 @@ export async function exportExpenseReceiptsPdf(
 
   const suffix = eventId ? `_event_${eventId.slice(0, 8)}` : '';
   doc.save(
-    `LogiCycle_Justificatifs_${teamName.replace(/\s+/g, '_')}${suffix}_${new Date().toISOString().slice(0, 10)}.pdf`
+    `Rovik_Justificatifs_${teamName.replace(/\s+/g, '_')}${suffix}_${new Date().toISOString().slice(0, 10)}.pdf`
   );
 }

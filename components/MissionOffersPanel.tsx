@@ -730,7 +730,7 @@ const MissionOffersPanel: React.FC<MissionOffersPanelProps> = ({
                           return (
                             <p>
                               {gmv > 0
-                                ? `GMV estimé ${gmv.toFixed(2)} € · commission LogiCycle ${fee.toFixed(2)} € (${rate} %).`
+                                ? `GMV estimé ${gmv.toFixed(2)} € · commission Rovik ${fee.toFixed(2)} € (${rate} %).`
                                 : 'Renseignez un tarif journalier pour estimer le paiement.'}
                             </p>
                           );

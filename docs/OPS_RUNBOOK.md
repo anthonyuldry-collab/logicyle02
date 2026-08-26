@@ -1,6 +1,7 @@
-# Runbook ops LogiCycle (prod)
+# Runbook ops rovik (prod)
 
-Domaine : **https://logicycle.app**  
+Domaine actuel : **https://logicycle.app** · cible : **rovik.app** (voir `lancement/08-deploy-rebrand.md`)  
+Dossier avant lancement : [`lancement/README.md`](../lancement/README.md)  
 Firebase : `logicycle01` · région Functions : `europe-west1`  
 Netlify : site lié au repo (deploy auto sur `main`)
 

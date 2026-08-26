@@ -8,11 +8,13 @@ import { canViewOrgDashboard, getTeamKindLabel } from '../utils/organizationUtil
 import {
   countIndependentPortfolio,
   countSubscriptionsByStatus,
+  computeLaunchFunnelMetrics,
   estimatePortfolioMrr,
   filterCommercialClientTeams,
   planLabelFr,
   teamsNeedingAttention,
 } from '../utils/holdingCeoDashboardUtils';
+import { getLaunchMode } from '../constants/launchMode';
 
 interface OrganizationDashboardSectionProps {
   organization: Organization;
@@ -66,10 +68,12 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
 
   const portfolioMrr = useMemo(() => estimatePortfolioMrr(clientTeams, users), [clientTeams, users]);
   const subCounts = useMemo(() => countSubscriptionsByStatus(clientTeams), [clientTeams]);
+  const launchFunnel = useMemo(() => computeLaunchFunnelMetrics(clientTeams), [clientTeams]);
   const independents = useMemo(() => countIndependentPortfolio(users), [users]);
   const attentionTeams = useMemo(() => teamsNeedingAttention(clientTeams), [clientTeams]);
   const liveSubscriptions =
     subCounts.active + subCounts.trialing + subCounts.pilot + subCounts.past_due;
+  const launchMode = getLaunchMode();
 
   const sortedTeams = useMemo(
     () =>
@@ -121,6 +125,7 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
               {onNavigate && (
                 <>
                   <QuickNavButton label={t('orgCeoNavSuperAdmin')} onClick={() => onNavigate('superAdmin')} />
+                  <QuickNavButton label={t('orgCeoCreateInternalTeam')} onClick={() => onNavigate('superAdmin')} />
                   <QuickNavButton label={t('orgCeoNavPricing')} onClick={() => onNavigate('pricing')} />
                 </>
               )}
@@ -168,6 +173,45 @@ const OrganizationDashboardSection: React.FC<OrganizationDashboardSectionProps> 
 
         <section className="rounded-xl border border-indigo-800/40 bg-indigo-950/20 p-4">
           <CeoLaunchPlanPanel actualMrr={portfolioMrr} />
+        </section>
+
+        <section className="rounded-xl border border-slate-600 bg-slate-900/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-100">{t('orgCeoLaunchFunnelTitle')}</h3>
+            <span className="rounded-full border border-slate-500 px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-400">
+              launch={launchMode}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-400 leading-relaxed">{t('orgCeoLaunchFunnelDesc')}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <CeoKpi
+              label={t('orgCeoKpiTrials')}
+              value={String(launchFunnel.trialOrPilot)}
+              hint={`${subCounts.trialing} essai · ${subCounts.pilot} pilote`}
+              accent="sky"
+            />
+            <CeoKpi
+              label={t('orgCeoKpiActivePaid')}
+              value={String(launchFunnel.activePaid)}
+              hint="status active"
+              accent="emerald"
+            />
+            <CeoKpi
+              label={t('orgCeoKpiConversion')}
+              value={
+                launchFunnel.trialToActiveRatePct == null
+                  ? '—'
+                  : `${launchFunnel.trialToActiveRatePct} %`
+              }
+              hint={t('orgCeoKpiConversionHint')}
+            />
+            <CeoKpi
+              label={t('orgCeoKpiRisk')}
+              value={String(launchFunnel.pastDue + launchFunnel.canceled)}
+              hint={`${launchFunnel.pastDue} · ${launchFunnel.canceled}`}
+              accent={launchFunnel.pastDue > 0 ? 'amber' : 'default'}
+            />
+          </div>
         </section>
 
         {attentionTeams.length > 0 && (

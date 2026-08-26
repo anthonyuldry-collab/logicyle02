@@ -144,7 +144,7 @@ export function buildScoutingConsentNoticeText(params: {
       'Purpose: sporting recruitment / scouting evaluation only.',
       'Excluded: health data, allergies, medical data (GDPR Art. 9), social security number, emergency contacts.',
       'You may withdraw consent at any time in-app; access is cut immediately. Proof of consent is retained as required by Art. 7.',
-      `Controller for this sharing flow: LogiCycle (${LEGAL_ENTITY.privacyEmail}). Privacy policy: /legal/privacy.`,
+      `Controller for this sharing flow: Rovik (${LEGAL_ENTITY.privacyEmail}). Privacy policy: /legal/privacy.`,
       `Notice version: ${LEGAL_VERSIONS.SCOUTING_CONSENT_NOTICE_VERSION} · Privacy pack: ${LEGAL_VERSIONS.PRIVACY_POLICY_VERSION}.`,
     ].join(' ');
   }
@@ -153,7 +153,7 @@ export function buildScoutingConsentNoticeText(params: {
     'Finalité : évaluation / recrutement sportif (scouting) uniquement.',
     'Exclus : données de santé, allergies, données médicales (art. 9 RGPD), n° de sécurité sociale, contacts d’urgence.',
     'Vous pouvez retirer votre consentement à tout moment in-app ; l’accès est coupé immédiatement. La preuve du consentement est conservée (art. 7).',
-    `Responsable pour ce flux de partage : LogiCycle (${LEGAL_ENTITY.privacyEmail}). Politique : /legal/privacy.`,
+    `Responsable pour ce flux de partage : Rovik (${LEGAL_ENTITY.privacyEmail}). Politique : /legal/privacy.`,
     `Version notice : ${LEGAL_VERSIONS.SCOUTING_CONSENT_NOTICE_VERSION} · Pack privacy : ${LEGAL_VERSIONS.PRIVACY_POLICY_VERSION}.`,
   ].join(' ');
 }

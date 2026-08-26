@@ -9,6 +9,7 @@ import {
   getIndependentPlanIdForRole,
   getTrialDaysForPlan,
 } from '../constants/subscriptionPlans';
+import { isFounderCohortOpen } from '../constants/founderOffer';
 import { TeamLevel } from '../types';
 
 export function buildInitialSubscription(
@@ -122,7 +123,8 @@ export async function createCheckoutSession(
   planId: SubscriptionPlanId,
   interval: 'month' | 'year',
   referralCode?: string | null,
-  trialPeriodDays?: number | null
+  trialPeriodDays?: number | null,
+  applyFounderDiscount?: boolean | null
 ): Promise<{ url: string }> {
   const functions = getFunctions(app, FIREBASE_FUNCTIONS_REGION);
   const fn = httpsCallable<
@@ -132,6 +134,7 @@ export async function createCheckoutSession(
       interval: 'month' | 'year';
       referralCode?: string;
       trialPeriodDays?: number;
+      applyFounderDiscount?: boolean;
     },
     { url: string }
   >(functions, 'createStripeCheckout');
@@ -141,6 +144,7 @@ export async function createCheckoutSession(
     interval: 'month' | 'year';
     referralCode?: string;
     trialPeriodDays?: number;
+    applyFounderDiscount?: boolean;
   } = {
     teamId,
     planId,
@@ -151,6 +155,9 @@ export async function createCheckoutSession(
   }
   if (trialPeriodDays != null && trialPeriodDays > 0) {
     payload.trialPeriodDays = trialPeriodDays;
+  }
+  if (applyFounderDiscount) {
+    payload.applyFounderDiscount = true;
   }
   const result = await fn(payload);
   return result.data;
@@ -170,12 +177,15 @@ export async function requestPlanUpgrade(
   referralCode?: string | null,
   trialPeriodDays?: number | null
 ): Promise<void> {
+  const applyFounder =
+    interval === 'year' && isFounderCohortOpen() && !referralCode?.trim();
   const { url } = await createCheckoutSession(
     teamId,
     planId,
     interval,
     referralCode,
-    trialPeriodDays
+    trialPeriodDays,
+    applyFounder
   );
   window.location.href = url;
 }

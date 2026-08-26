@@ -57,7 +57,7 @@ const MyResultsSection: React.FC<MyResultsSectionProps> = ({
 
         {recentResults.length > 0 ? (
           <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats enregistrés dans LogiCycle</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats enregistrés dans Rovik</h3>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>

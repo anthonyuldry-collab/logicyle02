@@ -422,7 +422,7 @@ const drawGeneralConvocationPdf = (doc: jsPDF, event: RaceEvent, appState: TeamS
         doc.line(PDF_MARGIN, PDF_PAGE_HEIGHT - 18, PDF_MARGIN + PDF_CONTENT_WIDTH, PDF_PAGE_HEIGHT - 18);
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
-        doc.text('Convocation — Logicycle', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
+        doc.text('Convocation — Rovik', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
         doc.setTextColor(0, 0, 0);
     }
 };
@@ -516,7 +516,7 @@ const addConvocationTextToPdf = (doc: jsPDF, text: string, options: { startY: nu
         doc.line(PDF_MARGIN, PDF_PAGE_HEIGHT - 18, PDF_MARGIN + PDF_CONTENT_WIDTH, PDF_PAGE_HEIGHT - 18);
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
-        doc.text('Convocation — Logicycle', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
+        doc.text('Convocation — Rovik', PDF_PAGE_WIDTH / 2, PDF_PAGE_HEIGHT - 10, { align: 'center' });
         doc.setTextColor(0, 0, 0);
     }
 };

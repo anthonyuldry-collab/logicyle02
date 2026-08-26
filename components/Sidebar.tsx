@@ -17,6 +17,7 @@ import {
   isPartnerUser,
   isSectionAllowedForPartner,
 } from '../utils/partnerAccessUtils';
+import { LAUNCH_OPS_SOFT_HIDE_SECTIONS } from '../constants/launchMode';
 import HomeIcon from './icons/HomeIcon';
 import UsersIcon from './icons/UsersIcon';
 import UserGroupIcon from './icons/UserGroupIcon';
@@ -52,6 +53,7 @@ import KeyIcon from './icons/KeyIcon';
 import TrophyIcon from './icons/TrophyIcon';
 import { useTranslations } from '../hooks/useTranslations';
 import ActionButton from './ActionButton';
+import BrandMark from './BrandMark';
 
 interface SidebarProps {
   currentSection: AppSection;
@@ -195,6 +197,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   const hasViewPermission = (sectionId: AppSection) =>
     !!effectivePermissions?.[sectionId]?.includes('view');
 
+  /** Réseau / marketplace : hors nav en wedge (pas de cadenas inutile). Perf reste visible 🔒. */
+  const isSoftHiddenFromLaunchNav = (sectionId: AppSection) =>
+    lockedSections.includes(sectionId) &&
+    (LAUNCH_OPS_SOFT_HIDE_SECTIONS as AppSection[]).includes(sectionId);
+
   const filterCoureurSections = (sections: typeof SECTIONS) =>
     sections.filter((section) => {
       const id = section.id as AppSection;
@@ -260,6 +267,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     >
       {/* Header avec logo et sélecteur d'équipe */}
       <div className="p-6 border-b border-white/5">
+        <div className="mb-4">
+          <BrandMark variant="wordmark" size="sm" />
+        </div>
         {teamLogoUrl && (
             <div className="flex justify-center mb-4">
                 <img src={teamLogoUrl} alt="Team Logo" className="h-12 w-auto" />
@@ -562,6 +572,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                           || hasViewPermission('partnerPortal')
                         );
                     }
+                    if (isSoftHiddenFromLaunchNav(section.id as AppSection)) {
+                      return false;
+                    }
                     if (section.id === 'userSettings') {
                         return true;
                     }
@@ -572,6 +585,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 visibleSections = sectionsInGroup.filter(section => {
                     if (section.id === 'userSettings') return true;
                     if (isDashboardSection(section)) return true;
+                    if (isSoftHiddenFromLaunchNav(section.id as AppSection)) {
+                      return false;
+                    }
                     if (isMySpaceSection(section)) {
                         if (currentUser?.userRole === UserRole.COUREUR) return true;
                         // Staff : pas de « Mon Dossier Admin » séparé (fusionné dans Mon Profil)
@@ -626,7 +642,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     icon={Icon}
                                     isActive={currentSection === section.id}
                                     onClick={() => {
-                                      if (isLocked) return;
+                                      if (isLocked) {
+                                        // Upsell : perf / modules gated → grille tarifaire
+                                        onSelectSection('pricing');
+                                        return;
+                                      }
                                       onSelectSection(section.id as AppSection);
                                     }}
                                 />

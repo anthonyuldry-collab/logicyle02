@@ -1,6 +1,6 @@
-# LogiCycle
+# rovik
 
-SaaS opérationnel pour équipes et clubs cyclistes : effectif, calendrier, logistique course, budget, performance, indépendants et marketplace de missions (matching).
+Cycling Performance Systems — SaaS pour équipes et clubs cyclistes : effectif, calendrier, logistique course, budget, performance, indépendants et marketplace de missions (matching).
 
 ## Stack
 
@@ -74,7 +74,8 @@ Doc [`docs/ERP_LEAN_SMOKE.md`](docs/ERP_LEAN_SMOKE.md) — `clientId` obligatoir
 ./scripts/smoke-production.sh            # Healthcheck post-deploy
 ```
 
-Checklist opérationnelle : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md)  
+**Avant lancement payant** : dossier [`lancement/`](lancement/README.md) (`./scripts/lancement-prochaines-etapes.sh`)  
+Checklist ops : [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md)  
 Offre commerciale / CA : [`docs/COMMERCIAL_OFFER.md`](docs/COMMERCIAL_OFFER.md)  
 Ops (backup / rollback / Stripe Live) : [`docs/OPS_RUNBOOK.md`](docs/OPS_RUNBOOK.md)  
 Emails domaine : [`docs/EMAIL_FORWARDING.md`](docs/EMAIL_FORWARDING.md)

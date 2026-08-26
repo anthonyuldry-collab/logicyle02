@@ -68,12 +68,12 @@ export const MENTIONS_DOCUMENT: LegalDocument = {
         fr: [
           '© ' +
             new Date().getFullYear() +
-            ' LogiCycle — tous droits réservés. Marques, logos, textes, interfaces et logiciels sont protégés. Toute reproduction non autorisée est interdite.',
+            ' Rovik — tous droits réservés. Marques, logos, textes, interfaces et logiciels sont protégés. Toute reproduction non autorisée est interdite.',
         ],
         en: [
           '© ' +
             new Date().getFullYear() +
-            ' LogiCycle — all rights reserved. Trademarks, logos, texts, interfaces and software are protected. Unauthorised reproduction is prohibited.',
+            ' Rovik — all rights reserved. Trademarks, logos, texts, interfaces and software are protected. Unauthorised reproduction is prohibited.',
         ],
       },
     },

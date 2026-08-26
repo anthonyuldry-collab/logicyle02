@@ -1,12 +1,12 @@
 /**
  * Email transactionnel optionnel (Resend).
- * Activer : secret RESEND_API_KEY + RESEND_FROM (ex. Factures LogiCycle <contact@logicycle.app>)
+ * Activer : secret RESEND_API_KEY + RESEND_FROM (ex. Factures Rovik <contact@logicycle.app>)
  * Sans clé : no-op loggé (non bloquant).
  */
 
 async function sendTransactionalEmail({ to, subject, html, text, attachments }) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || 'LogiCycle <contact@logicycle.app>';
+  const from = process.env.RESEND_FROM || 'Rovik <contact@logicycle.app>';
   if (!apiKey) {
     return { sent: false, reason: 'resend_not_configured' };
   }
@@ -59,7 +59,7 @@ function missionInvoiceEmailHtml({ title, intro, rows }) {
   <h2>${title}</h2>
   <p>${intro}</p>
   <table style="border-collapse:collapse">${rowHtml}</table>
-  <p style="margin-top:24px;font-size:12px;color:#666">LogiCycle — conservez la pièce jointe pour votre comptabilité.</p>
+  <p style="margin-top:24px;font-size:12px;color:#666">Rovik — conservez la pièce jointe pour votre comptabilité.</p>
   </body></html>`;
 }
 

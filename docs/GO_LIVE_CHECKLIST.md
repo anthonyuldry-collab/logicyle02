@@ -1,11 +1,12 @@
-# Checklist go-live LogiCycle
+# Checklist go-live rovik
 
 Checklist opérationnelle pour un lancement **payant**.
 
+> **Dossier unique à cocher** : [`lancement/`](../lancement/README.md) (fiches 01–09 + templates).  
 > **État 31/07/2026 (soir)**  
 > Domaine **https://logicycle.app** live · Smoke prod **9 OK / 0 FAIL** · Functions Stripe redéployées avec `ALLOWED_APP_ORIGINS` · Sentry DSN en `.env.production` · Auth domaines OK.  
-> Stripe = encore **TEST** (`environnement de test Logicycle SAS`).  
-> Identité éditeur = **placeholders K-bis**. MX `@logicycle.app` = **pas encore configurés**.
+> Stripe = encore **TEST**. Identité éditeur = **placeholders K-bis**. MX `@logicycle.app` = **pas encore configurés**.  
+> Rebrand **rovik** dans le code (26/08/2026) — à déployer : `lancement/08-deploy-rebrand.md`.
 
 ## P0 — Bloquants restants
 
@@ -75,6 +76,7 @@ Checklist opérationnelle pour un lancement **payant**.
 ## Commandes
 
 ```bash
+./scripts/lancement-prochaines-etapes.sh
 ./scripts/preflight-soft-launch.sh
 ./scripts/smoke-production.sh https://logicycle.app
 ./scripts/erp-lean-smoke.sh
@@ -86,6 +88,7 @@ Test paiement TEST : `4242 4242 4242 4242`.
 
 | Fichier | Rôle |
 |---------|------|
+| `lancement/` | **Dossier unique à faire avant lancement** |
 | `legal/meta.ts` | Identité éditeur |
 | `docs/COMMERCIAL_OFFER.md` | Grille, tunnel CA, fondateurs, Stripe prices |
 | `docs/OPS_RUNBOOK.md` | Backup, rollback, Stripe Live, TVA |

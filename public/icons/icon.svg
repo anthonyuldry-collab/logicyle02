@@ -1,10 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="96" fill="#1e293b"/>
-  <circle cx="256" cy="256" r="120" stroke="#4f46e5" stroke-width="24" fill="none"/>
-  <circle cx="256" cy="256" r="20" fill="#4f46e5"/>
-  <line x1="256" y1="136" x2="256" y2="96" stroke="#4f46e5" stroke-width="16" stroke-linecap="round"/>
-  <line x1="256" y1="376" x2="256" y2="416" stroke="#4f46e5" stroke-width="16" stroke-linecap="round"/>
-  <line x1="136" y1="256" x2="96" y2="256" stroke="#4f46e5" stroke-width="16" stroke-linecap="round"/>
-  <line x1="376" y1="256" x2="416" y2="256" stroke="#4f46e5" stroke-width="16" stroke-linecap="round"/>
-  <text x="256" y="480" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="48" font-weight="600">LC</text>
+  <rect width="512" height="512" rx="112" fill="#0B0D10"/>
+  <defs>
+    <linearGradient id="rovik" x1="120" y1="420" x2="400" y2="80" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E3A8A"/>
+      <stop offset="0.42" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(128,96) scale(3.5)">
+    <path fill="url(#rovik)" fill-rule="evenodd" d="M10.2 6.2H38.6L54.8 18.4V32.2L42.4 42.4L66.4 74.2H49.6L30.8 48.6H22.4L18.2 74.2H6.4L14.2 6.2H10.2ZM22.6 16.4L20.2 35.8H36.8L44.2 29.2V22.6L36.2 16.4H22.6Z"/>
+    <path fill="url(#rovik)" d="M48.8 44.6H68.2L71.4 51.2L54.2 74.2H46.8L58.6 54.2H46.2Z" opacity="0.92"/>
+  </g>
 </svg>

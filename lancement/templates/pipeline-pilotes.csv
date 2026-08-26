@@ -1,0 +1,11 @@
+structure,contact_role,prenom_nom,email,linkedin_url,niveau_uci,region,prochaine_course,date_course,plan_cible,canal,statut,date_dernier_contact,prochaine_action,rdv_le,essai_depuis,stripe_customer_id,montant_ttc,fondateur,notes
+Ex. VC Roubaix,DS,Marie Dupont,ds@vcroubaix.fr,https://linkedin.com/in/...,Club,Hauts-de-France,GP de Denain,2026-09-12,Compet,linkedin,prospect,2026-08-26,Envoyer LI msg 1,,,,"",non,Priorité haute — course bientôt
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+# statut: prospect | contacte | rdv | essai | negociation | paye | perdu | pause
+# plan_cible: Club | Compet | Elite | Performance
+# canal: linkedin | email | telephone | warm | salon
+# fondateur: oui | non — si oui + paye → incrémenter FOUNDER_COHORT_CLAIMED dans constants/founderOffer.ts
+# Objectif J-90: 50 prospects · 15 rdv · 5 essais · 2–3 payés (carte ou devis)

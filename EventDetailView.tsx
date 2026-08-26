@@ -45,6 +45,7 @@ import {
   staffRoleHasMissionTab,
 } from './utils/staffRoleDataAccess';
 import { isTrainingCamp } from './utils/trainingCampUtils';
+import { eventEditSignature } from './utils/stageRaceUtils';
 import AssistantMissionTab from './components/eventMissionTabs/AssistantMissionTab';
 import MecanoMissionTab from './components/eventMissionTabs/MecanoMissionTab';
 import CommunicationMissionTab from './components/eventMissionTabs/CommunicationMissionTab';
@@ -146,7 +147,9 @@ function EventDetailView({
         if (prev.id !== eventId) return foundEvent;
         const prevDays = prev.raceInfo?.stageDays ?? [];
         const foundDays = foundEvent.raceInfo?.stageDays ?? [];
-        if (prevDays.length === 0) return foundEvent;
+        if (prevDays.length === 0) {
+          return eventEditSignature(prev) === eventEditSignature(foundEvent) ? prev : foundEvent;
+        }
         const mergedStageDays = foundDays.map((foundDay) => {
           const prevDay =
             prevDays.find((d) => d.id === foundDay.id)
@@ -164,10 +167,11 @@ function EventDetailView({
           }
           return foundDay;
         });
-        return {
+        const next = {
           ...foundEvent,
           raceInfo: { ...foundEvent.raceInfo, stageDays: mergedStageDays },
         };
+        return eventEditSignature(prev) === eventEditSignature(next) ? prev : next;
       });
     } else {
       navigateTo('events');

@@ -8,12 +8,17 @@ interface SubscriptionBannerProps {
   access: SubscriptionAccess;
   onManageBilling: () => void;
   onViewPricing: () => void;
+  /** CTA prioritaire essai : finaliser la 1ʳᵉ course */
+  onCompleteFirstRace?: () => void;
+  hasCompletedFirstRace?: boolean;
 }
 
 const SubscriptionBanner: React.FC<SubscriptionBannerProps> = ({
   access,
   onManageBilling,
   onViewPricing,
+  onCompleteFirstRace,
+  hasCompletedFirstRace = false,
 }) => {
   const { t, language } = useTranslations();
   const plan = getPlanById(access.planId);
@@ -33,6 +38,7 @@ const SubscriptionBanner: React.FC<SubscriptionBannerProps> = ({
   }
 
   if (access.isTrial || access.isPilot) {
+    const showFirstRaceCta = Boolean(onCompleteFirstRace) && !hasCompletedFirstRace;
     return (
       <div className="bg-indigo-700 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-sm">
         <span>
@@ -42,13 +48,24 @@ const SubscriptionBanner: React.FC<SubscriptionBannerProps> = ({
             <> · {access.daysRemaining} {t('billingDaysLeft')}</>
           )}
         </span>
-        <button
-          type="button"
-          onClick={onManageBilling}
-          className="underline hover:no-underline font-medium"
-        >
-          {t('billingUpgradeNow')}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {showFirstRaceCta && (
+            <button
+              type="button"
+              onClick={onCompleteFirstRace}
+              className="rounded-md bg-white/15 px-2.5 py-1 font-semibold hover:bg-white/25"
+            >
+              {t('billingFirstRaceCta')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onManageBilling}
+            className="underline hover:no-underline font-medium"
+          >
+            {t('billingUpgradeNow')}
+          </button>
+        </div>
       </div>
     );
   }

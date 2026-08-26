@@ -151,8 +151,8 @@ const PerformanceConnectionsPanel: React.FC<PerformanceConnectionsPanelProps> = 
         </h3>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
           {lang === 'en'
-            ? 'Link your training and recovery platforms so LogiCycle can refresh power, volume, HRV and sessions without manual entry.'
-            : 'Liez vos plateformes d’entraînement et de récupération pour que LogiCycle actualise puissance, volume, HRV et séances sans saisie manuelle.'}
+            ? 'Link your training and recovery platforms so Rovik can refresh power, volume, HRV and sessions without manual entry.'
+            : 'Liez vos plateformes d’entraînement et de récupération pour que Rovik actualise puissance, volume, HRV et séances sans saisie manuelle.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-3 text-xs">
           <span className="rounded-full border border-emerald-500/40 bg-emerald-950 px-3 py-1 font-medium text-emerald-200">

@@ -26,10 +26,10 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
             ' — contact privacy / DPO : ' +
             LEGAL_ENTITY.dpoEmail +
             '.',
-          'LogiCycle agit selon deux rôles distincts :',
+          'Rovik agit selon deux rôles distincts :',
           '• Responsable de traitement pour : comptes utilisateurs, authentification, facturation abonnement, sécurité plateforme, support, statistiques agrégées, prospection B2B limitée, cookies essentiels / mesure d’audience le cas échéant.',
           '• Sous-traitant (art. 28 RGPD) pour : données métier saisies et gérées par l’Équipe Client (roster, performance, logistique, allergies/santé renseignées par l’équipe, GPS flotte, documents, budgets, partenariats, scouting opéré par l’équipe). Dans ce cas, le Client est responsable de traitement ; le DPA s’applique.',
-          'Les utilisateurs finaux d’une Équipe doivent exercer certains droits d’abord via leur Équipe (administrateur), et/ou auprès de LogiCycle pour les données de compte plateforme.',
+          'Les utilisateurs finaux d’une Équipe doivent exercer certains droits d’abord via leur Équipe (administrateur), et/ou auprès de Rovik pour les données de compte plateforme.',
         ],
         en: [
           LEGAL_ENTITY.legalFormPlaceholder.en +
@@ -38,10 +38,10 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
             ' — privacy / DPO contact: ' +
             LEGAL_ENTITY.dpoEmail +
             '.',
-          'LogiCycle acts in two distinct roles:',
+          'Rovik acts in two distinct roles:',
           '• Controller for: user accounts, authentication, subscription billing, platform security, support, aggregated statistics, limited B2B prospecting, essential cookies / analytics where applicable.',
           '• Processor (GDPR Art. 28) for: operational data entered and managed by the Customer Team (roster, performance, logistics, allergies/health entered by the team, fleet GPS, documents, budgets, partnerships, team-operated scouting). In that case the Customer is the controller; the DPA applies.',
-          'Team end users should exercise certain rights first via their Team (admin) and/or with LogiCycle for platform account data.',
+          'Team end users should exercise certain rights first via their Team (admin) and/or with Rovik for platform account data.',
         ],
       },
     },
@@ -86,7 +86,7 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
           '• Intérêt légitime (art. 6.1.f) : suivi discret (watchlist) interne à une Équipe sur profils déjà visibles / recherchables — sans notification ni partage vers l’athlète ; balancing test documenté en interne ;',
           '• Obligations légales (comptabilité, réponses autorités) ;',
           '• Intérêt légitime : amélioration produit sur données agrégées / anonymisées, prévention des abus.',
-          'Lorsque LogiCycle est sous-traitant, la base légale est déterminée par le Client responsable.',
+          'Lorsque Rovik est sous-traitant, la base légale est déterminée par le Client responsable.',
         ],
         en: [
           '• Providing the SaaS and performing the contract (Art. 6.1.b);',
@@ -95,7 +95,7 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
           '• Legitimate interest (Art. 6.1.f): internal team watchlist on already visible/searchable profiles — no athlete notification or outbound share; balancing test documented internally;',
           '• Legal obligations (accounting, authority requests);',
           '• Legitimate interest: product improvement on aggregated / anonymised data, abuse prevention.',
-          'When LogiCycle is a processor, the legal basis is determined by the Customer controller.',
+          'When Rovik is a processor, the legal basis is determined by the Customer controller.',
         ],
       },
     },
@@ -104,7 +104,7 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
       title: { fr: '4. Destinataires et sous-traitants', en: '4. Recipients and processors' },
       blocks: {
         fr: [
-          'Données accessibles : vous, les membres autorisés de votre Équipe, le support LogiCycle (besoin d’en connaître), et nos sous-traitants :',
+          'Données accessibles : vous, les membres autorisés de votre Équipe, le support Rovik (besoin d’en connaître), et nos sous-traitants :',
           '• ' +
             LEGAL_ENTITY.host.name +
             ' — hébergement / auth / base de données ;',
@@ -115,7 +115,7 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
           'Pas de vente de données personnelles. Partage sponsor / partenaire uniquement si l’Équipe l’active et dans le périmètre configuré.',
         ],
         en: [
-          'Data may be accessed by: you, authorised Team members, LogiCycle support (need-to-know), and our processors:',
+          'Data may be accessed by: you, authorised Team members, Rovik support (need-to-know), and our processors:',
           '• ' +
             LEGAL_ENTITY.host.name +
             ' — hosting / auth / database;',

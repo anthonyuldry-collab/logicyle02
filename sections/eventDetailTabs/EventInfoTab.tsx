@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RaceEvent, RaceInformation, EventRadioEquipment, EventRadioAssignment, EventType, Discipline, AppState, StageDayLogistics, Rider, AltitudeCampMeta, AltitudeCampProtocol, HypoxicSetupType, HeatCampProtocol, HeatSetupType } from '../../types';
 import { saveData, deleteData } from '../../services/firebaseService';
 import ActionButton from '../../components/ActionButton';
@@ -10,7 +10,7 @@ import { emptyEventRadioEquipment, ELIGIBLE_CATEGORIES_CONFIG } from '../../cons
 import { formatEventDateRange } from '../../utils/dateUtils';
 import { useTranslations } from '../../hooks/useTranslations';
 import { RaceEventOrganizerContact } from '../../types';
-import { ensureStageRaceLogistics, syncRiderStartTimes } from '../../utils/stageRaceUtils';
+import { ensureStageRaceLogistics, eventEditSignature, syncRiderStartTimes } from '../../utils/stageRaceUtils';
 import {
   ALTITUDE_PROTOCOL_LABELS,
   emptyAltitudeCampMeta,
@@ -68,6 +68,16 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   const { t } = useTranslations();
   const [formData, setFormData] = useState<RaceEvent>(event);
   const [isEditing, setIsEditing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const isEditingRef = useRef(isEditing);
+  isEditingRef.current = isEditing;
+  const skipNextEventSyncRef = useRef(false);
+  const lastSavedSigRef = useRef(eventEditSignature(event));
+  const saveTimerRef = useRef<number | null>(null);
+  const savedHintTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (readOnly) setIsEditing(false);
@@ -84,7 +94,15 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
   );
 
   useEffect(() => {
-    setFormData(isCompetitiveStageRace(event) ? ensureStageRaceLogistics(event) : event);
+    if (skipNextEventSyncRef.current) {
+      skipNextEventSyncRef.current = false;
+      return;
+    }
+    // Ne pas écraser la saisie en cours (sauvegarde auto / re-render parent).
+    if (isEditingRef.current) return;
+    const next = isCompetitiveStageRace(event) ? ensureStageRaceLogistics(event) : event;
+    setFormData(next);
+    lastSavedSigRef.current = eventEditSignature(next);
     setLocalRadioEquipment(initialRadioEquipment || emptyEventRadioEquipment(eventId, `${eventId}_radioequip_info_effect`));
   }, [event, initialRadioEquipment, eventId]);
 
@@ -427,40 +445,85 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
     }));
   };
 
-  const handleSaveAll = async () => {
+  const persistEventForm = useCallback(async (data: RaceEvent, options?: { closeEditing?: boolean }) => {
     if (readOnly) return;
+    const eventToSave = applyStageRaceSync({
+      ...data,
+      id: eventId,
+    });
+    const sig = eventEditSignature(eventToSave);
+    if (sig === lastSavedSigRef.current && !options?.closeEditing) {
+      return;
+    }
+    setSaveStatus('saving');
     try {
-      const eventToSave = applyStageRaceSync({
-        ...formData,
-        id: eventId,
-      });
-
       if (appState.activeTeamId) {
         await saveData(
           appState.activeTeamId,
           "raceEvents",
           eventToSave
         );
-        console.log('✅ Informations de course sauvegardées dans Firebase pour l\'événement:', eventId);
-      } else {
-        console.warn('⚠️ Aucun teamId actif, sauvegarde locale uniquement');
       }
-
+      skipNextEventSyncRef.current = true;
+      lastSavedSigRef.current = sig;
       updateEvent(eventToSave);
-      setFormData(eventToSave); 
-      // Radio equipment is already saved by its own handler.
-      // Radio assignments are saved by their modal.
-      setIsEditing(false);
+      if (options?.closeEditing) {
+        setFormData(eventToSave);
+        setIsEditing(false);
+        setSaveStatus('idle');
+      } else {
+        setSaveStatus('saved');
+        if (savedHintTimerRef.current) window.clearTimeout(savedHintTimerRef.current);
+        savedHintTimerRef.current = window.setTimeout(() => setSaveStatus('idle'), 1800);
+      }
     } catch (error) {
       console.error('❌ Erreur lors de la sauvegarde des informations de course:', error);
+      setSaveStatus('error');
       alert('Erreur lors de la sauvegarde des informations de course. Veuillez réessayer.');
     }
+  }, [appState.activeTeamId, applyStageRaceSync, eventId, readOnly, updateEvent]);
+
+  const handleSaveAll = async () => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    await persistEventForm(formDataRef.current, { closeEditing: true });
   };
 
+  useEffect(() => {
+    if (!isEditing || readOnly) return;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      void persistEventForm(formDataRef.current);
+    }, 800);
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [formData, isEditing, persistEventForm, readOnly]);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      if (savedHintTimerRef.current) window.clearTimeout(savedHintTimerRef.current);
+    },
+    [],
+  );
+
   const handleCancelAll = () => {
-    setFormData(event); 
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const next = isCompetitiveStageRace(event) ? ensureStageRaceLogistics(event) : event;
+    setFormData(next);
+    lastSavedSigRef.current = eventEditSignature(next);
     setLocalRadioEquipment(initialRadioEquipment || emptyEventRadioEquipment(eventId, `${eventId}_radioequip_info_cancel`));
     setIsEditing(false);
+    setSaveStatus('idle');
   };
 
   const raceInfoFields: {key: keyof RaceInformation, label: string, type: 'text' | 'number' | 'date'}[] = [
@@ -552,7 +615,15 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
 
   const renderStageTabPanelEdit = (stage: StageDayLogistics) => (
     <section>
-      <h4 className="text-sm font-semibold text-amber-900 uppercase tracking-wide mb-3">Logistique course</h4>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h4 className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Logistique course</h4>
+        <p className="text-xs text-slate-400">
+          {saveStatus === 'saving' && 'Enregistrement…'}
+          {saveStatus === 'saved' && 'Enregistré'}
+          {saveStatus === 'error' && 'Erreur d’enregistrement'}
+          {saveStatus === 'idle' && 'Sauvegarde automatique'}
+        </p>
+      </div>
       {renderStageDayFormFields(stage)}
     </section>
   );
@@ -1352,7 +1423,13 @@ const EventInfoTab: React.FC<EventInfoTabProps> = ({
           </fieldset>
           )}
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-4">
+            <p className="mr-auto text-xs text-gray-500">
+              {saveStatus === 'saving' && 'Enregistrement automatique…'}
+              {saveStatus === 'saved' && 'Modifications enregistrées'}
+              {saveStatus === 'error' && 'Erreur d’enregistrement'}
+              {saveStatus === 'idle' && 'Sauvegarde automatique pendant la saisie'}
+            </p>
             <ActionButton type="button" variant="secondary" onClick={handleCancelAll}>Annuler</ActionButton>
             <ActionButton type="button" onClick={handleSaveAll}>Sauvegarder Informations</ActionButton>
           </div>

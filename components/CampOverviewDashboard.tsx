@@ -165,14 +165,14 @@ const CampOverviewDashboard: React.FC<CampOverviewDashboardProps> = ({
               <div className="flex items-center gap-2.5">
                 <span className="inline-flex h-2 w-2 rounded-full bg-indigo-400 lc-overview-live" />
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-200/90">
-                  LogiCycle · Tableau de bord
+                  rovik · Tableau de bord
                 </p>
               </div>
               <h1
                 className="mt-3 text-4xl sm:text-5xl font-black tracking-tight leading-none"
                 style={{ letterSpacing: '-0.03em' }}
               >
-                LOGICYCLE
+                rovik
               </h1>
               <p className="mt-2 text-sm text-slate-300 max-w-md">
                 Tableau de bord — le cockpit de votre stage

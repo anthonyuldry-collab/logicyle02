@@ -70,9 +70,9 @@ export function resolveMissionInvoiceVatRatePercent(): number {
 
 export function missionInvoiceVatMention(language: 'fr' | 'en' = 'fr'): string {
   if (language === 'en') {
-    return 'VAT not applicable (Art. 293 B French Tax Code — small business exemption), pending LogiCycle VAT registration.';
+    return 'VAT not applicable (Art. 293 B French Tax Code — small business exemption), pending Rovik VAT registration.';
   }
-  return 'TVA non applicable, art. 293 B du CGI (franchise en base) — à mettre à jour dès assujettissement LogiCycle.';
+  return 'TVA non applicable, art. 293 B du CGI (franchise en base) — à mettre à jour dès assujettissement Rovik.';
 }
 
 export function buildTeamMissionInvoiceNumber(missionId: string, paidAt?: string): string {
@@ -182,14 +182,14 @@ export function buildTeamMissionInvoice(input: {
       input.payment.status === 'refunded'
         ? `AVOIR / REMBOURSEMENT — Réf. ${input.payment.creditNoteNumber || '—'}. Facture initiale ${invoiceNumber} annulée pour le montant remboursé.`
         : isLegalEntityIncomplete()
-          ? 'DOCUMENT PROVISOIRE — Identité éditeur LogiCycle en cours de constitution (SIRET / siège à compléter post K-bis). Ne pas utiliser comme facture définitive en production.'
-          : 'Facture émise par LogiCycle en qualité d’intermédiaire de paiement (merchant of record). Paiement reçu via Stripe. Conservez ce document pour votre comptabilité.',
+          ? 'DOCUMENT PROVISOIRE — Identité éditeur Rovik en cours de constitution (SIRET / siège à compléter post K-bis). Ne pas utiliser comme facture définitive en production.'
+          : 'Facture émise par Rovik en qualité d’intermédiaire de paiement (merchant of record). Paiement reçu via Stripe. Conservez ce document pour votre comptabilité.',
     legalNoteEn:
       input.payment.status === 'refunded'
         ? `CREDIT NOTE — Ref. ${input.payment.creditNoteNumber || '—'}.`
         : isLegalEntityIncomplete()
-          ? 'PROVISIONAL — LogiCycle legal identity incomplete (post company registration). Not a final commercial invoice.'
-          : 'Invoice issued by LogiCycle as payment intermediary (merchant of record). Payment received via Stripe. Keep this document for your accounts.',
+          ? 'PROVISIONAL — Rovik legal identity incomplete (post company registration). Not a final commercial invoice.'
+          : 'Invoice issued by Rovik as payment intermediary (merchant of record). Payment received via Stripe. Keep this document for your accounts.',
   };
 }
 
@@ -229,8 +229,8 @@ export function buildVacataireDraftMissionInvoice(input: {
 
   const description =
     language === 'en'
-      ? `Independent services — mission “${input.mission.title}” for team ${input.teamName} (${input.mission.startDate} → ${input.mission.endDate}) via LogiCycle · Platform fee withheld ${commissionEur.toFixed(2)} EUR`
-      : `Prestation indépendante — mission « ${input.mission.title} » pour l’équipe ${input.teamName} (${input.mission.startDate} → ${input.mission.endDate}) via LogiCycle · Commission retenue ${commissionEur.toFixed(2)} €`;
+      ? `Independent services — mission “${input.mission.title}” for team ${input.teamName} (${input.mission.startDate} → ${input.mission.endDate}) via Rovik · Platform fee withheld ${commissionEur.toFixed(2)} EUR`
+      : `Prestation indépendante — mission « ${input.mission.title} » pour l’équipe ${input.teamName} (${input.mission.startDate} → ${input.mission.endDate}) via Rovik · Commission retenue ${commissionEur.toFixed(2)} €`;
 
   const vatMentionFr =
     biz?.vatRegime === 'franchise_293b'
@@ -259,8 +259,8 @@ export function buildVacataireDraftMissionInvoice(input: {
       address: addressParts || '[Adresse professionnelle À COMPLÉTER]',
       note: hasBusinessIds
         ? isIssued
-          ? 'Facture émise via LogiCycle — conservez pour URSSAF / comptabilité.'
-          : 'Facture préremplie depuis votre dossier entreprise LogiCycle — vérifiez avant envoi.'
+          ? 'Facture émise via Rovik — conservez pour URSSAF / comptabilité.'
+          : 'Facture préremplie depuis votre dossier entreprise Rovik — vérifiez avant envoi.'
         : 'Modèle prérempli — finalisez SIRET / adresse dans Espace indépendant → Ma société.',
     },
     client: logicycleIssuer(),
@@ -275,14 +275,14 @@ export function buildVacataireDraftMissionInvoice(input: {
     teamId: input.mission.teamId,
     isDraftTemplate: !isIssued && !hasBusinessIds,
     legalNoteFr: isIssued
-      ? 'Facture définitive émise à LogiCycle. Ce n’est pas un bulletin de paie.'
+      ? 'Facture définitive émise à Rovik. Ce n’est pas un bulletin de paie.'
       : hasBusinessIds
-        ? 'Document généré pour votre comptabilité / URSSAF. Conservez-le et émettez-le à LogiCycle. Ce n’est pas un bulletin de paie.'
-        : 'MODÈLE DE FACTURE — Complétez votre dossier « Ma société » (SIRET, adresse) pour préremplir automatiquement. Finalisez puis émettez à LogiCycle. Ce n’est pas un bulletin de paie.',
+        ? 'Document généré pour votre comptabilité / URSSAF. Conservez-le et émettez-le à Rovik. Ce n’est pas un bulletin de paie.'
+        : 'MODÈLE DE FACTURE — Complétez votre dossier « Ma société » (SIRET, adresse) pour préremplir automatiquement. Finalisez puis émettez à Rovik. Ce n’est pas un bulletin de paie.',
     legalNoteEn: isIssued
-      ? 'Final invoice issued to LogiCycle. Not a payslip.'
+      ? 'Final invoice issued to Rovik. Not a payslip.'
       : hasBusinessIds
-        ? 'Generated for your accounts / social filings. Issue to LogiCycle. Not a payslip.'
+        ? 'Generated for your accounts / social filings. Issue to Rovik. Not a payslip.'
         : 'DRAFT TEMPLATE — Complete your business profile (SIRET, address) to auto-fill. Not a payslip.',
   };
 }

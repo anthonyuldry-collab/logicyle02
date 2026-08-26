@@ -57,6 +57,6 @@ describe('exportAccountingCsv', () => {
 
     expect(click).toHaveBeenCalled();
     expect(remove).toHaveBeenCalled();
-    expect(anchor.download).toContain('LogiCycle_Compta_Team_Test');
+    expect(anchor.download).toContain('Rovik_Compta_Team_Test');
   });
 });

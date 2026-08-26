@@ -1,9 +1,10 @@
-# Création SAS LogiCycle — Dossier juridique opérationnel
+# Création SASU Rovik — Dossier juridique opérationnel
 
 > **Statut** : projet de rédaction (modèle avocat-startup).  
 > **Pas un acte authentique ni un avis juridique engageant.**  
 > **À faire relire et adapter** par un avocat en droit des sociétés (idéalement startup / PI) avant signature et dépôt au greffe.  
-> **Nom** : « LogiCycle » (marque produit). Si vous souhaitez « Logyclie », changez systématiquement dénomination + dépôt INPI.
+> **Nom** : « **Rovik** » (marque produit, 26/08/2026). Remplacer « LogiCycle » dans les statuts avant dépôt.  
+> Parcours go-live : [`lancement/`](../../lancement/README.md).
 
 ---
 
@@ -53,7 +54,7 @@
 ## Ordre d’exécution recommandé
 
 1. Trancher `04-decisions-a-trancher.md` (capital, siège, dénomination exacte).
-2. Recherche antériorité INPI « LogiCycle » (classes 9, 35, 42).
+2. Recherche antériorité INPI « **rovik** » (classes 9, 35, 42).
 3. Relire / adapter `01-statuts` + `03-pacte` avec avocat.
 4. Ouvrir compte de dépôt de capital → attestation.
 5. Signer statuts + PV président + liste souscripteurs.

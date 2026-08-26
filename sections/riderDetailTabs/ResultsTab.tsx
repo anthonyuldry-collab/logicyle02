@@ -62,10 +62,10 @@ export const ResultsTab: React.FC<ResultsTabProps> = ({
             return;
         }
         const simulatedResults: ResultItem[] = [
-            { id: generateId(), date: '2024-05-25', eventName: 'GP de Plumelec-Morbihan', category: 'uci.pro', rank: 1, team: 'Team LogiCycle', discipline: DisciplinePracticed.ROUTE },
-            { id: generateId(), date: '2024-03-17', eventName: 'Trofeo Alfredo Binda', category: 'uci.w.wwt', rank: 3, team: 'Team LogiCycle', discipline: DisciplinePracticed.ROUTE },
-            { id: generateId(), date: '2024-03-31', eventName: 'Tour des Flandres', category: 'uci.w.wwt', rank: 8, team: 'Team LogiCycle', discipline: DisciplinePracticed.ROUTE },
-            { id: generateId(), date: '2023-12-26', eventName: 'Coupe du Monde UCI - Gavere', category: 'cx', rank: 2, team: 'Team LogiCycle', discipline: DisciplinePracticed.CYCLO_CROSS },
+            { id: generateId(), date: '2024-05-25', eventName: 'GP de Plumelec-Morbihan', category: 'uci.pro', rank: 1, team: 'Team Rovik', discipline: DisciplinePracticed.ROUTE },
+            { id: generateId(), date: '2024-03-17', eventName: 'Trofeo Alfredo Binda', category: 'uci.w.wwt', rank: 3, team: 'Team Rovik', discipline: DisciplinePracticed.ROUTE },
+            { id: generateId(), date: '2024-03-31', eventName: 'Tour des Flandres', category: 'uci.w.wwt', rank: 8, team: 'Team Rovik', discipline: DisciplinePracticed.ROUTE },
+            { id: generateId(), date: '2023-12-26', eventName: 'Coupe du Monde UCI - Gavere', category: 'cx', rank: 2, team: 'Team Rovik', discipline: DisciplinePracticed.CYCLO_CROSS },
             { id: generateId(), date: '2023-08-10', eventName: 'Championnats du Monde - Scratch Race', category: 'cm', rank: 5, team: 'Équipe Nationale', discipline: DisciplinePracticed.PISTE },
         ];
         

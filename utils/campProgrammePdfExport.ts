@@ -87,7 +87,7 @@ function drawFooter(doc: jsPDF, page: number, total: number): void {
   doc.setFontSize(7.5);
   doc.setTextColor(...PDF_COLORS.muted);
   doc.text(
-    sanitizePdfText(`Programme de stage — Logicycle · ${page}/${total}`),
+    sanitizePdfText(`Programme de stage — Rovik · ${page}/${total}`),
     PDF_MARGIN_X + PDF_CONTENT_W / 2,
     PDF_PAGE_H - 10,
     { align: 'center' },
@@ -157,7 +157,7 @@ export function buildCampProgrammePlainText(
   });
 
   lines.push('—');
-  lines.push('Document généré via Logicycle');
+  lines.push('Document généré via Rovik');
   return lines.join('\n');
 }
 
@@ -419,7 +419,7 @@ export function openCampProgrammeEmail(params: {
     `Bonjour,`,
     ``,
     `Veuillez trouver ci-dessous le programme du stage « ${event.name} ».`,
-    `Joignez le PDF téléchargé depuis Logicycle à cet e-mail.`,
+    `Joignez le PDF téléchargé depuis Rovik à cet e-mail.`,
     ``,
     buildCampProgrammePlainText(event, options),
   ].join('\n');

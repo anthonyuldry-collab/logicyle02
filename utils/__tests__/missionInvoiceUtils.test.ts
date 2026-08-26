@@ -70,7 +70,7 @@ describe('invoice numbers', () => {
 });
 
 describe('buildTeamMissionInvoice', () => {
-  it('facture LogiCycle → équipe pour le GMV', () => {
+  it('facture Rovik → équipe pour le GMV', () => {
     const inv = buildTeamMissionInvoice({
       mission,
       payment,
@@ -86,12 +86,12 @@ describe('buildTeamMissionInvoice', () => {
     expect(inv.line.amountEur).toBe(750);
     expect(inv.line.commissionEur).toBe(90);
     expect(inv.client.name).toBe('VC Atlantique');
-    expect(inv.issuer.name).toBe('LogiCycle');
+    expect(inv.issuer.name).toBe('Rovik');
   });
 });
 
 describe('buildVacataireDraftMissionInvoice', () => {
-  it('modèle vacataire → LogiCycle pour le net', () => {
+  it('modèle vacataire → Rovik pour le net', () => {
     const inv = buildVacataireDraftMissionInvoice({
       mission,
       payment,
@@ -103,7 +103,7 @@ describe('buildVacataireDraftMissionInvoice', () => {
     expect(inv.kind).toBe('vacataire_draft');
     expect(inv.isDraftTemplate).toBe(true);
     expect(inv.line.amountEur).toBe(660);
-    expect(inv.client.name).toBe('LogiCycle');
+    expect(inv.client.name).toBe('Rovik');
     expect(inv.issuer.siret).toContain('À COMPLÉTER');
   });
 

@@ -75,6 +75,15 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
     }
 
+    /** Managers ne peuvent pas s’auto-accorder un accès interne / démo / flag commercial. */
+    function billingFlagsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'isPlatformInternal',
+        'isPresentationDemo',
+        'commercialClient'
+      ]);
+    }
+
     /** Champs que l’utilisateur ne peut pas s’auto-attribuer. */
     function userSensitiveKeysUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -275,7 +284,8 @@ service cloud.firestore {
       allow update: if (isTeamManager(teamId) || isSuperAdmin())
         && subscriptionUnchanged()
         && teamGpsSecretOk()
-        && teamSepaSecretOk();
+        && teamSepaSecretOk()
+        && (isSuperAdmin() || billingFlagsUnchanged());
       allow delete: if isTeamManager(teamId) || isSuperAdmin();
 
       // Secret GPS / SEPA — managers ; SEPA aussi lisible par finance (comptable / trésorier).

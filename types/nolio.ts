@@ -1,4 +1,4 @@
-/** Séance réalisée Nolio (champs utiles pour LogiCycle) */
+/** Séance réalisée Nolio (champs utiles pour Rovik) */
 export interface NolioTraining {
   id: number;
   name?: string;

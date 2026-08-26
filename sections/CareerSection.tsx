@@ -821,7 +821,7 @@ const CareerSection: React.FC<CareerSectionProps> = ({
             Recherche de Missions
           </h3>
           <p className="text-sm text-gray-600 mb-3">
-            Activez cette option pour que votre profil soit visible par d'autres équipes sur la plateforme LogiCycle lorsqu'elles recherchent des vacataires.
+            Activez cette option pour que votre profil soit visible par d'autres équipes sur la plateforme Rovik lorsqu'elles recherchent des vacataires.
           </p>
           <div className="flex items-center cursor-pointer" onClick={handleVisibilityChangeRequest}>
             <input

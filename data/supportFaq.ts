@@ -24,19 +24,19 @@ export const SUPPORT_FAQ_ITEMS: SupportFaqItem[] = [
       en: 'What are the prices?',
     },
     answer: {
-      fr: 'Équipes (TTC, prix final) : Club 59 €/mois, Compétition 119 €, Élite 199 €, Performance 349 € — ou annuel avec 2 mois offerts. Indépendants : Athlète 12 €, Staff 15 €. Fédération sur devis. Soft-launch : un annuel avant juin 2027 fige le tarif fondateur 24 mois.',
-      en: 'Teams (all-in / final price): Club €59/mo, Competition €119, Elite €199, Performance €349 — or annual with 2 months free. Independents: Athlete €12, Staff €15. Federation on quote. Soft launch: annual before June 2027 locks founding pricing for 24 months.',
+      fr: 'Pack héros : Compétition 2 490 €/an (249 €/mois). Club 990 €/an pour démarrer ops. Annuel = 2 mois offerts. 20 fondateurs : −20 % an 1. Autres formules (Élite, Performance, Fédération, Athlète/Staff) sur la page tarifs, en secondaire.',
+      en: 'Hero pack: Competition €2,490/yr (€249/mo). Club €990/yr to start ops. Annual = 2 months free. 20 founders: 20% off year one. Other plans (Elite, Performance, Federation, Athlete/Staff) on the pricing page, secondary.',
     },
   },
   {
     id: 'who',
     question: {
-      fr: 'Pour qui est LogiCycle ?',
-      en: 'Who is LogiCycle for?',
+      fr: 'Pour qui est Rovik ?',
+      en: 'Who is Rovik for?',
     },
     answer: {
-      fr: 'Équipes et clubs cyclistes (effectif, calendrier, logistique course, budget, performance), athlètes et staff indépendants, et structures qui publient des missions vacataires.',
-      en: 'Cycling teams and clubs (roster, calendar, race logistics, budget, performance), independent athletes and staff, and organisations posting freelance missions.',
+      fr: 'DS et clubs de compétition : effectif, calendrier, logistique de course (+ performance dès Compétition).',
+      en: 'Race directors and competition clubs: roster, calendar, race logistics (+ performance from Competition).',
     },
   },
   {
@@ -59,6 +59,28 @@ export const SUPPORT_FAQ_ITEMS: SupportFaqItem[] = [
     answer: {
       fr: 'Oui : à l’inscription choisissez « Rejoindre une équipe », ou acceptez une invitation par e-mail / lien magique. L’abonnement est alors géré par la structure.',
       en: 'Yes: at signup choose “Join a team”, or accept an email / magic-link invite. Billing is then handled by the organisation.',
+    },
+  },
+  {
+    id: 'guarantee',
+    question: {
+      fr: 'Comment marche la garantie première course ?',
+      en: 'How does the first-race guarantee work?',
+    },
+    answer: {
+      fr: 'Abonnement annuel d’équipe : vous renseignez une épreuve réelle (effectif, transport ou hébergement, checklist). Si dans les 14 jours après l’épreuve vous devez reprendre un tableur pour cette même logistique, nous remboursons l’année. Une fois par structure · pas pour les clubs sans calendrier course. Détail : CGV art. 3.1.',
+      en: 'Annual team plan: you record a real event (roster, transport or lodging, checklist). If within 14 days after the event you had to revert to a spreadsheet for that same logistics, we refund the year. Once per organisation · not for clubs without a race calendar. Details: Terms of Sale §3.1.',
+    },
+  },
+  {
+    id: 'founders',
+    question: {
+      fr: 'C’est quoi les 20 fondateurs ?',
+      en: 'What are the 20 founding teams?',
+    },
+    answer: {
+      fr: 'Les 20 premières structures en abonnement annuel avant juin 2027 ont −20 % la première année, puis la grille publique. Ce n’est pas un early access ouvert ni un prix figé 24 mois : quand les 20 places sont prises, la grille s’applique dès l’an 1.',
+      en: 'The first 20 organisations on an annual plan before June 2027 get 20% off year one, then public pricing. This is not open-ended early access or a 24-month lock: when the 20 seats are gone, list price applies from year one.',
     },
   },
   {

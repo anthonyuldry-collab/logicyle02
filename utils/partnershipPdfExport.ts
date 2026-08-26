@@ -177,7 +177,7 @@ function renderCerfaHeader(
   doc.setFontSize(7);
   doc.setTextColor(220, 230, 240);
   doc.text(
-    'Formulaire généré par LogiCycle — à valider par le représentant légal avant remise',
+    'Formulaire généré par Rovik — à valider par le représentant légal avant remise',
     CERFA_MARGIN,
     23
   );
@@ -293,12 +293,12 @@ export function exportPartnershipConventionPdf(
 
   applyPdfFooters(
     doc,
-    'Document généré par LogiCycle. Recommandation : faire relire par un conseil juridique avant signature. Fait en deux exemplaires originaux.',
+    'Document généré par Rovik. Recommandation : faire relire par un conseil juridique avant signature. Fait en deux exemplaires originaux.',
     sanitizePdfText(data.conventionNumber)
   );
 
   const safeName = data.conventionNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
-  doc.save(`LogiCycle_${title.replace(/\s+/g, '_')}_${safeName}.pdf`);
+  doc.save(`Rovik_${title.replace(/\s+/g, '_')}_${safeName}.pdf`);
 }
 
 export function exportCerfaReceiptPdf(
@@ -345,7 +345,7 @@ export function exportCerfaReceiptPdf(
   );
 
   const safeName = data.receiptNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
-  doc.save(`LogiCycle_CERFA_${data.formId}_${safeName}.pdf`);
+  doc.save(`Rovik_CERFA_${data.formId}_${safeName}.pdf`);
 }
 
 export function exportPartnershipDocumentsBundle(

@@ -786,7 +786,7 @@ const drawPdfHeader = (
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...PDF_SUBTITLE_GRAY);
-    doc.text('Allers, retours, transferts — détail dans Logicycle', w / 2, 23, { align: 'center' });
+    doc.text('Allers, retours, transferts — détail dans Rovik', w / 2, 23, { align: 'center' });
     doc.setTextColor(0, 0, 0);
     doc.setDrawColor(...PDF_LINE_GRAY);
     const lineY = 25;
@@ -2385,7 +2385,7 @@ export const exportVehicleLogisticsHtml = (
     <p class="subtitle muted">${escapeHtml(EXPORT_SCOPE_DESCRIPTIONS[scope])}</p>
   </header>
   ${cards}
-  <footer>Généré par Logicycle</footer>
+  <footer>Généré par Rovik</footer>
 </body>
 </html>`;
 

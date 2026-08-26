@@ -298,11 +298,11 @@ function drawPageHeader(doc: jsPDF, pageLabel: string): number {
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.text(pageLabel, PAGE_W - MARGIN, 12, { align: 'right' });
-  doc.text('(modèle LogiCycle — art. 1.2.049 Règlement UCI)', MARGIN, 22);
+  doc.text('(modèle Rovik — art. 1.2.049 Règlement UCI)', MARGIN, 22);
   return 28;
 }
 
-/** Export bulletin d'engagement UCI (pages 1 & 2) pré-rempli depuis LogiCycle. */
+/** Export bulletin d'engagement UCI (pages 1 & 2) pré-rempli depuis Rovik. */
 export function exportUciEngagementBulletin(options: UciBulletinExportOptions): void {
   const {
     team,
@@ -432,7 +432,7 @@ export function exportUciEngagementBulletin(options: UciBulletinExportOptions): 
 
   doc.setFontSize(6);
   doc.text(
-    'Document généré par LogiCycle — vérifier et compléter avant envoi à l\'organisateur (délai : J-20 puis J-3).',
+    'Document généré par Rovik — vérifier et compléter avant envoi à l\'organisateur (délai : J-20 puis J-3).',
     MARGIN,
     290
   );

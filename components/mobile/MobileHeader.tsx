@@ -3,7 +3,7 @@ import { AppSection } from '../../types';
 import { SECTIONS, INDEPENDENT_SECTIONS } from '../../constants';
 import { getSectionGroupLabel } from '../../constants/sidebarGroups';
 import { useTranslations } from '../../hooks/useTranslations';
-import ListBulletIcon from '../icons/ListBulletIcon';
+import { BRAND_NAME } from '../../constants/brand';
 
 interface MobileHeaderProps {
   currentSection: AppSection;
@@ -34,7 +34,7 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({
     if (currentSection === 'eventDetail') {
       return { sectionLabel: t('mobileHeaderEvent'), groupLabel: undefined };
     }
-    return { sectionLabel: 'LogiCycle', groupLabel: undefined };
+    return { sectionLabel: BRAND_NAME, groupLabel: undefined };
   }, [currentSection, isIndependent, language, t]);
 
   return (

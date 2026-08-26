@@ -5,9 +5,10 @@
  *   VITE_LEGAL_SIREN, VITE_LEGAL_SIRET, VITE_LEGAL_REGISTERED_OFFICE, VITE_LEGAL_VAT_NUMBER, VITE_LEGAL_FORM
  * Tant que ces champs restent des placeholders, les Mentions légales affichent clairement
  * « en cours de constitution » — ne pas publier commercialement sans les remplir.
+ * Parcours : lancement/01-societe-kbis.md · template env : lancement/templates/env-legal-post-kbis.env
  */
 
-export const LEGAL_PACK_VERSION = '2026-08.2' as const;
+export const LEGAL_PACK_VERSION = '2026-08.3' as const;
 
 export const LEGAL_EFFECTIVE_DATE = '2026-08-01' as const;
 
@@ -30,10 +31,10 @@ const PLACEHOLDER_VAT = '[N° TVA À COMPLÉTER — si assujetti]';
 const PLACEHOLDER_OFFICE = '[Adresse du siège social À COMPLÉTER]';
 
 export const LEGAL_ENTITY = {
-  tradeName: 'LogiCycle',
+  tradeName: 'Rovik',
   legalFormPlaceholder: {
-    fr: envLegal('VITE_LEGAL_FORM') || 'SASU LogiCycle (en cours de constitution — à mettre à jour post K-bis)',
-    en: envLegal('VITE_LEGAL_FORM') || 'LogiCycle SASU (in formation — update after company registration)',
+    fr: envLegal('VITE_LEGAL_FORM') || 'SASU Rovik (en cours de constitution — à mettre à jour post K-bis)',
+    en: envLegal('VITE_LEGAL_FORM') || 'Rovik SASU (in formation — update after company registration)',
   },
   /**
    * Identifiants éditeur — BLOQUANTS go-live commercial.
@@ -55,8 +56,8 @@ export const LEGAL_ENTITY = {
     en: 'French law',
   },
   courts: {
-    fr: 'tribunaux compétents du ressort du siège social de LogiCycle',
-    en: 'courts with jurisdiction over LogiCycle’s registered office',
+    fr: 'tribunaux compétents du ressort du siège social de Rovik',
+    en: 'courts with jurisdiction over Rovik’s registered office',
   },
   host: {
     name: 'Google Cloud / Firebase',
@@ -84,6 +85,6 @@ export function isLegalEntityIncomplete(): boolean {
 
 /** Disclaimer produit — pas un avis d’avocat. */
 export const LEGAL_DISCLAIMER: Record<'fr' | 'en', string> = {
-  fr: 'Documents modèles destinés à la commercialisation SaaS LogiCycle. Ils ne constituent pas un avis juridique. Faites-les relire par un avocat (droit des affaires / RGPD) avant publication définitive et signature client.',
-  en: 'Template documents for LogiCycle SaaS go-to-market. They are not legal advice. Have counsel (commercial / GDPR) review them before final publication and customer signature.',
+  fr: 'Documents modèles destinés à la commercialisation SaaS Rovik. Ils ne constituent pas un avis juridique. Faites-les relire par un avocat (droit des affaires / RGPD) avant publication définitive et signature client.',
+  en: 'Template documents for Rovik SaaS go-to-market. They are not legal advice. Have counsel (commercial / GDPR) review them before final publication and customer signature.',
 };

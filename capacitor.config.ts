@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.logicyle.app',
-  appName: 'LogiCycle',
+  appName: 'rovik',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
@@ -13,18 +13,18 @@ const config: CapacitorConfig = {
     },
     SplashScreen: {
       launchShowDuration: 2000,
-      backgroundColor: '#1e293b',
+      backgroundColor: '#0B0D10',
       showSpinner: false,
     },
   },
   ios: {
     contentInset: 'automatic',
-    scheme: 'LogiCycle',
+    scheme: 'rovik',
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
-        'LogiCycle utilise votre position pour partager la localisation du véhicule avec l\'équipe pendant vos trajets.',
+        'rovik utilise votre position pour partager la localisation du véhicule avec l\'équipe pendant vos trajets.',
       NSLocationAlwaysAndWhenInUseUsageDescription:
-        'LogiCycle continue le suivi GPS en arrière-plan pendant vos trajets, même écran verrouillé, pour la flotte.',
+        'rovik continue le suivi GPS en arrière-plan pendant vos trajets, même écran verrouillé, pour la flotte.',
       UIBackgroundModes: ['location'],
     },
   },

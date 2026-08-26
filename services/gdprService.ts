@@ -232,7 +232,7 @@ export async function exportUserPersonalData(userId: string): Promise<Record<str
 
   return {
     exportedAt: new Date().toISOString(),
-    format: 'LogiCycle-RGPD-Export-v1',
+    format: 'Rovik-RGPD-Export-v1',
     gdprArticle: 'Article 20 RGPD — Droit à la portabilité',
     user: sanitizedUser,
     memberships: membershipsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),

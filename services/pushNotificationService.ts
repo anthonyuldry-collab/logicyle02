@@ -108,7 +108,7 @@ export function subscribeForegroundMessages(onPayload: (title: string, body: str
     const messaging = await getMessagingInstance();
     if (!messaging) return;
     unsubscribe = onMessage(messaging, payload => {
-      const title = payload.notification?.title ?? 'LogiCycle';
+      const title = payload.notification?.title ?? 'Rovik';
       const body = payload.notification?.body ?? '';
       onPayload(title, body);
     });

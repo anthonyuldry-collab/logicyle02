@@ -44,7 +44,7 @@ const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   const teamName =
-    appState.teams.find((tm) => tm.id === appState.activeTeamId)?.name || 'LogiCycle';
+    appState.teams.find((tm) => tm.id === appState.activeTeamId)?.name || 'Rovik';
 
   const teamMetrics = useMemo(() => {
     const activeRiders = riders.filter((r) => r.healthCondition === HealthCondition.PRET_A_COURIR);

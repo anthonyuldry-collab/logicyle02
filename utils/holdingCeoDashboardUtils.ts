@@ -136,3 +136,32 @@ export function planLabelFr(planId?: SubscriptionPlanId | string): string {
     return String(planId);
   }
 }
+
+/** Entonnoir lancement ops — à partir des abonnements clients (sans charge events cross-tenant). */
+export function computeLaunchFunnelMetrics(teams: Team[]): {
+  trialOrPilot: number;
+  activePaid: number;
+  pastDue: number;
+  canceled: number;
+  trialToActiveRatePct: number | null;
+} {
+  const clients = filterCommercialClientTeams(teams);
+  let trialOrPilot = 0;
+  let activePaid = 0;
+  let pastDue = 0;
+  let canceled = 0;
+
+  for (const team of clients) {
+    const status = team.subscription?.status;
+    if (status === 'trialing' || status === 'pilot') trialOrPilot += 1;
+    else if (status === 'active') activePaid += 1;
+    else if (status === 'past_due') pastDue += 1;
+    else if (status === 'canceled') canceled += 1;
+  }
+
+  const convertedBase = activePaid + trialOrPilot;
+  const trialToActiveRatePct =
+    convertedBase > 0 ? Math.round((activePaid / convertedBase) * 1000) / 10 : null;
+
+  return { trialOrPilot, activePaid, pastDue, canceled, trialToActiveRatePct };
+}

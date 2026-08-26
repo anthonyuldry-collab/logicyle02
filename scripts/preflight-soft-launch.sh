@@ -14,7 +14,8 @@ ok()   { echo "OK   $*"; pass=$((pass+1)); }
 ko()   { echo "FAIL $*"; fail=$((fail+1)); }
 warn() { echo "WARN $*"; warn=$((warn+1)); }
 
-echo "==> Préflight soft-launch LogiCycle"
+echo "==> Préflight soft-launch rovik"
+echo "    Dossier : lancement/README.md"
 echo
 
 # 1) Price IDs Functions
@@ -105,10 +106,10 @@ fi
 
 echo
 echo "==> Résultat : $pass OK / $warn WARN / $fail FAIL"
-echo "    Suite manuelle restante :"
-echo "    1. Emails @logicycle.app — docs/EMAIL_FORWARDING.md"
-echo "    2. Remplir legal/meta.ts avec le K-bis (SIREN/SIRET/siège)"
-echo "    3. Stripe Dashboard → activer Live + secrets (docs/OPS_RUNBOOK.md)"
+echo "    Suite manuelle restante : lancement/CHECKLIST.md"
+echo "    1. Emails — lancement/04-emails-et-dns.md"
+echo "    2. K-bis → env — lancement/01-societe-kbis.md"
+echo "    3. Stripe Live — lancement/03-stripe-live.md"
 echo "    4. ./scripts/smoke-production.sh https://logicycle.app"
 if [[ "$fail" -gt 0 ]]; then exit 1; fi
 exit 0

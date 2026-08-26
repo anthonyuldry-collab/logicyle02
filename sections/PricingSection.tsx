@@ -14,6 +14,8 @@ import {
   PricingAudience,
   resolvePricingAudience,
   PlanDefinition,
+  PUBLIC_PRIMARY_PLAN_IDS,
+  PUBLIC_SECONDARY_PLAN_IDS,
 } from '../constants/subscriptionPlans';
 import { REFERRAL_LABELS } from '../constants/referralProgram';
 import {
@@ -74,6 +76,10 @@ const PricingSection: React.FC<PricingSectionProps> = ({
   const [myShareUrl, setMyShareUrl] = useState<string | null>(null);
   const [myCodeLoading, setMyCodeLoading] = useState(false);
   const [copiedKind, setCopiedKind] = useState<'code' | 'link' | null>(null);
+  /** Public : indépendants repliés — lien discret seulement (wedge clubs M1). */
+  const [showIndependentPlans, setShowIndependentPlans] = useState(false);
+  const [showSecondaryPlans, setShowSecondaryPlans] = useState(false);
+  const [showReferralBox, setShowReferralBox] = useState(false);
 
   const audience = useMemo(
     () =>
@@ -92,17 +98,36 @@ const PricingSection: React.FC<PricingSectionProps> = ({
       return [getIndependentPlanForUser(userRole || UserRole.COUREUR)];
     }
     if (audience === 'team_member') return [];
+    if (audience === 'public') {
+      const rank = new Map(PUBLIC_PRIMARY_PLAN_IDS.map((id, i) => [id, i]));
+      return SUBSCRIPTION_PLANS.filter((p) => rank.has(p.id)).sort(
+        (a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99),
+      );
+    }
     return SUBSCRIPTION_PLANS;
   }, [audience, userRole]);
 
+  const secondaryPlans: PlanDefinition[] = useMemo(() => {
+    if (audience !== 'public') return [];
+    const rank = new Map(PUBLIC_SECONDARY_PLAN_IDS.map((id, i) => [id, i]));
+    return SUBSCRIPTION_PLANS.filter((p) => rank.has(p.id)).sort(
+      (a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99),
+    );
+  }, [audience]);
+
   const showTeamPlans = audience === 'public' || audience === 'team_admin';
-  const showIndependentCatalog = audience === 'public';
+  const showIndependentTeaser = audience === 'public';
   const showReferralCheckout =
     audience === 'public' ||
     audience === 'team_admin' ||
     audience === 'independent_rider' ||
     audience === 'independent_staff';
   const canPurchase = audience !== 'team_member';
+
+  useEffect(() => {
+    if (audience !== 'public' || typeof window === 'undefined') return;
+    if (window.location.hash === '#independants') setShowIndependentPlans(true);
+  }, [audience]);
 
   useEffect(() => {
     const pending = getPendingReferralCode();
@@ -307,7 +332,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         <div className="mt-6">
           {plan.contactSales ? (
             <a
-              href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('LogiCycle Fédération')}`}
+              href={`mailto:${LEGAL_ENTITY.contactEmail}?subject=${encodeURIComponent('Rovik Fédération')}`}
               className="block w-full text-center py-2.5 px-4 rounded-xl font-medium transition border border-white/20 text-slate-200 hover:bg-white/10"
             >
               {t('pricingContactUs')}
@@ -419,9 +444,9 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           {isPublic && (
             <div className="mb-6 flex flex-col items-center gap-4">
               <img
-                src="/icons/logicycle-logo-display.webp"
-                alt="LogiCycle"
-                className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_28px_rgba(0,212,255,0.3)]"
+                src="/icons/rovik-mark.png"
+                alt="rovik"
+                className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_0_28px_rgba(34,211,238,0.35)]"
               />
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-300/80">
                 {t('pricingEyebrow')}
@@ -446,7 +471,50 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           <div className="mt-6 flex justify-center">{periodToggle}</div>
         </div>
 
-        {showReferralCheckout && (
+        {showReferralCheckout && isPublic && (
+          <div className="max-w-md mx-auto text-center">
+            {!showReferralBox ? (
+              <button
+                type="button"
+                onClick={() => setShowReferralBox(true)}
+                className="text-xs text-slate-500 hover:text-slate-300 underline-offset-4 hover:underline transition"
+              >
+                {t('pricingReferralTeaser')}
+              </button>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-left">
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  {REFERRAL_LABELS.programSubtitle[language]}
+                </p>
+                <label className="mt-3 mb-1.5 block text-xs font-medium text-slate-400">
+                  {t('referralCodeCheckout')}
+                </label>
+                <input
+                  type="text"
+                  value={referralInput}
+                  onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                  onBlur={handleReferralBlur}
+                  placeholder="LC-XXXXXX"
+                  className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500"
+                />
+                {referralValid && (
+                  <p className="mt-1.5 text-sm text-emerald-300">
+                    {t('referralValidPrefix')} {referralValid}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowReferralBox(false)}
+                  className="mt-3 text-xs text-slate-500 hover:text-slate-300"
+                >
+                  {t('pricingIndependentHide')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showReferralCheckout && !isPublic && (
           <div className="max-w-3xl mx-auto rounded-2xl border border-indigo-500/35 bg-slate-900 p-6">
             <h3 className="text-lg font-bold text-indigo-200">
               {REFERRAL_LABELS.programTitle[language]}
@@ -464,66 +532,64 @@ const PricingSection: React.FC<PricingSectionProps> = ({
                 <span className="text-indigo-50">{REFERRAL_LABELS.referrerReward[language]}</span>
               </div>
             </div>
-            {!isPublic && (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-200">
-                    {t('referralYourCode')}
-                  </label>
-                  {myCodeLoading ? (
-                    <p className="text-sm text-slate-400">{t('referralLoading')}</p>
-                  ) : myReferralCode ? (
-                    <>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <code className="rounded-xl border border-indigo-300/50 bg-indigo-950 px-3 py-2.5 font-mono text-base font-bold tracking-wide text-white">
-                          {myReferralCode}
-                        </code>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-200">
+                  {t('referralYourCode')}
+                </label>
+                {myCodeLoading ? (
+                  <p className="text-sm text-slate-400">{t('referralLoading')}</p>
+                ) : myReferralCode ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="rounded-xl border border-indigo-300/50 bg-indigo-950 px-3 py-2.5 font-mono text-base font-bold tracking-wide text-white">
+                        {myReferralCode}
+                      </code>
+                      <ActionButton
+                        variant="secondary"
+                        size="sm"
+                        className="!text-white"
+                        onClick={() => copyMyReferral('code')}
+                      >
+                        {copiedKind === 'code' ? t('referralCodeCopied') : t('referralCopyCode')}
+                      </ActionButton>
+                      {myShareUrl && (
                         <ActionButton
                           variant="secondary"
                           size="sm"
                           className="!text-white"
-                          onClick={() => copyMyReferral('code')}
+                          onClick={() => copyMyReferral('link')}
                         >
-                          {copiedKind === 'code' ? t('referralCodeCopied') : t('referralCopyCode')}
+                          {copiedKind === 'link' ? t('referralCopied') : t('referralCopyLink')}
                         </ActionButton>
-                        {myShareUrl && (
-                          <ActionButton
-                            variant="secondary"
-                            size="sm"
-                            className="!text-white"
-                            onClick={() => copyMyReferral('link')}
-                          >
-                            {copiedKind === 'link' ? t('referralCopied') : t('referralCopyLink')}
-                          </ActionButton>
-                        )}
-                      </div>
-                      <p className="mt-1.5 text-xs text-slate-400">{t('referralShareHint')}</p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-rose-300">{t('referralLoadError')}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-200">
-                    {t('referralCodeCheckout')}
-                  </label>
-                  <input
-                    type="text"
-                    value={referralInput}
-                    onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                    onBlur={handleReferralBlur}
-                    placeholder="LC-XXXXXX"
-                    className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500"
-                  />
-                  {referralValid && (
-                    <p className="mt-1.5 text-sm text-emerald-300">
-                      {t('referralValidPrefix')} {referralValid}
-                    </p>
-                  )}
-                </div>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-xs text-slate-400">{t('referralShareHint')}</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-rose-300">{t('referralLoadError')}</p>
+                )}
               </div>
-            )}
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-200">
+                  {t('referralCodeCheckout')}
+                </label>
+                <input
+                  type="text"
+                  value={referralInput}
+                  onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                  onBlur={handleReferralBlur}
+                  placeholder="LC-XXXXXX"
+                  className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500"
+                />
+                {referralValid && (
+                  <p className="mt-1.5 text-sm text-emerald-300">
+                    {t('referralValidPrefix')} {referralValid}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -545,6 +611,39 @@ const PricingSection: React.FC<PricingSectionProps> = ({
             >
               {plansToShow.map((p) => renderPlanCard(p))}
             </div>
+            {audience === 'public' && secondaryPlans.length > 0 && (
+              <div className="max-w-4xl mx-auto pt-2">
+                {!showSecondaryPlans ? (
+                  <p className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowSecondaryPlans(true)}
+                      className="text-sm text-slate-500 hover:text-slate-300 underline-offset-4 hover:underline transition"
+                    >
+                      {t('pricingSecondaryTeaser')}
+                    </button>
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-center text-xs uppercase tracking-[0.18em] text-slate-500 mb-5">
+                      {t('pricingSecondaryTitle')}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {secondaryPlans.map((p) => renderPlanCard(p))}
+                    </div>
+                    <p className="mt-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowSecondaryPlans(false)}
+                        className="text-xs text-slate-500 hover:text-slate-300 transition"
+                      >
+                        {t('pricingIndependentHide')}
+                      </button>
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -554,17 +653,40 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           </div>
         )}
 
-        {showIndependentCatalog && (
-          <div className="max-w-4xl mx-auto">
-            <h3 className="text-lg font-bold text-center mb-2 text-white">
-              {t('pricingIndependentSectionTitle')}
-            </h3>
-            <p className="text-sm text-center mb-6 text-slate-400">
-              {t('pricingIndependentPaidNote')}
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {INDEPENDENT_PLANS.map((p) => renderPlanCard(p, { independent: true }))}
-            </div>
+        {showIndependentTeaser && (
+          <div id="independants" className="max-w-4xl mx-auto scroll-mt-8">
+            {!showIndependentPlans ? (
+              <p className="text-center text-sm text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => setShowIndependentPlans(true)}
+                  className="text-slate-400 hover:text-slate-200 underline-offset-4 hover:underline transition"
+                >
+                  {t('pricingIndependentTeaser')}
+                </button>
+              </p>
+            ) : (
+              <>
+                <h3 className="text-base font-semibold text-center mb-1 text-slate-200">
+                  {t('pricingIndependentSectionTitle')}
+                </h3>
+                <p className="text-sm text-center mb-6 text-slate-500">
+                  {t('pricingIndependentPaidNote')}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {INDEPENDENT_PLANS.map((p) => renderPlanCard(p, { independent: true }))}
+                </div>
+                <p className="mt-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowIndependentPlans(false)}
+                    className="text-xs text-slate-500 hover:text-slate-300 transition"
+                  >
+                    {t('pricingIndependentHide')}
+                  </button>
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>

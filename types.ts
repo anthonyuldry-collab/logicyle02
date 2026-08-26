@@ -2960,7 +2960,7 @@ export type PartnershipMatchStatus =
     | 'contracted'
     | 'cancelled';
 
-/** Profil sponsor visible sur la marketplace LogiCycle (partenaires sans équipe). */
+/** Profil sponsor visible sur la marketplace Rovik (partenaires sans équipe). */
 export interface PartnerMarketplaceProfile {
     id: string;
     userId: string;
@@ -2994,7 +2994,7 @@ export interface TeamSponsorshipNeed {
     createdByUserId?: string;
 }
 
-/** Demande de mise en relation sponsor ↔ équipe (commission LogiCycle si contractualisation). */
+/** Demande de mise en relation sponsor ↔ équipe (commission Rovik si contractualisation). */
 export interface PartnershipMatchRequest {
     id: string;
     partnerUserId: string;
@@ -3268,9 +3268,9 @@ export interface MissionPayment {
     paymentIntentId?: string;
     connectedAccountId?: string;
     paidAt?: string;
-    /** Facture LogiCycle → équipe (GMV) */
+    /** Facture Rovik → équipe (GMV) */
     teamInvoiceNumber?: string;
-    /** Modèle facture vacataire → LogiCycle (net) */
+    /** Modèle facture vacataire → Rovik (net) */
     vacataireInvoiceDraftNumber?: string;
     /** N° facture vacataire définitive (après finalisation) */
     vacataireInvoiceNumber?: string;
